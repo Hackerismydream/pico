@@ -19,7 +19,6 @@ STOP_REASON_RETRY_LIMIT_REACHED = "retry_limit_reached"
 STOP_REASON_MODEL_ERROR = "model_error"
 STOP_REASON_TOOL_TIMEOUT = "tool_timeout"
 STOP_REASON_APPROVAL_DENIED = "approval_denied"
-STOP_REASON_DELEGATE_FAILED = "delegate_failed"
 STOP_REASON_PERSISTENCE_ERROR = "persistence_error"
 STOP_REASON_RESUME_LOAD_ERROR = "resume_load_error"
 

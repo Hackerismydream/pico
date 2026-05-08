@@ -281,6 +281,15 @@ Check deployment readiness for $ARGUMENTS from ${PICO_SKILL_DIR}.
 
 ## 开发
 
+真实 session 验收包：
+
+```bash
+uv run python scripts/run_real_session_acceptance.py \
+  --output-dir artifacts/gate8-real-session-acceptance
+```
+
+这会跑一组确定性的 Pico session，并输出 `gate8-real-session-acceptance.json` / `.md`，同时保留每个场景的 `.pico/sessions/*.events.jsonl`、`trace.jsonl` 和 `report.json`。
+
 如果装了 Ruff，可以这样检查：
 
 ```bash

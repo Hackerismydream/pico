@@ -156,7 +156,7 @@ def test_run_shell_uses_allowlisted_environment_only(tmp_path):
     assert "missing" in result
 
 
-def test_bound_tool_methods_delegate_into_tools_module(tmp_path):
+def test_bound_tool_methods_call_tools_module(tmp_path):
     agent = build_agent(tmp_path, [], approval_policy="auto")
 
     with patch("pico.tools.registry.subprocess.run") as fake_run:
@@ -170,44 +170,6 @@ def test_bound_tool_methods_delegate_into_tools_module(tmp_path):
     assert "toolkit-shell" in shell_result
     fake_run.assert_called_once()
     assert agent.tool_run_shell.__func__.__module__ == "pico.core.runtime"
-
-    with patch("pico.tools.registry.tool_delegate", return_value="toolkit-delegate") as fake_delegate:
-        delegate_result = agent.tool_delegate({"task": "inspect README.md", "max_steps": 2})
-
-    assert delegate_result == "toolkit-delegate"
-    fake_delegate.assert_called_once()
-
-
-def test_delegate_depth_limit_is_enforced(tmp_path):
-    agent = build_agent(tmp_path, [], depth=1, max_depth=1)
-
-    try:
-        agent.validate_tool("delegate", {"task": "inspect README.md", "max_steps": 2})
-    except ValueError as exc:
-        assert "delegate depth exceeded" in str(exc)
-    else:
-        raise AssertionError("delegate depth validation did not fail")
-
-
-def test_delegate_child_is_read_only(tmp_path):
-    target = tmp_path / "child-was-not-allowed.txt"
-    agent = build_agent(
-        tmp_path,
-        [
-            '<tool>{"name":"delegate","args":{"task":"write a file","max_steps":2}}</tool>',
-            '<tool>{"name":"write_file","args":{"path":"child-was-not-allowed.txt","content":"nope"}}</tool>',
-            "<final>child done</final>",
-            "<final>parent done</final>",
-        ],
-    )
-
-    result = agent.ask("Delegate the work")
-
-    assert result == "parent done"
-    assert not target.exists()
-    tool_events = [item for item in agent.session["history"] if item["role"] == "tool"]
-    assert tool_events[0]["name"] == "delegate"
-    assert "delegate_result" in tool_events[0]["content"]
 
 
 def test_configured_secret_env_names_are_redacted_in_trace_and_report(tmp_path):

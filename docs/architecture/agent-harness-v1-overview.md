@@ -16,3 +16,6 @@ The harness has five stable boundaries:
 - Session event bus: records the user-visible session timeline.
 - Plan mode: constrains planning turns to the active plan artifact before
   allowing a final answer.
+- Worker manager: owns bounded subagent lifecycle. `Explore` is read-only;
+  `worker` can write only inside its declared write scope and reports completion
+  through session notifications.

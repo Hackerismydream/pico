@@ -206,24 +206,6 @@ def test_agent_saves_and_resumes_session(tmp_path):
     assert resumed.ask("Continue") == "Resumed."
 
 
-def test_delegate_uses_child_agent(tmp_path):
-    agent = build_agent(
-        tmp_path,
-        [
-            '<tool>{"name":"delegate","args":{"task":"inspect README","max_steps":2}}</tool>',
-            "<final>Child result.</final>",
-            "<final>Parent incorporated the child result.</final>",
-        ],
-    )
-
-    answer = agent.ask("Use delegation")
-
-    assert answer == "Parent incorporated the child result."
-    tool_events = [item for item in agent.session["history"] if item["role"] == "tool"]
-    assert tool_events[0]["name"] == "delegate"
-    assert "delegate_result" in tool_events[0]["content"]
-
-
 def test_patch_file_replaces_exact_match(tmp_path):
     file_path = tmp_path / "sample.txt"
     file_path.write_text("hello world\n", encoding="utf-8")

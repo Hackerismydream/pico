@@ -38,6 +38,8 @@ class PermissionChecker:
         if self.runtime.runtime_mode == "plan":
             return self._check_plan(tool, args)
 
+        if tool.name in {"write_file", "patch_file"} and getattr(self.runtime, "write_scope", ()):
+            return self._check_write_scope(tool, args)
         if tool.read_only:
             return PermissionDecision.allow("read_only")
         if self.runtime.read_only:
@@ -60,3 +62,14 @@ class PermissionChecker:
         if Path(requested) != Path(active):
             return PermissionDecision.deny("plan_mode_path_mismatch", "plan_mode_write_guard")
         return PermissionDecision.allow("plan_artifact_write")
+
+    def _check_write_scope(self, tool, args):
+        requested = self.runtime.path(args.get("path", ""))
+        for raw_scope in self.runtime.write_scope:
+            scope = self.runtime.path(raw_scope)
+            try:
+                requested.relative_to(scope)
+                return PermissionDecision.allow("write_scope")
+            except ValueError:
+                continue
+        return PermissionDecision.deny("write_scope_mismatch", "write_scope_guard")

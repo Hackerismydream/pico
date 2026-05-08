@@ -29,6 +29,7 @@ from .session_events import SessionEventBus
 from .tool_profiles import build_tool_profiles
 from .todo_ledger import TodoLedger
 from .turn_history import TurnHistoryBuilder
+from .worker_manager import WorkerManager
 from ..tools import registry as toolkit
 from .workspace import IGNORED_PATH_NAMES, MAX_HISTORY, WorkspaceContext, clip, now
 
@@ -114,6 +115,7 @@ class Pico:
         shell_env_allowlist=None,
         secret_env_names=None,
         feature_flags=None,
+        write_scope=None,
     ):
         self.model_client = model_client
         self.workspace = workspace
@@ -127,6 +129,9 @@ class Pico:
         self.read_only = read_only
         self.shell_env_allowlist = tuple(shell_env_allowlist or DEFAULT_SHELL_ENV_ALLOWLIST)
         self.secret_env_names = {str(name).upper() for name in (secret_env_names or ())}
+        if isinstance(write_scope, str):
+            write_scope = [write_scope]
+        self.write_scope = tuple(str(path) for path in (write_scope or ()) if str(path).strip())
         self.feature_flags = dict(DEFAULT_FEATURE_FLAGS)
         if feature_flags:
             self.feature_flags.update({str(key): bool(value) for key, value in feature_flags.items()})
@@ -151,6 +156,7 @@ class Pico:
         self.memory = memorylib.LayeredMemory(self.session.setdefault("memory", memorylib.default_memory_state()), workspace_root=self.root)
         self.session["memory"] = self.memory.to_dict()
         self.todo_ledger = TodoLedger(self)
+        self.worker_manager = WorkerManager(self)
         self.skills = skillslib.discover_skills(self.root)
         self.tools = self.build_tools()
         self.tool_profiles = build_tool_profiles(self.tools)
@@ -382,6 +388,7 @@ class Pico:
                 '<tool name="write_file" path="binary_search.py"><content>def binary_search(nums, target):\n    return -1\n</content></tool>',
                 '<tool name="patch_file" path="binary_search.py"><old_text>return -1</old_text><new_text>return mid</new_text></tool>',
                 '<tool>{"name":"run_shell","args":{"command":"uv run --with pytest python -m pytest -q","timeout":20}}</tool>',
+                '<tool>{"name":"agent","args":{"description":"Inspect auth","prompt":"Find auth entry points","subagent_type":"Explore"}}</tool>',
                 "<final>Done.</final>",
             ]
         )
@@ -407,7 +414,9 @@ class Pico:
             - When writing tests, match the current implementation unless the user explicitly asked you to change the code.
             - New files should be complete and runnable, including obvious imports.
             - Do not repeat the same tool call with the same arguments if it did not help. Choose a different tool or return a final answer.
-            - Required tool arguments must not be empty. Do not call read_file, write_file, patch_file, run_shell, or delegate with args={{}}.
+            - Required tool arguments must not be empty. Do not call read_file, write_file, patch_file, run_shell, or agent with args={{}}.
+            - Use agent for bounded subagents. Explore is read-only; worker writes must stay inside write_scope.
+            - Use send_message to continue an existing worker instead of spawning a fresh worker with missing context.
 
             {self.runtime_mode_text()}
 
@@ -879,6 +888,7 @@ class Pico:
             "runtime_reminders": list(task_state.runtime_reminders),
             "todos": self.todo_ledger.to_dict(),
             "todo_changes": list(task_state.todo_changes),
+            "workers": self.worker_manager.to_dict(),
         }
 
     def tool_example(self, name):
@@ -887,30 +897,9 @@ class Pico:
     def validate_tool(self, name, args):
         """把通用工具校验和 runtime 级额外约束串起来。"""
         toolkit.validate_tool(self, name, args)
-        if name == "delegate":
-            if self.depth >= self.max_depth:
-                raise ValueError("delegate depth exceeded")
-
-    def tool_list_files(self, args):
-        return toolkit.tool_list_files(self, args)
-
-    def tool_read_file(self, args):
-        return toolkit.tool_read_file(self, args)
-
-    def tool_search(self, args):
-        return toolkit.tool_search(self, args)
 
     def tool_run_shell(self, args):
         return toolkit.tool_run_shell(self, args)
-
-    def tool_write_file(self, args):
-        return toolkit.tool_write_file(self, args)
-
-    def tool_patch_file(self, args):
-        return toolkit.tool_patch_file(self, args)
-
-    def tool_delegate(self, args):
-        return toolkit.tool_delegate(self, args)
 
     def approve(self, name, args):
         if self.read_only:

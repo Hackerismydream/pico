@@ -9,8 +9,9 @@ import subprocess
 import textwrap
 from functools import partial
 
-from ..core.workspace import IGNORED_PATH_NAMES, clip
+from ..core.workspace import IGNORED_PATH_NAMES
 from .base import RegisteredTool
+from .agents import AGENT_TOOL_EXAMPLES, AGENT_TOOL_NAMES, AGENT_TOOL_SPECS, tool_agent, tool_send_message, tool_task_stop, validate_agent_tool
 from .todos import TODO_TOOL_EXAMPLES, TODO_TOOL_SPECS, tool_todo_add, tool_todo_list, tool_todo_update, validate_todo_tool
 
 BASE_TOOL_SPECS = {
@@ -45,12 +46,7 @@ BASE_TOOL_SPECS = {
         "description": "Replace one exact text block in a file.",
     },
     **TODO_TOOL_SPECS,
-}
-
-DELEGATE_TOOL_SPEC = {
-    "schema": {"task": "str", "max_steps": "int=3"},
-    "risky": False,
-    "description": "Ask a bounded read-only child agent to investigate.",
+    **AGENT_TOOL_SPECS,
 }
 
 TOOL_EXAMPLES = {
@@ -61,7 +57,7 @@ TOOL_EXAMPLES = {
     "write_file": '<tool name="write_file" path="binary_search.py"><content>def binary_search(nums, target):\n    return -1\n</content></tool>',
     "patch_file": '<tool name="patch_file" path="binary_search.py"><old_text>return -1</old_text><new_text>return mid</new_text></tool>',
     **TODO_TOOL_EXAMPLES,
-    "delegate": '<tool>{"name":"delegate","args":{"task":"inspect README.md","max_steps":3}}</tool>',
+    **AGENT_TOOL_EXAMPLES,
 }
 
 
@@ -78,16 +74,6 @@ def build_tool_registry(agent):
         )
         for name, spec in BASE_TOOL_SPECS.items()
     }
-    # 子 agent 是刻意做成受限能力的：一旦深度耗尽，
-    # 就连 delegate 这个工具都不再暴露给模型。
-    if agent.depth < agent.max_depth:
-        tools["delegate"] = RegisteredTool(
-            name="delegate",
-            schema=DELEGATE_TOOL_SPEC["schema"],
-            description=DELEGATE_TOOL_SPEC["description"],
-            risky=bool(DELEGATE_TOOL_SPEC["risky"]),
-            runner=partial(tool_delegate, agent),
-        )
     return tools
 
 
@@ -155,10 +141,8 @@ def validate_tool(agent, name, args):
             raise ValueError(f"old_text must occur exactly once, found {count}")
         return
 
-    if name == "delegate":
-        task = str(args.get("task", "")).strip()
-        if not task:
-            raise ValueError("task must not be empty")
+    if name in AGENT_TOOL_NAMES:
+        validate_agent_tool(agent, name, args)
         return
     if name.startswith("todo_"):
         validate_todo_tool(name, args)
@@ -277,36 +261,6 @@ def tool_patch_file(agent, args):
     return f"patched {path.relative_to(agent.root)}"
 
 
-def tool_delegate(agent, args):
-    if agent.depth >= agent.max_depth:
-        raise ValueError("delegate depth exceeded")
-    task = str(args.get("task", "")).strip()
-    if not task:
-        raise ValueError("task must not be empty")
-
-    from ..core.runtime import Pico
-
-    child = Pico(
-        model_client=agent.model_client,
-        workspace=agent.workspace,
-        session_store=agent.session_store,
-        run_store=agent.run_store,
-        approval_policy="never",
-        max_steps=int(args.get("max_steps", 3)),
-        max_new_tokens=agent.max_new_tokens,
-        depth=agent.depth + 1,
-        max_depth=agent.max_depth,
-        read_only=True,
-        secret_env_names=agent.secret_env_names,
-        shell_env_allowlist=agent.shell_env_allowlist,
-    )
-    # 委派的目标是“调查”，不是“放权执行”。
-    # 子 agent 以只读方式运行、步数更少，最后只把结论文本返回给父 agent。
-    child.session["memory"]["task"] = task
-    child.session["memory"]["notes"] = [clip(agent.history_text(), 300)]
-    return "delegate_result:\n" + child.ask(task)
-
-
 _TOOL_RUNNERS = {
     "list_files": tool_list_files,
     "read_file": tool_read_file,
@@ -317,4 +271,7 @@ _TOOL_RUNNERS = {
     "todo_add": tool_todo_add,
     "todo_update": tool_todo_update,
     "todo_list": tool_todo_list,
+    "agent": tool_agent,
+    "send_message": tool_send_message,
+    "task_stop": tool_task_stop,
 }

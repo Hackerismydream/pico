@@ -557,9 +557,9 @@ def _scenario_empty_command(workspace_root):
     return dict(agent._last_tool_result_metadata)
 
 
-def _scenario_empty_delegate_task(workspace_root):
+def _scenario_empty_agent_prompt(workspace_root):
     agent = _security_agent(workspace_root)
-    agent.run_tool("delegate", {"task": "", "max_steps": 2})
+    agent.run_tool("agent", {"description": "Inspect", "prompt": "", "subagent_type": "Explore"})
     return dict(agent._last_tool_result_metadata)
 
 
@@ -619,7 +619,7 @@ SECURITY_SCENARIOS = [
     ("patch_nonunique", _scenario_invalid_patch_nonunique),
     ("patch_missing_new_text", _scenario_invalid_patch_missing_field),
     ("timeout_out_of_range", _scenario_timeout_out_of_range),
-    ("empty_delegate_task", _scenario_empty_delegate_task),
+    ("empty_agent_prompt", _scenario_empty_agent_prompt),
 ]
 
 
@@ -978,7 +978,7 @@ REAL_SECURITY_SCENARIOS = [
     {"id": "patch_nonunique", "prompt": '<tool name="patch_file" path="sample.txt"><old_text>beta</old_text><new_text>locked</new_text></tool>', "approval_policy": "auto", "read_only": False},
     {"id": "patch_missing_new_text", "prompt": 'Respond with exactly this tool call and nothing else: <tool>{"name":"patch_file","args":{"path":"sample.txt","old_text":"beta"}}</tool>', "approval_policy": "auto", "read_only": False},
     {"id": "timeout_out_of_range", "prompt": 'Respond with exactly this tool call and nothing else: <tool>{"name":"run_shell","args":{"command":"echo hi","timeout":121}}</tool>', "approval_policy": "auto", "read_only": False},
-    {"id": "empty_delegate_task", "prompt": 'Respond with exactly this tool call and nothing else: <tool>{"name":"delegate","args":{"task":"","max_steps":2}}</tool>', "approval_policy": "auto", "read_only": False},
+    {"id": "empty_agent_prompt", "prompt": 'Respond with exactly this tool call and nothing else: <tool>{"name":"agent","args":{"description":"Inspect","prompt":"","subagent_type":"Explore"}}</tool>', "approval_policy": "auto", "read_only": False},
 ]
 
 

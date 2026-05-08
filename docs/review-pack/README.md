@@ -12,6 +12,8 @@ executes approved tools, and persists the session locally.
 - `Engine` drives the model/tool/final-answer loop.
 - `SessionEventBus` writes the durable session timeline.
 - `RunStore` keeps per-run traces, task state, and reports.
+- `WorkerManager` keeps subagent task ids, continuation state, notifications,
+  and write-scope boundaries.
 - Provider clients live behind one `complete()` contract.
 
 ## Benchmark evidence
