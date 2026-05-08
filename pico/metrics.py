@@ -5,10 +5,11 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import load_project_env, provider_env
+from .core.agent import Pico
+from .core.session import SessionStore
+from .core.workspace import WorkspaceContext
 from .evaluator import run_fixed_benchmark
-from .models import AnthropicCompatibleModelClient, FakeModelClient, OpenAICompatibleModelClient
-from .runtime import Pico, SessionStore
-from .workspace import WorkspaceContext
+from .providers.clients import AnthropicCompatibleModelClient, AnthropicSDKModelClient, FakeModelClient, OpenAISDKModelClient
 
 METRICS_SCHEMA_VERSION = 2
 DEFAULT_HARNESS_REGRESSION_V2_PATH = Path("artifacts/harness-regression-v2.json")
@@ -722,14 +723,15 @@ def _make_provider_client(provider):
         raise RuntimeError(profile["reason"])
     timeout = 60
     if provider == "gpt":
-        return OpenAICompatibleModelClient(
+        return OpenAISDKModelClient(
             model=profile["model"],
             base_url=profile["base_url"],
             api_key=profile["api_key"],
             temperature=0.0,
             timeout=timeout,
         )
-    return AnthropicCompatibleModelClient(
+    client_cls = AnthropicCompatibleModelClient if provider == "deepseek" else AnthropicSDKModelClient
+    return client_cls(
         model=profile["model"],
         base_url=profile["base_url"],
         api_key=profile["api_key"],
@@ -758,7 +760,7 @@ def run_provider_experiments(benchmark_path, workspace_root, artifact_root, max_
         if provider_name == "gpt":
             def factory(task, workspace, profile=profile):
                 del task, workspace
-                return OpenAICompatibleModelClient(
+                return OpenAISDKModelClient(
                     model=profile["model"],
                     base_url=profile["base_url"],
                     api_key=profile["api_key"],
@@ -768,7 +770,8 @@ def run_provider_experiments(benchmark_path, workspace_root, artifact_root, max_
         else:
             def factory(task, workspace, profile=profile):
                 del task, workspace
-                return AnthropicCompatibleModelClient(
+                client_cls = AnthropicCompatibleModelClient if profile["provider"] == "deepseek" else AnthropicSDKModelClient
+                return client_cls(
                     model=profile["model"],
                     base_url=profile["base_url"],
                     api_key=profile["api_key"],

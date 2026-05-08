@@ -8,12 +8,13 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import memory as memorylib
-from .models import FakeModelClient
-from .runtime import Pico, SessionStore
-from .run_store import RunStore
-from .task_state import STOP_REASON_FINAL_ANSWER_RETURNED
-from .workspace import WorkspaceContext
+from .core.agent import Pico
+from .core.session import SessionStore
+from .core.run_store import RunStore
+from .core.task_state import STOP_REASON_FINAL_ANSWER_RETURNED
+from .core.workspace import WorkspaceContext
+from .features import memory as memorylib
+from .providers.clients import FakeModelClient
 
 BENCHMARK_SCHEMA_VERSION = 1
 DEFAULT_BENCHMARK_PATH = Path("benchmarks/coding_tasks.json")
@@ -45,36 +46,44 @@ TASK_FIXTURE_ARTIFACTS = {
 
 SCRIPTED_MODEL_OUTPUTS = {
     "readme_intro_locked": [
+        '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":80}}</tool>',
         '<tool name="patch_file" path="README.md"><old_text>This is a placeholder benchmark fixture.</old_text><new_text>This fixture is a locked benchmark workspace.</new_text></tool>',
         "<final>Done.</final>",
     ],
     "readme_schema_note": [
+        '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":80}}</tool>',
         '<tool name="patch_file" path="README.md"><old_text>- Placeholder note about the repo.</old_text><new_text>- The benchmark schema and baseline are fixed.</new_text></tool>',
         "<final>Done.</final>",
     ],
     "readme_ordering_note": [
+        '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":80}}</tool>',
         '<tool name="patch_file" path="README.md"><old_text>- Placeholder note about the file layout.</old_text><new_text>- Deterministic file ordering keeps benchmark diffs stable.</new_text></tool>',
         "<final>Done.</final>",
     ],
     "sample_beta_locked": [
+        '<tool>{"name":"read_file","args":{"path":"sample.txt","start":1,"end":20}}</tool>',
         '<tool name="patch_file" path="sample.txt"><old_text>beta</old_text><new_text>beta-locked</new_text></tool>',
         "<final>Done.</final>",
     ],
     "sample_gamma_locked": [
+        '<tool>{"name":"read_file","args":{"path":"sample.txt","start":1,"end":20}}</tool>',
         '<tool name="patch_file" path="sample.txt"><old_text>gamma</old_text><new_text>gamma-locked</new_text></tool>',
         "<final>Done.</final>",
     ],
     "sample_placeholder_delta": [
+        '<tool>{"name":"read_file","args":{"path":"sample.txt","start":1,"end":20}}</tool>',
         '<tool name="patch_file" path="sample.txt"><old_text>placeholder</old_text><new_text>delta</new_text></tool>',
         "<final>Done.</final>",
     ],
     "invalid_patch_recovery": [
         '<tool>{"name":"patch_file","args":{"path":"README.md","old_text":"This is a placeholder benchmark fixture."}}</tool>',
+        '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":80}}</tool>',
         '<tool name="patch_file" path="README.md"><old_text>This is a placeholder benchmark fixture.</old_text><new_text>This fixture recovered after invalid patch args.</new_text></tool>',
         "<final>Done.</final>",
     ],
     "path_escape_recovery": [
         '<tool>{"name":"read_file","args":{"path":"../outside.txt","start":1,"end":1}}</tool>',
+        '<tool>{"name":"read_file","args":{"path":"sample.txt","start":1,"end":20}}</tool>',
         '<tool name="patch_file" path="sample.txt"><old_text>alpha</old_text><new_text>alpha-guarded</new_text></tool>',
         "<final>Done.</final>",
     ],
@@ -463,6 +472,7 @@ class BenchmarkEvaluator:
             approval_policy="auto",
             max_steps=int(task["step_budget"]),
             max_new_tokens=self.max_new_tokens,
+            allowed_tools=task["allowed_tools"],
         )
         _apply_task_setup(agent, task, fixture_copy_root)
 

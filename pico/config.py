@@ -45,6 +45,15 @@ def load_project_env(start, override=True):
     env_path = find_project_env(start)
     if env_path is None:
         return {}
+    return load_env_file(env_path, override=override)
+
+
+def load_env_file(path, override=True):
+    env_path = Path(path).expanduser().resolve()
+    if not env_path.exists():
+        raise FileNotFoundError(f"env file not found: {env_path}")
+    if not env_path.is_file():
+        raise IsADirectoryError(f"env file is not a file: {env_path}")
     loaded = {}
     for line in env_path.read_text(encoding="utf-8").splitlines():
         parsed = _parse_env_line(line)
