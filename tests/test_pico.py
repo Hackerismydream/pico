@@ -2,7 +2,10 @@ import os
 import json
 import subprocess
 import sys
+import urllib.error
+from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pico as mini_pkg
@@ -12,6 +15,7 @@ from pico import (
     MiniAgent,
     OllamaModelClient,
     OpenAICompatibleModelClient,
+    OpenAISDKModelClient,
     SessionStore,
     WorkspaceContext,
     build_welcome,
@@ -230,6 +234,7 @@ def test_patch_file_replaces_exact_match(tmp_path):
     file_path.write_text("hello world\n", encoding="utf-8")
     agent = build_agent(tmp_path, [])
 
+    agent.run_tool("read_file", {"path": "sample.txt", "start": 1, "end": 1})
     result = agent.run_tool(
         "patch_file",
         {
@@ -241,6 +246,91 @@ def test_patch_file_replaces_exact_match(tmp_path):
 
     assert result == "patched sample.txt"
     assert file_path.read_text(encoding="utf-8") == "hello agent\n"
+
+
+def test_write_files_writes_multiple_files_in_one_tool_call(tmp_path):
+    agent = build_agent(tmp_path, [])
+    assert "# README.md" in agent.run_tool("read_file", {"path": "README.md", "start": 1, "end": 20})
+
+    result = agent.run_tool(
+        "write_files",
+        {
+            "files": [
+                {"path": "README.md", "content": "# Student Manager\n"},
+                {"path": "backend/app/main.py", "content": "from fastapi import FastAPI\napp = FastAPI()\n"},
+            ]
+        },
+    )
+
+    assert "wrote files:" in result
+    assert "README.md" in result
+    assert "backend/app/main.py" in result
+    assert (tmp_path / "README.md").read_text(encoding="utf-8") == "# Student Manager\n"
+    assert (tmp_path / "backend/app/main.py").read_text(encoding="utf-8").startswith("from fastapi")
+
+
+def test_write_files_requires_prior_read_for_existing_files(tmp_path):
+    agent = build_agent(tmp_path, [])
+    (tmp_path / "index.html").write_text("<h1>old</h1>\n", encoding="utf-8")
+
+    rejected = agent.run_tool("write_files", {"files": [{"path": "index.html", "content": "<h1>new</h1>\n"}]})
+
+    assert "requires prior read_file for index.html" in rejected
+    assert 'Next tool: read_file with path "index.html"' in rejected
+    assert agent._last_tool_result_metadata["tool_error_code"] == "prior_read_required"
+    assert (tmp_path / "index.html").read_text(encoding="utf-8") == "<h1>old</h1>\n"
+
+    assert "# index.html" in agent.run_tool("read_file", {"path": "index.html", "start": 1, "end": 20})
+
+    result = agent.run_tool("write_files", {"files": [{"path": "index.html", "content": "<h1>new</h1>\n"}]})
+
+    assert "wrote files:" in result
+    assert (tmp_path / "index.html").read_text(encoding="utf-8") == "<h1>new</h1>\n"
+
+
+def test_agent_accepts_xml_write_files_tool(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool name="write_files"><file path="README-new.md"><content># Demo\n</content></file><file path="src/app.py"><content>print("hi")\n</content></file></tool>',
+            "<final>done</final>",
+        ],
+    )
+
+    answer = agent.ask("scaffold")
+
+    assert answer == "done"
+    assert (tmp_path / "README-new.md").read_text(encoding="utf-8") == "# Demo\n"
+    assert (tmp_path / "src/app.py").read_text(encoding="utf-8") == 'print("hi")\n'
+
+
+def test_xml_tool_content_strips_cdata_wrapper(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool name="write_files"><file path="index.html"><content><![CDATA[<!DOCTYPE html>\n<html></html>\n]]></content></file></tool>',
+            "<final>done</final>",
+        ],
+    )
+
+    assert agent.ask("write html") == "done"
+    assert (tmp_path / "index.html").read_text(encoding="utf-8") == "<!DOCTYPE html>\n<html></html>\n"
+
+
+def test_write_files_rejects_duplicate_or_escaping_paths(tmp_path):
+    agent = build_agent(tmp_path, [])
+
+    duplicate = agent.run_tool(
+        "write_files",
+        {"files": [{"path": "a.txt", "content": "one"}, {"path": "a.txt", "content": "two"}]},
+    )
+    escaping = agent.run_tool(
+        "write_files",
+        {"files": [{"path": "../outside.txt", "content": "nope"}]},
+    )
+
+    assert "duplicate path: a.txt" in duplicate
+    assert "path escapes workspace" in escaping
 
 
 def test_invalid_risky_tool_does_not_prompt_for_approval(tmp_path):
@@ -267,6 +357,34 @@ def test_list_files_hides_internal_agent_state(tmp_path):
     assert "[F] hello.txt" in result
 
 
+def test_glob_and_grep_hide_internal_agent_state(tmp_path):
+    agent = build_agent(tmp_path, [])
+    (tmp_path / ".pico").mkdir(exist_ok=True)
+    (tmp_path / ".pico" / "secret.py").write_text("class Hidden:\n    pass\n", encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("class App:\n    pass\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+
+    glob_result = agent.run_tool("glob", {"pattern": "**/*.py", "path": "."})
+    grep_result = agent.run_tool("grep", {"pattern": "class App", "path": ".", "glob": "*.py"})
+
+    assert "src/app.py" in glob_result
+    assert ".pico" not in glob_result
+    assert "src/app.py:1:class App:" in grep_result
+    assert ".pico" not in grep_result
+    assert agent.run_tool("grep", {"pattern": "Hidden", "path": ".pico"}) == "(no matches)"
+
+
+def test_ask_user_records_nonblocking_clarification(tmp_path):
+    agent = build_agent(tmp_path, [])
+
+    result = agent.run_tool("ask_user", {"question": "Which package name should I use?"})
+
+    assert "Clarification requested:" in result
+    assert "Which package name should I use?" in result
+    assert "Continue with the safest reasonable assumption" in result
+
+
 def test_repeated_identical_tool_call_is_rejected(tmp_path):
     agent = build_agent(tmp_path, [])
     agent.record({"role": "tool", "name": "list_files", "args": {}, "content": "(empty)", "created_at": "1"})
@@ -275,6 +393,31 @@ def test_repeated_identical_tool_call_is_rejected(tmp_path):
     result = agent.run_tool("list_files", {})
 
     assert result == "error: repeated identical tool call for list_files; choose a different tool or return a final answer"
+
+
+def test_read_only_stall_guard_warns_after_inspection_loop(tmp_path):
+    agent = build_agent(tmp_path, [])
+    (tmp_path / "notes.txt").write_text("hello\n", encoding="utf-8")
+    for index in range(agent.read_only_stall_limit):
+        agent.record(
+            {
+                "role": "tool",
+                "name": "read_file" if index % 2 else "list_files",
+                "args": {"path": "notes.txt"} if index % 2 else {"path": "."},
+                "content": "ok",
+                "created_at": str(index),
+            }
+        )
+
+    result = agent.run_tool("read_file", {"path": "notes.txt", "start": 1, "end": 1})
+
+    assert "# notes.txt" in result
+    assert "read-only inspection budget exhausted" in "\n".join(agent._last_tool_result_metadata.get("runtime_warnings", []))
+    assert agent._last_tool_result_metadata["tool_status"] == "ok"
+
+    shell_result = agent.run_tool("run_shell", {"command": "echo verify", "timeout": 20})
+    assert "verify" in shell_result
+    assert agent._last_tool_result_metadata["tool_error_code"] != "read_only_stall"
 
 
 def test_welcome_screen_keeps_box_shape_for_long_paths(tmp_path):
@@ -379,17 +522,7 @@ def test_openai_compatible_client_posts_expected_responses_payload():
     assert captured["headers"]["User-agent"] == "pico/0.1"
     assert captured["body"] == {
         "model": "right.codes/codex-mini",
-        "input": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": "hello",
-                    }
-                ],
-            }
-        ],
+        "input": "hello",
         "max_output_tokens": 42,
         "stream": False,
         "temperature": 0.2,
@@ -445,12 +578,176 @@ def test_openai_compatible_client_sends_prompt_cache_fields_and_records_usage():
         )
 
     assert result == "<final>ok</final>"
+    assert captured["body"]["input"] == [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": "hello",
+                }
+            ],
+        }
+    ]
     assert captured["body"]["prompt_cache_key"] == "prefix-hash-123"
     assert captured["body"]["prompt_cache_retention"] == "in_memory"
     assert client.last_completion_metadata["prompt_cache_supported"] is True
     assert client.last_completion_metadata["cached_tokens"] == 1536
     assert client.last_completion_metadata["cache_hit"] is True
     assert client.last_completion_metadata["input_tokens"] == 2048
+
+
+def test_openai_compatible_client_falls_back_to_chat_completions_on_bad_response_body():
+    captured = []
+
+    class ChatResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": "<final>chat fallback ok</final>",
+                            }
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 100,
+                        "completion_tokens": 8,
+                        "total_tokens": 108,
+                    },
+                }
+            ).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        captured.append((request.full_url, json.loads(request.data.decode("utf-8"))))
+        if request.full_url.endswith("/responses"):
+            body = json.dumps(
+                {
+                    "error": {
+                        "message": "invalid character 'e' looking for beginning of value",
+                        "type": "bad_response_body",
+                        "code": "bad_response_body",
+                    }
+                }
+            ).encode("utf-8")
+            raise urllib.error.HTTPError(request.full_url, 500, "Internal Server Error", hdrs={}, fp=BytesIO(body))
+        return ChatResponse()
+
+    client = OpenAICompatibleModelClient(
+        model="gpt-5.4",
+        base_url="https://www.right.codes/codex/v1",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+        api_mode="responses",
+    )
+
+    with patch("urllib.request.urlopen", fake_urlopen):
+        result = client.complete(
+            "hello",
+            42,
+            prompt_cache_key="prefix-hash-123",
+            prompt_cache_retention="in_memory",
+        )
+
+    assert result == "<final>chat fallback ok</final>"
+    assert captured[0][0] == "https://www.right.codes/codex/v1/responses"
+    assert captured[-1][0] == "https://www.right.codes/codex/v1/chat/completions"
+    assert captured[-1][1] == {
+        "model": "gpt-5.4",
+        "messages": [{"role": "user", "content": "hello"}],
+        "max_tokens": 42,
+        "stream": False,
+        "temperature": 0.2,
+    }
+    assert client.last_completion_metadata["provider_fallback"] == "chat_completions"
+    assert client.last_completion_metadata["input_tokens"] == 100
+
+
+def test_openai_compatible_client_auto_uses_chat_for_right_codes_codex_gateway():
+    captured = {}
+
+    class ChatResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": "<final>ok</final>"}}]}).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return ChatResponse()
+
+    client = OpenAICompatibleModelClient(
+        model="gpt-5.4",
+        base_url="https://www.right.codes/codex/v1",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+    )
+
+    with patch("urllib.request.urlopen", fake_urlopen):
+        result = client.complete("hello", 42, prompt_cache_key="prefix-hash-123")
+
+    assert result == "<final>ok</final>"
+    assert captured["url"] == "https://www.right.codes/codex/v1/chat/completions"
+    assert captured["body"] == {
+        "model": "gpt-5.4",
+        "messages": [{"role": "user", "content": "hello"}],
+        "max_tokens": 42,
+        "stream": False,
+        "temperature": 0.2,
+    }
+
+
+def test_openai_compatible_client_can_force_responses_mode_for_right_codes_codex_gateway():
+    captured = {}
+
+    class ResponsesResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"output_text": "<final>ok</final>"}).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        return ResponsesResponse()
+
+    client = OpenAICompatibleModelClient(
+        model="gpt-5.4",
+        base_url="https://www.right.codes/codex/v1",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+        api_mode="responses",
+    )
+
+    with patch("urllib.request.urlopen", fake_urlopen):
+        result = client.complete("hello", 42)
+
+    assert result == "<final>ok</final>"
+    assert captured["url"] == "https://www.right.codes/codex/v1/responses"
 
 
 def test_openai_compatible_client_extracts_text_from_event_stream():
@@ -517,6 +814,115 @@ def test_openai_compatible_client_extracts_text_from_event_stream_deltas():
         result = client.complete("hello", 42)
 
     assert result == "<final>OK</final>"
+
+
+def test_openai_sdk_client_uses_responses_api_with_base_url(monkeypatch):
+    captured = {}
+
+    class FakeResponses:
+        def create(self, **kwargs):
+            captured["responses"] = kwargs
+            return SimpleNamespace(
+                id="resp_1",
+                output_text="<final>sdk ok</final>",
+                status="completed",
+                usage=SimpleNamespace(
+                    input_tokens=100,
+                    output_tokens=8,
+                    total_tokens=108,
+                    input_tokens_details=SimpleNamespace(cached_tokens=64),
+                ),
+            )
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured["client"] = kwargs
+            self.responses = FakeResponses()
+
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI))
+
+    client = OpenAISDKModelClient(
+        model="gpt-5.4",
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+        api_mode="responses",
+    )
+    result = client.complete("hello", 42, prompt_cache_key="prefix-1", prompt_cache_retention="in_memory")
+
+    assert result == "<final>sdk ok</final>"
+    assert captured["client"] == {"api_key": "sk-test", "base_url": "https://api.openai.com/v1", "timeout": 30}
+    assert captured["responses"] == {
+        "model": "gpt-5.4",
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": "hello",
+                    }
+                ],
+            }
+        ],
+        "max_output_tokens": 42,
+        "stream": False,
+        "temperature": 0.2,
+        "extra_body": {
+            "prompt_cache_key": "prefix-1",
+            "prompt_cache_retention": "in_memory",
+        },
+    }
+    assert client.last_completion_metadata["provider_transport"] == "openai_sdk_responses"
+    assert client.last_completion_metadata["cached_tokens"] == 64
+    assert client.last_completion_metadata["cache_hit"] is True
+    assert client.last_completion_metadata["finish_reason"] == "stop"
+
+
+def test_openai_sdk_client_auto_uses_chat_for_right_codes_codex_gateway(monkeypatch):
+    captured = {}
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            captured["chat"] = kwargs
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(content="<final>chat sdk ok</final>"),
+                        finish_reason="stop",
+                    )
+                ],
+                usage=SimpleNamespace(prompt_tokens=100, completion_tokens=8, total_tokens=108),
+            )
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured["client"] = kwargs
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI))
+
+    client = OpenAISDKModelClient(
+        model="gpt-5.4",
+        base_url="https://www.right.codes/codex/v1",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+    )
+    result = client.complete("hello", 42, prompt_cache_key="prefix-1")
+
+    assert result == "<final>chat sdk ok</final>"
+    assert captured["chat"] == {
+        "model": "gpt-5.4",
+        "messages": [{"role": "user", "content": "hello"}],
+        "max_tokens": 42,
+        "stream": False,
+        "temperature": 0.2,
+    }
+    assert client.last_completion_metadata["provider_transport"] == "openai_sdk_chat"
+    assert client.last_completion_metadata["provider_fallback"] == "chat_completions"
+    assert client.last_completion_metadata["input_tokens"] == 100
 
 
 def test_anthropic_compatible_client_posts_expected_messages_payload():
@@ -586,6 +992,27 @@ def test_anthropic_compatible_client_posts_expected_messages_payload():
     }
 
 
+def test_anthropic_compatible_client_reports_timeout():
+    client = AnthropicCompatibleModelClient(
+        model="claude-sonnet-4-5-20250929",
+        base_url="https://www.right.codes/claude-aws/v1",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+    )
+
+    with patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
+        try:
+            client.complete("hello", 42)
+        except RuntimeError as exc:
+            message = str(exc)
+        else:
+            raise AssertionError("expected timeout to be normalized")
+
+    assert "Could not reach the Anthropic-compatible backend" in message
+    assert "Timeout: 30s" in message
+
+
 def test_anthropic_compatible_client_extracts_first_text_block():
     class FakeResponse:
         headers = {"Content-Type": "application/json"}
@@ -653,7 +1080,7 @@ def test_build_agent_uses_openai_provider_and_model_override(tmp_path):
         with patch(
             "pico.cli.OllamaModelClient",
             side_effect=AssertionError("ollama client should not be used"),
-        ), patch("pico.cli.OpenAICompatibleModelClient") as mock_openai:
+        ), patch("pico.cli.OpenAISDKModelClient") as mock_openai:
             fake_client = mock_openai.return_value
             agent = mini_pkg.build_agent(args)
 
@@ -676,10 +1103,41 @@ def test_build_arg_parser_accepts_anthropic_provider(tmp_path):
     assert args.provider == "anthropic"
 
 
+def test_build_arg_parser_accepts_compatible_provider_aliases(tmp_path):
+    parser = mini_pkg.build_arg_parser()
+
+    assert parser.parse_args(["--cwd", str(tmp_path), "--provider", "openai-compatible"]).provider == "openai-compatible"
+    assert parser.parse_args(["--cwd", str(tmp_path), "--provider", "anthropic-compatible"]).provider == "anthropic-compatible"
+
+
 def test_build_arg_parser_accepts_deepseek_provider(tmp_path):
     args = mini_pkg.build_arg_parser().parse_args(["--cwd", str(tmp_path), "--provider", "deepseek"])
 
     assert args.provider == "deepseek"
+
+
+def test_build_arg_parser_accepts_deepseek_shortcut(tmp_path):
+    args = mini_pkg.build_arg_parser().parse_args(["--cwd", str(tmp_path), "--deepseek"])
+
+    with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-deepseek"}, clear=True):
+        with patch("pico.cli.AnthropicCompatibleModelClient") as mock_deepseek:
+            agent = mini_pkg.build_agent(args)
+
+    mock_deepseek.assert_called_once()
+    assert agent.model_client is mock_deepseek.return_value
+
+
+def test_build_agent_treats_model_deepseek_as_deepseek_provider(tmp_path):
+    args = mini_pkg.build_arg_parser().parse_args(["--cwd", str(tmp_path), "--model", "deepseek"])
+
+    with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-deepseek"}, clear=True):
+        with patch("pico.cli.AnthropicCompatibleModelClient") as mock_deepseek:
+            agent = mini_pkg.build_agent(args)
+
+    mock_deepseek.assert_called_once()
+    assert mock_deepseek.call_args.kwargs["model"] == "deepseek-v4-pro"
+    assert mock_deepseek.call_args.kwargs["base_url"] == "https://api.deepseek.com/anthropic"
+    assert agent.model_client is mock_deepseek.return_value
 
 
 def test_build_agent_uses_anthropic_provider_and_openai_key_fallback(tmp_path):
@@ -715,9 +1173,9 @@ def test_build_agent_uses_anthropic_provider_and_openai_key_fallback(tmp_path):
             "pico.cli.OllamaModelClient",
             side_effect=AssertionError("ollama client should not be used"),
         ), patch(
-            "pico.cli.OpenAICompatibleModelClient",
+            "pico.cli.OpenAISDKModelClient",
             side_effect=AssertionError("openai client should not be used"),
-        ), patch("pico.cli.AnthropicCompatibleModelClient") as mock_anthropic:
+        ), patch("pico.cli.AnthropicSDKModelClient") as mock_anthropic:
             fake_client = mock_anthropic.return_value
             agent = mini_pkg.build_agent(args)
 
@@ -737,7 +1195,7 @@ def test_build_agent_uses_anthropic_default_model_when_env_is_missing(tmp_path):
         clear=False,
     ):
         os.environ.pop("ANTHROPIC_MODEL", None)
-        with patch("pico.cli.AnthropicCompatibleModelClient") as mock_anthropic:
+        with patch("pico.cli.AnthropicSDKModelClient") as mock_anthropic:
             mini_pkg.build_agent(args)
 
     assert mock_anthropic.call_args.kwargs["model"] == "claude-sonnet-4-6"
@@ -791,7 +1249,7 @@ def test_build_agent_uses_deepseek_provider_and_env_configuration(tmp_path):
             "pico.cli.OllamaModelClient",
             side_effect=AssertionError("ollama client should not be used"),
         ), patch(
-            "pico.cli.OpenAICompatibleModelClient",
+            "pico.cli.OpenAISDKModelClient",
             side_effect=AssertionError("openai client should not be used"),
         ), patch("pico.cli.AnthropicCompatibleModelClient") as mock_anthropic:
             fake_client = mock_anthropic.return_value
@@ -829,7 +1287,7 @@ def test_build_agent_uses_openai_provider_by_default(tmp_path):
         with patch(
             "pico.cli.OllamaModelClient",
             side_effect=AssertionError("ollama client should not be used"),
-        ), patch("pico.cli.OpenAICompatibleModelClient") as mock_openai:
+        ), patch("pico.cli.OpenAISDKModelClient") as mock_openai:
             fake_client = mock_openai.return_value
             agent = mini_pkg.build_agent(args)
 
@@ -837,6 +1295,36 @@ def test_build_agent_uses_openai_provider_by_default(tmp_path):
     assert mock_openai.call_args.kwargs["model"] == "gpt-5.4"
     assert mock_openai.call_args.kwargs["base_url"] == "https://www.right.codes/codex/v1"
     assert mock_openai.call_args.kwargs["api_key"] == "sk-test"
+    assert agent.model_client is fake_client
+
+
+def test_build_agent_loads_explicit_env_file_outside_workspace(tmp_path):
+    workspace = tmp_path / "workspace"
+    config_dir = tmp_path / "config"
+    workspace.mkdir()
+    config_dir.mkdir()
+    env_file = config_dir / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "PICO_OPENAI_API_BASE=https://gateway.example/v1",
+                "PICO_OPENAI_API_KEY=sk-explicit-env",
+                "PICO_OPENAI_MODEL=env-file-model",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    args = mini_pkg.build_arg_parser().parse_args(["--cwd", str(workspace), "--env-file", str(env_file)])
+
+    with patch.dict(os.environ, {}, clear=True), patch("pico.cli.OpenAISDKModelClient") as mock_openai:
+        fake_client = mock_openai.return_value
+        agent = mini_pkg.build_agent(args)
+
+    mock_openai.assert_called_once()
+    assert mock_openai.call_args.kwargs["model"] == "env-file-model"
+    assert mock_openai.call_args.kwargs["base_url"] == "https://gateway.example/v1"
+    assert mock_openai.call_args.kwargs["api_key"] == "sk-explicit-env"
     assert agent.model_client is fake_client
 
 

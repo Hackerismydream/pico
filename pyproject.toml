@@ -7,16 +7,27 @@ name = "pico"
 version = "0.1.0"
 description = "Small local coding agent for Ollama, OpenAI-compatible, Anthropic-compatible, and DeepSeek models"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+  "anthropic",
+  "openai>=1.0",
+  "textual>=3.0,<4.0",
+]
+
+[project.optional-dependencies]
+anthropic = [
+  "anthropic",
+]
 
 [project.scripts]
 pico = "pico.cli:main"
+pico-tui = "pico.tui.main:main"
 
 [dependency-groups]
 dev = [
+  "pytest-asyncio>=0.23.8",
   "pytest>=8.3.5",
   "ruff>=0.4.4",
 ]
 
-[tool.setuptools]
-packages = ["pico"]
+[tool.setuptools.packages.find]
+include = ["pico*"]
