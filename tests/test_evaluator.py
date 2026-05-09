@@ -106,7 +106,7 @@ def test_run_fixed_benchmark_reports_metadata_and_success_definition(tmp_path):
     assert artifact["failure_category_counts"] == {}
 
     reproducibility = artifact["reproducibility"]
-    assert reproducibility["model_name"] == "FakeModelClient"
+    assert reproducibility["model_name"] == "ScriptedModelClient"
     assert reproducibility["model_version"] == "scripted-deterministic"
     assert reproducibility["fixture_snapshot_id"].startswith("sha256:")
     assert reproducibility["decoding"] == {

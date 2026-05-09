@@ -6,7 +6,8 @@ from pathlib import Path
 
 from ..config import resolve_provider_config
 from .evaluator import run_fixed_benchmark
-from ..providers import AnthropicCompatibleModelClient, FakeModelClient, OpenAICompatibleModelClient
+from ..testing import ScriptedModelClient
+from ..providers import AnthropicCompatibleModelClient, OpenAICompatibleModelClient
 from ..core.runtime import Pico, SessionStore
 from ..core.workspace import WorkspaceContext
 
@@ -195,7 +196,7 @@ def build_stress_agent_metrics():
         workspace = WorkspaceContext.build(workspace_root)
         store = SessionStore(workspace_root / ".pico" / "sessions")
         agent = Pico(
-            model_client=FakeModelClient([]),
+            model_client=ScriptedModelClient([]),
             workspace=workspace,
             session_store=store,
             approval_policy="auto",
@@ -216,7 +217,7 @@ def build_stress_agent_metrics():
         return measure_feature_ablation_metrics(agent, "recall")
 
 
-class _MemoryExperimentModelClient(FakeModelClient):
+class _MemoryExperimentModelClient(ScriptedModelClient):
     def __init__(self, expected_fact, filename):
         super().__init__([])
         self.expected_fact = str(expected_fact).strip().lower()
@@ -453,7 +454,7 @@ def run_context_stress_matrix(repetitions=5):
                         workspace = WorkspaceContext.build(workspace_root)
                         store = SessionStore(workspace_root / ".pico" / "sessions")
                         agent = Pico(
-                            model_client=FakeModelClient([]),
+                            model_client=ScriptedModelClient([]),
                             workspace=workspace,
                             session_store=store,
                             approval_policy="auto",
@@ -523,7 +524,7 @@ def _security_agent(workspace_root, approval_policy="auto", read_only=False):
     workspace = WorkspaceContext.build(workspace_root)
     store = SessionStore(workspace_root / ".pico" / "sessions")
     return Pico(
-        model_client=FakeModelClient([]),
+        model_client=ScriptedModelClient([]),
         workspace=workspace,
         session_store=store,
         approval_policy=approval_policy,
@@ -1249,7 +1250,7 @@ def _write_json_artifact(path, payload):
     return payload
 
 
-class _RecoveryScenarioModelClient(FakeModelClient):
+class _RecoveryScenarioModelClient(ScriptedModelClient):
     def __init__(self, required_fragments, success_answer):
         super().__init__([])
         self.required_fragments = [str(fragment).lower() for fragment in required_fragments]

@@ -6,36 +6,16 @@ runtime 只关心一件事：给我一个 prompt，我拿回一段文本。
 """
 
 import json
+import socket
 import time
 from http.client import RemoteDisconnected
 import urllib.error
 import urllib.request
 
-from .base import ModelResult
+from .errors import ProviderError
 
 OPENAI_COMPATIBLE_USER_AGENT = "pico/0.1"
-
-
-class FakeModelClient:
-    def __init__(self, outputs):
-        self.outputs = list(outputs)
-        self.prompts = []
-        self.supports_prompt_cache = False
-        self.last_completion_metadata = {}
-
-    def complete(self, prompt, max_new_tokens, **kwargs):
-        self.prompts.append(prompt)
-        if not getattr(self, "last_completion_metadata", None):
-            self.last_completion_metadata = {}
-        if not self.outputs:
-            raise RuntimeError("fake model ran out of outputs")
-        return self.outputs.pop(0)
-
-    def complete_result(self, prompt, max_new_tokens, **kwargs):
-        return ModelResult(
-            text=self.complete(prompt, max_new_tokens, **kwargs),
-            metadata=dict(self.last_completion_metadata),
-        )
+RETRYABLE_HTTP_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
 
 
 def _normalize_versioned_base_url(base_url):
@@ -180,6 +160,125 @@ def _extract_usage_cache_details(data):
     }
 
 
+def _request_with_retries(provider, model, base_url, request, timeout, retry_budget=2):
+    retry_count = 0
+    attempts = int(retry_budget) + 1
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                body_text = response.read().decode("utf-8")
+                headers = getattr(response, "headers", {}) or {}
+                content_type = headers.get("Content-Type", "")
+            return body_text, content_type, _provider_metadata(provider, model, base_url, attempt + 1, retry_count)
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            retryable = exc.code in RETRYABLE_HTTP_STATUS or exc.code >= 500
+            if retryable and attempt < attempts - 1:
+                retry_count += 1
+                time.sleep(_retry_delay(attempt, exc.headers))
+                continue
+            raise ProviderError(
+                f"{provider} provider request failed with HTTP {exc.code}",
+                provider=provider,
+                model=model,
+                base_url=base_url,
+                code=_http_error_code(exc.code),
+                http_status=exc.code,
+                retryable=retryable,
+                attempts=attempt + 1,
+                retry_count=retry_count,
+                body_excerpt=body,
+                cause_type=type(exc).__name__,
+            ) from exc
+        except (urllib.error.URLError, RemoteDisconnected, TimeoutError, socket.timeout) as exc:
+            retryable = True
+            if attempt < attempts - 1:
+                retry_count += 1
+                time.sleep(_retry_delay(attempt, None))
+                continue
+            raise ProviderError(
+                f"{provider} provider request failed before a valid response",
+                provider=provider,
+                model=model,
+                base_url=base_url,
+                code=_transport_error_code(exc),
+                retryable=retryable,
+                attempts=attempt + 1,
+                retry_count=retry_count,
+                cause_type=type(exc).__name__,
+            ) from exc
+    raise AssertionError("unreachable provider retry loop")
+
+
+def _provider_metadata(provider, model, base_url, attempts, retry_count):
+    return {
+        "provider_protocol": provider,
+        "provider_model": model,
+        "provider_base_url": base_url,
+        "provider_attempts": int(attempts),
+        "provider_retry_count": int(retry_count),
+    }
+
+
+def _http_error_code(status):
+    status = int(status)
+    if status == 401 or status == 403:
+        return "auth_error"
+    if status == 408:
+        return "timeout"
+    if status == 429:
+        return "rate_limited"
+    if status >= 500:
+        return "server_error"
+    return "http_error"
+
+
+def _transport_error_code(exc):
+    reason = getattr(exc, "reason", None)
+    text = f"{exc} {reason}".lower()
+    if isinstance(exc, (TimeoutError, socket.timeout)) or isinstance(reason, (TimeoutError, socket.timeout)) or "timed out" in text:
+        return "timeout"
+    return "network_error"
+
+
+def _retry_delay(attempt, headers):
+    retry_after = _retry_after_seconds(headers)
+    if retry_after is not None:
+        return min(retry_after, 2.0)
+    return 0.5 * (attempt + 1)
+
+
+def _retry_after_seconds(headers):
+    if not headers:
+        return None
+    try:
+        value = headers.get("Retry-After")
+    except AttributeError:
+        return None
+    if not value:
+        return None
+    try:
+        return max(float(value), 0.0)
+    except ValueError:
+        return None
+
+
+def _provider_failure(provider, model, base_url, code, message, request_metadata=None, cause=None):
+    request_metadata = request_metadata or {}
+    error = ProviderError(
+        message,
+        provider=provider,
+        model=model,
+        base_url=base_url,
+        code=code,
+        retryable=False,
+        attempts=request_metadata.get("provider_attempts", 1),
+        retry_count=request_metadata.get("provider_retry_count", 0),
+        cause_type=type(cause).__name__ if cause else "",
+    )
+    return error
+
+
 class OpenAICompatibleModelClient:
     def __init__(self, model, base_url, api_key, temperature, timeout):
         self.model = model
@@ -249,29 +348,17 @@ class OpenAICompatibleModelClient:
             headers=headers,
             method="POST",
         )
-        attempts = 3
-        for attempt in range(attempts):
-            try:
-                with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                    body_text = response.read().decode("utf-8")
-                    headers = getattr(response, "headers", {}) or {}
-                    content_type = headers.get("Content-Type", "")
-                break
-            except urllib.error.HTTPError as exc:
-                body = exc.read().decode("utf-8", errors="replace")
-                if exc.code >= 500 and attempt < attempts - 1:
-                    time.sleep(0.5 * (attempt + 1))
-                    continue
-                raise RuntimeError(f"OpenAI-compatible request failed with HTTP {exc.code}: {body}") from exc
-            except (urllib.error.URLError, RemoteDisconnected) as exc:
-                if attempt < attempts - 1:
-                    time.sleep(0.5 * (attempt + 1))
-                    continue
-                raise RuntimeError(
-                    "Could not reach the OpenAI-compatible backend.\n"
-                    f"Base URL: {self.base_url}\n"
-                    f"Model: {self.model}"
-                ) from exc
+        try:
+            body_text, content_type, request_metadata = _request_with_retries(
+                "openai",
+                self.model,
+                self.base_url,
+                request,
+                self.timeout,
+            )
+        except ProviderError as exc:
+            self.last_completion_metadata = exc.to_metadata()
+            raise
 
         # 有些兼容后端返回普通 JSON，有些返回 SSE。
         # 这里两种都接住，并尽量统一抽取文本和 usage/cache 元数据。
@@ -284,27 +371,67 @@ class OpenAICompatibleModelClient:
                     "prompt_cache_supported": self.supports_prompt_cache,
                     "prompt_cache_key": prompt_cache_key,
                     "prompt_cache_retention": prompt_cache_retention,
+                    **request_metadata,
                     **_extract_usage_cache_details(response_data),
                 }
             if text:
                 return text
-            raise RuntimeError("OpenAI-compatible error: could not extract text from event stream response")
+            error = _provider_failure(
+                "openai",
+                self.model,
+                self.base_url,
+                "empty_response",
+                "OpenAI-compatible error: could not extract text from event stream response",
+                request_metadata,
+            )
+            self.last_completion_metadata = error.to_metadata()
+            raise error
 
         try:
             data = json.loads(body_text)
         except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                "OpenAI-compatible error: backend returned non-JSON content that could not be parsed"
-            ) from exc
+            error = _provider_failure(
+                "openai",
+                self.model,
+                self.base_url,
+                "invalid_json",
+                "OpenAI-compatible error: backend returned non-JSON content that could not be parsed",
+                request_metadata,
+                cause=exc,
+            )
+            self.last_completion_metadata = error.to_metadata()
+            raise error from exc
         if data.get("error"):
-            raise RuntimeError(f"OpenAI-compatible error: {data['error']}")
+            error = _provider_failure(
+                "openai",
+                self.model,
+                self.base_url,
+                "provider_error",
+                f"OpenAI-compatible error: {data['error']}",
+                request_metadata,
+            )
+            self.last_completion_metadata = error.to_metadata()
+            raise error
         self.last_completion_metadata = {
             "prompt_cache_supported": self.supports_prompt_cache,
             "prompt_cache_key": prompt_cache_key,
             "prompt_cache_retention": prompt_cache_retention,
+            **request_metadata,
             **_extract_usage_cache_details(data),
         }
-        return _extract_openai_text(data)
+        text = _extract_openai_text(data)
+        if text:
+            return text
+        error = _provider_failure(
+            "openai",
+            self.model,
+            self.base_url,
+            "empty_response",
+            "OpenAI-compatible error: could not extract text from response",
+            request_metadata,
+        )
+        self.last_completion_metadata = error.to_metadata()
+        raise error
 
 
 def _extract_anthropic_text(data):
@@ -362,37 +489,54 @@ class AnthropicCompatibleModelClient:
             headers=headers,
             method="POST",
         )
-        attempts = 3
-        for attempt in range(attempts):
-            try:
-                with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                    body_text = response.read().decode("utf-8")
-                break
-            except urllib.error.HTTPError as exc:
-                body = exc.read().decode("utf-8", errors="replace")
-                if exc.code >= 500 and attempt < attempts - 1:
-                    time.sleep(0.5 * (attempt + 1))
-                    continue
-                raise RuntimeError(f"Anthropic-compatible request failed with HTTP {exc.code}: {body}") from exc
-            except (urllib.error.URLError, RemoteDisconnected) as exc:
-                if attempt < attempts - 1:
-                    time.sleep(0.5 * (attempt + 1))
-                    continue
-                raise RuntimeError(
-                    "Could not reach the Anthropic-compatible backend.\n"
-                    f"Base URL: {self.base_url}\n"
-                    f"Model: {self.model}"
-                ) from exc
+        try:
+            body_text, _content_type, request_metadata = _request_with_retries(
+                "anthropic",
+                self.model,
+                self.base_url,
+                request,
+                self.timeout,
+            )
+        except ProviderError as exc:
+            self.last_completion_metadata = exc.to_metadata()
+            raise
 
         try:
             data = json.loads(body_text)
         except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                "Anthropic-compatible error: backend returned non-JSON content that could not be parsed"
-            ) from exc
+            error = _provider_failure(
+                "anthropic",
+                self.model,
+                self.base_url,
+                "invalid_json",
+                "Anthropic-compatible error: backend returned non-JSON content that could not be parsed",
+                request_metadata,
+                cause=exc,
+            )
+            self.last_completion_metadata = error.to_metadata()
+            raise error from exc
         if data.get("error"):
-            raise RuntimeError(f"Anthropic-compatible error: {data['error']}")
+            error = _provider_failure(
+                "anthropic",
+                self.model,
+                self.base_url,
+                "provider_error",
+                f"Anthropic-compatible error: {data['error']}",
+                request_metadata,
+            )
+            self.last_completion_metadata = error.to_metadata()
+            raise error
         text = _extract_anthropic_text(data)
         if text:
+            self.last_completion_metadata = dict(request_metadata)
             return text
-        raise RuntimeError("Anthropic-compatible error: could not extract text from response")
+        error = _provider_failure(
+            "anthropic",
+            self.model,
+            self.base_url,
+            "empty_response",
+            "Anthropic-compatible error: could not extract text from response",
+            request_metadata,
+        )
+        self.last_completion_metadata = error.to_metadata()
+        raise error

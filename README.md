@@ -289,6 +289,7 @@ uv run python scripts/run_real_session_acceptance.py \
 ```
 
 这会跑一组确定性的 Pico session，并输出 `gate8-real-session-acceptance.json` / `.md`，同时保留每个场景的 `.pico/sessions/*.events.jsonl`、`trace.jsonl` 和 `report.json`。
+默认必跑 bugfix、PlanMode、Skill、Subagent、Resume、安全拒绝、上下文压力、provider 错误恢复场景；真实 provider smoke 是可选项，使用 `--live-provider` 或 `PICO_ACCEPTANCE_LIVE=1` 开启。
 
 如果装了 Ruff，可以这样检查：
 

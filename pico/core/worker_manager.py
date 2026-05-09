@@ -5,7 +5,8 @@ import time
 from dataclasses import dataclass
 from xml.sax.saxutils import escape
 
-from .workspace import clip, now
+from .worker_artifacts import collect_worker_artifacts
+from .workspace import WorkspaceContext, clip, now
 
 
 @dataclass
@@ -84,7 +85,7 @@ class WorkerManager:
 
         child = Pico(
             model_client=self.runtime.model_client,
-            workspace=self.runtime.workspace,
+            workspace=WorkspaceContext.build(self.runtime.root, repo_root_override=self.runtime.root),
             session_store=self.runtime.session_store,
             run_store=self.runtime.run_store,
             approval_policy="never" if subagent_type == "Explore" else "auto",
@@ -125,6 +126,7 @@ class WorkerManager:
                 "result": clip(result, 2000),
                 "tool_steps": int(getattr(task_state, "tool_steps", 0) or 0),
                 "attempts": int(getattr(task_state, "attempts", 0) or 0),
+                **collect_worker_artifacts(self.runtime.root, task.runtime, task_state),
                 "duration_ms": int((time.monotonic() - started) * 1000),
                 "updated_at": now(),
             }

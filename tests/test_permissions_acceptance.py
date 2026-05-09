@@ -1,6 +1,7 @@
 import json
 
-from pico import FakeModelClient, Pico, SessionStore, WorkspaceContext
+from pico.testing import ScriptedModelClient
+from pico import Pico, SessionStore, WorkspaceContext
 from pico.core.permissions import PermissionDecision
 
 
@@ -10,7 +11,7 @@ def build_agent(tmp_path, outputs=None, **kwargs):
     store = SessionStore(tmp_path / ".pico" / "sessions")
     approval_policy = kwargs.pop("approval_policy", "auto")
     return Pico(
-        model_client=FakeModelClient(outputs or []),
+        model_client=ScriptedModelClient(outputs or []),
         workspace=workspace,
         session_store=store,
         approval_policy=approval_policy,

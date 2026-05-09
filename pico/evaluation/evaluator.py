@@ -9,7 +9,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ..features import memory as memorylib
-from ..providers import FakeModelClient
+from ..testing import ScriptedModelClient
 from ..core.runtime import Pico, SessionStore
 from ..core.run_store import RunStore
 from ..core.task_state import STOP_REASON_FINAL_ANSWER_RETURNED
@@ -19,7 +19,7 @@ BENCHMARK_SCHEMA_VERSION = 1
 DEFAULT_BENCHMARK_PATH = Path("benchmarks/coding_tasks.json")
 DEFAULT_ARTIFACT_PATH = Path("benchmarks/benchmark-v1.json")
 DEFAULT_HARNESS_REGRESSION_V2_ARTIFACT_PATH = Path("artifacts/harness-regression-v2.json")
-DEFAULT_MODEL_NAME = "FakeModelClient"
+DEFAULT_MODEL_NAME = "ScriptedModelClient"
 DEFAULT_MODEL_VERSION = "scripted-deterministic"
 DEFAULT_TEMPERATURE = 0.0
 DEFAULT_TOP_P = 1.0
@@ -462,7 +462,7 @@ class BenchmarkEvaluator:
         if self.model_client_factory is not None:
             model_client = self.model_client_factory(task=task, workspace=workspace)
         else:
-            model_client = FakeModelClient(_scripted_outputs_for_task(task))
+            model_client = ScriptedModelClient(_scripted_outputs_for_task(task))
         agent = Pico(
             model_client=model_client,
             workspace=workspace,

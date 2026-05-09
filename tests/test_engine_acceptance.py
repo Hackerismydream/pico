@@ -1,6 +1,8 @@
 import json
 
-from pico import FakeModelClient, Pico, SessionStore, WorkspaceContext
+from pico.testing import ScriptedModelClient
+from pico import Pico, SessionStore, WorkspaceContext
+from pico.providers import ProviderError
 
 
 def build_agent(tmp_path, outputs, **kwargs):
@@ -8,7 +10,7 @@ def build_agent(tmp_path, outputs, **kwargs):
     workspace = WorkspaceContext.build(tmp_path)
     store = SessionStore(tmp_path / ".pico" / "sessions")
     return Pico(
-        model_client=FakeModelClient(outputs),
+        model_client=ScriptedModelClient(outputs),
         workspace=workspace,
         session_store=store,
         approval_policy="auto",
@@ -59,3 +61,39 @@ def test_engine_streams_a_real_session_with_tool_artifacts(tmp_path):
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["status"] == "completed"
     assert report["final_answer"] == "Wrote it."
+
+
+def test_engine_records_provider_error_as_failed_run(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            ProviderError(
+                "rate limited",
+                provider="openai",
+                model="gpt-test",
+                base_url="https://example.test/v1",
+                code="rate_limited",
+                http_status=429,
+                retryable=True,
+                attempts=3,
+                retry_count=2,
+            )
+        ],
+    )
+
+    events = list(agent.engine.run_turn("call a rate limited provider"))
+
+    assert events[-2]["type"] == "stop"
+    assert events[-2]["content"] == "Stopped after model error: rate_limited."
+    report = json.loads((agent.current_run_dir / "report.json").read_text(encoding="utf-8"))
+    assert report["status"] == "failed"
+    assert report["stop_reason"] == "model_error"
+    assert report["prompt_metadata"]["provider_error"]["code"] == "rate_limited"
+    assert report["prompt_metadata"]["provider_error"]["retry_count"] == 2
+
+    trace_events = read_jsonl(agent.current_run_dir / "trace.jsonl")
+    model_error = next(event for event in trace_events if event["event"] == "model_error")
+    assert model_error["error"]["http_status"] == 429
+
+    persisted_events = read_jsonl(agent.session_event_bus.path)
+    assert any(event["event"] == "model_error" and event["code"] == "rate_limited" for event in persisted_events)

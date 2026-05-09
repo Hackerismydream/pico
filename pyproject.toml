@@ -22,3 +22,12 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["pico*"]
+
+[tool.pytest.ini_options]
+norecursedirs = [
+  ".git",
+  ".venv",
+  "artifacts",
+  "build",
+  "dist",
+]

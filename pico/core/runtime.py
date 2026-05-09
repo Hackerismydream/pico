@@ -634,8 +634,8 @@ class Pico:
         self.session_event_bus.emit("context_usage_recorded", usage_payload)
         return prompt, metadata
 
-    def compact_history(self, trigger="manual"):
-        return self.compact_manager.compact(trigger=trigger)
+    def compact_history(self, trigger="manual", keep_recent_turns=2):
+        return self.compact_manager.compact(trigger=trigger, keep_recent_turns=keep_recent_turns)
 
     def emit_trace(self, task_state, event, payload=None):
         payload = self.redact_artifact(payload or {})

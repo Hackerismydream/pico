@@ -2,7 +2,8 @@ import json
 import shlex
 import sys
 
-from pico import FakeModelClient, Pico, SessionStore, WorkspaceContext
+from pico.testing import ScriptedModelClient
+from pico import Pico, SessionStore, WorkspaceContext
 
 
 def build_agent(tmp_path, outputs=None, **kwargs):
@@ -10,7 +11,7 @@ def build_agent(tmp_path, outputs=None, **kwargs):
     workspace = WorkspaceContext.build(tmp_path)
     store = SessionStore(tmp_path / ".pico" / "sessions")
     return Pico(
-        model_client=FakeModelClient(outputs or []),
+        model_client=ScriptedModelClient(outputs or []),
         workspace=workspace,
         session_store=store,
         approval_policy="auto",

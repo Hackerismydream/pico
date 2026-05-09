@@ -7,6 +7,7 @@ one user request into model calls, tool executions, and user-visible events.
 import time
 
 from ..providers.base import complete_model
+from .model_errors import finish_model_error
 from .task_state import TaskState
 from .workspace import clip, now
 
@@ -145,13 +146,25 @@ class Engine:
                 prompt_cache_retention = "in_memory"
 
             model_started_at = time.monotonic()
-            result = complete_model(
-                agent.model_client,
-                prompt,
-                agent.max_new_tokens,
-                prompt_cache_key=prompt_cache_key,
-                prompt_cache_retention=prompt_cache_retention,
-            )
+            try:
+                result = complete_model(
+                    agent.model_client,
+                    prompt,
+                    agent.max_new_tokens,
+                    prompt_cache_key=prompt_cache_key,
+                    prompt_cache_retention=prompt_cache_retention,
+                )
+            except Exception as exc:
+                yield from finish_model_error(
+                    self,
+                    task_state,
+                    user_message,
+                    prompt_metadata,
+                    exc,
+                    int((time.monotonic() - model_started_at) * 1000),
+                    int((time.monotonic() - run_started_at) * 1000),
+                )
+                return
             raw = result.text
             completion_metadata = dict(result.metadata or getattr(agent.model_client, "last_completion_metadata", {}) or {})
             if completion_metadata:

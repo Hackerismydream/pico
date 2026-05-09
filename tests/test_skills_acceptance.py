@@ -3,7 +3,8 @@ import os
 import subprocess
 import sys
 
-from pico import FakeModelClient, Pico, SessionStore, WorkspaceContext
+from pico.testing import ScriptedModelClient
+from pico import Pico, SessionStore, WorkspaceContext
 from pico.cli import handle_repl_command
 from pico.features import skills as skillslib
 
@@ -12,7 +13,7 @@ def build_agent(tmp_path, outputs):
     (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
     workspace = WorkspaceContext.build(tmp_path)
     return Pico(
-        model_client=FakeModelClient(outputs),
+        model_client=ScriptedModelClient(outputs),
         workspace=workspace,
         session_store=SessionStore(tmp_path / ".pico" / "sessions"),
         approval_policy="auto",

@@ -1,10 +1,11 @@
 from .base import ModelResult, complete_model
-from .clients import AnthropicCompatibleModelClient, FakeModelClient, OpenAICompatibleModelClient
+from .clients import AnthropicCompatibleModelClient, OpenAICompatibleModelClient
+from .errors import ProviderError
 
 __all__ = [
     "AnthropicCompatibleModelClient",
     "complete_model",
-    "FakeModelClient",
     "ModelResult",
     "OpenAICompatibleModelClient",
+    "ProviderError",
 ]

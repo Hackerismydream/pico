@@ -1,20 +1,25 @@
 import os
+import io
 import json
 import subprocess
 import sys
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
 import pico as pico_pkg
+import pico.providers as providers_pkg
+import pytest
+from pico.testing import ScriptedModelClient
 from pico import (
     AnthropicCompatibleModelClient,
-    FakeModelClient,
     Pico,
     OpenAICompatibleModelClient,
     SessionStore,
     WorkspaceContext,
     build_welcome,
 )
+from pico.providers import ProviderError
 
 
 def build_workspace(tmp_path):
@@ -27,7 +32,7 @@ def build_agent(tmp_path, outputs, **kwargs):
     store = SessionStore(tmp_path / ".pico" / "sessions")
     approval_policy = kwargs.pop("approval_policy", "auto")
     return Pico(
-        model_client=FakeModelClient(outputs),
+        model_client=ScriptedModelClient(outputs),
         workspace=workspace,
         session_store=store,
         approval_policy=approval_policy,
@@ -86,7 +91,7 @@ def test_agent_only_stores_reusable_epistemic_notes(tmp_path):
     assert not any(note["text"] == "Done." for note in notes)
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>It is red.</final>"]),
+        model_client=ScriptedModelClient(["<final>It is red.</final>"]),
         workspace=agent.workspace,
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -112,7 +117,7 @@ def test_file_summary_cache_is_invalidated_on_out_of_band_edit_and_path_spelling
     file_path.write_text("beta\n", encoding="utf-8")
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient([]),
+        model_client=ScriptedModelClient([]),
         workspace=agent.workspace,
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -195,7 +200,7 @@ def test_agent_saves_and_resumes_session(tmp_path):
     assert agent.ask("Start a session") == "First pass."
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>Resumed.</final>"]),
+        model_client=ScriptedModelClient(["<final>Resumed.</final>"]),
         workspace=agent.workspace,
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -393,6 +398,81 @@ def test_openai_compatible_client_sends_prompt_cache_fields_and_records_usage():
     assert client.last_completion_metadata["cached_tokens"] == 1536
     assert client.last_completion_metadata["cache_hit"] is True
     assert client.last_completion_metadata["input_tokens"] == 2048
+    assert client.last_completion_metadata["provider_attempts"] == 1
+
+
+def test_openai_compatible_client_retries_rate_limit_and_records_retry_metadata():
+    calls = {"count": 0}
+
+    class FakeResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"output_text": "<final>ok</final>"}).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        del request, timeout
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise urllib.error.HTTPError(
+                "https://right.codes/v1/responses",
+                429,
+                "rate limited",
+                {"Retry-After": "0"},
+                io.BytesIO(b'{"error":"busy"}'),
+            )
+        return FakeResponse()
+
+    client = OpenAICompatibleModelClient(
+        model="right.codes/codex-mini",
+        base_url="https://right.codes/v1",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+    )
+
+    with patch("urllib.request.urlopen", fake_urlopen), patch("pico.providers.clients.time.sleep"):
+        result = client.complete("hello", 42)
+
+    assert result == "<final>ok</final>"
+    assert calls["count"] == 2
+    assert client.last_completion_metadata["provider_attempts"] == 2
+    assert client.last_completion_metadata["provider_retry_count"] == 1
+
+
+def test_openai_compatible_client_classifies_invalid_json_provider_failure():
+    class FakeResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b"not-json"
+
+    client = OpenAICompatibleModelClient(
+        model="right.codes/codex-mini",
+        base_url="https://right.codes/v1",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+    )
+
+    with patch("urllib.request.urlopen", return_value=FakeResponse()), pytest.raises(ProviderError) as exc:
+        client.complete("hello", 42)
+
+    assert exc.value.code == "invalid_json"
+    assert client.last_completion_metadata["provider_error"]["code"] == "invalid_json"
+    assert client.last_completion_metadata["provider_error"]["attempts"] == 1
 
 
 def test_openai_compatible_client_extracts_text_from_event_stream():
@@ -1005,7 +1085,7 @@ def test_resume_prompt_uses_checkpoint_state_not_just_history(tmp_path):
     agent.session_store.save(agent.session)
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>Resumed.</final>"]),
+        model_client=ScriptedModelClient(["<final>Resumed.</final>"]),
         workspace=build_workspace(tmp_path),
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -1051,7 +1131,7 @@ def test_resume_invalidates_stale_file_summaries_and_marks_partial_stale(tmp_pat
     file_path.write_text("beta\n", encoding="utf-8")
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>Resumed.</final>"]),
+        model_client=ScriptedModelClient(["<final>Resumed.</final>"]),
         workspace=build_workspace(tmp_path),
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -1107,7 +1187,7 @@ def test_resume_marks_workspace_mismatch_when_checkpoint_runtime_identity_is_sta
     agent.session_store.save(agent.session)
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>Resumed.</final>"]),
+        model_client=ScriptedModelClient(["<final>Resumed.</final>"]),
         workspace=build_workspace(tmp_path),
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -1169,7 +1249,7 @@ def test_resume_marks_schema_mismatch_when_checkpoint_version_is_incompatible(tm
     agent.session_store.save(agent.session)
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>Resumed.</final>"]),
+        model_client=ScriptedModelClient(["<final>Resumed.</final>"]),
         workspace=build_workspace(tmp_path),
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -1186,7 +1266,7 @@ def test_resume_marks_no_checkpoint_when_session_has_no_checkpoint_state(tmp_pat
     agent.session_store.save(agent.session)
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>Resumed.</final>"]),
+        model_client=ScriptedModelClient(["<final>Resumed.</final>"]),
         workspace=build_workspace(tmp_path),
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -1243,7 +1323,7 @@ def test_runtime_identity_persists_key_execution_metadata(tmp_path):
     workspace = build_workspace(tmp_path)
     store = SessionStore(tmp_path / ".pico" / "sessions")
     agent = Pico(
-        model_client=FakeModelClient(["<final>Done.</final>"]),
+        model_client=ScriptedModelClient(["<final>Done.</final>"]),
         workspace=workspace,
         session_store=store,
         approval_policy="never",
@@ -1290,7 +1370,7 @@ def test_resume_records_runtime_identity_mismatch_fields_in_metadata_and_trace(t
                     "max_steps": 6,
                     "max_new_tokens": 512,
                     "model": "old-model",
-                    "model_client": "FakeModelClient",
+                    "model_client": "ScriptedModelClient",
                     "feature_flags": {"memory": True, "relevant_memory": True},
                     "shell_env_allowlist": ["PATH"],
                     "session_id": agent.session["id"],
@@ -1302,7 +1382,7 @@ def test_resume_records_runtime_identity_mismatch_fields_in_metadata_and_trace(t
     agent.session_store.save(agent.session)
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>Resumed.</final>"]),
+        model_client=ScriptedModelClient(["<final>Resumed.</final>"]),
         workspace=build_workspace(tmp_path),
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -1489,7 +1569,7 @@ def test_explicit_memory_promotion_dedupes_duplicate_durable_note(tmp_path):
 
 
 def test_agent_records_model_cache_metadata_in_last_prompt_metadata(tmp_path):
-    class CacheAwareFakeModelClient(FakeModelClient):
+    class CacheAwareScriptedModelClient(ScriptedModelClient):
         def complete(self, prompt, max_new_tokens, **kwargs):
             self.last_completion_metadata = {
                 "prompt_cache_supported": True,
@@ -1502,7 +1582,7 @@ def test_agent_records_model_cache_metadata_in_last_prompt_metadata(tmp_path):
     workspace = build_workspace(tmp_path)
     store = SessionStore(tmp_path / ".pico" / "sessions")
     agent = Pico(
-        model_client=CacheAwareFakeModelClient(["<final>Done.</final>"]),
+        model_client=CacheAwareScriptedModelClient(["<final>Done.</final>"]),
         workspace=workspace,
         session_store=store,
         approval_policy="auto",
@@ -1541,7 +1621,8 @@ def test_recent_transcript_entries_stay_richer_than_older_ones(tmp_path):
 
 def test_public_api_exports_resolve_through_package_path():
     assert callable(build_welcome)
-    assert FakeModelClient is not None
+    assert not hasattr(pico_pkg, "ScriptedModelClient")
+    assert not hasattr(providers_pkg, "ScriptedModelClient")
     assert Pico is not None
     assert not hasattr(pico_pkg, "OllamaModelClient")
     assert SessionStore is not None
