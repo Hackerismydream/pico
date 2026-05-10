@@ -7,7 +7,6 @@ parsing live in focused helper modules.
 
 import json
 import os
-import re
 import textwrap
 import uuid
 import hashlib
@@ -48,19 +47,6 @@ CHECKPOINT_FULL_VALID_STATUS = "full-valid"
 CHECKPOINT_PARTIAL_STALE_STATUS = "partial-stale"
 CHECKPOINT_WORKSPACE_MISMATCH_STATUS = "workspace-mismatch"
 CHECKPOINT_SCHEMA_MISMATCH_STATUS = "schema-mismatch"
-DURABLE_MEMORY_INTENT_PATTERN = re.compile(r"(?i)\b(capture|remember|save|store|persist|note)\b")
-DURABLE_MEMORY_INTENT_ZH_PATTERN = re.compile(r"(记住|保存|记录|沉淀|长期记忆|持久记忆)")
-DURABLE_MEMORY_LINE_PATTERNS = (
-    ("project-conventions", re.compile(r"(?i)^Project convention:\s*(.+)$")),
-    ("key-decisions", re.compile(r"(?i)^Decision:\s*(.+)$")),
-    ("dependency-facts", re.compile(r"(?i)^Dependency:\s*(.+)$")),
-    ("user-preferences", re.compile(r"(?i)^Preference:\s*(.+)$")),
-    ("project-conventions", re.compile(r"^项目约定：\s*(.+)$")),
-    ("key-decisions", re.compile(r"^决策：\s*(.+)$")),
-    ("dependency-facts", re.compile(r"^依赖：\s*(.+)$")),
-    ("user-preferences", re.compile(r"^偏好：\s*(.+)$")),
-)
-SECRET_SHAPED_TEXT_PATTERN = re.compile(r"(?i)(\b(api[_ -]?key|token|secret|password)\b|sk-[A-Za-z0-9_-]{6,})")
 
 
 @dataclass
@@ -116,6 +102,10 @@ class Pico:
         secret_env_names=None,
         feature_flags=None,
         write_scope=None,
+        memory_dir=None,
+        auto_dream=True,
+        dream_interval_hours=24.0,
+        dream_min_sessions=5,
     ):
         self.model_client = model_client
         self.workspace = workspace
@@ -135,6 +125,11 @@ class Pico:
         self.feature_flags = dict(DEFAULT_FEATURE_FLAGS)
         if feature_flags:
             self.feature_flags.update({str(key): bool(value) for key, value in feature_flags.items()})
+        self.memory_dir = self._resolve_memory_dir(memory_dir)
+        memorylib.ensure_memory_dir(self.memory_dir)
+        self.auto_dream = bool(auto_dream)
+        self.dream_interval_hours = float(dream_interval_hours)
+        self.dream_min_sessions = int(dream_min_sessions)
         self.run_store = run_store or RunStore(Path(workspace.repo_root) / ".pico" / "runs")
         self.session = session or {
             "id": datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6],
@@ -155,6 +150,7 @@ class Pico:
         self.engine = Engine(self)
         self.memory = memorylib.LayeredMemory(self.session.setdefault("memory", memorylib.default_memory_state()), workspace_root=self.root)
         self.session["memory"] = self.memory.to_dict()
+        self.self_authored_file_freshness = {}
         self.todo_ledger = TodoLedger(self)
         self.worker_manager = WorkerManager(self)
         self.skills = skillslib.discover_skills(self.root)
@@ -193,6 +189,17 @@ class Pico:
             session=session_store.load(session_id),
             **kwargs,
         )
+
+    def _resolve_memory_dir(self, memory_dir):
+        if memory_dir:
+            path = Path(memory_dir).expanduser()
+            path = path if path.is_absolute() else self.root / path
+        else:
+            path = self.root / ".pico" / "memory"
+        resolved = path.resolve()
+        if os.path.commonpath([str(self.root), str(resolved)]) != str(self.root):
+            raise ValueError(f"memory_dir must stay inside workspace: {memory_dir}")
+        return resolved
 
     def _ensure_session_shape(self):
         self.session.setdefault("history", [])
@@ -417,6 +424,7 @@ class Pico:
             - Required tool arguments must not be empty. Do not call read_file, write_file, patch_file, run_shell, or agent with args={{}}.
             - Use agent for bounded subagents. Explore is read-only; worker writes must stay inside write_scope.
             - Use send_message to continue an existing worker instead of spawning a fresh worker with missing context.
+            - {skillslib.SKILL_FILE_CREATION_GUIDE}
 
             {self.runtime_mode_text()}
 
@@ -637,6 +645,25 @@ class Pico:
     def compact_history(self, trigger="manual", keep_recent_turns=2):
         return self.compact_manager.compact(trigger=trigger, keep_recent_turns=keep_recent_turns)
 
+    def durable_memory_index_text(self):
+        return memorylib.load_memory_index_text(self.memory_dir)
+
+    def remember_durable_note(self, text):
+        path = memorylib.append_to_daily_log(self.memory_dir, text)
+        return path
+
+    def memory_command_text(self):
+        index = self.durable_memory_index_text()
+        if index:
+            return index
+        return "No durable memories yet. Use /remember <text> and /dream to consolidate daily logs."
+
+    def run_dream(self, quiet=False, session_ids=None):
+        return memorylib.run_dream(self, quiet=quiet, session_ids=session_ids)
+
+    def maintain_memory_after_turn(self, final_answer):
+        return memorylib.maintain_memory_after_turn(self, final_answer)
+
     def emit_trace(self, task_state, event, payload=None):
         payload = self.redact_artifact(payload or {})
         for path in payload.get("affected_paths", []) or []:
@@ -743,13 +770,17 @@ class Pico:
         它发生在 `run_tool()` 真正执行完工具之后、下一轮 prompt 组装之前。
         也就是说：工具结果先进入完整历史，再由这个函数择优沉淀成轻量记忆。
         """
-        if not self.feature_enabled("memory"):
-            return
         path = args.get("path")
         if not path:
             return
 
         canonical_path = self.memory.canonical_path(path)
+        if name in {"write_file", "patch_file"}:
+            freshness = memorylib.file_freshness(canonical_path, self.root)
+            if freshness:
+                self.self_authored_file_freshness[canonical_path] = freshness
+        if not self.feature_enabled("memory"):
+            return
         # 不是所有工具结果都进入工作记忆。
         # 读文件会生成摘要；写文件/patch 会让旧摘要失效，因为它们可能过期了。
         if name in {"read_file", "write_file", "patch_file"}:
@@ -781,65 +812,13 @@ class Pico:
         self.session["memory"] = self.memory.to_dict()
 
     def reject_durable_reason(self, note_text):
-        text = str(note_text or "").strip()
-        lowered = text.lower()
-        if not text:
-            return "empty"
-        if REDACTED_VALUE in text or SECRET_SHAPED_TEXT_PATTERN.search(text):
-            return "secret_shaped"
-        checkpoint_like_prefixes = (
-            "current goal",
-            "current blocker",
-            "next step",
-            "current phase",
-            "key files",
-            "freshness",
-            "当前目标",
-            "当前卡点",
-            "下一步",
-            "当前阶段",
-            "关键文件",
-            "已完成",
-            "已排除",
-        )
-        if any(lowered.startswith(prefix) for prefix in checkpoint_like_prefixes):
-            return "transient_task_state"
-        if re.search(r"(?i)\b(stdout|stderr|traceback|exit_code)\b", text) or len(text) > 220:
-            return "noisy_output"
-        return ""
+        return memorylib.reject_durable_reason(note_text, redacted_value=REDACTED_VALUE)
 
     def extract_durable_promotions(self, user_message, final_answer):
-        user_text = str(user_message or "")
-        if not (DURABLE_MEMORY_INTENT_PATTERN.search(user_text) or DURABLE_MEMORY_INTENT_ZH_PATTERN.search(user_text)):
-            return [], []
-        promotions = []
-        rejections = []
-        for line in str(final_answer or "").splitlines():
-            text = line.strip()
-            if not text or REDACTED_VALUE in text:
-                continue
-            for topic, pattern in DURABLE_MEMORY_LINE_PATTERNS:
-                match = pattern.match(text)
-                if not match:
-                    continue
-                note_text = match.group(1).strip()
-                if note_text:
-                    reason = self.reject_durable_reason(note_text)
-                    if reason:
-                        rejections.append(f"{topic}:{reason}")
-                        break
-                    promotions.append((topic, note_text))
-                break
-        return promotions, rejections
+        return memorylib.extract_durable_promotions(user_message, final_answer, redacted_value=REDACTED_VALUE)
 
     def promote_durable_memory(self, user_message, final_answer):
-        promotions, rejections = self.extract_durable_promotions(user_message, final_answer)
-        promoted, superseded = self.memory.promote_durable(promotions)
-        self.session["memory"] = self.memory.to_dict()
-        self.last_durable_promotions = promoted
-        self.last_durable_rejections = rejections
-        self.last_durable_superseded = superseded
-        return promoted, rejections, superseded
+        return memorylib.promote_durable_memory(self, user_message, final_answer)
 
     def ask(self, user_message):
         return self.engine.ask(user_message)
@@ -926,6 +905,7 @@ class Pico:
         self.session["memory"].clear()
         self.session["memory"].update(memorylib.default_memory_state())
         self.memory = memorylib.LayeredMemory(self.session["memory"], workspace_root=self.root)
+        self.self_authored_file_freshness.clear()
         self.session_store.save(self.session)
 
     def path(self, raw_path):

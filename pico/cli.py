@@ -48,7 +48,10 @@ HELP_DETAILS = textwrap.dedent(
     """\
     Commands:
     /help    Show this help message.
-    /memory  Show the agent's distilled working memory.
+    /memory  Show the durable memory index.
+    /working-memory Show the agent's distilled working memory.
+    /remember <text> Save a note to the daily memory log.
+    /dream   Consolidate daily memory logs into index and topic files.
     /skills  List available skills and slash workflows.
     /session Show the path to the saved session file.
     /context Show prompt context usage.
@@ -179,6 +182,10 @@ def build_agent(args):
     session_id = args.resume
     if session_id == "latest":
         session_id = store.latest()
+    memory_dir = getattr(args, "memory_dir", None)
+    auto_dream = not getattr(args, "no_auto_dream", False)
+    dream_interval = getattr(args, "dream_interval", 24.0)
+    dream_min_sessions = getattr(args, "dream_min_sessions", 5)
     if session_id:
         return Pico.from_session(
             model_client=model,
@@ -189,6 +196,10 @@ def build_agent(args):
             max_steps=args.max_steps,
             max_new_tokens=args.max_new_tokens,
             secret_env_names=configured_secret_names,
+            memory_dir=memory_dir,
+            auto_dream=auto_dream,
+            dream_interval_hours=dream_interval,
+            dream_min_sessions=dream_min_sessions,
         )
     return Pico(
         model_client=model,
@@ -198,6 +209,10 @@ def build_agent(args):
         max_steps=args.max_steps,
         max_new_tokens=args.max_new_tokens,
         secret_env_names=configured_secret_names,
+        memory_dir=memory_dir,
+        auto_dream=auto_dream,
+        dream_interval_hours=dream_interval,
+        dream_min_sessions=dream_min_sessions,
     )
 
 
@@ -219,6 +234,10 @@ def build_arg_parser():
     parser.add_argument("--base-url", default=None, help="API base URL override for the selected provider profile.")
     parser.add_argument("--openai-timeout", type=int, default=300, help="Provider request timeout in seconds.")
     parser.add_argument("--resume", default=None, help="Session id to resume or 'latest'.")
+    parser.add_argument("--memory-dir", default=None, help="Memory directory. Defaults to .pico/memory in the workspace.")
+    parser.add_argument("--no-auto-dream", action="store_true", help="Disable automatic memory consolidation.")
+    parser.add_argument("--dream-interval", type=float, default=24.0, help="Hours between automatic dream runs.")
+    parser.add_argument("--dream-min-sessions", type=int, default=5, help="Minimum new sessions before automatic dream runs.")
     parser.add_argument("--approval", choices=("ask", "auto", "never"), default="ask", help="Approval policy for risky tools.")
     parser.add_argument(
         "--secret-env-name",
@@ -239,7 +258,17 @@ def handle_repl_command(agent, user_input):
     if user_input == "/help":
         return True, False, HELP_DETAILS
     if user_input == "/memory":
+        return True, False, agent.memory_command_text()
+    if user_input == "/working-memory":
         return True, False, agent.memory_text()
+    if user_input.startswith("/remember"):
+        _, _, note = user_input.partition(" ")
+        if not note.strip():
+            return True, False, "Usage: /remember <text>"
+        agent.remember_durable_note(note)
+        return True, False, "Saved to daily log."
+    if user_input == "/dream":
+        return True, False, agent.run_dream()
     if user_input == "/skills":
         return True, False, skillslib.render_skills_list(agent.skills)
     if user_input == "/session":

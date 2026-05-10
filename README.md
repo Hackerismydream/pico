@@ -192,7 +192,10 @@ uv run pico --provider deepseek
 ## 常用交互命令
 
 - `/help`：查看内置命令
-- `/memory`：查看提炼后的工作记忆
+- `/memory`：查看持久记忆索引 `MEMORY.md`
+- `/working-memory`：查看当前 session 的工作记忆
+- `/remember <text>`：把一条记忆写入当天 daily log
+- `/dream`：把 daily log 整理成 `MEMORY.md` 和 topic files
 - `/skills`：查看可用技能和 slash workflow
 - `/review`、`/test`、`/commit`、`/simplify`：调用内置技能
 - `/session`：查看当前会话文件路径

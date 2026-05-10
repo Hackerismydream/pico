@@ -291,6 +291,7 @@ class Engine:
             )
             task_state.finish_success(final)
             agent.promote_durable_memory(user_message, final)
+            self._maintain_memory_safely(agent, task_state, final)
             checkpoint = agent.create_checkpoint(task_state, user_message, trigger="run_finished")
             agent.run_store.write_task_state(task_state)
             agent.emit_trace(
@@ -344,6 +345,7 @@ class Engine:
             {"run_id": task_state.run_id, "kind": "stop", "content": clip(final, 500)},
         )
         agent.promote_durable_memory(user_message, final)
+        self._maintain_memory_safely(agent, task_state, final)
         agent.run_store.write_task_state(task_state)
         checkpoint = agent.create_checkpoint(task_state, user_message, trigger=task_state.stop_reason or "run_stopped")
         agent.emit_trace(
@@ -383,3 +385,13 @@ class Engine:
             "status": task_state.status,
             "stop_reason": task_state.stop_reason,
         }
+
+    @staticmethod
+    def _maintain_memory_safely(agent, task_state, final_answer):
+        try:
+            agent.maintain_memory_after_turn(final_answer)
+        except Exception as exc:
+            agent.session_event_bus.emit(
+                "memory_maintenance_failed",
+                {"run_id": task_state.run_id, "error": clip(str(exc), 300)},
+            )

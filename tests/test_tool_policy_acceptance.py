@@ -52,6 +52,19 @@ def test_write_file_allows_new_file_but_requires_read_before_overwrite(tmp_path)
     assert agent.run_tool("write_file", {"path": "README.md", "content": "overwrite\n"}) == "wrote README.md (10 chars)"
 
 
+def test_patch_allows_self_authored_file_without_extra_read(tmp_path):
+    agent = build_agent(tmp_path)
+
+    assert agent.run_tool("write_file", {"path": "scripts/check.py", "content": "assert False\n"}) == "wrote scripts/check.py (13 chars)"
+    patched = agent.run_tool(
+        "patch_file",
+        {"path": "scripts/check.py", "old_text": "assert False", "new_text": "assert True"},
+    )
+
+    assert patched == "patched scripts/check.py"
+    assert (tmp_path / "scripts" / "check.py").read_text(encoding="utf-8") == "assert True\n"
+
+
 def test_shell_search_like_commands_are_rejected_by_policy(tmp_path):
     agent = build_agent(tmp_path)
 

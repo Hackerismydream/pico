@@ -8,6 +8,13 @@ from pathlib import Path
 from typing import Callable
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
+SKILL_FILE_CREATION_GUIDE = """When creating Pico skill files at .pico/skills/<name>/SKILL.md or skills/<name>/SKILL.md, use frontmatter:
+---
+name: audit
+description: Audit a file
+user-invocable: true
+---
+Audit $ARGUMENTS for risky changes."""
 
 
 @dataclass(frozen=True)

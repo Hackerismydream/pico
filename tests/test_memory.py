@@ -1,4 +1,18 @@
-from pico.features.memory import LayeredMemory
+from datetime import date
+
+from pico.features.memory import (
+    LayeredMemory,
+    append_to_daily_log,
+    build_dream_prompt,
+    build_memory_system_section,
+    daily_log_path,
+    ensure_memory_dir,
+    extract_memory_tags,
+    list_sessions_since,
+    load_memory_index_text,
+    release_lock,
+    try_acquire_lock,
+)
 
 
 def test_working_memory_tracks_summary_and_recent_files():
@@ -120,3 +134,57 @@ def test_durable_memory_index_and_topic_notes_are_loaded_and_retrieved(tmp_path)
 
     lines = [line for line in memory.retrieval_view("constrained tools", limit=4).splitlines() if line.startswith("- ")]
     assert any("Use constrained tools instead of guessing." in line for line in lines)
+
+
+def test_kairos_daily_log_index_policy_and_memory_tag_helpers(tmp_path):
+    memory_root = tmp_path / ".pico" / "memory"
+
+    ensure_memory_dir(memory_root)
+    append_to_daily_log(memory_root, "Prefer repo-local memory assets.", today=date(2026, 5, 12))
+    (memory_root / "MEMORY.md").write_text(
+        "# Durable Memory Index\n\n- [User Preferences](user-preferences.md): Collaboration preferences\n",
+        encoding="utf-8",
+    )
+
+    log_path = daily_log_path(memory_root, today=date(2026, 5, 12))
+    assert log_path == memory_root / "logs" / "2026" / "05" / "2026-05-12.md"
+    assert "Prefer repo-local memory assets." in log_path.read_text(encoding="utf-8")
+    assert "User Preferences" in load_memory_index_text(memory_root)
+
+    policy = build_memory_system_section(memory_root)
+    assert "# Auto Memory" in policy
+    assert "/remember <text>" in policy
+    assert "Current Memory Index" in policy
+    assert "User Preferences" in policy
+
+    assert extract_memory_tags("x <memory>alpha</memory> y <memory> beta </memory>") == ["alpha", "beta"]
+
+
+def test_dream_prompt_targets_repo_local_memory_assets(tmp_path):
+    memory_root = tmp_path / ".pico" / "memory"
+
+    prompt = build_dream_prompt(memory_root, transcript_dir=str(tmp_path / ".pico" / "sessions"), session_ids=["s1", "s2"])
+
+    assert "Dream: Memory Consolidation" in prompt
+    assert str(memory_root) in prompt
+    assert "MEMORY.md" in prompt
+    assert "logs/YYYY/MM/YYYY-MM-DD.md" in prompt
+    assert "s1" in prompt and "s2" in prompt
+
+
+def test_consolidation_lock_can_be_reacquired_after_release(tmp_path):
+    memory_root = tmp_path / ".pico" / "memory"
+
+    assert try_acquire_lock(memory_root) is True
+    release_lock(memory_root)
+
+    assert try_acquire_lock(memory_root) is True
+
+
+def test_session_scan_deduplicates_session_files_and_event_logs(tmp_path):
+    sessions_dir = tmp_path / ".pico" / "sessions"
+    sessions_dir.mkdir(parents=True)
+    (sessions_dir / "s1.json").write_text("{}", encoding="utf-8")
+    (sessions_dir / "s1.events.jsonl").write_text("", encoding="utf-8")
+
+    assert list_sessions_since(0, sessions_dir=sessions_dir) == ["s1"]

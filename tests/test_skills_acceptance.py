@@ -32,6 +32,35 @@ def test_builtin_skills_are_available_in_context(tmp_path):
     assert prompt.index("Memory:") < prompt.index("Available skills:") < prompt.index("Relevant memory:")
 
 
+def test_prompt_includes_auto_memory_policy_and_index(tmp_path):
+    memory_root = tmp_path / ".pico" / "memory"
+    memory_root.mkdir(parents=True)
+    (memory_root / "MEMORY.md").write_text(
+        "# Durable Memory Index\n\n- [Project](project.md): Project facts\n",
+        encoding="utf-8",
+    )
+    agent = build_agent(tmp_path, [])
+
+    prompt = agent.prompt("What should you remember?")
+
+    assert "# Auto Memory" in prompt
+    assert "/remember <text>" in prompt
+    assert "/dream" in prompt
+    assert "Current Memory Index" in prompt
+    assert "Project facts" in prompt
+
+
+def test_prompt_documents_project_skill_frontmatter_contract(tmp_path):
+    agent = build_agent(tmp_path, [])
+
+    prompt = agent.prompt("Create .pico/skills/audit/SKILL.md")
+
+    assert "When creating Pico skill files" in prompt
+    assert ".pico/skills/<name>/SKILL.md" in prompt
+    assert "user-invocable: true" in prompt
+    assert "Audit $ARGUMENTS for risky changes." in prompt
+
+
 def test_project_skill_slash_invocation_runs_inline_session(tmp_path):
     skill_dir = tmp_path / ".pico" / "skills" / "deploy"
     skill_dir.mkdir(parents=True)
@@ -59,6 +88,72 @@ Use target $ARGUMENTS from ${PICO_SKILL_DIR}.
 
     events = agent.session_store.event_path(agent.session["id"]).read_text(encoding="utf-8")
     assert '"event": "skill_invoked"' in events
+
+
+def test_memory_slash_commands_use_kairos_assets(tmp_path):
+    agent = build_agent(tmp_path, [])
+
+    handled, should_exit, output = handle_repl_command(agent, "/remember I prefer concise reports")
+
+    assert handled is True
+    assert should_exit is False
+    assert "Saved to daily log" in output
+    log_files = list((tmp_path / ".pico" / "memory" / "logs").rglob("*.md"))
+    assert len(log_files) == 1
+    assert "I prefer concise reports" in log_files[0].read_text(encoding="utf-8")
+
+    handled, should_exit, output = handle_repl_command(agent, "/memory")
+    assert handled is True
+    assert should_exit is False
+    assert "No durable memories yet" in output
+
+    (tmp_path / ".pico" / "memory" / "MEMORY.md").write_text(
+        "# Durable Memory Index\n\n- [User](user.md): User preferences\n",
+        encoding="utf-8",
+    )
+
+    handled, should_exit, output = handle_repl_command(agent, "/memory")
+    assert handled is True
+    assert should_exit is False
+    assert "User preferences" in output
+
+
+def test_dream_slash_command_consolidates_daily_log_into_memory_files(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"write_file","args":{"path":".pico/memory/MEMORY.md","content":"# Durable Memory Index\\n\\n- [User Preferences](topics/user-preferences.md): User preferences\\n"}}</tool>',
+            '<tool>{"name":"write_file","args":{"path":".pico/memory/topics/user-preferences.md","content":"# User Preferences\\n\\n## Notes\\n- Prefers concise reports.\\n"}}</tool>',
+            "<final>Dream consolidation complete.</final>",
+        ],
+    )
+    handle_repl_command(agent, "/remember Prefers concise reports.")
+
+    handled, should_exit, output = handle_repl_command(agent, "/dream")
+
+    assert handled is True
+    assert should_exit is False
+    assert "Dream consolidation complete" in output
+    assert "User preferences" in (tmp_path / ".pico" / "memory" / "MEMORY.md").read_text(encoding="utf-8")
+    assert "Prefers concise reports" in (tmp_path / ".pico" / "memory" / "topics" / "user-preferences.md").read_text(encoding="utf-8")
+    assert "Dream: Memory Consolidation" in agent.model_client.prompts[-3]
+
+
+def test_dream_cannot_write_outside_memory_directory(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"write_file","args":{"path":"README.md","content":"bad\\n"}}</tool>',
+            "<final>Dream stopped.</final>",
+        ],
+    )
+
+    handled, should_exit, output = handle_repl_command(agent, "/dream")
+
+    assert handled is True
+    assert should_exit is False
+    assert output == "Dream stopped."
+    assert (tmp_path / "README.md").read_text(encoding="utf-8") == "demo\n"
 
 
 def test_skill_frontmatter_metadata_and_argument_substitution(tmp_path):

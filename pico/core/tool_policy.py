@@ -53,7 +53,10 @@ class ToolPolicyChecker:
     def _has_fresh_read(self, path):
         canonical = self.runtime.memory.canonical_path(path)
         summary = self.runtime.memory.to_dict().get("file_summaries", {}).get(canonical, {})
-        return bool(summary and summary.get("freshness") == memorylib.file_freshness(canonical, self.runtime.root))
+        if summary and summary.get("freshness") == memorylib.file_freshness(canonical, self.runtime.root):
+            return True
+        freshness = self.runtime.self_authored_file_freshness.get(canonical)
+        return bool(freshness and freshness == memorylib.file_freshness(canonical, self.runtime.root))
 
     @staticmethod
     def _prior_read_required(tool_name, path):

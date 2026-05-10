@@ -12,7 +12,7 @@ from http.client import RemoteDisconnected
 import urllib.error
 import urllib.request
 
-from .errors import ProviderError
+from .errors import ProviderError, sanitize_url
 
 OPENAI_COMPATIBLE_USER_AGENT = "pico/0.1"
 RETRYABLE_HTTP_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
@@ -214,7 +214,7 @@ def _provider_metadata(provider, model, base_url, attempts, retry_count):
     return {
         "provider_protocol": provider,
         "provider_model": model,
-        "provider_base_url": base_url,
+        "provider_base_url": sanitize_url(base_url),
         "provider_attempts": int(attempts),
         "provider_retry_count": int(retry_count),
     }

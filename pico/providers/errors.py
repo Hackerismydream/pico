@@ -1,5 +1,7 @@
 """Structured provider failure types."""
 
+from urllib.parse import urlsplit, urlunsplit
+
 
 class ProviderError(RuntimeError):
     def __init__(
@@ -20,7 +22,7 @@ class ProviderError(RuntimeError):
         super().__init__(message)
         self.provider = str(provider or "")
         self.model = str(model or "")
-        self.base_url = str(base_url or "")
+        self.base_url = sanitize_url(base_url)
         self.code = str(code or "provider_error")
         self.http_status = http_status
         self.retryable = bool(retryable)
@@ -59,3 +61,26 @@ def _clip(value, limit):
     if len(text) <= limit:
         return text
     return text[:limit] + f"\n...[truncated {len(text) - limit} chars]"
+
+
+def sanitize_url(value):
+    text = str(value or "")
+    if not text:
+        return ""
+    try:
+        parsed = urlsplit(text)
+    except ValueError:
+        return text.split("?", 1)[0].split("#", 1)[0]
+    hostname = parsed.hostname or ""
+    if not hostname:
+        return urlunsplit((parsed.scheme, "", parsed.path, "", ""))
+    netloc = hostname
+    if ":" in hostname and not hostname.startswith("["):
+        netloc = f"[{hostname}]"
+    try:
+        port = parsed.port
+    except ValueError:
+        port = None
+    if port is not None:
+        netloc = f"{netloc}:{port}"
+    return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))

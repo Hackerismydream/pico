@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..features import skills as skillslib
+from ..features import memory as memorylib, skills as skillslib
 from .context_usage import ContextUsageAnalyzer
 from .turn_history import TurnHistoryBuilder, tail_clip
 
@@ -99,9 +99,12 @@ class ContextManager:
             memory_enabled = self.agent.feature_enabled("memory")
             relevant_memory_enabled = self.agent.feature_enabled("relevant_memory")
             context_reduction_enabled = self.agent.feature_enabled("context_reduction")
+        memory_text = "Memory:\n- disabled" if not memory_enabled else str(self.agent.memory_text())
+        if memory_enabled and hasattr(self.agent, "memory_dir"):
+            memory_text += "\n\n" + memorylib.build_memory_system_section(self.agent.memory_dir)
         section_texts = {
             "prefix": str(getattr(self.agent, "prefix", "")),
-            "memory": "Memory:\n- disabled" if not memory_enabled else str(self.agent.memory_text()),
+            "memory": memory_text,
             "skills": skillslib.render_prompt_section(getattr(self.agent, "skills", {})),
             "history": "",
             CURRENT_REQUEST_SECTION: f"Current user request:\n{user_message}",

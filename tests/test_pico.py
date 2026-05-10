@@ -475,6 +475,54 @@ def test_openai_compatible_client_classifies_invalid_json_provider_failure():
     assert client.last_completion_metadata["provider_error"]["attempts"] == 1
 
 
+def test_provider_error_metadata_sanitizes_url_credentials():
+    error = ProviderError(
+        "failed",
+        provider="openai",
+        model="gpt-test",
+        base_url="https://user:secret@example.test:8443/v1?api_key=sk-real-secret#frag",
+        code="server_error",
+    )
+
+    metadata = error.to_metadata()["provider_error"]
+
+    assert metadata["base_url"] == "https://example.test:8443/v1"
+    assert "secret" not in metadata["base_url"]
+    assert "api_key" not in metadata["base_url"]
+
+
+def test_provider_success_metadata_sanitizes_url_credentials():
+    class FakeResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"output_text": "<final>ok</final>"}).encode("utf-8")
+
+    client = OpenAICompatibleModelClient(
+        model="right.codes/codex-mini",
+        base_url="https://user:secret@example.test:8443/v1?api_key=sk-real-secret",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+    )
+
+    with patch("urllib.request.urlopen", return_value=FakeResponse()):
+        assert client.complete("hello", 42) == "<final>ok</final>"
+
+    assert client.last_completion_metadata["provider_base_url"] == "https://example.test:8443/v1"
+
+
+def test_provider_url_sanitizer_handles_invalid_ports_and_ipv6():
+    assert ProviderError("failed", base_url="https://example.test:bad/v1?api_key=sk-real-secret").base_url == "https://example.test/v1"
+    assert ProviderError("failed", base_url="http://user:secret@[::1]:8080/v1").base_url == "http://[::1]:8080/v1"
+
+
 def test_openai_compatible_client_extracts_text_from_event_stream():
     class FakeResponse:
         headers = {"Content-Type": "text/event-stream"}
@@ -1475,6 +1523,100 @@ def test_explicit_memory_promotion_persists_durable_memory_topics(tmp_path):
         "project-conventions: Use constrained tools instead of guessing.",
         "project-conventions: Preserve local agent state under .pico/.",
         "key-decisions: Keep durable memory topic-based and lightweight.",
+    ]
+
+
+def test_final_memory_tags_are_appended_to_daily_log(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        ["<final>Done. <memory>Preference: keep reports concise.</memory></final>"],
+    )
+
+    assert agent.ask("Remember this if useful") == "Done. <memory>Preference: keep reports concise.</memory>"
+
+    log_files = list((tmp_path / ".pico" / "memory" / "logs").rglob("*.md"))
+    assert len(log_files) == 1
+    assert "Preference: keep reports concise." in log_files[0].read_text(encoding="utf-8")
+
+
+def test_memory_maintenance_failure_does_not_mask_final_answer(tmp_path, monkeypatch):
+    agent = build_agent(tmp_path, ["<final>Done.</final>"])
+
+    def fail_memory_maintenance(_final_answer):
+        raise RuntimeError("memory disk is unavailable")
+
+    monkeypatch.setattr(agent, "maintain_memory_after_turn", fail_memory_maintenance)
+
+    assert agent.ask("Finish the task") == "Done."
+    events = agent.session_store.event_path(agent.session["id"]).read_text(encoding="utf-8")
+    assert "memory_maintenance_failed" in events
+
+
+def test_memory_dir_is_workspace_relative_and_repo_local(tmp_path):
+    workspace = build_workspace(tmp_path)
+    store = SessionStore(tmp_path / ".pico" / "sessions")
+
+    agent = Pico(
+        model_client=ScriptedModelClient([]),
+        workspace=workspace,
+        session_store=store,
+        memory_dir="custom-memory",
+    )
+
+    assert agent.memory_dir == tmp_path / "custom-memory"
+
+    with pytest.raises(ValueError, match="memory_dir must stay inside workspace"):
+        Pico(
+            model_client=ScriptedModelClient([]),
+            workspace=workspace,
+            session_store=store,
+            memory_dir=tmp_path.parent / f"{tmp_path.name}-outside",
+        )
+
+
+def test_auto_dream_runs_after_session_gate(tmp_path):
+    for index in range(2):
+        (tmp_path / ".pico" / "sessions" / f"older-{index}.json").parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".pico" / "sessions" / f"older-{index}.json").write_text("{}", encoding="utf-8")
+    agent = build_agent(
+        tmp_path,
+        [
+            "<final><memory>Project: use repo-local memory.</memory></final>",
+            '<tool>{"name":"write_file","args":{"path":".pico/memory/MEMORY.md","content":"# Durable Memory Index\\n\\n- [Project](topics/project.md): Project memory\\n"}}</tool>',
+            "<final>Dreamed.</final>",
+        ],
+        dream_min_sessions=2,
+        dream_interval_hours=0,
+    )
+
+    agent.ask("Finish and trigger memory maintenance")
+
+    assert "Project memory" in (tmp_path / ".pico" / "memory" / "MEMORY.md").read_text(encoding="utf-8")
+
+
+def test_explicit_memory_promotion_accepts_bullet_prefixed_labels(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            "<final>Promoted facts:\n"
+            "- Project convention: Keep manual black-box artifacts under artifacts/.\n"
+            "- Decision: Use CLI-level testing before implementation claims.</final>",
+        ],
+    )
+
+    agent.ask("Remember these stable facts and return only the promoted facts.")
+
+    conventions_path = tmp_path / ".pico" / "memory" / "topics" / "project-conventions.md"
+    decisions_path = tmp_path / ".pico" / "memory" / "topics" / "key-decisions.md"
+    report = json.loads(agent.run_store.report_path(agent.current_task_state).read_text(encoding="utf-8"))
+
+    assert conventions_path.exists()
+    assert decisions_path.exists()
+    assert "Keep manual black-box artifacts under artifacts/." in conventions_path.read_text(encoding="utf-8")
+    assert "Use CLI-level testing before implementation claims." in decisions_path.read_text(encoding="utf-8")
+    assert report["durable_promotions"] == [
+        "project-conventions: Keep manual black-box artifacts under artifacts/.",
+        "key-decisions: Use CLI-level testing before implementation claims.",
     ]
 
 

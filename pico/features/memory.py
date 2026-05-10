@@ -6,15 +6,39 @@ session history 负责保存完整事件流；这个模块只保存更小的一�
 """
 
 import hashlib
-from datetime import datetime
+import os
+from datetime import date, datetime
 import re
 from pathlib import Path
 
-from ..core.workspace import clip, now
+from ..core.workspace import WorkspaceContext, clip, now
 
 WORKING_FILE_LIMIT = 8
 EPISODIC_NOTE_LIMIT = 12
 FILE_SUMMARY_LIMIT = 6
+MAX_MEMORY_INDEX_CHARS = 10000
+MAX_ENTRYPOINT_LINES = 200
+ENTRYPOINT_NAME = "MEMORY.md"
+LOCK_FILE_NAME = ".consolidate-lock"
+HOLDER_STALE_S = 3600
+SESSION_SCAN_INTERVAL_S = 600
+
+_last_session_scan_at = 0.0
+
+DURABLE_MEMORY_INTENT_PATTERN = re.compile(r"(?i)\b(capture|remember|save|store|persist|note)\b")
+DURABLE_MEMORY_INTENT_ZH_PATTERN = re.compile(r"(记住|保存|记录|沉淀|长期记忆|持久记忆)")
+DURABLE_MEMORY_LIST_PREFIX_PATTERN = re.compile(r"^(?:[-*]|\d+[.)])\s+")
+DURABLE_MEMORY_LINE_PATTERNS = (
+    ("project-conventions", re.compile(r"(?i)^Project convention:\s*(.+)$")),
+    ("key-decisions", re.compile(r"(?i)^Decision:\s*(.+)$")),
+    ("dependency-facts", re.compile(r"(?i)^Dependency:\s*(.+)$")),
+    ("user-preferences", re.compile(r"(?i)^Preference:\s*(.+)$")),
+    ("project-conventions", re.compile(r"^项目约定：\s*(.+)$")),
+    ("key-decisions", re.compile(r"^决策：\s*(.+)$")),
+    ("dependency-facts", re.compile(r"^依赖：\s*(.+)$")),
+    ("user-preferences", re.compile(r"^偏好：\s*(.+)$")),
+)
+SECRET_SHAPED_TEXT_PATTERN = re.compile(r"(?i)(\b(api[_ -]?key|token|secret|password)\b|sk-[A-Za-z0-9_-]{6,})")
 
 DURABLE_TOPIC_DEFAULTS = {
     "project-conventions": {
@@ -38,6 +62,316 @@ DURABLE_TOPIC_DEFAULTS = {
         "tags": ["preference"],
     },
 }
+
+
+def ensure_memory_dir(memory_dir):
+    memory_dir = Path(memory_dir)
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    (memory_dir / "logs").mkdir(parents=True, exist_ok=True)
+    return memory_dir
+
+
+def daily_log_path(memory_dir, today=None):
+    today = today or date.today()
+    memory_dir = ensure_memory_dir(memory_dir)
+    path = memory_dir / "logs" / str(today.year) / f"{today.month:02d}" / f"{today.isoformat()}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def append_to_daily_log(memory_dir, entry, today=None):
+    entry = str(entry).strip()
+    if not entry:
+        return None
+    path = daily_log_path(memory_dir, today=today)
+    timestamp = datetime.now().strftime("%H:%M")
+    with path.open("a", encoding="utf-8") as file:
+        file.write(f"- [{timestamp}] {entry}\n")
+    return path
+
+
+def load_memory_index_text(memory_dir):
+    path = Path(memory_dir) / ENTRYPOINT_NAME
+    if not path.exists():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")[:MAX_MEMORY_INDEX_CHARS]
+    except OSError:
+        return ""
+
+
+def extract_memory_tags(text):
+    return [match.strip() for match in re.findall(r"<memory>(.*?)</memory>", str(text), re.DOTALL) if match.strip()]
+
+
+def _lock_path(memory_dir):
+    return Path(memory_dir) / LOCK_FILE_NAME
+
+
+def read_last_consolidated_at(memory_dir):
+    try:
+        return _lock_path(memory_dir).stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def try_acquire_lock(memory_dir):
+    ensure_memory_dir(memory_dir)
+    lock_path = _lock_path(memory_dir)
+    current_pid = os.getpid()
+    try:
+        stat = lock_path.stat()
+        age = datetime.now().timestamp() - stat.st_mtime
+        holder_pid = int(lock_path.read_text(encoding="utf-8").strip())
+        if age < HOLDER_STALE_S:
+            try:
+                os.kill(holder_pid, 0)
+                return False
+            except OSError:
+                pass
+    except (OSError, ValueError):
+        pass
+    lock_path.write_text(str(current_pid), encoding="utf-8")
+    return True
+
+
+def release_lock(memory_dir):
+    lock_path = _lock_path(memory_dir)
+    try:
+        timestamp = datetime.now().timestamp()
+        lock_path.write_text("released", encoding="utf-8")
+        os.utime(lock_path, (timestamp, timestamp))
+    except OSError:
+        pass
+
+
+def record_consolidation(memory_dir):
+    ensure_memory_dir(memory_dir)
+    lock_path = _lock_path(memory_dir)
+    lock_path.write_text(str(os.getpid()), encoding="utf-8")
+    timestamp = datetime.now().timestamp()
+    os.utime(lock_path, (timestamp, timestamp))
+
+
+def list_sessions_since(since_ts, sessions_dir=None, current_session_id=""):
+    scan_dir = Path(sessions_dir) if sessions_dir is not None else None
+    if scan_dir is None or not scan_dir.exists():
+        return []
+    result = set()
+    for path in scan_dir.iterdir():
+        if path.suffix not in {".json", ".jsonl"}:
+            continue
+        session_id = path.stem.removesuffix(".events")
+        if current_session_id and current_session_id == session_id:
+            continue
+        if path.stat().st_mtime > since_ts:
+            result.add(session_id)
+    return sorted(result)
+
+
+def should_auto_dream(memory_dir, min_hours, min_sessions, current_session_id, sessions_dir=None):
+    global _last_session_scan_at
+
+    last = read_last_consolidated_at(memory_dir)
+    current = datetime.now().timestamp()
+    hours_since = (current - last) / 3600 if last > 0 else float("inf")
+    if hours_since < float(min_hours):
+        return False
+    session_count = len(list_sessions_since(last, sessions_dir=sessions_dir, current_session_id=current_session_id))
+    if session_count >= int(min_sessions):
+        _last_session_scan_at = current
+        return True
+    if current - _last_session_scan_at < SESSION_SCAN_INTERVAL_S:
+        return False
+    _last_session_scan_at = current
+    return False
+
+
+def build_memory_system_section(memory_dir):
+    index = load_memory_index_text(memory_dir)
+    section = f"""# Auto Memory
+
+You have a persistent, file-based memory system at `{Path(memory_dir)}/`.
+Use it for durable facts that should survive future sessions. Keep short-lived task state in working memory instead.
+
+Memory types:
+- user: stable user role, goals, preferences, and collaboration style.
+- feedback: corrections from the user that should change future behavior.
+- project: ongoing project facts or decisions not directly derivable from code or git.
+- reference: pointers to external resources and why they matter.
+
+Do not save secrets, transient task status, raw command output, stack traces, ordinary code facts, or anything already obvious from the repository.
+
+How memory enters the system:
+- `/remember <text>` appends a note to the daily log.
+- `<memory>...</memory>` in a final answer is appended to the daily log after the turn.
+- `/dream` consolidates daily logs into `{ENTRYPOINT_NAME}` and topic files.
+
+`{ENTRYPOINT_NAME}` is an index, not a dump. Keep each entry short and point to topic files.
+"""
+    if index:
+        section += f"\n## Current Memory Index ({ENTRYPOINT_NAME})\n{index}\n"
+    else:
+        section += "\nNo durable memories consolidated yet.\n"
+    return section
+
+
+def build_dream_prompt(memory_dir, transcript_dir="", session_ids=None):
+    session_ids = session_ids or []
+    transcript_line = ""
+    if transcript_dir:
+        transcript_line = f"\nSession transcripts: `{transcript_dir}`. Search narrowly; do not read everything.\n"
+    sessions_line = ""
+    if session_ids:
+        sessions_line = "\nSessions since last consolidation:\n" + "\n".join(f"- {session_id}" for session_id in session_ids)
+
+    return f"""# Dream: Memory Consolidation
+
+You are consolidating Pico's repo-local file memory.
+
+Memory directory: `{Path(memory_dir)}`
+{transcript_line}
+Daily logs live under `logs/YYYY/MM/YYYY-MM-DD.md`.
+The memory index is `{ENTRYPOINT_NAME}`.
+{sessions_line}
+
+Rules:
+- Read `{ENTRYPOINT_NAME}` if it exists.
+- Review recent daily logs and relevant topic files.
+- Write durable facts into topic files under the memory directory.
+- Update `{ENTRYPOINT_NAME}` as a concise index only.
+- Do not store secrets, raw command output, stack traces, or transient task state.
+- Merge near-duplicates and prune stale contradictions.
+
+Return a short final summary after updating memory files."""
+
+
+def reject_durable_reason(note_text, redacted_value="<redacted>"):
+    text = str(note_text or "").strip()
+    lowered = text.lower()
+    if not text:
+        return "empty"
+    if redacted_value in text or SECRET_SHAPED_TEXT_PATTERN.search(text):
+        return "secret_shaped"
+    checkpoint_like_prefixes = (
+        "current goal",
+        "current blocker",
+        "next step",
+        "current phase",
+        "key files",
+        "freshness",
+        "当前目标",
+        "当前卡点",
+        "下一步",
+        "当前阶段",
+        "关键文件",
+        "已完成",
+        "已排除",
+    )
+    if any(lowered.startswith(prefix) for prefix in checkpoint_like_prefixes):
+        return "transient_task_state"
+    if re.search(r"(?i)\b(stdout|stderr|traceback|exit_code)\b", text) or len(text) > 220:
+        return "noisy_output"
+    return ""
+
+
+def extract_durable_promotions(user_message, final_answer, redacted_value="<redacted>"):
+    user_text = str(user_message or "")
+    if not (DURABLE_MEMORY_INTENT_PATTERN.search(user_text) or DURABLE_MEMORY_INTENT_ZH_PATTERN.search(user_text)):
+        return [], []
+    promotions = []
+    rejections = []
+    for line in str(final_answer or "").splitlines():
+        text = DURABLE_MEMORY_LIST_PREFIX_PATTERN.sub("", line.strip(), count=1)
+        if not text or redacted_value in text:
+            continue
+        for topic, pattern in DURABLE_MEMORY_LINE_PATTERNS:
+            match = pattern.match(text)
+            if not match:
+                continue
+            note_text = match.group(1).strip()
+            if note_text:
+                reason = reject_durable_reason(note_text, redacted_value=redacted_value)
+                if reason:
+                    rejections.append(f"{topic}:{reason}")
+                    break
+                promotions.append((topic, note_text))
+            break
+    return promotions, rejections
+
+
+def promote_durable_memory(agent, user_message, final_answer):
+    promotions, rejections = extract_durable_promotions(user_message, final_answer)
+    promoted, superseded = agent.memory.promote_durable(promotions)
+    agent.session["memory"] = agent.memory.to_dict()
+    agent.last_durable_promotions = promoted
+    agent.last_durable_rejections = rejections
+    agent.last_durable_superseded = superseded
+    return promoted, rejections, superseded
+
+
+def run_dream(agent, quiet=False, session_ids=None):
+    from ..core.runtime import Pico
+
+    ensure_memory_dir(agent.memory_dir)
+    session_ids = list(session_ids or [])
+    dream_prompt = build_dream_prompt(agent.memory_dir, transcript_dir=str(agent.session_store.root), session_ids=session_ids)
+    try:
+        memory_scope = Path(agent.memory_dir).resolve().relative_to(agent.root)
+    except ValueError:
+        memory_scope = Path(".pico") / "memory"
+    dream_agent = Pico(
+        model_client=agent.model_client,
+        workspace=WorkspaceContext.build(agent.root),
+        session_store=agent.session_store,
+        approval_policy="auto",
+        max_steps=agent.max_steps,
+        max_new_tokens=agent.max_new_tokens,
+        secret_env_names=agent.secret_env_names,
+        feature_flags={**agent.feature_flags, "memory": False, "relevant_memory": False},
+        write_scope=[str(memory_scope)],
+        memory_dir=agent.memory_dir,
+        auto_dream=False,
+    )
+    dream_agent.set_tool_profile("dream")
+    dream_agent.refresh_prefix(force=True)
+    result = dream_agent.ask(dream_prompt)
+    record_consolidation(agent.memory_dir)
+    agent.session_event_bus.emit("dream_consolidated", {"quiet": bool(quiet), "session_ids": session_ids, "memory_dir": str(agent.memory_dir)})
+    agent.memory.state = normalize_memory_state(agent.memory.state, agent.root)
+    agent.session["memory"] = agent.memory.to_dict()
+    return result
+
+
+def maintain_memory_after_turn(agent, final_answer):
+    for entry in extract_memory_tags(final_answer):
+        append_to_daily_log(agent.memory_dir, entry)
+    if not agent.auto_dream:
+        return None
+    if not should_auto_dream(
+        agent.memory_dir,
+        min_hours=agent.dream_interval_hours,
+        min_sessions=agent.dream_min_sessions,
+        current_session_id=agent.session["id"],
+        sessions_dir=agent.session_store.root,
+    ):
+        return None
+    previous_mtime = read_last_consolidated_at(agent.memory_dir)
+    if not try_acquire_lock(agent.memory_dir):
+        return None
+    session_ids = list_sessions_since(previous_mtime, sessions_dir=agent.session_store.root, current_session_id=agent.session["id"])
+    try:
+        result = run_dream(agent, quiet=True, session_ids=session_ids)
+        release_lock(agent.memory_dir)
+        return result
+    except Exception:
+        lock_path = Path(agent.memory_dir) / LOCK_FILE_NAME
+        if lock_path.exists():
+            try:
+                os.utime(lock_path, (previous_mtime, previous_mtime))
+            except OSError:
+                pass
+        raise
 
 
 def default_memory_state():
