@@ -44,9 +44,10 @@ from .model_decision import (
     retry_notice as model_retry_notice,
     strip_cdata as strip_model_cdata,
 )
-from .policy_engine import PolicyEngine, ToolRequest
+from .policy_engine import PolicyContext, PolicyEngine, ToolRequest
 from .run_context import RunContext
 from .run_lifecycle import RunLifecycle
+from .run_reducer import reduce_run_state
 from .run_store import RunStore
 from .runtime_engine import CompletionTurnResult, RunRequest, RuntimeEngine
 from .runtime_events import RuntimeEvents
@@ -1276,6 +1277,46 @@ class Pico:
     def write_task_state(self, task_state):
         self.run_store.write_task_state(task_state)
 
+    def persist_run_state(self, task_state):
+        self.write_task_state(task_state)
+
+    def apply_run_events(self, task_state, events):
+        for event in events or []:
+            reduce_run_state(task_state, event)
+            if event.type == "task_list_updated":
+                self.session["tasks"] = completion.clone_tasks(task_state.tasks or [])
+                self.session_path = self.session_store.save(self.session)
+            elif event.type == "verification_recorded":
+                verification = dict((event.payload or {}).get("verification", {}) or {})
+                if verification:
+                    verifications = list(self.session.get("verifications", []) or [])
+                    verifications.append(dict(verification))
+                    self.session["verifications"] = verifications[-20:]
+                    if verification.get("status") == "passed":
+                        self.complete_open_verification_task(task_state, verification)
+                    self.set_stage(task_state, "verifying" if verification.get("status") == "passed" else "repairing")
+                    self.emit_trace(task_state, "verification_recorded", {"verification": verification})
+                    self.session_path = self.session_store.save(self.session)
+
+    def task_ledger_snapshot(self):
+        return completion.clone_tasks(self.current_tasks())
+
+    def artifact_state_for_run(self, task_state):
+        changed_paths = list(task_state.changed_paths or [])
+        if not changed_paths:
+            return {"artifact_graph": {}, "verification_plan": {}}
+        artifact_graph = build_artifact_graph(
+            self.root,
+            changed_paths,
+            task_state.verifications or [],
+        )
+        verification_plan = build_verification_plan(
+            self.root,
+            artifact_graph,
+            task_state.verifications or [],
+        )
+        return {"artifact_graph": artifact_graph, "verification_plan": verification_plan}
+
     @staticmethod
     def now_text():
         return now()
@@ -1929,6 +1970,7 @@ class Pico:
         args,
         *,
         forced_result=None,
+        forced_metadata=None,
         source="",
         checkpoint_trigger="tool_executed",
     ):
@@ -1940,6 +1982,7 @@ class Pico:
             name,
             args,
             forced_result=forced_result,
+            forced_metadata=forced_metadata,
             source=source,
             checkpoint_trigger=checkpoint_trigger,
         )
@@ -1953,6 +1996,7 @@ class Pico:
         args,
         *,
         forced_result=None,
+        forced_metadata=None,
         source="",
         checkpoint_trigger="tool_executed",
     ):
@@ -1963,6 +2007,7 @@ class Pico:
             name,
             args,
             forced_result=forced_result,
+            forced_metadata=forced_metadata,
             source=source,
             checkpoint_trigger=checkpoint_trigger,
         )
@@ -2090,8 +2135,8 @@ class Pico:
         )
         return result.final_answer
 
-    def run_tool(self, name, args):
-        """Execute one guarded tool call."""
+    def execute_tool(self, name, args):
+        """Execute one guarded tool call and return structured execution metadata."""
         execution = ToolRunner(self.tool_execution_context()).run(name, args)
         self._last_tool_result_metadata = dict(execution.metadata)
         if execution.metadata.get("tool_status") == "ok":
@@ -2099,6 +2144,11 @@ class Pico:
             self.update_tool_policy_after_tool(name, args, execution.content, execution.metadata.get("tool_status", ""))
         if execution.metadata.get("tool_status") != "rejected":
             self.record_process_note_for_tool(name, execution.metadata)
+        return execution
+
+    def run_tool(self, name, args):
+        """Execute one guarded tool call and return rendered content for legacy callers."""
+        execution = self.execute_tool(name, args)
         return execution.content
 
     def tool_execution_context(self):
@@ -2261,10 +2311,84 @@ class Pico:
                 raise ValueError("delegate depth exceeded")
 
     def preflight_tool(self, name, args, tool):
-        return self.policy_engine.before_tool(
-            self,
-            ToolRequest(name=name, args=dict(args or {}), tool=dict(tool or {})),
-        ).to_preflight()
+        request = ToolRequest(name=name, args=dict(args or {}), tool=dict(tool or {}))
+        decision = self.policy_engine.before_tool(self.policy_context_for_tool(request), request)
+        if decision.allowed and self.tool_requires_approval(name, args, tool):
+            context = self.policy_context_for_tool(request, approval_granted=self.approve(name, args))
+            decision = self.policy_engine.before_tool(context, request)
+        return decision.to_preflight()
+
+    def policy_context_for_tool(self, request, approval_granted=None):
+        args = dict(request.args or {})
+        paths = self.policy_request_paths(request.name, args)
+        static_error, static_code, security_event_type = self.static_tool_validation_error(request.name, args)
+        return PolicyContext(
+            runtime_mode=str(self.runtime_mode),
+            read_only=bool(self.read_only),
+            approval_policy=str(self.approval_policy),
+            allowed_tools=tuple(self.allowed_tools) if self.allowed_tools is not None else None,
+            write_scope=tuple(self.policy_request_paths("write_scope", {"files": [{"path": path} for path in self.write_scope]})),
+            recent_tool_calls=[{"name": item.get("name", ""), "args": item.get("args", {})} for item in self.session.get("history", []) if item.get("role") == "tool"],
+            read_ledger=dict(self.read_ledger()),
+            active_plan_file=str(self.active_plan_relpath() or ""),
+            tools=self.tools,
+            request_paths=tuple(paths),
+            path_freshness={path: memorylib.file_freshness(path, self.root) for path in paths},
+            existing_paths=tuple(path for path in paths if (self.root / path).exists()),
+            approval_required=self.tool_requires_approval(request.name, args, request.tool),
+            approval_granted=approval_granted,
+            changed_paths=tuple(self.current_task_state.changed_paths or []) if self.current_task_state is not None else (),
+            latest_verification_status=completion.latest_verification_status(self.current_task_state.verifications or []) if self.current_task_state is not None else "",
+            consecutive_read_only_count=self.consecutive_read_only_tool_count(),
+            read_only_stall_limit=self.read_only_stall_limit,
+            static_error=static_error,
+            static_error_code=static_code,
+            security_event_type=security_event_type,
+            tool_example=self.tool_example(request.name),
+        )
+
+    def static_tool_validation_error(self, name, args):
+        try:
+            toolkit.validate_tool(self, name, args)
+            if name == "delegate" and self.depth >= self.max_depth:
+                raise ValueError("delegate depth exceeded")
+        except Exception as exc:
+            error_text = str(exc)
+            security_event_type = ""
+            if "path escapes workspace" in error_text:
+                security_event_type = "path_escape"
+            elif "blocked shell command" in error_text:
+                security_event_type = "shell_command_blocked"
+            return error_text, "", security_event_type
+        return "", "", ""
+
+    def policy_request_paths(self, name, args):
+        raw_paths = []
+        if name in {"write_files", "write_scope"}:
+            raw_paths = [
+                str(item.get("path", "")).strip()
+                for item in (args or {}).get("files", []) or []
+                if isinstance(item, dict) and str(item.get("path", "")).strip()
+            ]
+        else:
+            raw = str((args or {}).get("path", "")).strip()
+            raw_paths = [raw] if raw else []
+        paths = []
+        for raw_path in raw_paths:
+            try:
+                paths.append(self.path(raw_path).relative_to(self.root).as_posix())
+            except Exception:
+                paths.append(raw_path)
+        return paths
+
+    def tool_requires_approval(self, name, args, tool):
+        if not (tool or {}).get("risky", False):
+            return False
+        if self.read_only and name == "run_shell" and is_read_only_shell_command(str((args or {}).get("command", ""))):
+            return False
+        if self.is_active_plan_file_write(name, args):
+            return False
+        return True
 
     def tool_list_files(self, args):
         return toolkit.tool_list_files(self, args)

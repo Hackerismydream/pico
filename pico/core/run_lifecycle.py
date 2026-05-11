@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 
 from .run_events import RunEvent
-from .run_reducer import reduce_run_state
+from .tool_runner import ToolExecutionResult
 from .workspace import clip, now
 
 
@@ -20,18 +20,23 @@ class RunLifecycle:
         args,
         *,
         forced_result=None,
+        forced_metadata=None,
         source="",
         checkpoint_trigger="tool_executed",
     ):
-        reduce_run_state(task_state, RunEvent("tool_executed", {"name": name}))
         tool_started_at = time.monotonic()
         started_payload = {"name": name, "args": args}
         if source:
             started_payload["source"] = source
         host.emit_runtime_event("tool_started", started_payload)
 
-        result = forced_result if forced_result is not None else host.run_tool(name, args)
-        metadata = dict(host._last_tool_result_metadata or {})
+        execution = (
+            _forced_execution(forced_result, forced_metadata)
+            if forced_result is not None
+            else host.execute_tool(name, args)
+        )
+        result = execution.content
+        metadata = dict(execution.metadata or {})
         duration_ms = int((time.monotonic() - tool_started_at) * 1000)
         tool_payload = {
             "name": name,
@@ -47,6 +52,15 @@ class RunLifecycle:
 
         rejection_recovery = metadata.get("recovery_message", "")
         if rejection_recovery:
+            host.apply_run_events(
+                task_state,
+                [
+                    RunEvent(
+                        "runtime_reminder_emitted",
+                        {"reason": "tool_rejection_recovery", "message": rejection_recovery, "tool": name, "args": args},
+                    )
+                ],
+            )
             host.emit_trace(
                 task_state,
                 "runtime_reminder_emitted",
@@ -55,20 +69,38 @@ class RunLifecycle:
             host.record({"role": "assistant", "content": rejection_recovery, "created_at": now()})
 
         affected_paths = list(metadata.get("affected_paths", []) or [])
+        events = [RunEvent("tool_executed", {"name": name, "metadata": metadata})]
         if affected_paths:
-            host.remember_changed_paths(task_state, affected_paths)
-            host.set_stage(task_state, "implementing")
-        host.run_store.write_task_state(task_state)
-        host.emit_trace(task_state, "tool_executed", tool_payload)
-
+            events.append(RunEvent("changed_paths_recorded", {"paths": affected_paths}))
+        events.append(RunEvent("task_list_updated", {"tasks": host.task_ledger_snapshot()}))
         verification = metadata.get("verification")
         if verification:
-            host.record_verification_artifact(task_state, verification)
+            verification = dict(verification)
+            if not verification.get("checked_paths"):
+                verification["checked_paths"] = list(affected_paths)
+            events.append(RunEvent("verification_recorded", {"verification": verification}))
+        host.apply_run_events(task_state, events)
+        artifact_state = host.artifact_state_for_run(task_state)
+        artifact_graph = dict(artifact_state.get("artifact_graph", {}) or {})
+        verification_plan = dict(artifact_state.get("verification_plan", {}) or {})
+        update_events = []
+        if artifact_graph:
+            update_events.append(RunEvent("artifact_graph_updated", {"artifact_graph": artifact_graph}))
+        if verification_plan:
+            update_events.append(RunEvent("verification_plan_updated", {"verification_plan": verification_plan}))
+        if update_events:
+            host.apply_run_events(task_state, update_events)
+        host.persist_run_state(task_state)
+        host.emit_trace(task_state, "tool_executed", tool_payload)
+
         host.drain_subagent_notifications()
 
-        task_state.tasks = host.current_tasks()
         checkpoint = host.create_checkpoint(task_state, user_message, trigger=checkpoint_trigger)
-        host.run_store.write_task_state(task_state)
+        host.apply_run_events(
+            task_state,
+            [RunEvent("checkpoint_created", {"checkpoint_id": checkpoint["checkpoint_id"], "trigger": checkpoint_trigger})],
+        )
+        host.persist_run_state(task_state)
         host.emit_trace(
             task_state,
             "checkpoint_created",
@@ -99,7 +131,7 @@ class RunLifecycle:
         checkpoint = None
         if checkpoint_trigger:
             checkpoint = host.create_checkpoint(task_state, user_message, trigger=checkpoint_trigger)
-        host.run_store.write_task_state(task_state)
+        host.persist_run_state(task_state)
         if checkpoint:
             host.emit_trace(
                 task_state,
@@ -121,3 +153,23 @@ class RunLifecycle:
         )
         host.run_store.write_report(task_state, host.redact_artifact(host.build_report(task_state)))
         return final
+
+
+def _forced_execution(content: str, metadata: dict | None = None) -> ToolExecutionResult:
+    merged = {
+        "tool_status": "rejected",
+        "tool_error_code": "runtime_control_rejected",
+        "security_event_type": "",
+        "risk_level": "low",
+        "read_only": True,
+        "affected_paths": [],
+        "workspace_changed": False,
+        "diff_summary": [],
+        "effective_effects": [],
+    }
+    merged.update(dict(metadata or {}))
+    return ToolExecutionResult(
+        content=str(content),
+        metadata=merged,
+        effects=set(),
+    )

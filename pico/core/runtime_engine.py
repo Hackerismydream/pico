@@ -60,6 +60,7 @@ class RuntimeHost(Protocol):
         args: dict,
         *,
         forced_result: str | None = None,
+        forced_metadata: dict | None = None,
         source: str = "model",
         checkpoint_trigger: str = "tool_executed",
     ) -> None: ...
@@ -361,6 +362,7 @@ class RuntimeEngine:
         control_decision = host.before_tool(task_state, name, args, user_message)
         host.record_control_decision(task_state, "before_tool", control_decision)
         forced_tool_result = None
+        forced_tool_metadata = None
         if control_decision.action == "remind":
             reminder_key = str(control_decision.reason)
             if reminder_key and host.runtime_reminder_once(reminder_key):
@@ -372,6 +374,17 @@ class RuntimeEngine:
                 host.record({"role": "assistant", "content": control_decision.message, "created_at": now()})
         elif control_decision.action == "reject":
             forced_tool_result = control_decision.message
+            forced_tool_metadata = {
+                "tool_status": "rejected",
+                "tool_error_code": control_decision.reason or "runtime_control_rejected",
+                "security_event_type": "",
+                "risk_level": "low",
+                "read_only": True,
+                "affected_paths": [],
+                "workspace_changed": False,
+                "diff_summary": [],
+                "effective_effects": [],
+            }
         host.execute_tool_request(
             task_state,
             run_context,
@@ -379,6 +392,7 @@ class RuntimeEngine:
             name,
             args,
             forced_result=forced_tool_result,
+            forced_metadata=forced_tool_metadata,
         )
 
     def _dispatch_final(

@@ -13,6 +13,15 @@ def reduce_run_state(state, event: RunEvent):
         state.record_attempt()
     elif event_type == "tool_executed":
         state.record_tool(str(payload.get("name", "")))
+    elif event_type == "changed_paths_recorded":
+        existing = list(state.changed_paths or [])
+        for path in payload.get("paths", []) or []:
+            path = str(path)
+            if path and path not in existing:
+                existing.append(path)
+        state.changed_paths = existing
+    elif event_type == "task_list_updated":
+        state.tasks = list(payload.get("tasks", []) or [])
     elif event_type == "stage_changed":
         state.stage = str(payload.get("stage", state.stage))
     elif event_type == "control_decision_recorded":
@@ -23,11 +32,16 @@ def reduce_run_state(state, event: RunEvent):
         state.runtime_reminders.append(dict(payload))
     elif event_type == "checkpoint_created":
         state.checkpoint_id = str(payload.get("checkpoint_id", state.checkpoint_id))
-    elif event_type == "completion_assessed":
-        state.completion_gate = dict(payload.get("assessment", state.completion_gate or {}) or {})
+    elif event_type in {"completion_assessed", "completion_gate_updated"}:
+        gate = payload.get("completion_gate", payload.get("assessment", state.completion_gate or {}))
+        state.completion_gate = dict(gate or {})
     elif event_type == "verification_recorded":
         state.verifications = list(state.verifications or [])
         state.verifications.append(dict(payload.get("verification", payload)))
+    elif event_type == "artifact_graph_updated":
+        state.artifact_graph = dict(payload.get("artifact_graph", {}) or {})
+    elif event_type == "verification_plan_updated":
+        state.verification_plan = dict(payload.get("verification_plan", {}) or {})
     elif event_type == "run_finished":
         state.finish_success(str(payload.get("final_answer", state.final_answer)))
     elif event_type == "run_stopped":
