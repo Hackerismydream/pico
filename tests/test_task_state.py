@@ -2,6 +2,7 @@ from pico.core.task_state import (
     STOP_REASON_FINAL_ANSWER_RETURNED,
     STOP_REASON_RETRY_LIMIT_REACHED,
     STOP_REASON_STEP_LIMIT_REACHED,
+    RunState,
     TaskState,
 )
 
@@ -73,3 +74,10 @@ def test_task_state_snapshot_keeps_checkpoint_reference_without_body():
     assert snapshot["resume_status"] == "full-valid"
     assert "current_goal" not in snapshot
     assert "next_step" not in snapshot
+
+
+def test_run_state_is_compatibility_alias_for_task_state():
+    state = RunState.create(run_id="run_007", task_id="task_007", user_request="Inspect aliases.")
+
+    assert isinstance(state, TaskState)
+    assert RunState is TaskState

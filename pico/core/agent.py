@@ -24,11 +24,13 @@ from ..features.compact import CompactService, deterministic_summary
 from ..features.context_manager import ContextManager
 from ..features.context_usage import build_context_usage
 from ..features.control import RuntimeControlPlane
+from ..features.plan_mode import PlanModeController
 from ..features.skill_runtime import SkillRuntime
 from ..features.skills import SkillCatalog, parse_skill_command
 from ..features.subagents import SubagentManager
 from ..features.verifier_driver import build_verification_plan
 from ..providers.adapter import is_recoverable_error, is_truncated
+from ..providers.base import CompletionResult
 from ..tools import registry as toolkit
 from ..tools.registry import is_allowed
 from ..tools.shell_safety import is_read_only_shell_command
@@ -42,11 +44,16 @@ from .model_decision import (
     retry_notice as model_retry_notice,
     strip_cdata as strip_model_cdata,
 )
+from .policy_engine import PolicyEngine, ToolRequest
 from .run_context import RunContext
+from .run_lifecycle import RunLifecycle
 from .run_store import RunStore
+from .runtime_engine import CompletionTurnResult, RunRequest, RuntimeEngine
 from .runtime_events import RuntimeEvents
+from .runtime_snapshot import RuntimeSnapshot
 from .session import SessionStore
 from .task_state import TaskState
+from .tool_policy import ToolPolicyController
 from .tool_runner import ToolExecutionContext, ToolRunner
 from .workspace import IGNORED_PATH_NAMES, MAX_HISTORY, WorkspaceContext, clip, now
 
@@ -154,6 +161,7 @@ class Pico:
         self.skill_catalog = SkillCatalog(self.root, skill_roots=skill_roots)
         self.skill_loader = self.skill_catalog
         self.skill_runtime = SkillRuntime(self, self.skill_catalog)
+        self.plan_mode_controller = PlanModeController(self.root)
         self.current_skill_invocations = []
         self.last_skill_metadata = {"selected": [], "selected_count": 0, "invoked": []}
         self.current_turn_id = ""
@@ -162,6 +170,10 @@ class Pico:
         self._trace_sequence = 0
         self._tool_artifact_sequence = 0
         self.runtime_control = RuntimeControlPlane()
+        self.runtime_engine = RuntimeEngine()
+        self.run_lifecycle = RunLifecycle()
+        self.policy_engine = PolicyEngine()
+        self.tool_policy_controller = ToolPolicyController()
         self.decision_adapter = ModelDecisionAdapter()
         self.subagent_manager = SubagentManager({
             "Explore": self._build_explore_subagent_runner(),
@@ -494,83 +506,37 @@ class Pico:
 
     @property
     def runtime_mode(self):
-        self._ensure_session_shape()
-        mode = str(self.session["runtime_mode"].get("mode", RUNTIME_MODE_EXECUTE))
-        return mode if mode in {RUNTIME_MODE_EXECUTE, RUNTIME_MODE_PLAN} else RUNTIME_MODE_EXECUTE
+        return self.plan_mode_controller.mode(self.session)
 
     def active_plan_path(self):
-        self._ensure_session_shape()
-        plan_file = str(self.session["runtime_mode"].get("plan_file", "")).strip()
-        if not plan_file:
-            return None
-        return self.path(plan_file)
+        return self.plan_mode_controller.active_plan_path(self.session, self.path)
 
     def active_plan_relpath(self):
-        plan_path = self.active_plan_path()
-        if plan_path is None:
-            return ""
-        return plan_path.relative_to(self.root).as_posix()
+        return self.plan_mode_controller.active_plan_relpath(self.session, self.path)
 
     def active_plan_has_content(self):
-        plan_path = self.active_plan_path()
-        if plan_path is None or not plan_path.exists():
-            return False
-        try:
-            return bool(plan_path.read_text(encoding="utf-8", errors="replace").strip())
-        except OSError:
-            return False
+        return self.plan_mode_controller.active_plan_has_content(self.session, self.path)
 
     def plans_dir(self):
-        path = self.root / ".pico" / "plans"
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        return self.plan_mode_controller.plans_dir()
 
     def enter_plan_mode(self, topic=""):
         topic = str(topic or "").strip()
-        plan_path = self.plans_dir() / f"plan-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}.md"
-        plan_path.touch()
-        self.session["runtime_mode"] = {
-            "mode": RUNTIME_MODE_PLAN,
-            "plan_file": plan_path.relative_to(self.root).as_posix(),
-            "topic": topic,
-            "entered_at": now(),
-        }
+        plan_path = self.plan_mode_controller.enter(self.session, topic)
         self.session_path = self.session_store.save(self.session)
         self.refresh_prefix(force=True)
         self.append_session_event("runtime_mode_changed", {"mode": RUNTIME_MODE_PLAN, "plan_file": self.active_plan_relpath(), "topic": topic})
         return plan_path
 
     def exit_plan_mode(self):
-        plan_path = self.active_plan_path()
-        plan_text = ""
-        if plan_path is not None and plan_path.exists():
-            plan_text = plan_path.read_text(encoding="utf-8", errors="replace")
-        previous_plan = self.active_plan_relpath()
-        self.session["runtime_mode"] = {
-            "mode": RUNTIME_MODE_EXECUTE,
-            "plan_file": "",
-            "topic": "",
-            "entered_at": "",
-        }
+        plan_text, previous_plan = self.plan_mode_controller.exit(self.session, self.path)
         self.session_path = self.session_store.save(self.session)
         self.refresh_prefix(force=True)
         self.append_session_event("runtime_mode_changed", {"mode": RUNTIME_MODE_EXECUTE, "previous_plan_file": previous_plan})
         return plan_text
 
     def plan_mode_text(self):
-        if self.runtime_mode != RUNTIME_MODE_PLAN:
-            return ""
-        plan_relpath = self.active_plan_relpath()
-        topic = str(self.session["runtime_mode"].get("topic", "")).strip()
-        lines = [
-            "Runtime mode: plan",
-            f"- Active plan file: {plan_relpath}",
-            "- Allowed actions: list_files, read_file, glob, grep, search, delegate, and writes to the active plan file only.",
-            "- Do not edit project files until the plan is approved and runtime mode returns to execute.",
-        ]
-        if topic:
-            lines.append(f"- Planning topic: {topic}")
-        return "\n".join(lines)
+        return self.plan_mode_controller.prompt_section(self.session, self.path)
 
     def tool_signature(self):
         payload = []
@@ -913,6 +879,29 @@ class Pico:
             return completion.latest_verification_status(task_state.verifications or [])
         return completion.latest_verification_status(self.session.get("verifications", []) or [])
 
+    def runtime_snapshot(self):
+        task_state = self.current_task_state
+        tasks = list(getattr(task_state, "tasks", []) or []) if task_state is not None else []
+        if not tasks:
+            tasks = list(self.session.get("tasks", []) or [])
+        gate = dict(getattr(task_state, "completion_gate", {}) or {}) if task_state is not None else {}
+        subagent_count = len(self.session.get("subagents", []) or [])
+        manager = getattr(self, "subagent_manager", None)
+        if manager is not None:
+            subagent_count = max(subagent_count, len(manager.running_status()))
+        return RuntimeSnapshot(
+            model_name=str(getattr(self.model_client, "model", "")),
+            approval_policy=str(self.approval_policy),
+            session_id=str(self.session.get("id", "")),
+            cwd=str(self.root),
+            runtime_mode=str(getattr(self, "runtime_mode", RUNTIME_MODE_EXECUTE)),
+            stage=str(getattr(task_state, "stage", "") or ""),
+            tasks=tasks,
+            verification_status=str(self.verification_status()),
+            completion_gate=gate,
+            subagent_count=subagent_count,
+        )
+
     def set_stage(self, task_state, stage):
         stage = str(stage)
         if task_state.stage == stage:
@@ -1211,6 +1200,38 @@ class Pico:
             return value
         raise value
 
+    def _complete_model_turn(self, prompt, max_new_tokens, **kwargs):
+        raw = self.complete_model_with_deadline(prompt, max_new_tokens, **kwargs)
+        if isinstance(raw, CompletionResult):
+            metadata = dict(raw.metadata or {})
+            raw = raw.text
+        else:
+            metadata = dict(getattr(self.model_client, "last_completion_metadata", {}) or {})
+        self.last_completion_metadata = metadata
+        return raw, metadata
+
+    def complete_model_turn(self, prompt, max_new_tokens, **kwargs):
+        raw, metadata = self._complete_model_turn(prompt, max_new_tokens, **kwargs)
+        return CompletionTurnResult(text=raw, metadata=metadata)
+
+    def supports_prompt_cache(self):
+        return bool(getattr(self.model_client, "supports_prompt_cache", False))
+
+    def set_prompt_metadata(self, metadata):
+        self.last_prompt_metadata = dict(metadata or {})
+        self.last_completion_metadata = {
+            key: value
+            for key, value in self.last_prompt_metadata.items()
+            if key in {"finish_reason", "usage", "cache", "provider", "error_type", "error_message"}
+        }
+
+    def model_error_metadata(self, exc):
+        metadata = dict(getattr(self.model_client, "last_completion_metadata", {}) or {})
+        metadata.setdefault("finish_reason", "error")
+        metadata["error_type"] = exc.__class__.__name__
+        metadata["error_message"] = str(exc)
+        return metadata
+
     def model_call_timeout_seconds(self):
         try:
             timeout = float(getattr(self.model_client, "timeout", 0) or 0)
@@ -1251,6 +1272,26 @@ class Pico:
         self.session["history"].append(item)
         self.session_path = self.session_store.save(self.session)
         self.append_session_event_for_record(item)
+
+    def write_task_state(self, task_state):
+        self.run_store.write_task_state(task_state)
+
+    @staticmethod
+    def now_text():
+        return now()
+
+    def before_tool(self, task_state, name, args, user_message):
+        return self.runtime_control.before_tool(self, task_state, name, args, user_message)
+
+    def before_final(self, task_state, final, user_message):
+        return self.runtime_control.before_final(self, task_state, final, user_message)
+
+    def runtime_reminder_once(self, reason):
+        reminder_key = str(reason)
+        if not reminder_key or reminder_key in self._runtime_reminder_keys:
+            return False
+        self._runtime_reminder_keys.add(reminder_key)
+        return True
 
     def append_session_event(self, event, payload=None):
         payload = self.redact_artifact(payload or {})
@@ -1403,6 +1444,9 @@ class Pico:
     def prompt_metadata(self, user_message, prompt):
         _, metadata = self._build_prompt_and_metadata(user_message)
         return metadata
+
+    def build_prompt_for_turn(self, user_message):
+        return self._build_prompt_and_metadata(user_message)
 
     def _build_prompt_and_metadata(self, user_message):
         refresh = self.refresh_prefix()
@@ -1744,119 +1788,31 @@ class Pico:
         self.update_memory_after_tool(name, args, result)
 
     def tool_policy_state(self):
-        self._ensure_session_shape()
-        return self.session["tool_policy"]
+        return self.tool_policy_controller.tool_policy_state(self)
 
     def read_ledger(self):
-        return self.tool_policy_state().setdefault("read_ledger", {})
+        return self.tool_policy_controller.read_ledger(self)
 
     def canonical_tool_path(self, args):
-        raw_path = str((args or {}).get("path", "")).strip()
-        if not raw_path:
-            return ""
-        return self.path(raw_path).relative_to(self.root).as_posix()
+        return self.tool_policy_controller.canonical_tool_path(self, args)
 
     def validate_prior_read_policy(self, name, args):
-        tool = self.tools.get(name, {})
-        policy = tool.get("policy", {})
-        if not policy.get("requires_prior_read"):
-            return
-        canonical_path = self.canonical_tool_path(args)
-        entry = self.read_ledger().get(canonical_path)
-        if not entry:
-            raise ValueError(f"{name} requires prior read_file for {canonical_path}")
-        current = memorylib.file_freshness(canonical_path, self.root)
-        if entry.get("freshness") != current:
-            raise ValueError(f"{name} requires a fresh read_file for {canonical_path}")
+        return self.tool_policy_controller.validate_prior_read_policy(self, name, args)
 
     def validate_existing_write_read_policy(self, name, args):
-        if name not in {"write_file", "write_files"}:
-            return
-        if name == "write_files":
-            candidates = [
-                str(item.get("path", "")).strip()
-                for item in (args or {}).get("files", []) or []
-                if isinstance(item, dict)
-            ]
-        else:
-            candidates = [str((args or {}).get("path", "")).strip()]
-        for raw_path in candidates:
-            if not raw_path:
-                continue
-            target = self.path(raw_path)
-            if not target.exists():
-                continue
-            canonical_path = target.relative_to(self.root).as_posix()
-            entry = self.read_ledger().get(canonical_path)
-            if not entry:
-                raise ValueError(f"{name} requires prior read_file for {canonical_path}")
-            current = memorylib.file_freshness(canonical_path, self.root)
-            if entry.get("freshness") != current:
-                raise ValueError(f"{name} requires a fresh read_file for {canonical_path}")
+        return self.tool_policy_controller.validate_existing_write_read_policy(self, name, args)
 
     def validate_write_scope_policy(self, name, args):
-        if not self.write_scope or name not in {"write_file", "write_files", "patch_file"}:
-            return
-        if name == "write_files":
-            raw_paths = [
-                str(item.get("path", "")).strip()
-                for item in (args or {}).get("files", []) or []
-                if isinstance(item, dict)
-            ]
-        else:
-            raw_paths = [str((args or {}).get("path", "")).strip()]
-        allowed = []
-        for scope in self.write_scope:
-            try:
-                allowed.append(self.path(scope))
-            except Exception:
-                continue
-        if not allowed:
-            raise ValueError("subagent write_scope is empty")
-        for raw_path in raw_paths:
-            if not raw_path:
-                continue
-            target = self.path(raw_path)
-            if not any(os.path.commonpath([str(scope), str(target)]) == str(scope) for scope in allowed):
-                relpath = target.relative_to(self.root).as_posix()
-                scopes = ", ".join(path.relative_to(self.root).as_posix() for path in allowed)
-                raise ValueError(f"{relpath} is outside subagent write_scope ({scopes})")
+        return self.tool_policy_controller.validate_write_scope_policy(self, name, args)
 
     def is_active_plan_file_write(self, name, args):
-        if self.runtime_mode != RUNTIME_MODE_PLAN or name not in {"write_file", "patch_file"}:
-            return False
-        active = self.active_plan_path()
-        if active is None:
-            return False
-        try:
-            target = self.path((args or {}).get("path", ""))
-        except Exception:
-            return False
-        return target == active
+        return self.tool_policy_controller.is_active_plan_file_write(self, name, args)
 
     def validate_runtime_mode_policy(self, name, args):
-        if self.runtime_mode != RUNTIME_MODE_PLAN:
-            return
-        tool = self.tools.get(name, {})
-        if bool(tool.get("read_only", not tool.get("risky", True))):
-            return
-        if self.is_active_plan_file_write(name, args):
-            return
-        plan_relpath = self.active_plan_relpath() or "(no active plan file)"
-        raise ValueError(f"plan mode denied: {name} can only write the active plan file ({plan_relpath})")
+        return self.tool_policy_controller.validate_runtime_mode_policy(self, name, args)
 
     def update_tool_policy_after_tool(self, name, args, result, status):
-        if status != "ok" or name != "read_file":
-            return
-        canonical_path = self.canonical_tool_path(args)
-        if not canonical_path:
-            return
-        self.read_ledger()[canonical_path] = {
-            "freshness": memorylib.file_freshness(canonical_path, self.root),
-            "read_at": now(),
-            "result_chars": len(str(result)),
-        }
-        self.session_path = self.session_store.save(self.session)
+        return self.tool_policy_controller.update_tool_policy_after_tool(self, name, args, result, status)
 
     def materialize_tool_result(self, name, args, raw_result, max_chars):
         del args
@@ -1976,61 +1932,40 @@ class Pico:
         source="",
         checkpoint_trigger="tool_executed",
     ):
-        run_context.record_tool(name)
-        tool_started_at = time.monotonic()
-        started_payload = {"name": name, "args": args}
-        if source:
-            started_payload["source"] = source
-        self.emit_runtime_event("tool_started", started_payload)
-
-        result = forced_result if forced_result is not None else self.run_tool(name, args)
-        metadata = dict(self._last_tool_result_metadata or {})
-        duration_ms = int((time.monotonic() - tool_started_at) * 1000)
-        tool_payload = {
-            "name": name,
-            "args": args,
-            "result": clip(result, 500),
-            "duration_ms": duration_ms,
-            **metadata,
-        }
-        if source:
-            tool_payload["source"] = source
-        self.emit_runtime_event("tool_finished", tool_payload)
-        self.record({"role": "tool", "name": name, "args": args, "content": result, "created_at": now()})
-
-        rejection_recovery = metadata.get("recovery_message", "")
-        if rejection_recovery:
-            self.emit_trace(
-                task_state,
-                "runtime_reminder_emitted",
-                {"reason": "tool_rejection_recovery", "message": rejection_recovery, "tool": name, "args": args},
-            )
-            self.record({"role": "assistant", "content": rejection_recovery, "created_at": now()})
-
-        affected_paths = list(metadata.get("affected_paths", []) or [])
-        if affected_paths:
-            self.remember_changed_paths(task_state, affected_paths)
-            self.set_stage(task_state, "implementing")
-        self.run_store.write_task_state(task_state)
-        self.emit_trace(task_state, "tool_executed", tool_payload)
-
-        verification = metadata.get("verification")
-        if verification:
-            self.record_verification_artifact(task_state, verification)
-        self.drain_subagent_notifications()
-
-        task_state.tasks = self.current_tasks()
-        checkpoint = self.create_checkpoint(task_state, user_message, trigger=checkpoint_trigger)
-        self.run_store.write_task_state(task_state)
-        self.emit_trace(
+        return self.run_lifecycle.execute_tool_step(
+            self,
             task_state,
-            "checkpoint_created",
-            {
-                "checkpoint_id": checkpoint["checkpoint_id"],
-                "trigger": checkpoint_trigger,
-            },
+            run_context,
+            user_message,
+            name,
+            args,
+            forced_result=forced_result,
+            source=source,
+            checkpoint_trigger=checkpoint_trigger,
         )
-        return result
+
+    def execute_tool_request(
+        self,
+        task_state,
+        run_context,
+        user_message,
+        name,
+        args,
+        *,
+        forced_result=None,
+        source="",
+        checkpoint_trigger="tool_executed",
+    ):
+        return self._execute_tool_step(
+            task_state,
+            run_context,
+            user_message,
+            name,
+            args,
+            forced_result=forced_result,
+            source=source,
+            checkpoint_trigger=checkpoint_trigger,
+        )
 
     def _finish_run(
         self,
@@ -2043,57 +1978,40 @@ class Pico:
         promote_memory=False,
         assess_completion=False,
     ):
-        if assess_completion:
-            self.assess_completion(task_state, user_message)
-        self.record({"role": "assistant", "content": final, "created_at": now()})
-        if promote_memory:
-            self.promote_durable_memory(user_message, final)
-        checkpoint = None
-        if checkpoint_trigger:
-            checkpoint = self.create_checkpoint(task_state, user_message, trigger=checkpoint_trigger)
-        self.run_store.write_task_state(task_state)
-        if checkpoint:
-            self.emit_trace(
-                task_state,
-                "checkpoint_created",
-                {
-                    "checkpoint_id": checkpoint["checkpoint_id"],
-                    "trigger": checkpoint_trigger,
-                },
-            )
-        self.emit_trace(
+        return self.run_lifecycle.finish_run(
+            self,
             task_state,
-            "run_finished",
-            {
-                "status": task_state.status,
-                "stop_reason": task_state.stop_reason,
-                "final_answer": final,
-                "run_duration_ms": int((time.monotonic() - run_started_at) * 1000),
-            },
+            user_message,
+            final,
+            run_started_at,
+            checkpoint_trigger=checkpoint_trigger,
+            promote_memory=promote_memory,
+            assess_completion=assess_completion,
         )
-        self.run_store.write_report(task_state, self.redact_artifact(self.build_report(task_state)))
-        return final
+
+    def finish_run(
+        self,
+        task_state,
+        user_message,
+        final,
+        run_started_at,
+        *,
+        checkpoint_trigger=None,
+        promote_memory=False,
+        assess_completion=False,
+    ):
+        return self._finish_run(
+            task_state,
+            user_message,
+            final,
+            run_started_at,
+            checkpoint_trigger=checkpoint_trigger,
+            promote_memory=promote_memory,
+            assess_completion=assess_completion,
+        )
 
     def ask(self, user_message, cancel_event=None):
-        """执行一次完整的 agent 回合，直到产出最终答案或命中停止条件。
-
-        为什么存在：
-        `ask()` 是整个 runtime 的总调度器。它把“用户提一个请求”扩展成一条
-        可持续推进的控制循环：记录会话、组 prompt、调用模型、执行工具、
-        写 trace/report、更新状态，直到模型给出最终答案或系统主动停下。
-
-        输入 / 输出：
-        - 输入：`user_message`，即用户这一次的任务描述
-        - 输出：字符串形式的最终回答；如果中途达到步数上限或重试上限，
-          返回的是一条停止原因说明
-
-        在 agent 链路里的位置：
-        它是 CLI 和底层工具/模型之间的核心桥梁。CLI 收到用户输入后基本只做
-        一件事：调用 `agent.ask()`。而 `ask()` 内部再去驱动 `ContextManager`
-        组 prompt、`model_client.complete()` 调模型、`run_tool()` 执行动作。
-        如果新人想理解 pico 是怎么“从一句话跑成一个 agent 流程”的，
-        这里就是最关键的入口。
-        """
+        """Prepare a turn and delegate the runtime loop to RuntimeEngine."""
         run_started_at = time.monotonic()
         raw_user_message = str(user_message)
         skill_command = parse_skill_command(raw_user_message)
@@ -2158,316 +2076,29 @@ class Pico:
             max_steps=max_steps,
             max_new_tokens=self.max_new_tokens,
         )
-
-        def cancelled():
-            return bool(cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)())
-
-        # 这是 agent 的主循环，可以按“感知 -> 决策 -> 行动 -> 记录”来理解：
-        # 1. 感知：重新组 prompt，把当前状态整理给模型看
-        # 2. 决策：让模型返回一个工具调用，或一个最终答案
-        # 3. 行动：如果是工具调用，就执行工具
-        # 4. 记录：把结果写回 history / task_state / trace / memory
-        # 然后进入下一轮，直到停机条件满足
-        while run_context.can_continue():
-            if cancelled():
-                final = "Stopped because the current turn was cancelled."
-                task_state.stop_retry_limit(final)
-                return self._finish_run(task_state, prompt_user_message, final, run_started_at)
-            self.drain_subagent_notifications()
-            run_context.record_attempt()
-            self.run_store.write_task_state(task_state)
-            prompt_started_at = time.monotonic()
-            prompt, prompt_metadata = self._build_prompt_and_metadata(prompt_user_message)
-            auto_compaction = self.auto_compact_history(prompt_metadata)
-            if auto_compaction.get("compacted"):
-                self.emit_trace(task_state, "history_compacted", {"compaction": auto_compaction})
-                prompt, prompt_metadata = self._build_prompt_and_metadata(prompt_user_message)
-                prompt_metadata["auto_compaction"] = auto_compaction
-            self.emit_trace(
-                task_state,
-                "prompt_built",
-                {
-                    "prompt_metadata": prompt_metadata,
-                    "duration_ms": int((time.monotonic() - prompt_started_at) * 1000),
-                },
-            )
-            if not run_context.user_recorded:
-                self.record({"role": "user", "content": raw_user_message, "created_at": now()})
-                run_context.user_recorded = True
-            if prompt_metadata.get("resume_status") == CHECKPOINT_PARTIAL_STALE_STATUS:
-                checkpoint = self.create_checkpoint(task_state, prompt_user_message, trigger="freshness_mismatch")
-                self.run_store.write_task_state(task_state)
-                self.emit_trace(
-                    task_state,
-                    "checkpoint_created",
-                    {
-                        "checkpoint_id": checkpoint["checkpoint_id"],
-                        "trigger": "freshness_mismatch",
-                    },
-                )
-            elif prompt_metadata.get("resume_status") == CHECKPOINT_WORKSPACE_MISMATCH_STATUS:
-                self.emit_trace(
-                    task_state,
-                    "runtime_identity_mismatch",
-                    {
-                        "fields": list(prompt_metadata.get("runtime_identity_mismatch_fields", [])),
-                    },
-                )
-                checkpoint = self.create_checkpoint(task_state, prompt_user_message, trigger="workspace_mismatch")
-                self.run_store.write_task_state(task_state)
-                self.emit_trace(
-                    task_state,
-                    "checkpoint_created",
-                    {
-                        "checkpoint_id": checkpoint["checkpoint_id"],
-                        "trigger": "workspace_mismatch",
-                    },
-                )
-            if prompt_metadata.get("budget_reductions"):
-                checkpoint = self.create_checkpoint(task_state, prompt_user_message, trigger="context_reduction")
-                self.run_store.write_task_state(task_state)
-                self.emit_trace(
-                    task_state,
-                    "checkpoint_created",
-                    {
-                        "checkpoint_id": checkpoint["checkpoint_id"],
-                        "trigger": "context_reduction",
-                    },
-                )
-            self.emit_trace(
-                task_state,
-                "model_requested",
-                {
-                    "attempts": task_state.attempts,
-                    "tool_steps": task_state.tool_steps,
-                    "prompt_cache_key": prompt_metadata.get("prompt_cache_key"),
-                },
-            )
-            prompt_cache_key = None
-            prompt_cache_retention = None
-            if getattr(self.model_client, "supports_prompt_cache", False):
-                # 只有后端明确支持时，才把稳定前缀的 hash 作为 cache key 发出去。
-                prompt_cache_key = prompt_metadata.get("prompt_cache_key")
-                prompt_cache_retention = "in_memory"
-            model_started_at = time.monotonic()
-            try:
-                raw = self.complete_model_with_deadline(
-                    prompt,
-                    run_context.current_max_new_tokens,
-                    prompt_cache_key=prompt_cache_key,
-                    prompt_cache_retention=prompt_cache_retention,
-                )
-            except Exception as exc:
-                completion_metadata = dict(getattr(self.model_client, "last_completion_metadata", {}) or {})
-                completion_metadata.setdefault("finish_reason", "error")
-                completion_metadata["error_type"] = exc.__class__.__name__
-                completion_metadata["error_message"] = str(exc)
-                if (
-                    self.is_recoverable_model_error(exc)
-                    and run_context.model_error_recovery_count < 3
-                    and run_context.attempts < run_context.max_attempts
-                ):
-                    run_context.model_error_recovery_count += 1
-                    self.last_completion_metadata = completion_metadata
-                    self.last_prompt_metadata = {**prompt_metadata, **completion_metadata}
-                    self.emit_trace(
-                        task_state,
-                        "model_error_recovered",
-                        {
-                            "completion_metadata": completion_metadata,
-                            "duration_ms": int((time.monotonic() - model_started_at) * 1000),
-                            "recovery_count": run_context.model_error_recovery_count,
-                        },
-                    )
-                    self.record(
-                        {
-                            "role": "assistant",
-                            "content": (
-                                "Runtime notice: provider returned no usable text. "
-                                "Retry once and emit exactly one valid tool call or final answer."
-                            ),
-                            "created_at": now(),
-                        }
-                    )
-                    self.run_store.write_task_state(task_state)
-                    continue
-                prompt_metadata.update(completion_metadata)
-                self.last_completion_metadata = completion_metadata
-                self.last_prompt_metadata = prompt_metadata
-                final = f"Stopped after model error: {exc}"
-                task_state.stop_model_error(final)
-                self.emit_trace(
-                    task_state,
-                    "model_error",
-                    {
-                        "completion_metadata": completion_metadata,
-                        "duration_ms": int((time.monotonic() - model_started_at) * 1000),
-                    },
-                )
-                return self._finish_run(task_state, prompt_user_message, final, run_started_at)
-            completion_metadata = dict(getattr(self.model_client, "last_completion_metadata", {}) or {})
-            if completion_metadata:
-                # 把后端返回的 usage/cache 统计并回 prompt_metadata，
-                # 方便统一写入 report 和 trace。
-                prompt_metadata.update(completion_metadata)
-            self.last_completion_metadata = completion_metadata
-            self.last_prompt_metadata = prompt_metadata
-            if self.is_truncated_completion(completion_metadata):
-                run_context.truncation_recovery_count += 1
-                if run_context.truncation_recovery_count <= 3:
-                    next_max_new_tokens = max(
-                        run_context.current_max_new_tokens * 4,
-                        run_context.current_max_new_tokens + 1024,
-                    )
-                    self.emit_trace(
-                        task_state,
-                        "truncation_recovered",
-                        {
-                            "attempt": run_context.truncation_recovery_count,
-                            "previous_max_new_tokens": run_context.current_max_new_tokens,
-                            "next_max_new_tokens": next_max_new_tokens,
-                            "completion_metadata": completion_metadata,
-                        },
-                    )
-                    run_context.current_max_new_tokens = next_max_new_tokens
-                    self.record(
-                        {
-                            "role": "assistant",
-                            "content": (
-                                "Runtime notice: provider stopped because output was truncated. "
-                                "Continue from the truncation and emit exactly one valid tool call or final answer."
-                            ),
-                            "created_at": now(),
-                        }
-                    )
-                    continue
-                final = "Stopped after provider repeatedly truncated model output."
-                task_state.stop_output_truncated(final)
-                break
-
-            kind, payload, parse_error_type = self.parse_with_metadata(raw)
-            self.emit_trace(
-                task_state,
-                "model_parsed",
-                {
-                    "kind": kind,
-                    "parse_error_type": parse_error_type,
-                    "completion_metadata": completion_metadata,
-                    "duration_ms": int((time.monotonic() - model_started_at) * 1000),
-                },
-            )
-
-            if kind == "tool":
-                name = payload.get("name", "")
-                args = payload.get("args", {})
-                control_decision = self.runtime_control.before_tool(self, task_state, name, args, prompt_user_message)
-                self.record_control_decision(task_state, "before_tool", control_decision)
-                forced_tool_result = None
-                if control_decision.action == "remind":
-                    reminder_key = str(control_decision.reason)
-                    if reminder_key and reminder_key not in self._runtime_reminder_keys:
-                        self._runtime_reminder_keys.add(reminder_key)
-                        self.emit_trace(
-                            task_state,
-                            "runtime_reminder_emitted",
-                            {"reason": control_decision.reason, "message": control_decision.message, "tool": name, "args": args},
-                        )
-                        self.record({"role": "assistant", "content": control_decision.message, "created_at": now()})
-                elif control_decision.action == "reject":
-                    forced_tool_result = control_decision.message
-                self._execute_tool_step(
-                    task_state,
-                    run_context,
-                    prompt_user_message,
-                    name,
-                    args,
-                    forced_result=forced_tool_result,
-                )
-                continue
-
-            if kind == "retry":
-                self.record({"role": "assistant", "content": payload, "created_at": now()})
-                self.run_store.write_task_state(task_state)
-                continue
-
-            final = (payload or raw).strip()
-            self.drain_subagent_notifications()
-            final_decision = self.runtime_control.before_final(self, task_state, final, prompt_user_message)
-            self.record_control_decision(task_state, "before_final", final_decision)
-            assessment = dict(final_decision.metadata.get("assessment", {}) or task_state.completion_gate or {})
-            self.emit_trace(task_state, "completion_assessed", {"assessment": assessment, "proposed_final": final})
-            if final_decision.action == "block_final":
-                self.emit_trace(
-                    task_state,
-                    "completion_gate_blocked",
-                    {"decision": final_decision.to_dict(), "proposed_final": final},
-                )
-                self.record({"role": "assistant", "content": final_decision.message, "created_at": now()})
-                if final_decision.next_tool and run_context.remaining_tool_steps > 0:
-                    self._execute_tool_step(
-                        task_state,
-                        run_context,
-                        prompt_user_message,
-                        final_decision.next_tool,
-                        dict(final_decision.tool_args or {}),
-                        source="runtime_control",
-                        checkpoint_trigger="runtime_control_tool",
-                    )
-                self.run_store.write_task_state(task_state)
-                continue
-            task_state.finish_success(final)
-            return self._finish_run(
-                task_state,
-                prompt_user_message,
-                final,
-                run_started_at,
-                checkpoint_trigger="run_finished",
-                promote_memory=True,
-            )
-
-        if run_context.attempts >= run_context.max_attempts and run_context.tool_steps < run_context.max_steps:
-            final = "Stopped after too many malformed model responses without a valid tool call or final answer."
-            task_state.stop_retry_limit(final)
-        elif task_state.stop_reason:
-            final = task_state.final_answer or "Stopped before completion."
-        else:
-            final = "Stopped after reaching the step limit without a final answer."
-            task_state.stop_step_limit(final)
-        task_state.stage = "stopped"
-        return self._finish_run(
+        # RuntimeEngine owns the model/tool/final loop; Pico only prepares the turn.
+        result = self.runtime_engine.run(
+            self,
             task_state,
-            prompt_user_message,
-            final,
-            run_started_at,
-            checkpoint_trigger=task_state.stop_reason or "run_stopped",
-            promote_memory=True,
-            assess_completion=True,
+            run_context,
+            RunRequest(
+                user_message=prompt_user_message,
+                raw_user_message=raw_user_message,
+                run_started_at=run_started_at,
+                cancel_event=cancel_event,
+            ),
         )
+        return result.final_answer
 
     def run_tool(self, name, args):
-        """执行一次工具调用，并在执行前后套上完整护栏。
-
-        为什么存在：
-        在 agent 系统里，真正危险的不是“模型会不会想调用工具”，而是
-        “平台有没有在执行前把边界守住”。这个函数就是工具层的总闸口：
-        所有工具调用都必须先经过它，不能让模型直接碰到底层函数。
-
-        输入 / 输出：
-        - 输入：工具名 `name`，参数字典 `args`
-        - 输出：字符串结果。无论是成功结果还是错误信息，都会统一返回文本，
-          这样模型下一轮都能继续消费这份反馈。
-
-        在 agent 链路里的位置：
-        它位于 `ask()` 的“模型决定要调用工具”之后，是控制循环里真正把模型
-        意图落到外部世界的一步。因此这里串起了几乎所有安全与可控设计：
-        工具是否存在、参数是否合法、是否重复、是否需要审批、执行结果是否裁剪、
-        是否需要回写记忆。
-        """
-        # 工具执行不是“直接调函数”，而是一条带护栏的流水线：
-        # 工具是否存在 -> 参数是否合法 -> 是否重复调用 -> 是否通过审批
-        # -> 真正执行 -> 更新记忆。
+        """Execute one guarded tool call."""
         execution = ToolRunner(self.tool_execution_context()).run(name, args)
         self._last_tool_result_metadata = dict(execution.metadata)
+        if execution.metadata.get("tool_status") == "ok":
+            self.update_memory_after_tool(name, args, execution.content)
+            self.update_tool_policy_after_tool(name, args, execution.content, execution.metadata.get("tool_status", ""))
+        if execution.metadata.get("tool_status") != "rejected":
+            self.record_process_note_for_tool(name, execution.metadata)
         return execution.content
 
     def tool_execution_context(self):
@@ -2477,20 +2108,14 @@ class Pico:
             workspace=self.workspace,
             read_only=self.read_only,
             read_only_stall_limit=self.read_only_stall_limit,
+            preflight_tool=self.preflight_tool,
             is_active_plan_file_write=self.is_active_plan_file_write,
             validate_tool=self.validate_tool,
             tool_example=self.tool_example,
             tool_rejection_recovery_message=self.tool_rejection_recovery_message,
-            changed_path_read_stall=self.changed_path_read_stall,
-            repeated_tool_call=self.repeated_tool_call,
-            consecutive_read_only_tool_count=self.consecutive_read_only_tool_count,
-            approve=self.approve,
             capture_workspace_snapshot=self.capture_workspace_snapshot,
             materialize_tool_result=self.materialize_tool_result,
             diff_workspace_snapshots=self.diff_workspace_snapshots,
-            update_memory_after_tool=self.update_memory_after_tool,
-            update_tool_policy_after_tool=self.update_tool_policy_after_tool,
-            record_process_note_for_tool=self.record_process_note_for_tool,
             tool_activity_description=self.tool_activity_description,
         )
 
@@ -2634,6 +2259,12 @@ class Pico:
         if name == "delegate":
             if self.depth >= self.max_depth:
                 raise ValueError("delegate depth exceeded")
+
+    def preflight_tool(self, name, args, tool):
+        return self.policy_engine.before_tool(
+            self,
+            ToolRequest(name=name, args=dict(args or {}), tool=dict(tool or {})),
+        ).to_preflight()
 
     def tool_list_files(self, args):
         return toolkit.tool_list_files(self, args)

@@ -26,7 +26,7 @@ STOP_REASON_OUTPUT_TRUNCATED = "output_truncated"
 
 
 @dataclass
-class TaskState:
+class RunState:
     run_id: str
     task_id: str
     user_request: str
@@ -146,3 +146,6 @@ class TaskState:
             "consumer_errors": list(self.consumer_errors or []),
             "subagents": list(self.subagents or []),
         }
+
+
+TaskState = RunState

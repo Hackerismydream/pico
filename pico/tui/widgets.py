@@ -637,12 +637,14 @@ class StatusBar(Widget):
         return Text(" | ".join(parts), style="#6ee7ff")
 
     def update_agent(self, agent) -> None:
-        self.model_name = str(getattr(agent.model_client, "model", ""))
-        self.approval_policy = str(agent.approval_policy)
-        self.session_id = str(agent.session.get("id", ""))
-        self.cwd = str(agent.root)
-        self.runtime_mode = str(getattr(agent, "runtime_mode", "execute"))
-        self.update_progress(agent, refresh=False)
+        snapshot = agent.runtime_snapshot() if hasattr(agent, "runtime_snapshot") else agent
+        self.model_name = str(getattr(snapshot, "model_name", getattr(getattr(agent, "model_client", None), "model", "")))
+        self.approval_policy = str(getattr(snapshot, "approval_policy", getattr(agent, "approval_policy", "")))
+        session = getattr(agent, "session", {}) or {}
+        self.session_id = str(getattr(snapshot, "session_id", session.get("id", "")))
+        self.cwd = str(getattr(snapshot, "cwd", getattr(agent, "root", "")))
+        self.runtime_mode = str(getattr(snapshot, "runtime_mode", getattr(agent, "runtime_mode", "execute")))
+        self.update_progress(snapshot, refresh=False)
         self.refresh()
 
     def update_steps(self, count: int) -> None:
@@ -655,27 +657,36 @@ class StatusBar(Widget):
         self.refresh()
 
     def update_progress(self, agent, refresh: bool = True) -> None:
-        task_state = getattr(agent, "current_task_state", None)
-        self.runtime_mode = str(getattr(agent, "runtime_mode", "execute"))
-        self.stage = str(getattr(task_state, "stage", "") or "")
-        tasks = []
-        if task_state is not None:
+        snapshot = agent.runtime_snapshot() if hasattr(agent, "runtime_snapshot") else agent
+        task_state = getattr(snapshot, "current_task_state", None)
+        self.runtime_mode = str(getattr(snapshot, "runtime_mode", getattr(agent, "runtime_mode", "execute")))
+        self.stage = str(getattr(snapshot, "stage", getattr(task_state, "stage", "") or ""))
+        tasks = list(getattr(snapshot, "tasks", []) or [])
+        if not tasks and task_state is not None:
             tasks = list(getattr(task_state, "tasks", []) or [])
         if not tasks:
             tasks = list(getattr(agent, "session", {}).get("tasks", []) or [])
         self.tasks_total = len(tasks)
         self.tasks_completed = sum(1 for task in tasks if task.get("status") == "completed")
-        if hasattr(agent, "verification_status"):
+        if hasattr(snapshot, "verification_status"):
+            self.verify_status = str(snapshot.verification_status)
+        elif hasattr(agent, "verification_status"):
             self.verify_status = str(agent.verification_status())
         else:
             self.verify_status = "not_run"
-        gate = dict(getattr(task_state, "completion_gate", {}) or {}) if task_state is not None else {}
+        gate = dict(getattr(snapshot, "completion_gate", {}) or {})
+        if not gate and task_state is not None:
+            gate = dict(getattr(task_state, "completion_gate", {}) or {})
         self.gate_status = "blocked" if gate.get("blocked") else str(gate.get("status", "") or "")
         if self.gate_status in {"running", "completed"}:
             self.gate_status = ""
-        self.subagent_count = len(getattr(agent, "session", {}).get("subagents", []) or [])
-        manager = getattr(agent, "subagent_manager", None)
-        if manager is not None:
-            self.subagent_count = max(self.subagent_count, len(manager.running_status()))
+        snapshot_count = getattr(snapshot, "subagent_count", None)
+        if snapshot_count is not None:
+            self.subagent_count = int(snapshot_count)
+        else:
+            self.subagent_count = len(getattr(agent, "session", {}).get("subagents", []) or [])
+            manager = getattr(agent, "subagent_manager", None)
+            if manager is not None:
+                self.subagent_count = max(self.subagent_count, len(manager.running_status()))
         if refresh:
             self.refresh()

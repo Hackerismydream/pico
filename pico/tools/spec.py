@@ -8,6 +8,7 @@ map consumed by `Pico.run_tool()`.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from functools import partial
 from typing import Callable
 
@@ -17,6 +18,17 @@ RunFn = Callable[[object, dict], str]
 ActivityFn = Callable[[dict], str]
 
 
+class Effect(StrEnum):
+    WORKSPACE_READ = "workspace_read"
+    WORKSPACE_WRITE = "workspace_write"
+    RUNTIME_STATE_READ = "runtime_state_read"
+    RUNTIME_STATE_WRITE = "runtime_state_write"
+    PROCESS_READ = "process_read"
+    PROCESS_EXEC = "process_exec"
+    ARTIFACT_WRITE = "artifact_write"
+    USER_INTERACTION = "user_interaction"
+
+
 @dataclass(frozen=True)
 class ToolPolicy:
     read_only: bool = False
@@ -24,14 +36,19 @@ class ToolPolicy:
     requires_prior_read: bool = False
     records_read: bool = False
     max_result_chars: int = 4000
+    effects: tuple[Effect | str, ...] = ()
 
     def to_dict(self) -> dict:
+        effects = [str(effect) for effect in self.effects]
+        if not effects:
+            effects = [str(Effect.WORKSPACE_READ if self.read_only else Effect.WORKSPACE_WRITE)]
         return {
             "read_only": bool(self.read_only),
             "concurrency": str(self.concurrency or "serial"),
             "requires_prior_read": bool(self.requires_prior_read),
             "records_read": bool(self.records_read),
             "max_result_chars": int(self.max_result_chars),
+            "effects": effects,
         }
 
 
@@ -68,4 +85,3 @@ class ToolSpec:
             "activity": self.activity_description({}),
             "run": partial(self.run, agent),
         }
-

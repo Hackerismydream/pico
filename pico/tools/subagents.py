@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-
-from ..core.workspace import clip
 from .spec import ToolPolicy, ToolSpec
 
 
@@ -52,24 +50,15 @@ def tool_delegate(agent, args):
     task = str(args.get("task", "")).strip()
     if not task:
         raise ValueError("task must not be empty")
-
-    child = type(agent)(
-        model_client=agent.model_client,
-        workspace=agent.workspace,
-        session_store=agent.session_store,
-        run_store=agent.run_store,
-        approval_policy="never",
+    payload = agent.subagent_manager.spawn(
+        description=task,
+        prompt=task,
+        subagent_type="Explore",
         max_steps=int(args.get("max_steps", 3)),
-        max_new_tokens=agent.max_new_tokens,
-        depth=agent.depth + 1,
-        max_depth=agent.max_depth,
-        read_only=True,
-        secret_env_names=agent.secret_env_names,
-        shell_env_allowlist=agent.shell_env_allowlist,
+        background=False,
     )
-    child.session["memory"]["task"] = task
-    child.session["memory"]["notes"] = [clip(agent.history_text(), 300)]
-    return "delegate_result:\n" + child.ask(task)
+    agent.deliver_subagent_notification(payload)
+    return "delegate_result:\n" + str(payload.get("result", ""))
 
 
 def tool_agent(agent, args):
@@ -157,4 +146,3 @@ TOOL_SPECS = [
         run=tool_task_stop,
     ),
 ]
-

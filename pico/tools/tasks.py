@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..features import completion
-from .spec import ToolPolicy, ToolSpec
+from .spec import Effect, ToolPolicy, ToolSpec
 
 
 def validate_todo_write(agent, args):
@@ -126,7 +126,7 @@ TOOL_SPECS = [
         schema={"todos": "list[{id:str,content:str,active_form:str,status:str,verification:bool=False}]"},
         description="Create or replace the structured task ledger for the current run.",
         example='<tool>{"name":"todo_write","args":{"todos":[{"id":"task_1","content":"Implement change","active_form":"Implementing change","status":"in_progress"}]}}</tool>',
-        policy=ToolPolicy(read_only=True, concurrency="serial"),
+        policy=ToolPolicy(read_only=True, concurrency="serial", effects=(Effect.RUNTIME_STATE_WRITE,)),
         activity=lambda args: "Updating task ledger",
         validate=validate_todo_write,
         run=tool_todo_write,
@@ -136,7 +136,7 @@ TOOL_SPECS = [
         schema={"id": "str", "status": "str", "content": "str?", "active_form": "str?", "verification": "bool?"},
         description="Update one task in the current task ledger.",
         example='<tool>{"name":"todo_update","args":{"id":"task_1","status":"completed"}}</tool>',
-        policy=ToolPolicy(read_only=True, concurrency="serial"),
+        policy=ToolPolicy(read_only=True, concurrency="serial", effects=(Effect.RUNTIME_STATE_WRITE,)),
         activity=lambda args: f"Updating task {str(args.get('id', '')).strip()}" if str(args.get("id", "")).strip() else "Updating task",
         validate=validate_todo_update,
         run=tool_todo_update,
@@ -146,9 +146,8 @@ TOOL_SPECS = [
         schema={},
         description="Show the current task ledger.",
         example='<tool>{"name":"todo_list","args":{}}</tool>',
-        policy=ToolPolicy(read_only=True, concurrency="parallel"),
+        policy=ToolPolicy(read_only=True, concurrency="parallel", effects=(Effect.RUNTIME_STATE_READ,)),
         activity=lambda args: "Reading task ledger",
         run=tool_todo_list,
     ),
 ]
-

@@ -57,6 +57,47 @@ def test_agent_runs_tool_then_final(tmp_path):
     assert "hello.txt" in agent.session["memory"]["files"]
 
 
+def test_model_turn_helper_returns_text_and_metadata(tmp_path):
+    workspace = build_workspace(tmp_path)
+    client = FakeModelClient(["<final>ok</final>"])
+    client.last_completion_metadata = {"finish_reason": "stop"}
+    agent = MiniAgent(
+        model_client=client,
+        workspace=workspace,
+        session_store=SessionStore(tmp_path / ".pico" / "sessions"),
+    )
+
+    raw, metadata = agent._complete_model_turn("prompt", 1024, prompt_cache_key="cache-key")
+
+    assert raw == "<final>ok</final>"
+    assert metadata["finish_reason"] == "stop"
+    assert agent.last_completion_metadata == metadata
+
+
+def test_model_turn_helper_accepts_provider_completion_result(tmp_path):
+    from pico.providers.base import CompletionResult
+
+    class ResultClient:
+        model = "result-client"
+        timeout = 0
+        last_completion_metadata = {}
+
+        def complete(self, prompt, max_new_tokens, **kwargs):
+            return CompletionResult("<final>ok</final>", {"finish_reason": "stop", "input_tokens": 3})
+
+    agent = MiniAgent(
+        model_client=ResultClient(),
+        workspace=build_workspace(tmp_path),
+        session_store=SessionStore(tmp_path / ".pico" / "sessions"),
+    )
+
+    raw, metadata = agent._complete_model_turn("prompt", 1024)
+
+    assert raw == "<final>ok</final>"
+    assert metadata["finish_reason"] == "stop"
+    assert metadata["input_tokens"] == 3
+
+
 def test_agent_updates_task_summary_on_each_request(tmp_path):
     agent = build_agent(
         tmp_path,
@@ -227,6 +268,8 @@ def test_delegate_uses_child_agent(tmp_path):
     tool_events = [item for item in agent.session["history"] if item["role"] == "tool"]
     assert tool_events[0]["name"] == "delegate"
     assert "delegate_result" in tool_events[0]["content"]
+    assert agent.session["subagents"]
+    assert agent.session["subagents"][0]["subagent_type"] == "Explore"
 
 
 def test_patch_file_replaces_exact_match(tmp_path):
@@ -331,6 +374,28 @@ def test_write_files_rejects_duplicate_or_escaping_paths(tmp_path):
 
     assert "duplicate path: a.txt" in duplicate
     assert "path escapes workspace" in escaping
+
+
+def test_partial_write_files_does_not_record_unwritten_paths_in_memory(tmp_path):
+    agent = build_agent(tmp_path, [])
+    (tmp_path / "blocked").write_text("not a directory\n", encoding="utf-8")
+
+    result = agent.run_tool(
+        "write_files",
+        {
+            "files": [
+                {"path": "ok.txt", "content": "ok\n"},
+                {"path": "blocked/child.txt", "content": "nope\n"},
+            ]
+        },
+    )
+
+    assert "failed" in result
+    assert agent._last_tool_result_metadata["tool_status"] == "partial_success"
+    assert "ok.txt" in agent._last_tool_result_metadata["affected_paths"]
+    memory_files = set(agent.memory.to_dict()["files"])
+    assert "ok.txt" not in memory_files
+    assert "blocked/child.txt" not in memory_files
 
 
 def test_invalid_risky_tool_does_not_prompt_for_approval(tmp_path):

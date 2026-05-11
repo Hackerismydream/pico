@@ -176,7 +176,7 @@ TOOL_SPECS = [
     ToolSpec(
         name="write_files",
         schema={"files": "list[{path:str,content:str}]"},
-        description="Write multiple text files in one atomic project-scaffolding step.",
+        description="Write multiple text files in one project-scaffolding step.",
         example='<tool name="write_files"><file path="README.md"><content># Demo\n</content></file></tool>',
         risky=True,
         policy=ToolPolicy(read_only=False, concurrency="serial"),
@@ -196,4 +196,3 @@ TOOL_SPECS = [
         run=tool_patch_file,
     ),
 ]
-

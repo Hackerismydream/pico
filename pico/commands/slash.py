@@ -25,7 +25,7 @@ SLASH_COMMANDS: tuple[SlashCommand, ...] = (
     SlashCommand("tasks", "/tasks", "Show the current task ledger."),
     SlashCommand("verify", "/verify", "Show recent verification artifacts."),
     SlashCommand("agents", "/agents", "Show subagent status and recent results.", ("agent",)),
-    SlashCommand("subagent", "/subagent explore <task>", "Launch an Explore or Worker subagent.", ("sub",)),
+    SlashCommand("subagent", "/subagent explore <task>", "Launch a bounded local child run: Explore or scoped Worker.", ("sub",)),
     SlashCommand("skills", "/skills", "List available Pico skills.", ("sk",)),
     SlashCommand("skill", "/skill <name> [args]", "Load and run a Pico skill.", ()),
     SlashCommand("history", "/history", "List saved sessions for this workspace."),

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .spec import ToolPolicy, ToolSpec
+from .spec import Effect, ToolPolicy, ToolSpec
 
 
 def _ensure_skills_enabled(agent):
@@ -55,7 +55,7 @@ TOOL_SPECS = [
         schema={"query": "str=''", "limit": "int=50"},
         description="List available Pico skills by summary without loading full skill bodies.",
         example='<tool>{"name":"list_skills","args":{"query":"pytest","limit":20}}</tool>',
-        policy=ToolPolicy(read_only=True, concurrency="parallel", max_result_chars=12000),
+        policy=ToolPolicy(read_only=True, concurrency="parallel", max_result_chars=12000, effects=(Effect.RUNTIME_STATE_READ,)),
         activity=lambda args: f"Listing skills matching {str(args.get('query', '')).strip()}" if str(args.get("query", "")).strip() else "Listing skills",
         validate=validate_list_skills,
         run=tool_list_skills,
@@ -65,7 +65,7 @@ TOOL_SPECS = [
         schema={"name": "str", "args": "str=''", "context": "inline|fork?"},
         description="Load a Pico skill's full instructions by name after matching its catalog summary.",
         example='<tool>{"name":"load_skill","args":{"name":"pytest","args":"tests/test_pico.py"}}</tool>',
-        policy=ToolPolicy(read_only=True, concurrency="serial", max_result_chars=12000),
+        policy=ToolPolicy(read_only=True, concurrency="serial", max_result_chars=12000, effects=(Effect.RUNTIME_STATE_WRITE,)),
         activity=lambda args: f"Loading skill {str(args.get('name', '')).strip()}" if str(args.get("name", "")).strip() else "Loading skill",
         validate=validate_load_skill,
         run=tool_load_skill,

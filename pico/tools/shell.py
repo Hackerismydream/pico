@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 
 from .shell_safety import format_shell_result, validate_shell_command
-from .spec import ToolPolicy, ToolSpec
+from .spec import Effect, ToolPolicy, ToolSpec
 
 
 def validate_run_shell(agent, args):
@@ -44,10 +44,9 @@ TOOL_SPECS = [
         description="Run a shell command in the repo root.",
         example='<tool>{"name":"run_shell","args":{"command":"uv run --with pytest python -m pytest -q","timeout":20}}</tool>',
         risky=True,
-        policy=ToolPolicy(read_only=False, concurrency="serial"),
+        policy=ToolPolicy(read_only=False, concurrency="serial", effects=(Effect.PROCESS_EXEC,)),
         activity=lambda args: "Running shell command",
         validate=validate_run_shell,
         run=tool_run_shell,
     )
 ]
-

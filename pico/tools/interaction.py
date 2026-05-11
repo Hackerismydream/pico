@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .spec import ToolPolicy, ToolSpec
+from .spec import Effect, ToolPolicy, ToolSpec
 
 
 def validate_ask_user(agent, args):
@@ -50,10 +50,9 @@ TOOL_SPECS = [
         schema={"question": "str", "options": "list[{label:str,description:str}]?"},
         description="Record a required clarification question when progress would otherwise contradict the user intent.",
         example='<tool>{"name":"ask_user","args":{"question":"Which package name should I use?"}}</tool>',
-        policy=ToolPolicy(read_only=True, concurrency="serial"),
+        policy=ToolPolicy(read_only=True, concurrency="serial", effects=(Effect.USER_INTERACTION,)),
         activity=lambda args: "Asking user for clarification",
         validate=validate_ask_user,
         run=tool_ask_user,
     )
 ]
-

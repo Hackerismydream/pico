@@ -90,13 +90,45 @@ def test_tui_agents_text_and_status_bar_show_subagents(tmp_path):
     assert "agents 1" in rendered_text(status)
 
 
+def test_status_bar_updates_from_runtime_snapshot():
+    from pico.core.runtime_snapshot import RuntimeSnapshot
+    from pico.tui.widgets import StatusBar
+
+    snapshot = RuntimeSnapshot(
+        model_name="fake-model",
+        approval_policy="auto",
+        session_id="session-123456",
+        cwd="/tmp/pico",
+        runtime_mode="plan",
+        stage="planning",
+        tasks=[{"status": "completed"}, {"status": "pending"}],
+        verification_status="failed",
+        completion_gate={"blocked": True},
+        subagent_count=2,
+    )
+    status = StatusBar()
+
+    status.update_agent(snapshot)
+
+    assert status.model_name == "fake-model"
+    assert status.runtime_mode == "plan"
+    assert status.stage == "planning"
+    assert status.tasks_completed == 1
+    assert status.tasks_total == 2
+    assert status.verify_status == "failed"
+    assert status.gate_status == "blocked"
+    assert status.subagent_count == 2
+
+
 def test_slash_command_registry_suggests_and_parses_subagent():
     from pico.commands.slash import parse_skill_args, parse_subagent_args, resolve_command, suggest_commands
 
     suggestions = suggest_commands("/sub")
 
     assert suggestions[0].name == "subagent"
-    assert resolve_command("sub").name == "subagent"
+    command = resolve_command("sub")
+    assert command.name == "subagent"
+    assert "bounded local child run" in command.description
 
     payload, error = parse_subagent_args("worker --scope README.md,src update docs")
 
