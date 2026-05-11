@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1360" viewBox="0 0 2200 1360" role="img" aria-label="Pico CCFA hub architecture">
+  <defs>
+    <filter id="shadow" x="-14%" y="-14%" width="128%" height="128%"><feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#0f172a" flood-opacity=".09"/></filter>
+    <marker id="arrow" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" refX="14" refY="8" orient="auto"><path d="M0 0L16 8L0 16z" fill="#334155"/></marker>
+    <style>
+      text{font-family:"SF Pro Text","Inter","PingFang SC","Microsoft YaHei",Arial,sans-serif;fill:#111827}
+      .title{font-size:38px;font-weight:760}.sub{font-size:20px;font-weight:520;fill:#64748b}.h{font-size:28px;font-weight:770}.b{font-size:18px;font-weight:540;fill:#475569}.code{font-size:15px;font-weight:650;fill:#334155}.n{font-size:20px;font-weight:850;fill:#fff}
+      .node{fill:#fff;stroke:#CBD5E1;stroke-width:2.3}.core{fill:#111827;stroke:#111827;stroke-width:4}.coreText{fill:#fff}.pill{fill:#F8FAFC;stroke:#CBD5E1;stroke-width:1.5}
+      .teal{fill:#0f766e}.blue{fill:#2563eb}.orange{fill:#ea580c}.green{fill:#15803d}
+    </style>
+  </defs>
+  <rect width="2200" height="1360" fill="#F8FAFC"/>
+  <text x="1100" y="90" text-anchor="middle" class="title">Pico as a Runtime Hub</text>
+  <text x="1100" y="126" text-anchor="middle" class="sub">The center owns scheduling; surrounding modules only provide inputs, constraints, or state.</text>
+
+  <path d="M1100 660L590 355" stroke="#334155" stroke-width="4" fill="none" marker-end="url(#arrow)"/>
+  <path d="M1100 660L590 965" stroke="#334155" stroke-width="4" fill="none" marker-end="url(#arrow)"/>
+  <path d="M1100 660L1610 355" stroke="#334155" stroke-width="4" fill="none" stroke-dasharray="9 8" marker-end="url(#arrow)"/>
+  <path d="M1100 660L1680 660" stroke="#334155" stroke-width="4" fill="none" stroke-dasharray="9 8" marker-end="url(#arrow)"/>
+  <path d="M1100 660L1610 965" stroke="#334155" stroke-width="4" fill="none" stroke-dasharray="9 8" marker-end="url(#arrow)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="835" y="500" width="530" height="320" rx="28" class="core"/>
+    <circle cx="910" cy="575" r="30" class="teal"/><text x="910" y="585" text-anchor="middle" class="n">3</text>
+    <text x="970" y="585" class="h coreText">Pico.ask()</text>
+    <text x="910" y="650" font-size="22" font-weight="580" fill="#E5E7EB">scheduler / control loop</text>
+    <text x="910" y="700" font-size="18" font-weight="520" fill="#CBD5E1">build prompt -> call model -> parse output</text>
+    <text x="910" y="738" font-size="18" font-weight="520" fill="#CBD5E1">run tool or return final answer</text>
+    <rect x="910" y="770" width="380" height="32" rx="7" fill="#1F2937" stroke="#475569" stroke-width="1.4"/>
+    <text x="1100" y="792" text-anchor="middle" font-size="15" font-weight="650" fill="#E5E7EB">runtime.py</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="250" y="225" width="430" height="220" rx="18" class="node"/>
+    <circle cx="305" cy="285" r="25" class="teal"/><text x="305" y="293" text-anchor="middle" class="n">1</text>
+    <text x="355" y="295" class="h">Bootstrap</text><text x="290" y="355" class="b">Resolve runtime identity.</text><text x="290" y="392" class="b">provider / cwd / approval</text>
+    <rect x="290" y="410" width="335" height="30" rx="7" class="pill"/><text x="458" y="431" text-anchor="middle" class="code">build_agent()</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="250" y="875" width="430" height="220" rx="18" class="node"/>
+    <circle cx="305" cy="935" r="25" class="teal"/><text x="305" y="943" text-anchor="middle" class="n">2</text>
+    <text x="355" y="945" class="h">Workspace</text><text x="290" y="1005" class="b">Stable repo baseline.</text><text x="290" y="1042" class="b">Git facts + project docs</text>
+    <rect x="290" y="1060" width="335" height="30" rx="7" class="pill"/><text x="458" y="1081" text-anchor="middle" class="code">WorkspaceContext</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="1520" y="225" width="430" height="220" rx="18" class="node"/>
+    <circle cx="1575" cy="285" r="25" class="blue"/><text x="1575" y="293" text-anchor="middle" class="n">4</text>
+    <text x="1625" y="295" class="h">Context</text><text x="1560" y="355" class="b">Prompt composition.</text><text x="1560" y="392" class="b">prefix / memory / history</text>
+    <rect x="1560" y="410" width="335" height="30" rx="7" class="pill"/><text x="1728" y="431" text-anchor="middle" class="code">ContextManager</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="1680" y="550" width="430" height="220" rx="18" class="node"/>
+    <circle cx="1735" cy="610" r="25" class="orange"/><text x="1735" y="618" text-anchor="middle" class="n">5</text>
+    <text x="1785" y="620" class="h">Tool Gate</text><text x="1720" y="680" class="b">Guard external actions.</text><text x="1720" y="717" class="b">args / path / approval</text>
+    <rect x="1720" y="735" width="335" height="30" rx="7" class="pill"/><text x="1888" y="756" text-anchor="middle" class="code">run_tool()</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="1520" y="875" width="430" height="220" rx="18" class="node"/>
+    <circle cx="1575" cy="935" r="25" class="green"/><text x="1575" y="943" text-anchor="middle" class="n">6</text>
+    <text x="1625" y="945" class="h">State</text><text x="1560" y="1005" class="b">Continuation and audit.</text><text x="1560" y="1042" class="b">session / trace / report</text>
+    <rect x="1560" y="1060" width="335" height="30" rx="7" class="pill"/><text x="1728" y="1081" text-anchor="middle" class="code">Memory / RunStore</text>
+  </g>
+  <rect x="610" y="1170" width="980" height="62" rx="14" fill="#fff" stroke="#CBD5E1" stroke-width="2"/>
+  <text x="1100" y="1209" text-anchor="middle" class="b">Hub reading: Pico.ask() is the only active scheduler; every other box is a bounded provider of facts, context, tools, or state.</text>
+</svg>

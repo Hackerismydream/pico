@@ -1,0 +1,224 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1360" viewBox="0 0 2200 1360" role="img" aria-label="Pico architecture reference style, modules 1 to 6">
+  <defs>
+    <pattern id="smallGrid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0 L0 0 0 32" fill="none" stroke="#EAF1F7" stroke-width="1"/>
+    </pattern>
+    <pattern id="grid" width="128" height="128" patternUnits="userSpaceOnUse">
+      <rect width="128" height="128" fill="url(#smallGrid)"/>
+      <path d="M128 0 L0 0 0 128" fill="none" stroke="#DCE8F2" stroke-width="1.4"/>
+    </pattern>
+    <filter id="shadow" x="-16%" y="-16%" width="132%" height="132%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#17324C" flood-opacity="0.06"/>
+    </filter>
+    <marker id="arrowTeal" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto">
+      <path d="M0 0 L18 9 L0 18z" fill="#009B8E"/>
+    </marker>
+    <marker id="arrowBlue" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto">
+      <path d="M0 0 L18 9 L0 18z" fill="#1F6FEB"/>
+    </marker>
+    <marker id="arrowOrange" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto">
+      <path d="M0 0 L18 9 L0 18z" fill="#F08A00"/>
+    </marker>
+    <marker id="arrowGreen" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto">
+      <path d="M0 0 L18 9 L0 18z" fill="#168A21"/>
+    </marker>
+    <style>
+      text {
+        font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans", Arial, sans-serif;
+        fill: #102033;
+      }
+      .title { font-size: 30px; font-weight: 780; }
+      .row { font-size: 20px; font-weight: 560; }
+      .small { font-size: 16px; font-weight: 530; }
+      .tiny { font-size: 14px; font-weight: 520; }
+      .num { font-size: 25px; font-weight: 840; fill: white; }
+      .legend { font-size: 18px; font-weight: 550; fill: #223044; }
+      .lineLabel { font-size: 17px; font-weight: 560; fill: #526173; }
+      .tealCard { fill: #F0FFFB; stroke: #009B8E; stroke-width: 4; }
+      .tealRow { fill: #E4FAF5; stroke: #009B8E; stroke-width: 1.8; }
+      .blueCard { fill: #F2F7FF; stroke: #1F6FEB; stroke-width: 4; }
+      .blueRow { fill: #E9F1FF; stroke: #1F6FEB; stroke-width: 1.8; }
+      .orangeCard { fill: #FFF8ED; stroke: #F08A00; stroke-width: 4; }
+      .orangeRow { fill: #FFF1DC; stroke: #F08A00; stroke-width: 1.6; }
+      .greenCard { fill: #F2FFF1; stroke: #168A21; stroke-width: 4; }
+      .greenRow { fill: #E7F9E5; stroke: #168A21; stroke-width: 1.6; }
+      .subBox { fill: rgba(255,255,255,0.58); stroke-width: 1.6; }
+    </style>
+  </defs>
+
+  <rect width="2200" height="1360" fill="#F8FBFF"/>
+  <rect width="2200" height="1360" fill="url(#grid)" opacity="0.9"/>
+
+  <!-- main flow -->
+  <path d="M370 345 L452 345" stroke="#009B8E" stroke-width="5" fill="none" marker-end="url(#arrowTeal)"/>
+  <path d="M802 345 L892 345" stroke="#009B8E" stroke-width="5" fill="none" marker-end="url(#arrowTeal)"/>
+
+  <!-- context flow -->
+  <path d="M1265 285 L1422 285" stroke="#1F6FEB" stroke-width="5" fill="none" marker-end="url(#arrowBlue)"/>
+  <path d="M1430 385 L1273 385" stroke="#1F6FEB" stroke-width="5" fill="none" marker-end="url(#arrowBlue)"/>
+  <text x="1305" y="260" class="lineLabel">组装 prompt</text>
+  <text x="1305" y="418" class="lineLabel">返回 metadata</text>
+
+  <!-- tool flow -->
+  <path d="M1185 645 L1185 704 L1280 704 L1280 820" stroke="#F08A00" stroke-width="5" fill="none" marker-end="url(#arrowOrange)"/>
+  <path d="M1288 910 L1122 910 L1122 652" stroke="#F08A00" stroke-width="5" fill="none" marker-end="url(#arrowOrange)"/>
+  <text x="1208" y="690" class="lineLabel">工具调用</text>
+  <text x="1140" y="935" class="lineLabel">结果返回</text>
+
+  <!-- memory flow -->
+  <path d="M960 645 L960 700 L760 700 L760 752" stroke="#168A21" stroke-width="4.5" fill="none" stroke-dasharray="11 9" marker-end="url(#arrowGreen)"/>
+  <path d="M900 760 L900 724 L1015 724 L1015 653" stroke="#168A21" stroke-width="4.5" fill="none" stroke-dasharray="11 9" marker-end="url(#arrowGreen)"/>
+
+  <!-- 1 CLI -->
+  <g filter="url(#shadow)">
+    <rect x="80" y="190" width="290" height="330" rx="12" class="tealCard"/>
+    <circle cx="121" cy="230" r="21" fill="#009B8E"/>
+    <text x="121" y="239" text-anchor="middle" class="num">1</text>
+    <text x="162" y="241" class="title">CLI / 启动装配</text>
+    <rect x="110" y="286" width="230" height="34" rx="5" class="tealRow"/>
+    <text x="225" y="309" text-anchor="middle" class="row">python -m pico</text>
+    <rect x="110" y="332" width="230" height="34" rx="5" class="tealRow"/>
+    <text x="225" y="355" text-anchor="middle" class="row">argparse</text>
+    <rect x="110" y="378" width="230" height="34" rx="5" class="tealRow"/>
+    <text x="225" y="401" text-anchor="middle" class="row">provider / model</text>
+    <rect x="110" y="424" width="230" height="34" rx="5" class="tealRow"/>
+    <text x="225" y="447" text-anchor="middle" class="row">resume / latest</text>
+    <rect x="110" y="470" width="230" height="34" rx="5" class="tealRow"/>
+    <text x="225" y="493" text-anchor="middle" class="row">build_agent()</text>
+  </g>
+
+  <!-- 2 Workspace -->
+  <g filter="url(#shadow)">
+    <rect x="460" y="190" width="342" height="330" rx="12" class="tealCard"/>
+    <circle cx="502" cy="230" r="21" fill="#009B8E"/>
+    <text x="502" y="239" text-anchor="middle" class="num">2</text>
+    <text x="545" y="241" class="title">工作区快照</text>
+    <rect x="500" y="286" width="262" height="34" rx="5" class="tealRow"/>
+    <text x="631" y="309" text-anchor="middle" class="row">WorkspaceContext</text>
+    <rect x="500" y="332" width="262" height="34" rx="5" class="tealRow"/>
+    <text x="631" y="355" text-anchor="middle" class="row">cwd / repo_root</text>
+    <rect x="500" y="378" width="262" height="34" rx="5" class="tealRow"/>
+    <text x="631" y="401" text-anchor="middle" class="row">Git branch / status</text>
+    <rect x="500" y="424" width="262" height="34" rx="5" class="tealRow"/>
+    <text x="631" y="447" text-anchor="middle" class="row">README / pyproject</text>
+    <rect x="500" y="470" width="262" height="34" rx="5" class="tealRow"/>
+    <text x="631" y="493" text-anchor="middle" class="row">workspace fingerprint</text>
+  </g>
+
+  <!-- 3 Runtime loop -->
+  <g filter="url(#shadow)">
+    <rect x="900" y="135" width="365" height="510" rx="12" class="tealCard"/>
+    <circle cx="945" cy="180" r="22" fill="#009B8E"/>
+    <text x="945" y="189" text-anchor="middle" class="num">3</text>
+    <text x="990" y="191" class="title">主控制循环</text>
+    <rect x="935" y="236" width="295" height="36" rx="5" class="tealRow"/>
+    <text x="1082" y="260" text-anchor="middle" class="row">Pico.ask()</text>
+    <path d="M1082 273 L1082 292" stroke="#009B8E" stroke-width="4" fill="none" marker-end="url(#arrowTeal)"/>
+    <rect x="935" y="300" width="295" height="36" rx="5" class="tealRow"/>
+    <text x="1082" y="324" text-anchor="middle" class="row">构建 prompt</text>
+    <path d="M1082 337 L1082 356" stroke="#009B8E" stroke-width="4" fill="none" marker-end="url(#arrowTeal)"/>
+    <rect x="935" y="364" width="295" height="36" rx="5" class="tealRow"/>
+    <text x="1082" y="388" text-anchor="middle" class="row">请求模型</text>
+    <path d="M1082 401 L1082 420" stroke="#009B8E" stroke-width="4" fill="none" marker-end="url(#arrowTeal)"/>
+    <rect x="935" y="428" width="295" height="36" rx="5" class="tealRow"/>
+    <text x="1082" y="452" text-anchor="middle" class="row">解析输出 parse()</text>
+    <path d="M1082 465 L1082 484" stroke="#009B8E" stroke-width="4" fill="none" marker-end="url(#arrowTeal)"/>
+    <rect x="935" y="492" width="295" height="36" rx="5" class="tealRow"/>
+    <text x="1082" y="516" text-anchor="middle" class="row">工具调用 / final / retry</text>
+    <path d="M1082 529 L1082 548" stroke="#009B8E" stroke-width="4" fill="none" marker-end="url(#arrowTeal)"/>
+    <rect x="935" y="556" width="295" height="36" rx="5" class="tealRow"/>
+    <text x="1082" y="580" text-anchor="middle" class="row">状态更新 / trace</text>
+  </g>
+
+  <!-- 4 Context -->
+  <g filter="url(#shadow)">
+    <rect x="1430" y="180" width="330" height="350" rx="12" class="blueCard"/>
+    <circle cx="1472" cy="220" r="21" fill="#1F6FEB"/>
+    <text x="1472" y="229" text-anchor="middle" class="num">4</text>
+    <text x="1514" y="231" class="title">上下文管理</text>
+    <rect x="1464" y="270" width="262" height="31" rx="5" class="blueRow"/>
+    <text x="1595" y="292" text-anchor="middle" class="row">ContextManager</text>
+    <rect x="1464" y="310" width="262" height="31" rx="5" class="blueRow"/>
+    <text x="1595" y="332" text-anchor="middle" class="row">prefix</text>
+    <rect x="1464" y="350" width="262" height="31" rx="5" class="blueRow"/>
+    <text x="1595" y="372" text-anchor="middle" class="row">memory</text>
+    <rect x="1464" y="390" width="262" height="31" rx="5" class="blueRow"/>
+    <text x="1595" y="412" text-anchor="middle" class="row">relevant memory</text>
+    <rect x="1464" y="430" width="262" height="31" rx="5" class="blueRow"/>
+    <text x="1595" y="452" text-anchor="middle" class="row">history</text>
+    <rect x="1464" y="470" width="262" height="31" rx="5" class="blueRow"/>
+    <text x="1595" y="492" text-anchor="middle" class="row">budget reduction</text>
+  </g>
+
+  <!-- 5 Tool boundary -->
+  <g filter="url(#shadow)">
+    <rect x="1288" y="735" width="500" height="360" rx="12" class="orangeCard"/>
+    <circle cx="1332" cy="778" r="22" fill="#F08A00"/>
+    <text x="1332" y="787" text-anchor="middle" class="num">5</text>
+    <text x="1378" y="790" class="title">工具边界 / 护栏</text>
+    <rect x="1324" y="828" width="200" height="218" rx="7" class="subBox" stroke="#F08A00"/>
+    <text x="1424" y="856" text-anchor="middle" class="small">Tool Registry</text>
+    <rect x="1342" y="874" width="164" height="24" rx="4" class="orangeRow"/>
+    <text x="1424" y="892" text-anchor="middle" class="tiny">list_files</text>
+    <rect x="1342" y="906" width="164" height="24" rx="4" class="orangeRow"/>
+    <text x="1424" y="924" text-anchor="middle" class="tiny">read_file</text>
+    <rect x="1342" y="938" width="164" height="24" rx="4" class="orangeRow"/>
+    <text x="1424" y="956" text-anchor="middle" class="tiny">search</text>
+    <rect x="1342" y="970" width="164" height="24" rx="4" class="orangeRow"/>
+    <text x="1424" y="988" text-anchor="middle" class="tiny">run_shell</text>
+    <rect x="1342" y="1002" width="164" height="24" rx="4" class="orangeRow"/>
+    <text x="1424" y="1020" text-anchor="middle" class="tiny">write / patch / delegate</text>
+    <rect x="1555" y="830" width="192" height="42" rx="5" class="orangeRow"/>
+    <text x="1651" y="857" text-anchor="middle" class="row">参数校验</text>
+    <rect x="1555" y="884" width="192" height="42" rx="5" class="orangeRow"/>
+    <text x="1651" y="911" text-anchor="middle" class="row">approval</text>
+    <rect x="1555" y="938" width="192" height="42" rx="5" class="orangeRow"/>
+    <text x="1651" y="965" text-anchor="middle" class="row">path guard</text>
+    <rect x="1555" y="992" width="192" height="42" rx="5" class="orangeRow"/>
+    <text x="1651" y="1019" text-anchor="middle" class="row">repeat-call guard</text>
+    <rect x="1555" y="1046" width="192" height="30" rx="5" class="orangeRow"/>
+    <text x="1651" y="1067" text-anchor="middle" class="small">shell env / clip</text>
+  </g>
+
+  <!-- 6 Memory -->
+  <g filter="url(#shadow)">
+    <rect x="550" y="760" width="560" height="335" rx="12" class="greenCard"/>
+    <circle cx="595" cy="803" r="22" fill="#168A21"/>
+    <text x="595" y="812" text-anchor="middle" class="num">6</text>
+    <text x="640" y="815" class="title">记忆 / 恢复</text>
+    <rect x="588" y="856" width="230" height="190" rx="7" class="subBox" stroke="#168A21"/>
+    <text x="703" y="884" text-anchor="middle" class="small">LayeredMemory</text>
+    <rect x="618" y="906" width="170" height="28" rx="4" class="greenRow"/>
+    <text x="703" y="926" text-anchor="middle" class="small">task_summary</text>
+    <rect x="618" y="942" width="170" height="28" rx="4" class="greenRow"/>
+    <text x="703" y="962" text-anchor="middle" class="small">recent_files</text>
+    <rect x="618" y="978" width="170" height="28" rx="4" class="greenRow"/>
+    <text x="703" y="998" text-anchor="middle" class="small">file_summaries</text>
+    <rect x="618" y="1014" width="170" height="28" rx="4" class="greenRow"/>
+    <text x="703" y="1034" text-anchor="middle" class="small">episodic_notes</text>
+    <rect x="852" y="856" width="220" height="190" rx="7" class="subBox" stroke="#168A21"/>
+    <text x="962" y="884" text-anchor="middle" class="small">Session / Run</text>
+    <rect x="878" y="906" width="168" height="28" rx="4" class="greenRow"/>
+    <text x="962" y="926" text-anchor="middle" class="small">SessionStore</text>
+    <rect x="878" y="942" width="168" height="28" rx="4" class="greenRow"/>
+    <text x="962" y="962" text-anchor="middle" class="small">TaskState</text>
+    <rect x="878" y="978" width="168" height="28" rx="4" class="greenRow"/>
+    <text x="962" y="998" text-anchor="middle" class="small">trace.jsonl</text>
+    <rect x="878" y="1014" width="168" height="28" rx="4" class="greenRow"/>
+    <text x="962" y="1034" text-anchor="middle" class="small">report.json</text>
+  </g>
+
+  <!-- Legend -->
+  <g>
+    <rect x="230" y="1228" width="1740" height="64" rx="8" fill="rgba(255,255,255,0.78)" stroke="#9DB4CC" stroke-width="2"/>
+    <text x="262" y="1268" class="legend" font-weight="760">图例</text>
+    <path d="M372 1259 L455 1259" stroke="#009B8E" stroke-width="5" fill="none" marker-end="url(#arrowTeal)"/>
+    <text x="484" y="1266" class="legend">主控制流</text>
+    <path d="M660 1259 L743 1259" stroke="#1F6FEB" stroke-width="5" fill="none" marker-end="url(#arrowBlue)"/>
+    <text x="772" y="1266" class="legend">上下文组装</text>
+    <path d="M995 1259 L1078 1259" stroke="#F08A00" stroke-width="5" fill="none" marker-end="url(#arrowOrange)"/>
+    <text x="1107" y="1266" class="legend">工具执行 / 风险边界</text>
+    <path d="M1462 1259 L1545 1259" stroke="#168A21" stroke-width="5" fill="none" stroke-dasharray="11 9" marker-end="url(#arrowGreen)"/>
+    <text x="1574" y="1266" class="legend">记忆召回 / 恢复状态</text>
+  </g>
+</svg>

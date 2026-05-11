@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1360" viewBox="0 0 2200 1360" role="img" aria-label="Pico architecture loop style">
+  <defs>
+    <filter id="shadow" x="-14%" y="-14%" width="128%" height="128%"><feDropShadow dx="0" dy="9" stdDeviation="13" flood-color="#10243a" flood-opacity=".11"/></filter>
+    <marker id="arrowTeal" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto"><path d="M0 0L18 9L0 18z" fill="#0f766e"/></marker>
+    <marker id="arrowBlue" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto"><path d="M0 0L18 9L0 18z" fill="#2563eb"/></marker>
+    <marker id="arrowOrange" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto"><path d="M0 0L18 9L0 18z" fill="#ea580c"/></marker>
+    <marker id="arrowGreen" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto"><path d="M0 0L18 9L0 18z" fill="#15803d"/></marker>
+    <style>
+      text{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif;fill:#102033}
+      .title{font-size:34px;font-weight:820}.sub{font-size:21px;font-weight:560;fill:#64748b}.card-title{font-size:29px;font-weight:800}.body{font-size:21px;font-weight:560;fill:#334155}.small{font-size:17px;font-weight:540;fill:#64748b}.num{font-size:25px;font-weight:850;fill:#fff}.code{font-size:16px;font-weight:650;fill:#334155}.step{font-size:19px;font-weight:760;fill:#0f766e}
+      .main{fill:#ecfdf5;stroke:#0f766e;stroke-width:4}.ctx{fill:#eff6ff;stroke:#2563eb;stroke-width:4}.tool{fill:#fff7ed;stroke:#ea580c;stroke-width:4}.mem{fill:#f0fdf4;stroke:#15803d;stroke-width:4}.pill{fill:rgba(255,255,255,.75);stroke-width:1.6}
+    </style>
+  </defs>
+  <rect width="2200" height="1360" fill="#f8fbff"/>
+  <circle cx="1100" cy="700" r="495" fill="#ffffff" stroke="#d9e6f1" stroke-width="2"/>
+  <circle cx="1100" cy="700" r="350" fill="#f8fbff" stroke="#e3edf6" stroke-width="2"/>
+  <text x="1100" y="90" text-anchor="middle" class="title">循环版：Pico 的核心是一个可控执行循环</text>
+  <text x="1100" y="128" text-anchor="middle" class="sub">适合讲 runtime：入口和仓库快照把循环启动起来，循环再按需调用上下文、工具边界、记忆恢复。</text>
+
+  <g filter="url(#shadow)">
+    <rect x="820" y="500" width="560" height="390" rx="24" class="main"/>
+    <circle cx="880" cy="560" r="30" fill="#0f766e"/><text x="880" y="571" text-anchor="middle" class="num">3</text>
+    <text x="940" y="573" class="card-title">Pico.ask() 主循环</text>
+    <text x="875" y="635" class="body">一轮不等于一次工具调用，而是一次完整决策：</text>
+    <text x="910" y="692" class="step">1. 组 prompt</text>
+    <text x="910" y="735" class="step">2. 调模型</text>
+    <text x="910" y="778" class="step">3. 解析 tool / retry / final</text>
+    <text x="910" y="821" class="step">4. 工具执行或返回最终答案</text>
+    <rect x="875" y="845" width="450" height="34" rx="7" class="pill" stroke="#0f766e"/><text x="1100" y="868" text-anchor="middle" class="code">history + task_state + trace/report</text>
+  </g>
+
+  <path d="M560 330 C650 250 760 220 900 245" stroke="#0f766e" stroke-width="5" fill="none" marker-end="url(#arrowTeal)"/>
+  <g filter="url(#shadow)">
+    <rect x="190" y="235" width="370" height="220" rx="18" class="main"/>
+    <circle cx="238" cy="285" r="25" fill="#0f766e"/><text x="238" y="295" text-anchor="middle" class="num">1</text>
+    <text x="288" y="297" class="card-title">CLI 装配</text>
+    <text x="230" y="355" class="body">确定运行身份和策略</text>
+    <text x="230" y="397" class="small">provider / cwd / approval / resume</text>
+    <rect x="230" y="420" width="285" height="30" rx="7" class="pill" stroke="#0f766e"/><text x="372" y="441" text-anchor="middle" class="code">build_agent()</text>
+  </g>
+  <path d="M620 445 C690 390 760 365 855 360" stroke="#0f766e" stroke-width="5" fill="none" marker-end="url(#arrowTeal)"/>
+  <g filter="url(#shadow)">
+    <rect x="620" y="235" width="390" height="220" rx="18" class="main"/>
+    <circle cx="668" cy="285" r="25" fill="#0f766e"/><text x="668" y="295" text-anchor="middle" class="num">2</text>
+    <text x="718" y="297" class="card-title">工作区快照</text>
+    <text x="660" y="355" class="body">把仓库事实变成 prompt 基线</text>
+    <text x="660" y="397" class="small">Git 状态 + 少量项目文档</text>
+    <rect x="660" y="420" width="300" height="30" rx="7" class="pill" stroke="#0f766e"/><text x="810" y="441" text-anchor="middle" class="code">WorkspaceContext</text>
+  </g>
+
+  <path d="M940 500 C835 410 750 690 620 790" stroke="#2563eb" stroke-width="5" stroke-dasharray="10 8" fill="none" marker-end="url(#arrowBlue)"/>
+  <path d="M1380 700 C1545 645 1555 480 1610 420" stroke="#ea580c" stroke-width="5" stroke-dasharray="10 8" fill="none" marker-end="url(#arrowOrange)"/>
+  <path d="M1100 890 C1110 1030 1500 1040 1610 965" stroke="#15803d" stroke-width="5" stroke-dasharray="10 8" fill="none" marker-end="url(#arrowGreen)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="230" y="760" width="420" height="240" rx="18" class="ctx"/>
+    <circle cx="280" cy="812" r="25" fill="#2563eb"/><text x="280" y="822" text-anchor="middle" class="num">4</text>
+    <text x="330" y="824" class="card-title">上下文管理</text>
+    <text x="270" y="885" class="body">每轮先决定模型看什么</text>
+    <text x="270" y="927" class="small">prefix / memory / history / request</text>
+    <rect x="270" y="957" width="320" height="30" rx="7" class="pill" stroke="#2563eb"/><text x="430" y="978" text-anchor="middle" class="code">ContextManager.build()</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="1550" y="245" width="430" height="250" rx="18" class="tool"/>
+    <circle cx="1600" cy="297" r="25" fill="#ea580c"/><text x="1600" y="307" text-anchor="middle" class="num">5</text>
+    <text x="1650" y="309" class="card-title">工具边界</text>
+    <text x="1590" y="370" class="body">有外部动作时才进入</text>
+    <text x="1590" y="412" class="small">参数 / 路径 / 审批 / 重复调用</text>
+    <rect x="1590" y="445" width="330" height="30" rx="7" class="pill" stroke="#ea580c"/><text x="1755" y="466" text-anchor="middle" class="code">run_tool()</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="1550" y="910" width="430" height="250" rx="18" class="mem"/>
+    <circle cx="1600" cy="962" r="25" fill="#15803d"/><text x="1600" y="972" text-anchor="middle" class="num">6</text>
+    <text x="1650" y="974" class="card-title">记忆 / 恢复</text>
+    <text x="1590" y="1035" class="body">循环结束后仍能接续和复盘</text>
+    <text x="1590" y="1077" class="small">session / task_state / trace / report</text>
+    <rect x="1590" y="1110" width="330" height="30" rx="7" class="pill" stroke="#15803d"/><text x="1755" y="1131" text-anchor="middle" class="code">LayeredMemory / RunStore</text>
+  </g>
+  <rect x="605" y="1182" width="990" height="58" rx="14" fill="#fff" stroke="#c7d6e4" stroke-width="2"/>
+  <text x="1100" y="1220" text-anchor="middle" class="body">读法：中心是运行时循环，外围是进入循环前的输入准备和循环中的三类依赖。</text>
+</svg>

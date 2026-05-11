@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1360" viewBox="0 0 2200 1360" role="img" aria-labelledby="desc">
+  <title id="desc">Pico architecture diagram, simplified modules 1 to 6</title>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#edf3f8" stroke-width="1"/>
+    </pattern>
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#12263a" flood-opacity="0.09"/>
+    </filter>
+    <marker id="arrowMain" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto">
+      <path d="M 0 0 L 18 9 L 0 18 z" fill="#008f83"/>
+    </marker>
+    <marker id="arrowBlue" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto">
+      <path d="M 0 0 L 18 9 L 0 18 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowOrange" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto">
+      <path d="M 0 0 L 18 9 L 0 18 z" fill="#e87900"/>
+    </marker>
+    <marker id="arrowGreen" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto">
+      <path d="M 0 0 L 18 9 L 0 18 z" fill="#168a21"/>
+    </marker>
+    <style>
+      text {
+        font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans", Arial, sans-serif;
+        fill: #102033;
+      }
+      .band-title { font-size: 30px; font-weight: 760; fill: #1e2f45; }
+      .band-note { font-size: 20px; font-weight: 520; fill: #607089; }
+      .card-title { font-size: 30px; font-weight: 780; }
+      .plain { font-size: 22px; font-weight: 560; fill: #26384d; }
+      .small { font-size: 18px; font-weight: 520; fill: #536276; }
+      .tiny { font-size: 15px; font-weight: 540; fill: #536276; }
+      .num { fill: white; font-size: 26px; font-weight: 820; }
+      .label { font-size: 17px; font-weight: 650; fill: #6a7788; }
+      .code { font-size: 17px; font-weight: 620; fill: #344255; }
+      .main-card { fill: #f0fffb; stroke: #008f83; stroke-width: 4; }
+      .context-card { fill: #f3f7ff; stroke: #2563eb; stroke-width: 4; }
+      .tool-card { fill: #fff7ec; stroke: #e87900; stroke-width: 4; }
+      .memory-card { fill: #f3fff1; stroke: #168a21; stroke-width: 4; }
+      .pill { fill: rgba(255, 255, 255, 0.72); stroke-width: 1.6; }
+      .soft-panel { fill: rgba(255, 255, 255, 0.62); stroke: #d4e0ea; stroke-width: 2; }
+    </style>
+  </defs>
+
+  <rect width="2200" height="1360" fill="#f8fbff"/>
+  <rect width="2200" height="1360" fill="url(#grid)" opacity="0.9"/>
+
+  <!-- Main path band -->
+  <rect x="95" y="80" width="2010" height="500" rx="24" class="soft-panel"/>
+  <text x="140" y="138" class="band-title">主路径：一条请求怎么跑起来</text>
+  <text x="140" y="172" class="band-note">先装配运行现场，再拿仓库事实，最后进入 Pico.ask() 的循环。</text>
+
+  <!-- Support band -->
+  <rect x="95" y="665" width="2010" height="555" rx="24" class="soft-panel"/>
+  <text x="140" y="725" class="band-title">支撑层：每一轮循环真正依赖的三件事</text>
+  <text x="140" y="759" class="band-note">上下文负责让模型看见该看的内容，工具边界负责把动作管住，记忆/恢复负责让任务可延续、可复盘。</text>
+
+  <!-- Top flow arrows -->
+  <path d="M 650 330 L 790 330" stroke="#008f83" stroke-width="6" fill="none" marker-end="url(#arrowMain)"/>
+  <path d="M 1320 330 L 1460 330" stroke="#008f83" stroke-width="6" fill="none" marker-end="url(#arrowMain)"/>
+  <text x="705" y="304" class="label">启动后采集</text>
+  <text x="1375" y="304" class="label">交给 runtime</text>
+
+  <!-- 1 CLI -->
+  <g filter="url(#shadow)">
+    <rect x="140" y="220" width="510" height="250" rx="18" class="main-card"/>
+    <circle cx="190" cy="270" r="25" fill="#008f83"/>
+    <text x="190" y="280" text-anchor="middle" class="num">1</text>
+    <text x="235" y="282" class="card-title">CLI / 启动装配</text>
+    <text x="180" y="335" class="plain">回答的问题：这次运行用什么身份启动？</text>
+    <text x="180" y="382" class="small">解析 prompt、cwd、provider、approval、resume。</text>
+    <rect x="180" y="412" width="420" height="34" rx="7" class="pill" stroke="#008f83"/>
+    <text x="390" y="435" text-anchor="middle" class="code">cli.build_agent() -> Pico</text>
+  </g>
+
+  <!-- 2 Workspace -->
+  <g filter="url(#shadow)">
+    <rect x="810" y="220" width="510" height="250" rx="18" class="main-card"/>
+    <circle cx="860" cy="270" r="25" fill="#008f83"/>
+    <text x="860" y="280" text-anchor="middle" class="num">2</text>
+    <text x="905" y="282" class="card-title">工作区快照</text>
+    <text x="850" y="335" class="plain">回答的问题：当前仓库长什么样？</text>
+    <text x="850" y="382" class="small">只预加载稳定事实：cwd、repo_root、Git 状态、少量项目文档。</text>
+    <rect x="850" y="412" width="420" height="34" rx="7" class="pill" stroke="#008f83"/>
+    <text x="1060" y="435" text-anchor="middle" class="code">WorkspaceContext.build() / fingerprint()</text>
+  </g>
+
+  <!-- 3 Control Loop -->
+  <g filter="url(#shadow)">
+    <rect x="1480" y="170" width="540" height="350" rx="18" class="main-card"/>
+    <circle cx="1530" cy="220" r="25" fill="#008f83"/>
+    <text x="1530" y="230" text-anchor="middle" class="num">3</text>
+    <text x="1575" y="232" class="card-title">主控制循环</text>
+    <text x="1520" y="285" class="plain">回答的问题：模型下一步该做什么？</text>
+    <text x="1520" y="330" class="small">每轮都按固定节奏推进，直到 final 或停止条件。</text>
+    <rect x="1520" y="365" width="110" height="38" rx="7" fill="#e5fbf6" stroke="#008f83" stroke-width="1.6"/>
+    <text x="1575" y="390" text-anchor="middle" class="tiny">组 prompt</text>
+    <path d="M 1630 384 L 1678 384" stroke="#008f83" stroke-width="3" marker-end="url(#arrowMain)"/>
+    <rect x="1685" y="365" width="110" height="38" rx="7" fill="#e5fbf6" stroke="#008f83" stroke-width="1.6"/>
+    <text x="1740" y="390" text-anchor="middle" class="tiny">调模型</text>
+    <path d="M 1795 384 L 1843 384" stroke="#008f83" stroke-width="3" marker-end="url(#arrowMain)"/>
+    <rect x="1850" y="365" width="110" height="38" rx="7" fill="#e5fbf6" stroke="#008f83" stroke-width="1.6"/>
+    <text x="1905" y="390" text-anchor="middle" class="tiny">解析输出</text>
+    <rect x="1520" y="425" width="440" height="34" rx="7" class="pill" stroke="#008f83"/>
+    <text x="1740" y="448" text-anchor="middle" class="code">Pico.ask(): tool / retry / final</text>
+  </g>
+
+  <!-- Support dependency -->
+  <path d="M 1750 520 L 1750 635" stroke="#607089" stroke-width="4" fill="none" stroke-dasharray="10 8" marker-end="url(#arrowMain)"/>
+  <text x="1780" y="603" class="label">循环中按需调用支撑层</text>
+
+  <!-- 4 Context -->
+  <g filter="url(#shadow)">
+    <rect x="140" y="805" width="610" height="310" rx="18" class="context-card"/>
+    <circle cx="190" cy="855" r="25" fill="#2563eb"/>
+    <text x="190" y="865" text-anchor="middle" class="num">4</text>
+    <text x="235" y="867" class="card-title">上下文管理</text>
+    <text x="180" y="920" class="plain">把“该给模型看的内容”装进一个可控 prompt。</text>
+    <text x="180" y="965" class="small">来源：prefix、memory、相关记忆、history、current request。</text>
+    <text x="180" y="1005" class="small">超预算时按顺序收缩，当前请求不裁剪。</text>
+    <rect x="180" y="1045" width="510" height="34" rx="7" class="pill" stroke="#2563eb"/>
+    <text x="435" y="1068" text-anchor="middle" class="code">ContextManager.build()</text>
+  </g>
+
+  <!-- 5 Tool guard -->
+  <g filter="url(#shadow)">
+    <rect x="795" y="805" width="610" height="310" rx="18" class="tool-card"/>
+    <circle cx="845" cy="855" r="25" fill="#e87900"/>
+    <text x="845" y="865" text-anchor="middle" class="num">5</text>
+    <text x="890" y="867" class="card-title">工具边界 / 护栏</text>
+    <text x="835" y="920" class="plain">模型不能直接碰文件和 shell，只能申请工具。</text>
+    <text x="835" y="965" class="small">执行前检查：工具是否存在、参数、路径、审批、重复调用。</text>
+    <text x="835" y="1005" class="small">执行后裁剪结果，回写 memory，再交回下一轮模型。</text>
+    <rect x="835" y="1045" width="510" height="34" rx="7" class="pill" stroke="#e87900"/>
+    <text x="1090" y="1068" text-anchor="middle" class="code">run_tool() + Tool Registry</text>
+  </g>
+
+  <!-- 6 Memory -->
+  <g filter="url(#shadow)">
+    <rect x="1450" y="805" width="610" height="310" rx="18" class="memory-card"/>
+    <circle cx="1500" cy="855" r="25" fill="#168a21"/>
+    <text x="1500" y="865" text-anchor="middle" class="num">6</text>
+    <text x="1545" y="867" class="card-title">记忆 / 恢复</text>
+    <text x="1490" y="920" class="plain">让多轮任务接得上，也让运行过程能复盘。</text>
+    <text x="1490" y="965" class="small">短期：task_summary、recent_files、file_summaries、notes。</text>
+    <text x="1490" y="1005" class="small">落盘：session、task_state、trace.jsonl、report.json。</text>
+    <rect x="1490" y="1045" width="510" height="34" rx="7" class="pill" stroke="#168a21"/>
+    <text x="1745" y="1068" text-anchor="middle" class="code">LayeredMemory / SessionStore / RunStore</text>
+  </g>
+
+  <!-- Reading hint -->
+  <g>
+    <rect x="465" y="1255" width="1270" height="52" rx="12" fill="rgba(255,255,255,0.82)" stroke="#bfd0df" stroke-width="2"/>
+    <path d="M 520 1281 L 610 1281" stroke="#008f83" stroke-width="5" marker-end="url(#arrowMain)"/>
+    <text x="635" y="1288" class="small">实线看主执行路径</text>
+    <path d="M 880 1281 L 970 1281" stroke="#607089" stroke-width="4" stroke-dasharray="9 8" marker-end="url(#arrowMain)"/>
+    <text x="995" y="1288" class="small">虚线表示主循环按需调用支撑层</text>
+    <path d="M 1345 1281 L 1435 1281" stroke="#e87900" stroke-width="4" stroke-dasharray="9 8" marker-end="url(#arrowOrange)"/>
+    <text x="1460" y="1288" class="small">有工具动作时才进入护栏</text>
+  </g>
+</svg>

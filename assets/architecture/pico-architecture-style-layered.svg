@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1360" viewBox="0 0 2200 1360" role="img" aria-label="Pico architecture layered style">
+  <defs>
+    <filter id="shadow" x="-12%" y="-12%" width="124%" height="124%"><feDropShadow dx="0" dy="8" stdDeviation="13" flood-color="#10243a" flood-opacity=".10"/></filter>
+    <marker id="arrow" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto"><path d="M0 0 L18 9 L0 18z" fill="#334155"/></marker>
+    <style>
+      text{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif;fill:#102033}
+      .title{font-size:34px;font-weight:820}.sub{font-size:21px;font-weight:560;fill:#65748a}.layer-title{font-size:30px;font-weight:800}.body{font-size:22px;font-weight:560;fill:#334155}.small{font-size:18px;font-weight:540;fill:#64748b}.num{font-size:25px;font-weight:850;fill:white}.code{font-size:17px;font-weight:650;fill:#334155}
+      .frame{fill:#f8fbff;stroke:#d7e2ee;stroke-width:2}.l1{fill:#ecfdf5;stroke:#059669;stroke-width:4}.l2{fill:#f0fdfa;stroke:#0f766e;stroke-width:4}.l3{fill:#eff6ff;stroke:#2563eb;stroke-width:4}.l4{fill:#fff7ed;stroke:#ea580c;stroke-width:4}.l5{fill:#f0fdf4;stroke:#15803d;stroke-width:4}.pill{fill:rgba(255,255,255,.72);stroke-width:1.6}
+    </style>
+  </defs>
+  <rect width="2200" height="1360" fill="#f8fbff"/>
+  <path d="M0 170H2200M0 340H2200M0 510H2200M0 680H2200M0 850H2200M0 1020H2200M0 1190H2200" stroke="#eef4f9"/>
+  <text x="1100" y="88" text-anchor="middle" class="title">分层版：Pico 不是一个大循环，而是几层职责叠起来</text>
+  <text x="1100" y="126" text-anchor="middle" class="sub">适合讲系统设计：入口层、事实层、调度层、上下文层、安全边界、状态层各自负责什么。</text>
+
+  <g filter="url(#shadow)">
+    <rect x="260" y="185" width="1680" height="135" rx="18" class="l1"/>
+    <circle cx="320" cy="252" r="26" fill="#059669"/><text x="320" y="262" text-anchor="middle" class="num">1</text>
+    <text x="370" y="245" class="layer-title">入口层：CLI / 启动装配</text>
+    <text x="370" y="286" class="body">把命令行里的选择翻译成 runtime 对象：模型后端、工作目录、审批策略、是否恢复 session。</text>
+    <rect x="1510" y="232" width="330" height="38" rx="8" class="pill" stroke="#059669"/><text x="1675" y="257" text-anchor="middle" class="code">cli.build_agent()</text>
+  </g>
+  <path d="M1100 320L1100 372" stroke="#334155" stroke-width="4" marker-end="url(#arrow)"/>
+  <g filter="url(#shadow)">
+    <rect x="260" y="385" width="1680" height="135" rx="18" class="l2"/>
+    <circle cx="320" cy="452" r="26" fill="#0f766e"/><text x="320" y="462" text-anchor="middle" class="num">2</text>
+    <text x="370" y="445" class="layer-title">事实层：工作区快照</text>
+    <text x="370" y="486" class="body">给 agent 一个小而稳定的仓库基线，不全量扫描：cwd、repo_root、Git 状态、白名单文档。</text>
+    <rect x="1510" y="432" width="330" height="38" rx="8" class="pill" stroke="#0f766e"/><text x="1675" y="457" text-anchor="middle" class="code">WorkspaceContext.build()</text>
+  </g>
+  <path d="M1100 520L1100 572" stroke="#334155" stroke-width="4" marker-end="url(#arrow)"/>
+  <g filter="url(#shadow)">
+    <rect x="260" y="585" width="1680" height="165" rx="18" class="l2"/>
+    <circle cx="320" cy="652" r="26" fill="#0f766e"/><text x="320" y="662" text-anchor="middle" class="num">3</text>
+    <text x="370" y="645" class="layer-title">调度层：Pico.ask() 主控制循环</text>
+    <text x="370" y="686" class="body">按固定节奏推进：记录请求、组 prompt、调模型、解析 tool/final/retry、执行工具、写 trace/report。</text>
+    <rect x="560" y="710" width="180" height="34" rx="7" class="pill" stroke="#0f766e"/><text x="650" y="733" text-anchor="middle" class="code">prompt</text>
+    <rect x="780" y="710" width="180" height="34" rx="7" class="pill" stroke="#0f766e"/><text x="870" y="733" text-anchor="middle" class="code">model</text>
+    <rect x="1000" y="710" width="180" height="34" rx="7" class="pill" stroke="#0f766e"/><text x="1090" y="733" text-anchor="middle" class="code">parse</text>
+    <rect x="1220" y="710" width="180" height="34" rx="7" class="pill" stroke="#0f766e"/><text x="1310" y="733" text-anchor="middle" class="code">tool/final</text>
+    <rect x="1510" y="635" width="330" height="38" rx="8" class="pill" stroke="#0f766e"/><text x="1675" y="660" text-anchor="middle" class="code">Pico.ask()</text>
+  </g>
+  <path d="M1100 750L1100 802" stroke="#334155" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="260" y="815" width="525" height="245" rx="18" class="l3"/>
+    <circle cx="320" cy="875" r="26" fill="#2563eb"/><text x="320" y="885" text-anchor="middle" class="num">4</text>
+    <text x="370" y="868" class="layer-title">上下文层</text>
+    <text x="310" y="925" class="body">把信息装进一个可控 prompt</text>
+    <text x="310" y="968" class="small">prefix / memory / history / 当前请求</text>
+    <text x="310" y="1008" class="small">超预算时有明确收缩顺序</text>
+    <rect x="310" y="1030" width="420" height="30" rx="7" class="pill" stroke="#2563eb"/><text x="520" y="1051" text-anchor="middle" class="code">ContextManager.build()</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="837" y="815" width="525" height="245" rx="18" class="l4"/>
+    <circle cx="897" cy="875" r="26" fill="#ea580c"/><text x="897" y="885" text-anchor="middle" class="num">5</text>
+    <text x="947" y="868" class="layer-title">工具边界层</text>
+    <text x="887" y="925" class="body">所有外部动作都过统一闸口</text>
+    <text x="887" y="968" class="small">工具存在、参数、路径、审批、重复调用</text>
+    <text x="887" y="1008" class="small">执行结果裁剪并回写记忆</text>
+    <rect x="887" y="1030" width="420" height="30" rx="7" class="pill" stroke="#ea580c"/><text x="1097" y="1051" text-anchor="middle" class="code">run_tool() + Registry</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="1415" y="815" width="525" height="245" rx="18" class="l5"/>
+    <circle cx="1475" cy="875" r="26" fill="#15803d"/><text x="1475" y="885" text-anchor="middle" class="num">6</text>
+    <text x="1525" y="868" class="layer-title">状态层：记忆 / 恢复</text>
+    <text x="1465" y="925" class="body">保存可延续的工作现场和审计证据</text>
+    <text x="1465" y="968" class="small">task_summary / recent_files / notes</text>
+    <text x="1465" y="1008" class="small">session / task_state / trace / report</text>
+    <rect x="1465" y="1030" width="420" height="30" rx="7" class="pill" stroke="#15803d"/><text x="1675" y="1051" text-anchor="middle" class="code">LayeredMemory / RunStore</text>
+  </g>
+
+  <rect x="430" y="1160" width="1340" height="76" rx="16" class="frame"/>
+  <text x="1100" y="1208" text-anchor="middle" class="body">读法：上面三层形成主执行路径，下面三层是每一轮 ask() 都会依赖的运行支撑。</text>
+</svg>

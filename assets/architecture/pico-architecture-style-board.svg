@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1360" viewBox="0 0 2200 1360" role="img" aria-label="Pico architecture board style">
+  <defs>
+    <filter id="shadow" x="-12%" y="-12%" width="124%" height="124%"><feDropShadow dx="0" dy="7" stdDeviation="12" flood-color="#10243a" flood-opacity=".10"/></filter>
+    <style>
+      text{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif;fill:#102033}
+      .title{font-size:34px;font-weight:820}.sub{font-size:21px;font-weight:560;fill:#64748b}.card-title{font-size:29px;font-weight:800}.question{font-size:22px;font-weight:750;fill:#223248}.body{font-size:19px;font-weight:550;fill:#475569}.code{font-size:16px;font-weight:650;fill:#334155}.num{font-size:25px;font-weight:850;fill:white}
+      .main{fill:#f0fdfa;stroke:#0f766e;stroke-width:4}.ctx{fill:#eff6ff;stroke:#2563eb;stroke-width:4}.tool{fill:#fff7ed;stroke:#ea580c;stroke-width:4}.mem{fill:#f0fdf4;stroke:#15803d;stroke-width:4}.pill{fill:rgba(255,255,255,.76);stroke-width:1.5}
+    </style>
+  </defs>
+  <rect width="2200" height="1360" fill="#f8fbff"/>
+  <path d="M0 0H2200V1360H0z" fill="#f8fbff"/>
+  <circle cx="340" cy="180" r="210" fill="#e0f2fe" opacity=".28"/>
+  <circle cx="1850" cy="1120" r="260" fill="#dcfce7" opacity=".28"/>
+  <text x="1100" y="88" text-anchor="middle" class="title">讲解卡片版：面试时按这六张卡讲</text>
+  <text x="1100" y="126" text-anchor="middle" class="sub">每张卡只回答一个问题，弱化代码细节，突出架构边界和职责。</text>
+
+  <g filter="url(#shadow)">
+    <rect x="150" y="190" width="590" height="260" rx="20" class="main"/>
+    <circle cx="205" cy="248" r="28" fill="#0f766e"/><text x="205" y="259" text-anchor="middle" class="num">1</text>
+    <text x="260" y="260" class="card-title">启动装配</text>
+    <text x="190" y="315" class="question">从哪里进入？</text>
+    <text x="190" y="360" class="body">CLI 把用户的一次输入变成一个已经装配好的 Pico 实例。</text>
+    <text x="190" y="398" class="body">这里决定 provider、cwd、审批策略、是否恢复旧 session。</text>
+    <rect x="190" y="415" width="500" height="30" rx="7" class="pill" stroke="#0f766e"/><text x="440" y="436" text-anchor="middle" class="code">python -m pico / cli.build_agent()</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="805" y="190" width="590" height="260" rx="20" class="main"/>
+    <circle cx="860" cy="248" r="28" fill="#0f766e"/><text x="860" y="259" text-anchor="middle" class="num">2</text>
+    <text x="915" y="260" class="card-title">仓库事实</text>
+    <text x="845" y="315" class="question">模型先知道什么？</text>
+    <text x="845" y="360" class="body">不让模型盲猜仓库状态，先给它一份小快照。</text>
+    <text x="845" y="398" class="body">只收 Git 状态、目录、少量项目文档，避免 prompt 失控。</text>
+    <rect x="845" y="415" width="500" height="30" rx="7" class="pill" stroke="#0f766e"/><text x="1095" y="436" text-anchor="middle" class="code">WorkspaceContext.build()</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="1460" y="190" width="590" height="260" rx="20" class="main"/>
+    <circle cx="1515" cy="248" r="28" fill="#0f766e"/><text x="1515" y="259" text-anchor="middle" class="num">3</text>
+    <text x="1570" y="260" class="card-title">运行循环</text>
+    <text x="1500" y="315" class="question">请求怎么被推进？</text>
+    <text x="1500" y="360" class="body">Pico.ask() 每轮只做一个决策：工具、重试、最终答案。</text>
+    <text x="1500" y="398" class="body">它同时维护 history、task_state、trace 和 report。</text>
+    <rect x="1500" y="415" width="500" height="30" rx="7" class="pill" stroke="#0f766e"/><text x="1750" y="436" text-anchor="middle" class="code">Pico.ask(): prompt -> model -> parse</text>
+  </g>
+
+  <path d="M740 320H785" stroke="#0f766e" stroke-width="5"/>
+  <path d="M1395 320H1440" stroke="#0f766e" stroke-width="5"/>
+  <g filter="url(#shadow)">
+    <rect x="150" y="700" width="590" height="300" rx="20" class="ctx"/>
+    <circle cx="205" cy="758" r="28" fill="#2563eb"/><text x="205" y="769" text-anchor="middle" class="num">4</text>
+    <text x="260" y="770" class="card-title">上下文管理</text>
+    <text x="190" y="828" class="question">模型这一轮该看什么？</text>
+    <text x="190" y="873" class="body">ContextManager 把 prefix、memory、相关记忆、历史和</text>
+    <text x="190" y="913" class="body">当前请求合成一个可控 prompt，并处理预算收缩。</text>
+    <rect x="190" y="952" width="500" height="30" rx="7" class="pill" stroke="#2563eb"/><text x="440" y="973" text-anchor="middle" class="code">ContextManager.build()</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="805" y="700" width="590" height="300" rx="20" class="tool"/>
+    <circle cx="860" cy="758" r="28" fill="#ea580c"/><text x="860" y="769" text-anchor="middle" class="num">5</text>
+    <text x="915" y="770" class="card-title">工具边界</text>
+    <text x="845" y="828" class="question">模型怎么安全地行动？</text>
+    <text x="845" y="873" class="body">模型只能申请白名单工具，run_tool() 负责执行前检查。</text>
+    <text x="845" y="913" class="body">路径、参数、审批、重复调用这些边界都在这里守住。</text>
+    <rect x="845" y="952" width="500" height="30" rx="7" class="pill" stroke="#ea580c"/><text x="1095" y="973" text-anchor="middle" class="code">run_tool() + Tool Registry</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="1460" y="700" width="590" height="300" rx="20" class="mem"/>
+    <circle cx="1515" cy="758" r="28" fill="#15803d"/><text x="1515" y="769" text-anchor="middle" class="num">6</text>
+    <text x="1570" y="770" class="card-title">记忆 / 恢复</text>
+    <text x="1500" y="828" class="question">任务怎么接续和复盘？</text>
+    <text x="1500" y="873" class="body">LayeredMemory 维护短期工作记忆，SessionStore 负责恢复。</text>
+    <text x="1500" y="913" class="body">RunStore 把 task_state、trace、report 作为运行证据落盘。</text>
+    <rect x="1500" y="952" width="500" height="30" rx="7" class="pill" stroke="#15803d"/><text x="1750" y="973" text-anchor="middle" class="code">LayeredMemory / SessionStore / RunStore</text>
+  </g>
+
+  <rect x="410" y="1145" width="1380" height="88" rx="18" fill="rgba(255,255,255,.82)" stroke="#c7d6e4" stroke-width="2"/>
+  <text x="1100" y="1188" text-anchor="middle" class="question">一句话总结</text>
+  <text x="1100" y="1222" text-anchor="middle" class="body">Pico 是一个本地 coding agent runtime：CLI 装配现场，Workspace 提供事实，Pico.ask 调度循环，Context / Tool / Memory 三层共同保证可控执行。</text>
+</svg>

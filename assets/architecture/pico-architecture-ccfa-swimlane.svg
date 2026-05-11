@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1360" viewBox="0 0 2200 1360" role="img" aria-label="Pico CCFA swimlane architecture">
+  <defs>
+    <marker id="arrow" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" refX="14" refY="8" orient="auto"><path d="M0 0L16 8L0 16z" fill="#334155"/></marker>
+    <style>
+      text{font-family:"SF Pro Text","Inter","PingFang SC","Microsoft YaHei",Arial,sans-serif;fill:#111827}
+      .title{font-size:38px;font-weight:760}.sub{font-size:20px;font-weight:520;fill:#64748b}.lane{font-size:22px;font-weight:780;fill:#334155}.h{font-size:25px;font-weight:760}.b{font-size:18px;font-weight:540;fill:#475569}.code{font-size:15px;font-weight:650;fill:#334155}.n{font-size:18px;font-weight:800;fill:white}
+      .box{fill:white;stroke:#CBD5E1;stroke-width:2.2}.dark{fill:#111827}.teal{fill:#0f766e}.blue{fill:#2563eb}.orange{fill:#ea580c}.green{fill:#15803d}.pill{fill:#F8FAFC;stroke:#CBD5E1;stroke-width:1.5}
+    </style>
+  </defs>
+  <rect width="2200" height="1360" fill="#F8FAFC"/>
+  <text x="1100" y="90" text-anchor="middle" class="title">Pico Architecture as Swimlanes</text>
+  <text x="1100" y="126" text-anchor="middle" class="sub">A request moves left to right; each lane owns one boundary.</text>
+
+  <rect x="130" y="200" width="1940" height="150" rx="16" fill="#fff" stroke="#E2E8F0" stroke-width="2"/>
+  <rect x="130" y="380" width="1940" height="150" rx="16" fill="#fff" stroke="#E2E8F0" stroke-width="2"/>
+  <rect x="130" y="560" width="1940" height="150" rx="16" fill="#fff" stroke="#E2E8F0" stroke-width="2"/>
+  <rect x="130" y="740" width="1940" height="150" rx="16" fill="#fff" stroke="#E2E8F0" stroke-width="2"/>
+  <rect x="130" y="920" width="1940" height="150" rx="16" fill="#fff" stroke="#E2E8F0" stroke-width="2"/>
+
+  <text x="185" y="282" class="lane">Entry</text>
+  <text x="185" y="462" class="lane">Facts</text>
+  <text x="185" y="642" class="lane">Control Loop</text>
+  <text x="185" y="822" class="lane">Guardrails</text>
+  <text x="185" y="1002" class="lane">State</text>
+  <path d="M360 190V1080" stroke="#E2E8F0" stroke-width="2"/>
+
+  <g>
+    <rect x="430" y="230" width="320" height="90" rx="14" class="box"/><circle cx="465" cy="275" r="22" class="teal"/><text x="465" y="282" text-anchor="middle" class="n">1</text>
+    <text x="505" y="268" class="h">CLI Bootstrap</text><text x="505" y="299" class="code">cli.build_agent()</text>
+  </g>
+  <path d="M750 275H830" stroke="#334155" stroke-width="4" marker-end="url(#arrow)"/>
+  <g>
+    <rect x="840" y="410" width="350" height="90" rx="14" class="box"/><circle cx="875" cy="455" r="22" class="teal"/><text x="875" y="462" text-anchor="middle" class="n">2</text>
+    <text x="915" y="448" class="h">Workspace Snapshot</text><text x="915" y="479" class="code">git + docs + fingerprint</text>
+  </g>
+  <path d="M1190 455H1280" stroke="#334155" stroke-width="4" marker-end="url(#arrow)"/>
+  <g>
+    <rect x="1290" y="590" width="420" height="90" rx="14" class="box"/><circle cx="1325" cy="635" r="22" class="teal"/><text x="1325" y="642" text-anchor="middle" class="n">3</text>
+    <text x="1365" y="628" class="h">Pico.ask()</text><text x="1365" y="659" class="code">prompt -> model -> parse -> act</text>
+  </g>
+  <path d="M1490 590V520" stroke="#2563eb" stroke-width="4" stroke-dasharray="9 7" marker-end="url(#arrow)"/>
+  <g>
+    <rect x="1290" y="410" width="420" height="90" rx="14" class="box"/><circle cx="1325" cy="455" r="22" class="blue"/><text x="1325" y="462" text-anchor="middle" class="n">4</text>
+    <text x="1365" y="448" class="h">Context Pack</text><text x="1365" y="479" class="code">ContextManager.build()</text>
+  </g>
+  <path d="M1550 680V738" stroke="#ea580c" stroke-width="4" stroke-dasharray="9 7" marker-end="url(#arrow)"/>
+  <g>
+    <rect x="1290" y="770" width="420" height="90" rx="14" class="box"/><circle cx="1325" cy="815" r="22" class="orange"/><text x="1325" y="822" text-anchor="middle" class="n">5</text>
+    <text x="1365" y="808" class="h">Tool Gate</text><text x="1365" y="839" class="code">validate -> approve -> execute</text>
+  </g>
+  <path d="M1490 680C1490 775 1490 830 1490 918" stroke="#15803d" stroke-width="4" stroke-dasharray="9 7" fill="none" marker-end="url(#arrow)"/>
+  <g>
+    <rect x="1290" y="950" width="420" height="90" rx="14" class="box"/><circle cx="1325" cy="995" r="22" class="green"/><text x="1325" y="1002" text-anchor="middle" class="n">6</text>
+    <text x="1365" y="988" class="h">Memory / Recovery</text><text x="1365" y="1019" class="code">session + trace + report</text>
+  </g>
+  <path d="M1710 635H1840" stroke="#334155" stroke-width="4" marker-end="url(#arrow)"/>
+  <rect x="1850" y="590" width="150" height="90" rx="45" class="dark"/>
+  <text x="1925" y="643" text-anchor="middle" font-size="24" font-weight="800" fill="#fff">final</text>
+
+  <rect x="500" y="1140" width="1200" height="70" rx="14" fill="#fff" stroke="#CBD5E1" stroke-width="2"/>
+  <text x="1100" y="1185" text-anchor="middle" class="b">Swimlane reading: the request crosses boundaries, but Pico.ask() stays the only scheduler.</text>
+</svg>

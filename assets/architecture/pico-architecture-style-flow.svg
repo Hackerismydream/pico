@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1360" viewBox="0 0 2200 1360" role="img" aria-label="Pico architecture flow style">
+  <defs>
+    <filter id="shadow" x="-12%" y="-12%" width="124%" height="124%"><feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#17324c" flood-opacity="0.10"/></filter>
+    <marker id="arrow" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto"><path d="M0 0 L18 9 L0 18z" fill="#0f766e"/></marker>
+    <marker id="arrowBlue" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto"><path d="M0 0 L18 9 L0 18z" fill="#2563eb"/></marker>
+    <marker id="arrowOrange" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto"><path d="M0 0 L18 9 L0 18z" fill="#ea580c"/></marker>
+    <marker id="arrowGreen" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto"><path d="M0 0 L18 9 L0 18z" fill="#15803d"/></marker>
+    <style>
+      text{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif;fill:#132236}
+      .title{font-size:34px;font-weight:800}.note{font-size:21px;font-weight:560;fill:#5c6b80}.card-title{font-size:31px;font-weight:800}.body{font-size:22px;font-weight:560;fill:#334155}.small{font-size:18px;font-weight:540;fill:#64748b}.code{font-size:17px;font-weight:650;fill:#334155}.num{font-size:25px;font-weight:850;fill:white}.white{fill:#fff}.out-text{fill:#075985}
+      .main{fill:#f0fdfa;stroke:#0f766e;stroke-width:4}.ctx{fill:#eff6ff;stroke:#2563eb;stroke-width:4}.tool{fill:#fff7ed;stroke:#ea580c;stroke-width:4}.mem{fill:#f0fdf4;stroke:#15803d;stroke-width:4}.pill{fill:rgba(255,255,255,.75);stroke-width:1.8}.input{fill:#0f172a}.out{fill:#ecfeff;stroke:#0891b2;stroke-width:4}
+    </style>
+  </defs>
+  <rect width="2200" height="1360" fill="#f8fbff"/>
+  <path d="M0 120H2200M0 240H2200M0 360H2200M0 480H2200M0 600H2200M0 720H2200M0 840H2200M0 960H2200M0 1080H2200M0 1200H2200M160 0V1360M320 0V1360M480 0V1360M640 0V1360M800 0V1360M960 0V1360M1120 0V1360M1280 0V1360M1440 0V1360M1600 0V1360M1760 0V1360M1920 0V1360" stroke="#edf3f8" stroke-width="1"/>
+
+  <text x="1100" y="92" text-anchor="middle" class="title">线性流程版：先看一条请求从入口到输出</text>
+  <text x="1100" y="130" text-anchor="middle" class="note">主链路横向展开，支撑模块挂在 Pico.ask() 下面，适合讲“请求怎么被执行”。</text>
+
+  <g>
+    <rect x="90" y="277" width="210" height="86" rx="43" class="input"/>
+    <text x="195" y="329" text-anchor="middle" font-size="26" font-weight="800" class="white">用户请求</text>
+    <path d="M300 320L390 320" stroke="#0f766e" stroke-width="6" marker-end="url(#arrow)"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="400" y="210" width="330" height="220" rx="18" class="main"/>
+    <circle cx="445" cy="255" r="25" fill="#0f766e"/><text x="445" y="265" text-anchor="middle" class="num">1</text>
+    <text x="490" y="267" class="card-title">CLI 装配</text>
+    <text x="445" y="325" class="body">把命令行参数变成运行现场</text>
+    <text x="445" y="365" class="small">prompt / cwd / provider</text>
+    <rect x="445" y="385" width="240" height="34" rx="7" class="pill" stroke="#0f766e"/><text x="565" y="408" text-anchor="middle" class="code">build_agent()</text>
+  </g>
+  <path d="M730 320L820 320" stroke="#0f766e" stroke-width="6" marker-end="url(#arrow)"/>
+  <g filter="url(#shadow)">
+    <rect x="830" y="210" width="360" height="220" rx="18" class="main"/>
+    <circle cx="875" cy="255" r="25" fill="#0f766e"/><text x="875" y="265" text-anchor="middle" class="num">2</text>
+    <text x="920" y="267" class="card-title">工作区快照</text>
+    <text x="875" y="325" class="body">给模型一份仓库第一印象</text>
+    <text x="875" y="365" class="small">Git 状态 + 白名单项目文档</text>
+    <rect x="875" y="385" width="270" height="34" rx="7" class="pill" stroke="#0f766e"/><text x="1010" y="408" text-anchor="middle" class="code">WorkspaceContext</text>
+  </g>
+  <path d="M1190 320L1280 320" stroke="#0f766e" stroke-width="6" marker-end="url(#arrow)"/>
+  <g filter="url(#shadow)">
+    <rect x="1290" y="170" width="520" height="300" rx="20" class="main"/>
+    <circle cx="1340" cy="220" r="27" fill="#0f766e"/><text x="1340" y="230" text-anchor="middle" class="num">3</text>
+    <text x="1390" y="232" class="card-title">Pico.ask() 主循环</text>
+    <text x="1335" y="292" class="body">每轮：组 prompt -> 调模型 -> 解析输出 -> 行动/结束</text>
+    <rect x="1335" y="335" width="120" height="40" rx="8" class="pill" stroke="#0f766e"/><text x="1395" y="361" text-anchor="middle" class="code">prompt</text>
+    <path d="M1455 355L1505 355" stroke="#0f766e" stroke-width="4" marker-end="url(#arrow)"/>
+    <rect x="1512" y="335" width="120" height="40" rx="8" class="pill" stroke="#0f766e"/><text x="1572" y="361" text-anchor="middle" class="code">model</text>
+    <path d="M1632 355L1682 355" stroke="#0f766e" stroke-width="4" marker-end="url(#arrow)"/>
+    <rect x="1689" y="335" width="80" height="40" rx="8" class="pill" stroke="#0f766e"/><text x="1729" y="361" text-anchor="middle" class="code">parse</text>
+    <rect x="1335" y="408" width="420" height="34" rx="7" class="pill" stroke="#0f766e"/><text x="1545" y="431" text-anchor="middle" class="code">tool / retry / final</text>
+  </g>
+  <path d="M1810 320L1900 320" stroke="#0f766e" stroke-width="6" marker-end="url(#arrow)"/>
+  <g><rect x="1910" y="277" width="210" height="86" rx="43" class="out"/><text x="2015" y="329" text-anchor="middle" font-size="26" font-weight="800" class="out-text">最终回答</text></g>
+
+  <path d="M1510 470 C1330 575 910 580 560 700" stroke="#2563eb" stroke-width="5" stroke-dasharray="10 8" fill="none" marker-end="url(#arrowBlue)"/>
+  <path d="M1550 470 L1550 692" stroke="#ea580c" stroke-width="5" stroke-dasharray="10 8" fill="none" marker-end="url(#arrowOrange)"/>
+  <path d="M1610 470 C1790 575 1810 610 1820 700" stroke="#15803d" stroke-width="5" stroke-dasharray="10 8" fill="none" marker-end="url(#arrowGreen)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="210" y="720" width="520" height="300" rx="20" class="ctx"/>
+    <circle cx="260" cy="770" r="27" fill="#2563eb"/><text x="260" y="780" text-anchor="middle" class="num">4</text>
+    <text x="310" y="782" class="card-title">上下文管理</text>
+    <text x="250" y="845" class="body">把该看的内容装成 prompt</text>
+    <text x="250" y="890" class="small">prefix / memory / history / 当前请求</text>
+    <text x="250" y="930" class="small">超预算时按固定顺序收缩</text>
+    <rect x="250" y="965" width="420" height="34" rx="7" class="pill" stroke="#2563eb"/><text x="460" y="988" text-anchor="middle" class="code">ContextManager.build()</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="840" y="720" width="520" height="300" rx="20" class="tool"/>
+    <circle cx="890" cy="770" r="27" fill="#ea580c"/><text x="890" y="780" text-anchor="middle" class="num">5</text>
+    <text x="940" y="782" class="card-title">工具边界 / 护栏</text>
+    <text x="880" y="845" class="body">模型只能申请工具，不能直接改外部世界</text>
+    <text x="880" y="890" class="small">参数、路径、审批、重复调用都先检查</text>
+    <text x="880" y="930" class="small">执行结果裁剪后回到下一轮</text>
+    <rect x="880" y="965" width="420" height="34" rx="7" class="pill" stroke="#ea580c"/><text x="1090" y="988" text-anchor="middle" class="code">run_tool() + Tool Registry</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="1470" y="720" width="520" height="300" rx="20" class="mem"/>
+    <circle cx="1520" cy="770" r="27" fill="#15803d"/><text x="1520" y="780" text-anchor="middle" class="num">6</text>
+    <text x="1570" y="782" class="card-title">记忆 / 恢复</text>
+    <text x="1510" y="845" class="body">让任务接得上，也让过程可复盘</text>
+    <text x="1510" y="890" class="small">短期：task、files、summaries、notes</text>
+    <text x="1510" y="930" class="small">落盘：session、task_state、trace、report</text>
+    <rect x="1510" y="965" width="420" height="34" rx="7" class="pill" stroke="#15803d"/><text x="1720" y="988" text-anchor="middle" class="code">LayeredMemory / RunStore</text>
+  </g>
+
+  <rect x="540" y="1185" width="1120" height="58" rx="14" fill="rgba(255,255,255,.78)" stroke="#b6c9dc" stroke-width="2"/>
+  <path d="M610 1214L700 1214" stroke="#0f766e" stroke-width="5" marker-end="url(#arrow)"/><text x="730" y="1222" class="small">实线：一次请求的主执行路径</text>
+  <path d="M1090 1214L1180 1214" stroke="#64748b" stroke-width="5" stroke-dasharray="10 8" marker-end="url(#arrow)"/><text x="1210" y="1222" class="small">虚线：主循环按需调用支撑模块</text>
+</svg>
