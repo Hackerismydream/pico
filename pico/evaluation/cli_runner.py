@@ -26,9 +26,22 @@ from .validators import (
     copy_evidence_bundle,
     evaluate_task,
 )
+from ..config import load_project_env
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+LEGACY_PROVIDER_ENV_BRIDGES = (
+    ("PICO_OPENAI_API_KEY", "OPENAI_API_KEY"),
+    ("PICO_OPENAI_API_BASE", "OPENAI_API_BASE"),
+    ("PICO_OPENAI_MODEL", "OPENAI_MODEL"),
+    ("PICO_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),
+    ("PICO_ANTHROPIC_API_BASE", "ANTHROPIC_API_BASE"),
+    ("PICO_ANTHROPIC_MODEL", "ANTHROPIC_MODEL"),
+    ("PICO_RIGHT_CODES_API_KEY", "RIGHT_CODES_API_KEY"),
+    ("PICO_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY"),
+    ("PICO_DEEPSEEK_API_BASE", "DEEPSEEK_API_BASE"),
+    ("PICO_DEEPSEEK_MODEL", "DEEPSEEK_MODEL"),
+)
 
 
 @dataclass(frozen=True)
@@ -82,6 +95,7 @@ class PicoBenchRunner:
         self.driver_override = driver_override
         self.max_steps_override = max_steps_override
         self.timeout_sec_override = timeout_sec_override
+        self.child_env = _child_env_with_project_provider_vars()
         self.logs_dir = self.output_dir / "logs"
         self.workspaces_dir = self.output_dir / "workspaces"
         self.evidence_dir = self.output_dir / "evidence"
@@ -196,6 +210,7 @@ class PicoBenchRunner:
                 capture_output=True,
                 text=True,
                 timeout=self.timeout_sec_override or task.timeout_sec,
+                env=self.child_env,
             )
             stdout = completed.stdout
             stderr = completed.stderr
@@ -322,7 +337,7 @@ class PicoBenchRunner:
         started = time.monotonic()
         try:
             if driver == "pty":
-                completed = _run_pty(command, stdin_text or "", timeout_sec=timeout_sec)
+                completed = _run_pty(command, stdin_text or "", timeout_sec=timeout_sec, env=self.child_env)
             else:
                 completed = subprocess.run(
                     command,
@@ -331,6 +346,7 @@ class PicoBenchRunner:
                     text=True,
                     input=stdin_text,
                     timeout=timeout_sec,
+                    env=self.child_env,
                 )
             stdout = completed.stdout
             stderr = completed.stderr
@@ -493,7 +509,22 @@ def _decode_output(value) -> str:
     return str(value)
 
 
-def _run_pty(command: list[str], stdin_text: str, timeout_sec: int):
+def _child_env_with_project_provider_vars() -> dict[str, str]:
+    env = os.environ.copy()
+    for name, value in load_project_env(REPO_ROOT, override=False).items():
+        env.setdefault(name, value)
+    _bridge_legacy_provider_env(env)
+    return env
+
+
+def _bridge_legacy_provider_env(env: dict[str, str]) -> None:
+    for legacy_name, canonical_name in LEGACY_PROVIDER_ENV_BRIDGES:
+        value = env.get(legacy_name)
+        if value and not env.get(canonical_name):
+            env[canonical_name] = value
+
+
+def _run_pty(command: list[str], stdin_text: str, timeout_sec: int, env: dict[str, str] | None = None):
     output: list[bytes] = []
     start = time.monotonic()
     master_fd, slave_fd = pty.openpty()
@@ -504,6 +535,7 @@ def _run_pty(command: list[str], stdin_text: str, timeout_sec: int):
         stdout=slave_fd,
         stderr=slave_fd,
         close_fds=True,
+        env=env,
     )
     os.close(slave_fd)
     if stdin_text:

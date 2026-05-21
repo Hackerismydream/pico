@@ -3,8 +3,29 @@ import subprocess
 import sys
 from pathlib import Path
 
+from pico.evaluation.cli_runner import _bridge_legacy_provider_env
+
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_runner_bridges_legacy_project_provider_env_for_child_process():
+    env = {
+        "PICO_DEEPSEEK_API_KEY": "deepseek-secret",
+        "PICO_DEEPSEEK_API_BASE": "https://example.test/deepseek",
+        "PICO_DEEPSEEK_MODEL": "deepseek-test",
+        "PICO_OPENAI_API_KEY": "openai-secret",
+        "PICO_ANTHROPIC_API_KEY": "anthropic-secret",
+        "DEEPSEEK_API_KEY": "explicit-deepseek-secret",
+    }
+
+    _bridge_legacy_provider_env(env)
+
+    assert env["DEEPSEEK_API_KEY"] == "explicit-deepseek-secret"
+    assert env["DEEPSEEK_API_BASE"] == "https://example.test/deepseek"
+    assert env["DEEPSEEK_MODEL"] == "deepseek-test"
+    assert env["OPENAI_API_KEY"] == "openai-secret"
+    assert env["ANTHROPIC_API_KEY"] == "anthropic-secret"
 
 
 def test_run_picobench_smoke_with_fake_public_cli(tmp_path):
