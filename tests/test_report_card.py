@@ -60,3 +60,42 @@ def test_write_report_card_writes_json_and_markdown(tmp_path):
 
     assert json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))["suite"] == "core"
     assert "# PicoBench Summary" in (tmp_path / "summary.md").read_text(encoding="utf-8")
+
+
+def test_report_card_excludes_skipped_tasks_from_strict_and_group_denominators(tmp_path):
+    card = build_report_card(
+        suite="agentic",
+        output_dir=tmp_path,
+        pico_commit="abc123",
+        started_at="2026-05-21T15:00:00",
+        results=[
+            {
+                "task_id": "S07",
+                "category": "cli_behavior",
+                "strict_pass": True,
+                "failure_category": None,
+                "checks": [
+                    {"name": "public_test", "passed": True},
+                    {"name": "report_trace_session_consistency", "passed": True},
+                ],
+                "report": {},
+            },
+            {
+                "task_id": "R05",
+                "category": "tui",
+                "strict_pass": False,
+                "skipped": True,
+                "failure_category": None,
+                "checks": [],
+                "report": {},
+            },
+        ],
+    )
+
+    assert card["task_count"] == 2
+    assert card["skipped"] == 1
+    assert card["strict_passed"] == 1
+    assert card["strict_failed"] == 0
+    assert card["strict_pass_rate"] == 1.0
+    assert card["functional_pass_rate"] == 1.0
+    assert card["failure_category_counts"] == {}

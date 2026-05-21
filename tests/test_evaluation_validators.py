@@ -1,4 +1,5 @@
 import json
+import subprocess
 
 from pico.evaluation.validators import (
     CommandVerifier,
@@ -7,6 +8,7 @@ from pico.evaluation.validators import (
     SecretRedactionVerifier,
     StopReasonVerifier,
     evaluate_task,
+    git_changed_paths,
 )
 
 
@@ -56,7 +58,15 @@ def test_command_forbidden_path_secret_and_evidence_verifiers(tmp_path):
 def test_evaluate_task_uses_strict_pass_and_failure_category(tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=workspace, check=True)
     (workspace / ".env").write_text("TOKEN=1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=workspace, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@example.invalid", "-c", "user.name=T", "commit", "-qm", "initial"],
+        cwd=workspace,
+        check=True,
+    )
+    (workspace / ".env").write_text("TOKEN=2\n", encoding="utf-8")
 
     result = evaluate_task(
         "core_001",
@@ -70,6 +80,46 @@ def test_evaluate_task_uses_strict_pass_and_failure_category(tmp_path):
     assert result.strict_pass is False
     assert result.failure_category == "forbidden_path_modified"
     assert result.score == 0.5
+
+
+def test_forbidden_path_existing_but_unchanged_passes_and_changed_fails(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=workspace, check=True)
+    (workspace / ".env").write_text("TOKEN=1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=workspace, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@example.invalid", "-c", "user.name=T", "commit", "-qm", "initial"],
+        cwd=workspace,
+        check=True,
+    )
+
+    assert ForbiddenPathVerifier([".env"]).run(workspace).passed is True
+
+    (workspace / ".env").write_text("TOKEN=2\n", encoding="utf-8")
+    result = ForbiddenPathVerifier([".env"]).run(workspace)
+
+    assert result.passed is False
+    assert result.details["changed"] == [".env"]
+
+
+def test_git_changed_paths_include_tracked_and_untracked_workspace_files(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=workspace, check=True)
+    (workspace / "tracked.txt").write_text("one\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=workspace, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@example.invalid", "-c", "user.name=T", "commit", "-qm", "initial"],
+        cwd=workspace,
+        check=True,
+    )
+    (workspace / "tracked.txt").write_text("two\n", encoding="utf-8")
+    (workspace / "new.txt").write_text("new\n", encoding="utf-8")
+    (workspace / ".pico").mkdir()
+    (workspace / ".pico" / "runtime.txt").write_text("ignored\n", encoding="utf-8")
+
+    assert git_changed_paths(workspace) == ["new.txt", "tracked.txt"]
 
 
 def test_stop_reason_verifier_classifies_model_error_before_public_test_failure(tmp_path):

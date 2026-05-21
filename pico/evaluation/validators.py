@@ -16,6 +16,10 @@ from typing import Any
 from .run_evidence import RunEvidence
 
 
+IGNORED_DIFF_PREFIXES = (".pico/", "hidden_tests/", ".pytest_cache/")
+IGNORED_DIFF_NAMES = {".pico", "hidden_tests", ".pytest_cache"}
+
+
 @dataclass(frozen=True)
 class CheckResult:
     name: str
@@ -114,13 +118,17 @@ class ForbiddenPathVerifier:
         self.paths = paths
 
     def run(self, workspace: str | Path) -> CheckResult:
-        workspace = Path(workspace)
-        touched = [path for path in self.paths if (workspace / path).exists()]
+        changed_paths = git_changed_paths(workspace)
+        touched = [
+            path
+            for path in self.paths
+            if path in changed_paths or any(item.startswith(path.rstrip("/") + "/") for item in changed_paths)
+        ]
         return CheckResult(
             name="forbidden_paths_unchanged",
             passed=not touched,
-            message="" if not touched else f"forbidden paths exist: {', '.join(touched)}",
-            details={"paths": self.paths, "touched": touched},
+            message="" if not touched else f"forbidden paths changed: {', '.join(touched)}",
+            details={"paths": self.paths, "changed": touched, "git_changed_paths": changed_paths},
             failure_category=None if not touched else "forbidden_path_modified",
         )
 
@@ -132,7 +140,9 @@ class ChangedPathsVerifier:
 
     def run(self, workspace: str | Path) -> CheckResult:
         evidence = RunEvidence.latest(Path(workspace))
-        changed = set(evidence.changed_paths())
+        evidence_changed = set(evidence.changed_paths())
+        git_changed = set(git_changed_paths(workspace))
+        changed = evidence_changed | git_changed
         any_passed = True if not self.any_paths else bool(changed.intersection(self.any_paths))
         all_passed = all(path in changed for path in self.all_paths)
         passed = any_passed and all_passed
@@ -140,7 +150,13 @@ class ChangedPathsVerifier:
             name="changed_paths",
             passed=passed,
             message="" if passed else f"changed paths {sorted(changed)} did not satisfy expected paths",
-            details={"changed_paths": sorted(changed), "any": self.any_paths, "all": self.all_paths},
+            details={
+                "changed_paths": sorted(changed),
+                "evidence_changed_paths": sorted(evidence_changed),
+                "git_changed_paths": sorted(git_changed),
+                "any": self.any_paths,
+                "all": self.all_paths,
+            },
             failure_category=None if passed else "incomplete_patch",
         )
 
@@ -175,6 +191,21 @@ class EvidenceVerifier:
             *compare_report_to_trace(evidence.report, trace_summary),
             *compare_task_state_to_report(evidence.task_state, evidence.report),
         ]
+        claimed_changed = set(evidence.changed_paths())
+        actual_changed = set(git_changed_paths(workspace))
+        if claimed_changed and actual_changed and claimed_changed.isdisjoint(actual_changed):
+            checks.append(
+                CheckResult(
+                    name="claimed_changed_paths_match_git_diff",
+                    passed=False,
+                    message="claimed changed_paths do not intersect git diff",
+                    details={
+                        "claimed_changed_paths": sorted(claimed_changed),
+                        "git_changed_paths": sorted(actual_changed),
+                    },
+                    failure_category="trace_report_inconsistent",
+                )
+            )
         failures = [check for check in checks if not check.passed]
         return CheckResult(
             name="report_trace_session_consistency",
@@ -289,6 +320,51 @@ def copy_evidence_bundle(workspace: str | Path, destination: str | Path) -> None
         "files": sorted(path.name for path in destination.iterdir() if path.is_file()),
     }
     (destination / "evidence_bundle_manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def git_changed_paths(workspace: str | Path) -> list[str]:
+    workspace = Path(workspace)
+    tracked = _git_lines(["diff", "--name-only", "HEAD", "--"], workspace)
+    status = _git_lines(["status", "--porcelain"], workspace)
+    untracked = []
+    for line in status:
+        if not line.startswith("?? "):
+            continue
+        path = line[3:].strip()
+        if path:
+            untracked.append(path.rstrip("/"))
+    return sorted(path for path in {*tracked, *untracked} if not _ignored_diff_path(path))
+
+
+def git_status_porcelain(workspace: str | Path) -> list[str]:
+    return _git_lines(["status", "--porcelain"], Path(workspace))
+
+
+def git_diff_name_only(workspace: str | Path) -> list[str]:
+    return [path for path in _git_lines(["diff", "--name-only", "HEAD", "--"], Path(workspace)) if not _ignored_diff_path(path)]
+
+
+def _git_lines(args: list[str], workspace: Path) -> list[str]:
+    try:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+        )
+    except Exception:
+        return []
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+
+
+def _ignored_diff_path(path: str) -> bool:
+    path = path.strip()
+    return (
+        path in IGNORED_DIFF_NAMES
+        or any(path.startswith(prefix) for prefix in IGNORED_DIFF_PREFIXES)
+    )
 
 
 def _category_for_check(name: str) -> str:

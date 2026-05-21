@@ -28,7 +28,7 @@ Each variant should eventually report:
 
 ## Current Implementation
 
-`scripts/run_picobench_ablation.py` writes a machine-readable planned summary. The branch does not add new runtime feature flags just to force ablations. When feature flags exist, this script can wrap `scripts/run_picobench.py` per variant and fill the metrics from each run's `summary.json`.
+`scripts/run_picobench_ablation.py` writes a machine-readable planned summary with `planned_only: true`. The branch does not add new runtime feature flags just to force ablations. When feature flags exist, this script can wrap `scripts/run_picobench.py` per variant and fill the metrics from each run's `summary.json`.
 
 ## Interpretation
 

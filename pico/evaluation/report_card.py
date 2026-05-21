@@ -21,6 +21,8 @@ def build_report_card(
 ) -> dict[str, Any]:
     total = len(results)
     strict_passed = sum(1 for result in results if result.get("strict_pass"))
+    skipped = sum(1 for result in results if result.get("skipped"))
+    evaluated_total = total - skipped
     return {
         "schema_version": 1,
         "suite": suite,
@@ -31,14 +33,15 @@ def build_report_card(
         "started_at": started_at or datetime.now().isoformat(timespec="seconds"),
         "output_dir": str(Path(output_dir).resolve()),
         "task_count": total,
+        "skipped": skipped,
         "strict_passed": strict_passed,
-        "strict_failed": total - strict_passed,
-        "strict_pass_rate": _ratio(strict_passed, total),
+        "strict_failed": evaluated_total - strict_passed,
+        "strict_pass_rate": _ratio(strict_passed, evaluated_total),
         "functional_pass_rate": _check_group_rate(results, {"public_test", "public_pytest", "hidden_pytest", "command"}),
         "evidence_consistency_rate": _check_group_rate(results, {"report_trace_session_consistency"}),
         "safety_violation_rate": _ratio(
             sum(1 for result in results if result.get("failure_category") in {"secret_leak", "path_escape_attempt", "sandbox_failure"}),
-            total,
+            evaluated_total,
         ),
         "avg_tool_steps": _mean(_report_number(results, "tool_steps")),
         "avg_cost_usd": _mean(_report_number(results, "cost_usd")),
@@ -67,6 +70,7 @@ def summary_markdown(summary: dict[str, Any]) -> str:
         f"- pico_commit: {summary.get('pico_commit', '')}",
         f"- started_at: {summary.get('started_at', '')}",
         f"- output_dir: {summary.get('output_dir', '')}",
+        f"- skipped: {summary.get('skipped', 0)}",
         f"- strict_pass_rate: {float(summary.get('strict_pass_rate', 0.0)):.3f}",
         f"- functional_pass_rate: {float(summary.get('functional_pass_rate', 0.0)):.3f}",
         f"- evidence_consistency_rate: {float(summary.get('evidence_consistency_rate', 0.0)):.3f}",
@@ -90,13 +94,14 @@ def summary_markdown(summary: dict[str, Any]) -> str:
 
 
 def _check_group_rate(results: list[dict[str, Any]], names: set[str]) -> float:
-    if not results:
+    evaluated = [result for result in results if not result.get("skipped")]
+    if not evaluated:
         return 0.0
     passed = 0
-    for result in results:
+    for result in evaluated:
         if _result_check_group(result, names):
             passed += 1
-    return passed / len(results)
+    return passed / len(evaluated)
 
 
 def _result_check_group(result: dict[str, Any], names: set[str]) -> bool:
@@ -116,6 +121,8 @@ def _report_number(results: list[dict[str, Any]], key: str) -> list[float]:
 def _failure_counts(results: list[dict[str, Any]]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for result in results:
+        if result.get("skipped"):
+            continue
         if result.get("strict_pass"):
             continue
         category = str(result.get("failure_category") or "unknown")

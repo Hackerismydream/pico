@@ -18,6 +18,15 @@ Each release run must produce:
 
 ## Commands
 
+L0 runtime regression:
+
+```bash
+uv run python scripts/run_picobench_runtime.py \
+  --benchmark benchmarks/picobench-runtime-v1.json \
+  --output-dir /tmp/picobench-runtime-smoke \
+  --json
+```
+
 Core smoke:
 
 ```bash
@@ -25,7 +34,8 @@ uv run python scripts/run_picobench.py \
   --suite core \
   --benchmark benchmarks/picobench-core-v1.yaml \
   --task core_001 \
-  --output-dir /tmp/picobench-pr-smoke
+  --output-dir /tmp/picobench-pr-smoke \
+  --json
 ```
 
 Agentic smoke:
@@ -47,6 +57,19 @@ uv run python scripts/run_picobench_ablation.py \
   --plan-only
 ```
 
+Live provider smoke, when local provider credentials are configured:
+
+```bash
+uv run python scripts/run_picobench.py \
+  --suite core \
+  --benchmark benchmarks/picobench-core-v1.yaml \
+  --task core_001 \
+  --output-dir /tmp/picobench-core-live-smoke \
+  --approval auto \
+  --sandbox best_effort \
+  --json
+```
+
 Full unit regression:
 
 ```bash
@@ -55,4 +78,4 @@ uv run pytest tests/ -q
 
 ## Reporting Rule
 
-Only `strict_pass_rate` is externally comparable. Functional-only pass rates are diagnostic because public tests can miss unsafe or weak patches.
+Only `strict_pass_rate` is externally comparable. Functional-only pass rates are diagnostic because public tests can miss unsafe or weak patches. Skipped TUI tasks are reported in `skipped` and are not counted as strict passes.

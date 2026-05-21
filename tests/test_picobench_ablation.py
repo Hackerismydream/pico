@@ -1,6 +1,10 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_ablation_plan_writes_planned_variants_without_runtime_flags(tmp_path):
@@ -18,7 +22,7 @@ def test_ablation_plan_writes_planned_variants_without_runtime_flags(tmp_path):
             str(output_dir),
             "--plan-only",
         ],
-        cwd="/Users/martinlos/code/pico",
+        cwd=ROOT,
         capture_output=True,
         text=True,
         timeout=30,
@@ -34,3 +38,4 @@ def test_ablation_plan_writes_planned_variants_without_runtime_flags(tmp_path):
         "pico-no-skills",
     ]
     assert all(row["status"] == "planned" for row in summary["variants"])
+    assert summary["planned_only"] is True

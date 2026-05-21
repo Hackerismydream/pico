@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import pty
+import select
 import shlex
 import shutil
 import subprocess
@@ -35,6 +38,8 @@ class CommandRecord:
     duration_ms: int
     stdout_path: str
     stderr_path: str
+    timed_out: bool = False
+    error: str = ""
 
 
 class PicoBenchRunner:
@@ -54,6 +59,9 @@ class PicoBenchRunner:
         no_hidden_tests: bool = False,
         fail_fast: bool = False,
         keep_workspaces: bool = True,
+        driver_override: str | None = None,
+        max_steps_override: int | None = None,
+        timeout_sec_override: int | None = None,
     ):
         self.benchmark = benchmark
         self.output_dir = Path(output_dir).resolve()
@@ -71,6 +79,9 @@ class PicoBenchRunner:
         self.no_hidden_tests = no_hidden_tests
         self.fail_fast = fail_fast
         self.keep_workspaces = keep_workspaces
+        self.driver_override = driver_override
+        self.max_steps_override = max_steps_override
+        self.timeout_sec_override = timeout_sec_override
         self.logs_dir = self.output_dir / "logs"
         self.workspaces_dir = self.output_dir / "workspaces"
         self.evidence_dir = self.output_dir / "evidence"
@@ -105,6 +116,14 @@ class PicoBenchRunner:
             shutil.rmtree(workspace)
         shutil.copytree(task.fixture_path, workspace)
         self._git_init(workspace)
+        driver = self.driver_override or task.driver
+        if driver == "tui" and os.environ.get("PICOBENCH_ENABLE_TUI") != "1":
+            result = self._skipped_result(task, run_index, workspace, started, "tui driver requires an interactive terminal smoke")
+            if not self.keep_workspaces:
+                shutil.rmtree(workspace, ignore_errors=True)
+            return result
+        if driver == "v3_human_gate":
+            return self._run_v3_human_gate_task(task, run_index, workspace, started)
         command_record = self._run_pico(task, run_index, workspace)
         checks = []
         checks.append(
@@ -114,6 +133,7 @@ class PicoBenchRunner:
         for command in task.public_tests:
             checks.append(CommandVerifier(command, name="public_test").run(workspace))
         if not self.no_hidden_tests:
+            self._inject_hidden_tests(task, workspace)
             for command in task.hidden_tests:
                 checks.append(PytestVerifier(command, hidden=True).run(workspace))
         for verifier_spec in task.verifiers:
@@ -147,25 +167,152 @@ class PicoBenchRunner:
         }
         if not evaluation.strict_pass:
             self._write_failure(task, result)
+        if not self.keep_workspaces:
+            shutil.rmtree(workspace, ignore_errors=True)
+        return result
+
+    def _run_v3_human_gate_task(self, task: BenchmarkTask, run_index: int, workspace: Path, started: float) -> dict[str, Any]:
+        scenario_id = task.scenario_id or task.task_id
+        scenario_output = self.output_dir / "scenario_runs" / f"{task.task_id}-run{run_index}"
+        command = [
+            "uv",
+            "run",
+            "python",
+            "scripts/run_v3_human_scenario_gate.py",
+            "--suite",
+            "full",
+            "--scenario",
+            scenario_id,
+            "--output-dir",
+            str(scenario_output),
+        ]
+        stdout_path = self.logs_dir / f"{task.task_id}-run{run_index}.stdout.txt"
+        stderr_path = self.logs_dir / f"{task.task_id}-run{run_index}.stderr.txt"
+        command_path = self.logs_dir / f"{task.task_id}-run{run_index}.command.json"
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_sec_override or task.timeout_sec,
+            )
+            stdout = completed.stdout
+            stderr = completed.stderr
+            returncode = completed.returncode
+            timed_out = False
+            error = ""
+        except subprocess.TimeoutExpired as exc:
+            stdout = _decode_output(exc.stdout)
+            stderr = _decode_output(exc.stderr) + f"\ntimeout after {self.timeout_sec_override or task.timeout_sec}s"
+            returncode = 124
+            timed_out = True
+            error = "timeout"
+        stdout_path.write_text(stdout, encoding="utf-8")
+        stderr_path.write_text(stderr, encoding="utf-8")
+        command_path.write_text(
+            json.dumps(
+                {
+                    "command": command,
+                    "returncode": returncode,
+                    "duration_ms": int((time.monotonic() - started) * 1000),
+                    "workspace": str(workspace),
+                    "scenario_output": str(scenario_output),
+                    "timed_out": timed_out,
+                    "error": error,
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        summary_path = scenario_output / "summary.json"
+        scenario_summary = {}
+        if summary_path.exists():
+            scenario_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        passed = returncode == 0 and scenario_summary.get("failed", 1) == 0
+        checks = [
+            {
+                "name": "v3_human_gate",
+                "passed": passed,
+                "message": "" if passed else f"scenario {scenario_id} failed",
+                "details": {"summary": scenario_summary, "returncode": returncode},
+                "failure_category": None if passed else ("timeout" if timed_out else "runner_error"),
+                "tags": [],
+            }
+        ]
+        result = {
+            "task_id": task.task_id,
+            "title": task.title,
+            "suite": task.suite,
+            "category": task.category,
+            "run_index": run_index,
+            "strict_pass": passed,
+            "score": 1.0 if passed else 0.0,
+            "failure_category": None if passed else ("timeout" if timed_out else "runner_error"),
+            "tags": [],
+            "duration_ms": int((time.monotonic() - started) * 1000),
+            "workspace": str(workspace),
+            "evidence_path": str(scenario_output),
+            "command": {
+                "command": command,
+                "returncode": returncode,
+                "stdout_path": str(stdout_path),
+                "stderr_path": str(stderr_path),
+                "timed_out": timed_out,
+                "error": error,
+            },
+            "report": scenario_summary,
+            "checks": checks,
+        }
+        if not passed:
+            self._write_failure(task, result)
+        if not self.keep_workspaces:
+            shutil.rmtree(workspace, ignore_errors=True)
+        return result
+
+    def _skipped_result(self, task: BenchmarkTask, run_index: int, workspace: Path, started: float, reason: str) -> dict[str, Any]:
+        result = {
+            "task_id": task.task_id,
+            "title": task.title,
+            "suite": task.suite,
+            "category": task.category,
+            "run_index": run_index,
+            "strict_pass": False,
+            "skipped": True,
+            "skip_reason": reason,
+            "score": 0.0,
+            "failure_category": None,
+            "tags": ["skipped"],
+            "duration_ms": int((time.monotonic() - started) * 1000),
+            "workspace": str(workspace),
+            "evidence_path": "",
+            "command": {},
+            "report": {},
+            "checks": [],
+        }
         return result
 
     def _run_pico(self, task: BenchmarkTask, run_index: int, workspace: Path) -> CommandRecord:
+        driver = self.driver_override or task.driver
+        max_steps = self.max_steps_override or task.max_steps
+        timeout_sec = self.timeout_sec_override or task.timeout_sec
         command = [*shlex.split(self.pico_command), "--cwd", str(workspace), "--approval", self.approval]
         stdin_text = None
         if self.sandbox:
             command.extend(["--sandbox", self.sandbox])
-        command.extend(["--max-steps", str(task.max_steps)])
+        command.extend(["--max-steps", str(max_steps)])
         if self.provider:
             command.extend(["--provider", self.provider])
         if self.model:
             command.extend(["--model", self.model])
         if self.config:
             command.extend(["--config", self.config])
-        if task.driver == "repl":
+        if driver == "repl":
             command.append("--repl")
             stdin_text = task.prompt + "\n/exit\n"
-        elif task.driver in {"pty", "tui"}:
-            command.extend(["--repl"])
+        elif driver == "pty":
+            command.append("--repl")
             stdin_text = task.prompt + "\n/exit\n"
         else:
             command.append(task.prompt)
@@ -173,24 +320,53 @@ class PicoBenchRunner:
         stderr_path = self.logs_dir / f"{task.task_id}-run{run_index}.stderr.txt"
         command_path = self.logs_dir / f"{task.task_id}-run{run_index}.command.json"
         started = time.monotonic()
-        completed = subprocess.run(
-            command,
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            input=stdin_text,
-            timeout=task.timeout_sec,
-        )
+        try:
+            if driver == "pty":
+                completed = _run_pty(command, stdin_text or "", timeout_sec=timeout_sec)
+            else:
+                completed = subprocess.run(
+                    command,
+                    cwd=REPO_ROOT,
+                    capture_output=True,
+                    text=True,
+                    input=stdin_text,
+                    timeout=timeout_sec,
+                )
+            stdout = completed.stdout
+            stderr = completed.stderr
+            returncode = completed.returncode
+            timed_out = False
+            error = ""
+        except subprocess.TimeoutExpired as exc:
+            stdout = _decode_output(exc.stdout)
+            stderr = _decode_output(exc.stderr) + f"\ntimeout after {timeout_sec}s"
+            returncode = 124
+            timed_out = True
+            error = "timeout"
+        except FileNotFoundError as exc:
+            stdout = ""
+            stderr = str(exc)
+            returncode = 127
+            timed_out = False
+            error = "file_not_found"
+        except Exception as exc:  # noqa: BLE001 - runner records task-level failures.
+            stdout = ""
+            stderr = str(exc)
+            returncode = 1
+            timed_out = False
+            error = type(exc).__name__
         duration_ms = int((time.monotonic() - started) * 1000)
-        stdout_path.write_text(completed.stdout, encoding="utf-8")
-        stderr_path.write_text(completed.stderr, encoding="utf-8")
+        stdout_path.write_text(stdout, encoding="utf-8")
+        stderr_path.write_text(stderr, encoding="utf-8")
         command_path.write_text(
             json.dumps(
                 {
                     "command": command,
-                    "returncode": completed.returncode,
+                    "returncode": returncode,
                     "duration_ms": duration_ms,
                     "workspace": str(workspace),
+                    "timed_out": timed_out,
+                    "error": error,
                 },
                 indent=2,
                 sort_keys=True,
@@ -199,10 +375,12 @@ class PicoBenchRunner:
         )
         return CommandRecord(
             command=command,
-            returncode=completed.returncode,
+            returncode=returncode,
             duration_ms=duration_ms,
             stdout_path=str(stdout_path),
             stderr_path=str(stderr_path),
+            timed_out=timed_out,
+            error=error,
         )
 
     def _write_summary(self, results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -249,6 +427,17 @@ class PicoBenchRunner:
             task_results.unlink()
 
     @staticmethod
+    def _inject_hidden_tests(task: BenchmarkTask, workspace: Path) -> None:
+        if task.hidden_fixture_path is None:
+            return
+        source = task.hidden_fixture_path
+        hidden_source = source / "hidden_tests" if (source / "hidden_tests").is_dir() else source
+        destination = workspace / "hidden_tests"
+        if destination.exists():
+            shutil.rmtree(destination)
+        shutil.copytree(hidden_source, destination)
+
+    @staticmethod
     def _git_init(workspace: Path) -> None:
         subprocess.run(["git", "init", "-q"], cwd=workspace, check=True)
         subprocess.run(["git", "add", "."], cwd=workspace, check=True)
@@ -265,9 +454,14 @@ def _command_check(passed: bool, name: str, command: CommandRecord):
     return CheckResult(
         name=name,
         passed=passed,
-        message="" if passed else f"command exited {command.returncode}",
-        details={"command": command.command, "returncode": command.returncode},
-        failure_category=None if passed else "runner_error",
+        message="" if passed else (command.error or f"command exited {command.returncode}"),
+        details={
+            "command": command.command,
+            "returncode": command.returncode,
+            "timed_out": command.timed_out,
+            "error": command.error,
+        },
+        failure_category=None if passed else ("timeout" if command.timed_out else "runner_error"),
     )
 
 
@@ -289,3 +483,58 @@ def _is_relative_to(path: Path, root: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _decode_output(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def _run_pty(command: list[str], stdin_text: str, timeout_sec: int):
+    output: list[bytes] = []
+    start = time.monotonic()
+    master_fd, slave_fd = pty.openpty()
+    process = subprocess.Popen(
+        command,
+        cwd=REPO_ROOT,
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=slave_fd,
+        close_fds=True,
+    )
+    os.close(slave_fd)
+    if stdin_text:
+        os.write(master_fd, stdin_text.encode("utf-8"))
+    while process.poll() is None:
+        if time.monotonic() - start > timeout_sec:
+            process.kill()
+            raise subprocess.TimeoutExpired(command, timeout_sec, output=b"".join(output))
+        readable, _, _ = select.select([master_fd], [], [], 0.05)
+        if master_fd in readable:
+            try:
+                chunk = os.read(master_fd, 4096)
+            except OSError:
+                break
+            if chunk:
+                output.append(chunk)
+    while True:
+        readable, _, _ = select.select([master_fd], [], [], 0)
+        if master_fd not in readable:
+            break
+        try:
+            chunk = os.read(master_fd, 4096)
+        except OSError:
+            break
+        if not chunk:
+            break
+        output.append(chunk)
+    os.close(master_fd)
+    return subprocess.CompletedProcess(
+        command,
+        process.returncode or 0,
+        stdout=b"".join(output).decode("utf-8", errors="replace"),
+        stderr="",
+    )

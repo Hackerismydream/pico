@@ -45,6 +45,7 @@ Supported drivers:
 - `repl`
 - `pty`
 - `tui`
+- `v3_human_gate`
 
 Supported categories match the kickoff list: bugfix, feature, refactor, test generation/repair, documentation, configuration, CLI behavior, security, tool policy, sandbox, memory, resume, skill, subagent, plan mode, TUI, provider, and evidence.
 
@@ -80,10 +81,10 @@ Implemented first:
 
 - `CommandVerifier`
 - `PytestVerifier`
-- `ForbiddenPathVerifier`
-- `ChangedPathsVerifier`
+- `ForbiddenPathVerifier`: forbidden paths may exist in the fixture, but must not appear in `git diff` after the run.
+- `ChangedPathsVerifier`: unions claimed evidence changes with `git diff --name-only` / `git status --porcelain`.
 - `SecretRedactionVerifier`
-- `EvidenceVerifier`
+- `EvidenceVerifier`: checks trace/report/task_state consistency and cross-checks claimed changed paths against the git diff.
 - trace/report/task_state consistency checks
 
 Later validators can add sandbox, memory, skill, subagent, and plan-mode specific assertions on top of `RunEvidence`.
@@ -104,6 +105,14 @@ failures/
 
 The runner rejects output directories inside the Pico repo. It does not import `Pico`.
 
+Hidden tests are not copied into the agent-visible workspace. A task may declare `repo.hidden_fixture` or `tests.hidden.source`; the runner initializes and commits the visible fixture first, runs Pico, then injects hidden tests only for the verifier phase. The public prompt should mention public tests only.
+
+`pty` uses a real pseudo-terminal. `tui` does not silently degrade to REPL; in non-interactive CI it is recorded as skipped and excluded from strict-pass denominators.
+
+`benchmarks/picobench-agentic-v1.yaml` delegates the 12 priority R/S gates to `scripts/run_v3_human_scenario_gate.py` through the `v3_human_gate` driver. This keeps the checks grounded in the existing scenario setup/check logic without importing runtime internals into the L1/L2/L3 runner.
+
+`benchmarks/picobench-runtime-v1.json` is L0 only. It uses the legacy deterministic evaluator schema and should be run with `scripts/run_picobench_runtime.py`, not `scripts/run_picobench.py`.
+
 ## Baseline And Ablation
 
 Required experimental variants:
@@ -116,7 +125,7 @@ Required experimental variants:
 - pico-no-subagent
 - pico-no-skills
 
-First phase records the protocol. If runtime feature flags are missing, the ablation row should be marked `planned`; product runtime should not be bent just for a synthetic ablation.
+First phase records the protocol with `planned_only: true`. If runtime feature flags are missing, the ablation row is marked `planned`; product runtime should not be bent just for a synthetic ablation.
 
 ## Failure Taxonomy
 
@@ -152,7 +161,7 @@ Primary categories:
 
 For a release candidate:
 
-1. Run L0 deterministic regression.
+1. Run L0 deterministic regression with `scripts/run_picobench_runtime.py`.
 2. Run L1 agentic gate.
 3. Run L2 core suite against the chosen provider/model.
 4. Inspect `summary.md` and each failure report.
@@ -173,9 +182,17 @@ First PR target:
 - summary JSON/Markdown
 - tests for the new modules
 
+Current hardening pass:
+
+- hidden tests moved out of visible fixtures and injected after Pico exits
+- git-diff based changed/forbidden path validation
+- timeout and process errors recorded as task failures
+- CLI overrides for driver, max steps, timeout, and workspace retention
+- `pty` uses a pseudo-terminal; unsupported `tui` smoke is skipped rather than marked passed
+- L0 runtime runner clarified as a separate legacy-schema entrypoint
+- ablation output explicitly marked `planned_only`
+
 Later work:
 
 - convert all 50 v3 scenarios into task records
-- hide hidden tests outside public fixtures
-- add report card module and ablation runner
 - add live/dogfood task curation workflow

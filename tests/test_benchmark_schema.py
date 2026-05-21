@@ -60,6 +60,29 @@ def test_repo_picobench_core_suite_has_ten_tasks():
         "core_009",
         "core_010",
     }
+    assert all(task.hidden_fixture_path and task.hidden_fixture_path.exists() for task in loaded.tasks)
+    assert not any((task.fixture_path / "hidden_tests").exists() for task in loaded.tasks)
+
+
+def test_repo_picobench_agentic_suite_delegates_priority_gates_to_v3_human_gate():
+    loaded = load_benchmark("benchmarks/picobench-agentic-v1.yaml")
+
+    assert [task.task_id for task in loaded.tasks] == [
+        "R01",
+        "R02",
+        "R04",
+        "R05",
+        "S07",
+        "S15",
+        "S21",
+        "S26",
+        "S32",
+        "S37",
+        "S43",
+        "S50",
+    ]
+    assert all(task.driver == "v3_human_gate" for task in loaded.tasks)
+    assert {task.scenario_id for task in loaded.tasks} == {task.task_id for task in loaded.tasks}
 
 
 def test_normalize_benchmark_rejects_duplicate_task_ids(tmp_path):

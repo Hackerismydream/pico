@@ -19,6 +19,7 @@ SUPPORTED_DRIVERS = {
     "repl",
     "pty",
     "tui",
+    "v3_human_gate",
 }
 
 SUPPORTED_CATEGORIES = {
@@ -63,6 +64,8 @@ class BenchmarkTask:
     category: str
     fixture: str
     fixture_path: Path
+    hidden_fixture: str
+    hidden_fixture_path: Path | None
     prompt: str
     driver: str
     max_steps: int
@@ -72,6 +75,13 @@ class BenchmarkTask:
     verifiers: list[dict[str, Any]] = field(default_factory=list)
     expected: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def scenario_id(self) -> str:
+        scenario = self.raw.get("scenario") or {}
+        if isinstance(scenario, dict):
+            return str(scenario.get("id") or "").strip()
+        return str(scenario or "").strip()
 
 
 @dataclass(frozen=True)
@@ -128,6 +138,15 @@ def _normalize_task(task: dict[str, Any], default_suite: str, repo_root: Path, i
     fixture_path = (repo_root / fixture).resolve()
     if not fixture_path.is_dir():
         raise ValueError(f"task {task_id} fixture does not exist: {fixture}")
+    hidden_fixture = _text(repo.get("hidden_fixture"))
+    hidden_tests = task.get("hidden_tests") if isinstance(task.get("hidden_tests"), dict) else {}
+    if not hidden_fixture and isinstance(hidden_tests, dict):
+        hidden_fixture = _text(hidden_tests.get("source"))
+    hidden_fixture_path = None
+    if hidden_fixture:
+        hidden_fixture_path = (repo_root / hidden_fixture).resolve()
+        if not hidden_fixture_path.is_dir():
+            raise ValueError(f"task {task_id} hidden fixture does not exist: {hidden_fixture}")
 
     prompt = _prompt_text(task, task_id)
     execution = _required_mapping(task, "execution", task_id)
@@ -158,6 +177,8 @@ def _normalize_task(task: dict[str, Any], default_suite: str, repo_root: Path, i
         category=category,
         fixture=fixture,
         fixture_path=fixture_path,
+        hidden_fixture=hidden_fixture,
+        hidden_fixture_path=hidden_fixture_path,
         prompt=prompt,
         driver=driver,
         max_steps=max_steps,

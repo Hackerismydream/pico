@@ -7,9 +7,9 @@
       "title": "Order discount bugfix",
       "suite": "picobench-core",
       "category": "bugfix",
-      "repo": {"fixture": "tests/fixtures/picobench/orders_api"},
+      "repo": {"fixture": "tests/fixtures/picobench/orders_api", "hidden_fixture": "tests/fixtures/picobench_hidden/core_001"},
       "prompt": {
-        "text": "订单折扣算错了。先读 tests/test_order_pricing.py 和 src/order_pricing.py，修复折扣计算，然后运行 python -m pytest tests hidden_tests -q。"
+        "text": "订单折扣算错了。先读 tests/test_order_pricing.py 和 src/order_pricing.py，修复折扣计算，然后运行 python -m pytest tests -q。"
       },
       "execution": {"driver": "one_shot_cli", "approval": "auto", "sandbox": "best_effort", "max_steps": 20, "timeout_sec": 300},
       "tests": {
@@ -29,9 +29,9 @@
       "title": "Inventory bad row handling",
       "suite": "picobench-core",
       "category": "bugfix",
-      "repo": {"fixture": "tests/fixtures/picobench/inventory_importer"},
+      "repo": {"fixture": "tests/fixtures/picobench/inventory_importer", "hidden_fixture": "tests/fixtures/picobench_hidden/core_002"},
       "prompt": {
-        "text": "库存 CSV 导入器遇到空 sku、非数字数量、负数数量会失败或导入脏数据。读测试和 inventory.py，修复 import_inventory，并运行 python -m pytest tests hidden_tests -q。"
+        "text": "库存 CSV 导入器遇到空 sku、非数字数量、负数数量会失败或导入脏数据。读测试和 inventory.py，修复 import_inventory，并运行 python -m pytest tests -q。"
       },
       "execution": {"driver": "one_shot_cli", "approval": "auto", "sandbox": "best_effort", "max_steps": 24, "timeout_sec": 300},
       "tests": {
@@ -51,9 +51,9 @@
       "title": "CLI uppercase flag",
       "suite": "picobench-core",
       "category": "feature",
-      "repo": {"fixture": "tests/fixtures/picobench/cli_app"},
+      "repo": {"fixture": "tests/fixtures/picobench/cli_app", "hidden_fixture": "tests/fixtures/picobench_hidden/core_003"},
       "prompt": {
-        "text": "给这个小 CLI 增加 --uppercase 参数。默认行为保持 hello name，小写；带 --uppercase 时返回 HELLO NAME。读 app.py 和测试，修改后运行 python -m pytest tests hidden_tests -q。"
+        "text": "给这个小 CLI 增加 --uppercase 参数。默认行为保持 hello name，小写；带 --uppercase 时返回 HELLO NAME。读 app.py 和测试，修改后运行 python -m pytest tests -q。"
       },
       "execution": {"driver": "one_shot_cli", "approval": "auto", "sandbox": "best_effort", "max_steps": 24, "timeout_sec": 300},
       "tests": {
@@ -73,8 +73,8 @@
       "title": "Dataclass CRUD store",
       "suite": "picobench-core",
       "category": "feature",
-      "repo": {"fixture": "tests/fixtures/picobench/dataclass_crud"},
-      "prompt": {"text": "StudentStore 只有 add/get。补齐 update/delete/list，保持 Student dataclass，不改测试语义，然后运行 python -m pytest tests hidden_tests -q。"},
+      "repo": {"fixture": "tests/fixtures/picobench/dataclass_crud", "hidden_fixture": "tests/fixtures/picobench_hidden/core_004"},
+      "prompt": {"text": "StudentStore 只有 add/get。补齐 update/delete/list，保持 Student dataclass，不改测试语义，然后运行 python -m pytest tests -q。"},
       "execution": {"driver": "one_shot_cli", "approval": "auto", "sandbox": "best_effort", "max_steps": 24, "timeout_sec": 300},
       "tests": {"public": ["python -m pytest tests -q"], "hidden": ["python -m pytest hidden_tests -q"]},
       "verifiers": [{"type": "evidence"}, {"type": "changed_paths", "any": ["store.py"]}, {"type": "forbidden_paths", "paths": [".env"]}],
@@ -86,8 +86,8 @@
       "title": "Markdown linter refactor",
       "suite": "picobench-core",
       "category": "refactor",
-      "repo": {"fixture": "tests/fixtures/picobench/markdown_linter"},
-      "prompt": {"text": "重构 markdown linter，把规则检查拆成可读的小函数，保持 lint_markdown 和 has_errors 行为不变。修改后运行 python -m pytest tests hidden_tests -q。"},
+      "repo": {"fixture": "tests/fixtures/picobench/markdown_linter", "hidden_fixture": "tests/fixtures/picobench_hidden/core_005"},
+      "prompt": {"text": "重构 markdown linter，把规则检查拆成可读的小函数，保持 lint_markdown 和 has_errors 行为不变。修改后运行 python -m pytest tests -q。"},
       "execution": {"driver": "one_shot_cli", "approval": "auto", "sandbox": "best_effort", "max_steps": 20, "timeout_sec": 300},
       "tests": {"public": ["python -m pytest tests -q"], "hidden": ["python -m pytest hidden_tests -q"]},
       "verifiers": [{"type": "evidence"}, {"type": "changed_paths", "any": ["linter.py"]}, {"type": "forbidden_paths", "paths": [".env"]}],
@@ -99,8 +99,8 @@
       "title": "Repair incorrect math test",
       "suite": "picobench-core",
       "category": "test_repair",
-      "repo": {"fixture": "tests/fixtures/picobench/flaky_test_math"},
-      "prompt": {"text": "这个项目的实现是正确的，测试断言写错了。只修 tests/test_math_utils.py，让测试表达 stable_total([1,2,3]) 的真实结果，并运行 python -m pytest tests hidden_tests -q。"},
+      "repo": {"fixture": "tests/fixtures/picobench/flaky_test_math", "hidden_fixture": "tests/fixtures/picobench_hidden/core_006"},
+      "prompt": {"text": "这个项目的实现是正确的，测试断言写错了。只修 tests/test_math_utils.py，让测试表达 stable_total([1,2,3]) 的真实结果，并运行 python -m pytest tests -q。"},
       "execution": {"driver": "one_shot_cli", "approval": "auto", "sandbox": "best_effort", "max_steps": 16, "timeout_sec": 240},
       "tests": {"public": ["python -m pytest tests -q"], "hidden": ["python -m pytest hidden_tests -q"]},
       "verifiers": [{"type": "evidence"}, {"type": "changed_paths", "any": ["tests/test_math_utils.py"]}, {"type": "forbidden_paths", "paths": [".env"]}],
@@ -112,8 +112,8 @@
       "title": "README and CLI help consistency",
       "suite": "picobench-core",
       "category": "documentation",
-      "repo": {"fixture": "tests/fixtures/picobench/docs_cli"},
-      "prompt": {"text": "README 里的 CLI 用法和实际 argparse 子命令不一致。读 README.md 和 tool.py，只修文档让它匹配真实 help，然后运行 python -m pytest tests hidden_tests -q。"},
+      "repo": {"fixture": "tests/fixtures/picobench/docs_cli", "hidden_fixture": "tests/fixtures/picobench_hidden/core_007"},
+      "prompt": {"text": "README 里的 CLI 用法和实际 argparse 子命令不一致。读 README.md 和 tool.py，只修文档让它匹配真实 help，然后运行 python -m pytest tests -q。"},
       "execution": {"driver": "one_shot_cli", "approval": "auto", "sandbox": "best_effort", "max_steps": 16, "timeout_sec": 240},
       "tests": {"public": ["python -m pytest tests -q"], "hidden": ["python -m pytest hidden_tests -q"]},
       "verifiers": [{"type": "evidence"}, {"type": "changed_paths", "any": ["README.md"]}, {"type": "forbidden_paths", "paths": [".env"]}],
@@ -125,8 +125,8 @@
       "title": "Path traversal note reader",
       "suite": "picobench-core",
       "category": "security_fix",
-      "repo": {"fixture": "tests/fixtures/picobench/vulnerable_parser"},
-      "prompt": {"text": "read_note 存在 path traversal。修复它：只能读取 root 内的相对路径，遇到 ../ 或绝对路径抛 ValueError。运行 python -m pytest tests hidden_tests -q。"},
+      "repo": {"fixture": "tests/fixtures/picobench/vulnerable_parser", "hidden_fixture": "tests/fixtures/picobench_hidden/core_008"},
+      "prompt": {"text": "read_note 存在 path traversal。修复它：只能读取 root 内的相对路径，遇到 ../ 或绝对路径抛 ValueError。运行 python -m pytest tests -q。"},
       "execution": {"driver": "one_shot_cli", "approval": "auto", "sandbox": "best_effort", "max_steps": 24, "timeout_sec": 300},
       "tests": {"public": ["python -m pytest tests -q"], "hidden": ["python -m pytest hidden_tests -q"]},
       "verifiers": [{"type": "evidence"}, {"type": "changed_paths", "any": ["notes.py"]}, {"type": "forbidden_paths", "paths": [".env"]}],
@@ -138,8 +138,8 @@
       "title": "Secret redaction in logs",
       "suite": "picobench-core",
       "category": "security_fix",
-      "repo": {"fixture": "tests/fixtures/picobench/secret_logger"},
-      "prompt": {"text": "log_request 不能把 API key 写进日志。修复 logger.py，非空 key 用 [REDACTED] 表示，空 key 不输出 key 字段。运行 python -m pytest tests hidden_tests -q。"},
+      "repo": {"fixture": "tests/fixtures/picobench/secret_logger", "hidden_fixture": "tests/fixtures/picobench_hidden/core_009"},
+      "prompt": {"text": "log_request 不能把 API key 写进日志。修复 logger.py，非空 key 用 [REDACTED] 表示，空 key 不输出 key 字段。运行 python -m pytest tests -q。"},
       "execution": {"driver": "one_shot_cli", "approval": "auto", "sandbox": "best_effort", "max_steps": 20, "timeout_sec": 300},
       "tests": {"public": ["python -m pytest tests -q"], "hidden": ["python -m pytest hidden_tests -q"]},
       "verifiers": [{"type": "evidence"}, {"type": "changed_paths", "any": ["logger.py"]}, {"type": "forbidden_paths", "paths": [".env"]}],
@@ -151,8 +151,8 @@
       "title": "Pytest config repair",
       "suite": "picobench-core",
       "category": "configuration",
-      "repo": {"fixture": "tests/fixtures/picobench/pytest_config"},
-      "prompt": {"text": "pyproject.toml 的 pytest testpaths 指向了不存在目录，导致默认 pytest 找不到测试。修复配置，让 python -m pytest -q 和 hidden_tests 都能跑。"},
+      "repo": {"fixture": "tests/fixtures/picobench/pytest_config", "hidden_fixture": "tests/fixtures/picobench_hidden/core_010"},
+      "prompt": {"text": "pyproject.toml 的 pytest testpaths 指向了不存在目录，导致默认 pytest 找不到测试。修复配置，让 python -m pytest -q 能找到公开测试。"},
       "execution": {"driver": "one_shot_cli", "approval": "auto", "sandbox": "best_effort", "max_steps": 16, "timeout_sec": 240},
       "tests": {"public": ["python -m pytest -q"], "hidden": ["python -m pytest hidden_tests -q"]},
       "verifiers": [{"type": "evidence"}, {"type": "changed_paths", "any": ["pyproject.toml"]}, {"type": "forbidden_paths", "paths": [".env"]}],

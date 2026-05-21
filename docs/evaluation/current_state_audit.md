@@ -18,7 +18,7 @@ PicoBench keeps that boundary. L0 can import runtime for deterministic regressio
 | `pico/evaluation/evaluator.py` | Loads the old JSON benchmark, copies fixtures, runs scripted model outputs, writes benchmark artifact rows. | Keep as L0 deterministic runtime regression. Do not make it the public benchmark runner. |
 | `pico/evaluation/metrics.py` | Aggregates benchmark rows and `.pico/runs/*` reports/traces into pass rate, attempts, tool counts, cache, status, security, duration metrics. | Reuse metric names in `summary.json`; extend later for cost and ablation. |
 | `pico/evaluation/run_evidence.py` | Read-only adapter over `.pico/runs/<run_id>` and `.pico/sessions/*` evidence. | Use directly in validators and runner evidence copying. |
-| `scripts/run_v3_human_scenario_gate.py` | Runs 12 gate scenarios or 50 full v3 scenarios through public process entrypoints. | Keep intact; generalize the pattern in `scripts/run_picobench.py`. |
+| `scripts/run_v3_human_scenario_gate.py` | Runs 12 gate scenarios or 50 full v3 scenarios through public process entrypoints. | Used by the `v3_human_gate` PicoBench driver for the priority agentic suite. |
 | `release/v3/testing/01-test-design.md` | Defines human scenario coverage. | Source list for PicoBench-Agentic gate tasks. |
 | `release/v3/testing/03-runner-and-evidence.md` | Defines runner trust boundary and artifact reading flow. | Treated as the runner contract. |
 | `release/v3/learning/08-session-run-evaluation.md` | Explains session, run, task_state, trace, report, and deterministic evaluation. | Design basis for evidence consistency checks. |
@@ -37,6 +37,7 @@ PicoBench keeps that boundary. L0 can import runtime for deterministic regressio
 - `pico/evaluation/trace_consistency.py`: recomputes counts from trace and compares report/task_state.
 - `pico/evaluation/cli_runner.py`: public-entry benchmark runner implementation.
 - `scripts/run_picobench.py`: CLI wrapper.
+- `scripts/run_picobench_runtime.py`: L0 legacy-schema runner for `benchmarks/picobench-runtime-v1.json`.
 
 ## RunEvidence Interface
 
@@ -54,7 +55,17 @@ This is enough for first-phase PicoBench. More specialized checks can be added w
 
 ## Existing 50 Scenarios
 
-The 50 scenarios already exist in `scripts/run_v3_human_scenario_gate.py`. First-phase PicoBench does not rewrite them. It schema-izes the 12 priority gates in `benchmarks/picobench-agentic-v1.yaml` and leaves the full 50-scenario conversion for a later pass.
+The 50 scenarios already exist in `scripts/run_v3_human_scenario_gate.py`. PicoBench schema-izes the 12 priority gates in `benchmarks/picobench-agentic-v1.yaml` and runs them through that existing scenario gate instead of replacing the real setup/check logic with placeholder public tests. The full 50-scenario conversion remains a later pass.
+
+## Trust Fixes Applied
+
+- Core hidden tests now live under `tests/fixtures/picobench_hidden/<task_id>/hidden_tests/` and are injected only after Pico exits.
+- Visible fixtures are committed before execution, so validators can use git diff instead of path-existence heuristics.
+- Forbidden paths mean "must not be changed", not "must not exist".
+- Claimed changed paths from `.pico` evidence are cross-checked with actual git changes.
+- Single-task timeout/process failures are recorded as benchmark failures rather than crashing the whole suite.
+- `pty` runs under a pseudo-terminal. Non-interactive `tui` runs are skipped with a reason rather than downgraded to REPL.
+- L0 runtime regression remains a separate legacy evaluator flow.
 
 ## Runtime Logic Not To Touch
 

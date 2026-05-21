@@ -30,11 +30,18 @@ tasks[].tests.public
 tasks[].verifiers
 ```
 
+Optional hidden-test source:
+
+```text
+tasks[].repo.hidden_fixture
+tasks[].tests.hidden.source
+```
+
 ## Fixture Rules
 
 Fixtures live under `tests/fixtures/picobench/<task_name>/`. They are copied into a benchmark workspace and committed before Pico runs. Do not design a task that edits the real Pico checkout.
 
-Hidden tests may live in fixture `hidden_tests/` for the local open benchmark branch. For a public leaderboard, hidden tests should be mounted or injected at verification time from a private source.
+Hidden tests must not live inside the visible fixture. Put them under a separate source such as `tests/fixtures/picobench_hidden/<task_id>/hidden_tests/` and reference it with `repo.hidden_fixture`. The runner injects hidden tests only after Pico exits.
 
 ## Verifier Rules
 
@@ -61,5 +68,6 @@ Security tasks should focus on repair, detection, rejection, and isolation. Do n
 - Hidden tests add meaningful edge coverage.
 - Expected changed paths are neither too loose nor impossible.
 - The prompt does not reveal hidden tests.
+- Forbidden paths are allowed to exist but must not be changed.
 - The task can run from a clean copied workspace with `python -m pytest`.
 - Evidence validators read artifacts rather than runtime internals.

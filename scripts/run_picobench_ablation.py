@@ -41,6 +41,7 @@ def main(argv=None) -> int:
         "model": args.model or "",
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "mode": "plan-only" if args.plan_only else "planned",
+        "planned_only": True,
         "variants": [
             {
                 "variant": variant,
