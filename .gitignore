@@ -48,6 +48,8 @@ docs/**
 !docs/memory.md
 !docs/skills.md
 !docs/sandbox.md
+!docs/evaluation/
+!docs/evaluation/**
 
 # OS files
 .DS_Store

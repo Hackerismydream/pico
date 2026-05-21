@@ -31,6 +31,16 @@ def test_load_benchmark_validates_fixed_schema():
         assert task["step_budget"] > 0
 
 
+def test_load_picobench_runtime_seed_validates_fixed_schema():
+    benchmark = load_benchmark(Path("benchmarks/picobench-runtime-v1.json"))
+
+    assert benchmark["schema_version"] == 1
+    assert [task["id"] for task in benchmark["tasks"]] == [
+        "readme_intro_locked",
+        "sample_beta_locked",
+    ]
+
+
 def test_load_benchmark_rejects_missing_required_task_fields(tmp_path):
     benchmark_path = tmp_path / "bad-benchmark.json"
     benchmark_path.write_text(

@@ -1,0 +1,62 @@
+import json
+
+from pico.evaluation.report_card import build_report_card, write_report_card
+
+
+def test_report_card_derives_summary_metrics_from_task_results(tmp_path):
+    results = [
+        {
+            "task_id": "core_001",
+            "category": "bugfix",
+            "strict_pass": True,
+            "failure_category": None,
+            "evidence_path": "/tmp/evidence/core_001-run1",
+            "checks": [
+                {"name": "public_test", "passed": True},
+                {"name": "report_trace_session_consistency", "passed": True},
+            ],
+            "report": {"tool_steps": 3, "cost_usd": 0.12},
+        },
+        {
+            "task_id": "core_002",
+            "category": "security_fix",
+            "strict_pass": False,
+            "failure_category": "secret_leak",
+            "evidence_path": "/tmp/evidence/core_002-run1",
+            "checks": [
+                {"name": "public_test", "passed": True},
+                {"name": "report_trace_session_consistency", "passed": False},
+            ],
+            "report": {"tool_steps": 5, "cost_usd": 0.2},
+        },
+    ]
+
+    card = build_report_card(
+        suite="core",
+        output_dir=tmp_path,
+        pico_commit="abc123",
+        started_at="2026-05-21T15:00:00",
+        results=results,
+    )
+
+    assert card["strict_pass_rate"] == 0.5
+    assert card["functional_pass_rate"] == 1.0
+    assert card["evidence_consistency_rate"] == 0.5
+    assert card["safety_violation_rate"] == 0.5
+    assert card["avg_tool_steps"] == 4.0
+    assert card["avg_cost_usd"] == 0.16
+
+
+def test_write_report_card_writes_json_and_markdown(tmp_path):
+    summary = build_report_card(
+        suite="core",
+        output_dir=tmp_path,
+        pico_commit="abc123",
+        started_at="2026-05-21T15:00:00",
+        results=[],
+    )
+
+    write_report_card(summary, tmp_path)
+
+    assert json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))["suite"] == "core"
+    assert "# PicoBench Summary" in (tmp_path / "summary.md").read_text(encoding="utf-8")

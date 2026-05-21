@@ -1,0 +1,96 @@
+import json
+
+import pytest
+
+from pico.evaluation.benchmark_schema import load_benchmark, normalize_benchmark
+
+
+def _task(task_id, fixture="fixtures/demo"):
+    return {
+        "task_id": task_id,
+        "suite": "picobench-core",
+        "category": "bugfix",
+        "repo": {"fixture": fixture},
+        "prompt": {"text": "Fix the failing test."},
+        "execution": {"driver": "one_shot_cli", "max_steps": 12},
+        "tests": {"public": ["python -m pytest -q"]},
+        "verifiers": [{"type": "command", "command": "python -V"}],
+    }
+
+
+def test_load_benchmark_normalizes_json_yaml_and_fixture_paths(tmp_path):
+    fixture = tmp_path / "fixtures" / "demo"
+    fixture.mkdir(parents=True)
+    benchmark = tmp_path / "benchmarks" / "picobench-core-v1.yaml"
+    benchmark.parent.mkdir()
+    benchmark.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "suite": "picobench-core",
+                "tasks": [_task("core_001")],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = load_benchmark(benchmark, repo_root=tmp_path)
+
+    assert loaded.schema_version == 1
+    assert loaded.suite == "picobench-core"
+    assert loaded.tasks[0].task_id == "core_001"
+    assert loaded.tasks[0].fixture_path == fixture.resolve()
+    assert loaded.tasks[0].driver == "one_shot_cli"
+    assert loaded.tasks[0].public_tests == ["python -m pytest -q"]
+
+
+def test_repo_picobench_core_suite_has_ten_tasks():
+    loaded = load_benchmark("benchmarks/picobench-core-v1.yaml")
+
+    assert len(loaded.tasks) == 10
+    assert {task.task_id for task in loaded.tasks} == {
+        "core_001",
+        "core_002",
+        "core_003",
+        "core_004",
+        "core_005",
+        "core_006",
+        "core_007",
+        "core_008",
+        "core_009",
+        "core_010",
+    }
+
+
+def test_normalize_benchmark_rejects_duplicate_task_ids(tmp_path):
+    fixture = tmp_path / "fixtures" / "demo"
+    fixture.mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="duplicate task_id"):
+        normalize_benchmark(
+            {
+                "schema_version": 1,
+                "suite": "picobench-core",
+                "tasks": [_task("core_001"), _task("core_001")],
+            },
+            repo_root=tmp_path,
+        )
+
+
+def test_normalize_benchmark_rejects_invalid_driver_and_missing_fixture(tmp_path):
+    payload = {
+        "schema_version": 1,
+        "suite": "picobench-core",
+        "tasks": [_task("core_001", fixture="missing")],
+    }
+
+    with pytest.raises(ValueError, match="fixture does not exist"):
+        normalize_benchmark(payload, repo_root=tmp_path)
+
+    fixture = tmp_path / "fixtures" / "demo"
+    fixture.mkdir(parents=True)
+    payload["tasks"][0]["repo"]["fixture"] = "fixtures/demo"
+    payload["tasks"][0]["execution"]["driver"] = "internal_runtime"
+
+    with pytest.raises(ValueError, match="unsupported driver"):
+        normalize_benchmark(payload, repo_root=tmp_path)
