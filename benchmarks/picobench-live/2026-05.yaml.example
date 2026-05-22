@@ -1,0 +1,43 @@
+schema_version: 1
+suite: picobench-live
+batch: "2026-05"
+tasks:
+  - task_id: live_2026_05_001
+    title: "Example held-out bugfix task"
+    source:
+      kind: dogfood
+      captured_at: "2026-05-22"
+      provenance: "sanitized Pico development prompt"
+    repo:
+      fixture: "<private-or-generated-fixture>"
+      base_commit: "<sha-or-fixture-digest>"
+      hidden_tests: "<private-hidden-test-location>"
+    prompt:
+      text: "Sanitized user-style task prompt goes here."
+    execution:
+      driver: one_shot_cli
+      approval: auto
+      sandbox: best_effort
+      max_steps: 40
+      timeout_sec: 600
+    tests:
+      public:
+        - "python -m pytest tests -q"
+      hidden:
+        - "python -m pytest hidden_tests -q"
+    verifiers:
+      - type: evidence
+      - type: must_run_tests
+      - type: must_read_before_write
+      - type: required_tool_sequence
+        sequence: ["read_file", "run_shell"]
+    quality:
+      stability_runs: 3
+      issue_clarity: clear
+      test_coverage: high
+      contamination_risk: low
+      estimated_effort_minutes: 30
+    release:
+      public: false
+      leaderboard: false
+      diagnostic_only: true

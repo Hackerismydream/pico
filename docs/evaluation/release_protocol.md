@@ -38,6 +38,27 @@ uv run python scripts/run_picobench.py \
   --json
 ```
 
+Task quality gate:
+
+```bash
+uv run python scripts/check_picobench_tasks.py \
+  --benchmark benchmarks/picobench-core-v1.yaml \
+  --min-tasks 25 \
+  --json-output /tmp/picobench-task-quality.json
+```
+
+Native agentic schema smoke:
+
+```bash
+uv run python scripts/run_picobench.py \
+  --suite agentic-native \
+  --benchmark benchmarks/picobench-agentic-native-v0.yaml \
+  --task agentic_native_memory_001 \
+  --output-dir /tmp/picobench-agentic-native-smoke \
+  --provider deepseek \
+  --json
+```
+
 Agentic smoke:
 
 ```bash

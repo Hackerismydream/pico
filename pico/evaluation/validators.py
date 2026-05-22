@@ -258,6 +258,128 @@ class SecretRedactionVerifier:
         )
 
 
+class RequiredToolSequenceVerifier:
+    def __init__(self, sequence: list[str]):
+        self.sequence = sequence
+
+    def run(self, workspace: str | Path) -> CheckResult:
+        evidence = RunEvidence.latest(Path(workspace))
+        names = evidence.tool_names()
+        cursor = 0
+        for name in names:
+            if cursor < len(self.sequence) and name == self.sequence[cursor]:
+                cursor += 1
+        passed = cursor == len(self.sequence)
+        return CheckResult(
+            name="required_tool_sequence",
+            passed=passed,
+            message="" if passed else f"tool sequence {names} does not contain {self.sequence}",
+            details={"required": self.sequence, "actual": names},
+            failure_category=None if passed else "tool_policy_violation",
+        )
+
+
+class MustRunTestsVerifier:
+    TEST_MARKERS = ("pytest", "unittest", "npm test", "pnpm test", "yarn test", "go test", "cargo test")
+
+    def run(self, workspace: str | Path) -> CheckResult:
+        evidence = RunEvidence.latest(Path(workspace))
+        commands = [_event_text(event) for event in evidence.tool_events("run_shell")]
+        passed = any(any(marker in command.lower() for marker in self.TEST_MARKERS) for command in commands)
+        return CheckResult(
+            name="must_run_tests",
+            passed=passed,
+            message="" if passed else "no test command found in run_shell trace events",
+            details={"commands": commands},
+            failure_category=None if passed else "test_not_run",
+        )
+
+
+class MustReadBeforeWriteVerifier:
+    WRITE_TOOLS = {"patch_file", "write_file"}
+
+    def run(self, workspace: str | Path) -> CheckResult:
+        evidence = RunEvidence.latest(Path(workspace))
+        read_paths: set[str] = set()
+        violations: list[dict[str, str]] = []
+        for event in evidence.tool_events():
+            tool = evidence.tool_name(event)
+            path = _event_path(event)
+            if tool == "read_file" and path:
+                read_paths.add(path)
+            if tool in self.WRITE_TOOLS and path and path not in read_paths:
+                violations.append({"tool": tool, "path": path})
+        return CheckResult(
+            name="must_read_before_write",
+            passed=not violations,
+            message="" if not violations else "write-like tool used before read_file",
+            details={"violations": violations, "read_paths": sorted(read_paths)},
+            failure_category=None if not violations else "tool_policy_violation",
+        )
+
+
+class RequiredTraceEventVerifier:
+    def __init__(self, event_name: str, fields: dict[str, Any] | None = None):
+        self.event_name = event_name
+        self.fields = fields or {}
+
+    def run(self, workspace: str | Path) -> CheckResult:
+        evidence = RunEvidence.latest(Path(workspace))
+        passed = any(_event_matches(event, self.event_name, self.fields) for event in evidence.trace_events)
+        return CheckResult(
+            name="required_trace_event",
+            passed=passed,
+            message="" if passed else f"trace event not found: {self.event_name}",
+            details={"event": self.event_name, "fields": self.fields},
+            failure_category=None if passed else "trace_report_inconsistent",
+        )
+
+
+class RequiredSessionEventVerifier:
+    def __init__(self, event_name: str, fields: dict[str, Any] | None = None):
+        self.event_name = event_name
+        self.fields = fields or {}
+
+    def run(self, workspace: str | Path) -> CheckResult:
+        evidence = RunEvidence.latest(Path(workspace))
+        passed = any(_event_matches(event, self.event_name, self.fields) for event in evidence.session_events)
+        return CheckResult(
+            name="required_session_event",
+            passed=passed,
+            message="" if passed else f"session event not found: {self.event_name}",
+            details={"event": self.event_name, "fields": self.fields},
+            failure_category=None if passed else "trace_report_inconsistent",
+        )
+
+
+class ArtifactExistsVerifier:
+    def __init__(self, paths: list[str]):
+        self.paths = paths
+
+    def run(self, workspace: str | Path) -> CheckResult:
+        workspace = Path(workspace)
+        evidence = RunEvidence.latest(workspace)
+        missing = []
+        for raw_path in self.paths:
+            path = Path(raw_path)
+            candidates = []
+            if path.is_absolute():
+                candidates.append(path)
+            else:
+                candidates.append(workspace / path)
+                if evidence.run_dir:
+                    candidates.append(evidence.run_dir / path)
+            if not any(candidate.exists() for candidate in candidates):
+                missing.append(raw_path)
+        return CheckResult(
+            name="artifact_exists",
+            passed=not missing,
+            message="" if not missing else f"missing artifacts: {', '.join(missing)}",
+            details={"paths": self.paths, "missing": missing},
+            failure_category=None if not missing else "trace_report_inconsistent",
+        )
+
+
 def evaluate_task(task_id: str, checks: list[CheckResult]) -> TaskEvaluation:
     strict_pass = all(check.passed for check in checks)
     passed_count = sum(1 for check in checks if check.passed)
@@ -296,6 +418,18 @@ def build_verifier(spec: dict[str, Any]):
         return EvidenceVerifier()
     if verifier_type == "secret_redaction":
         return SecretRedactionVerifier([str(secret) for secret in spec.get("secrets", [])])
+    if verifier_type == "required_tool_sequence":
+        return RequiredToolSequenceVerifier([str(name) for name in spec.get("sequence", [])])
+    if verifier_type == "must_run_tests":
+        return MustRunTestsVerifier()
+    if verifier_type == "must_read_before_write":
+        return MustReadBeforeWriteVerifier()
+    if verifier_type == "required_trace_event":
+        return RequiredTraceEventVerifier(str(spec.get("event") or ""), dict(spec.get("fields") or {}))
+    if verifier_type == "required_session_event":
+        return RequiredSessionEventVerifier(str(spec.get("event") or ""), dict(spec.get("fields") or {}))
+    if verifier_type == "artifact_exists":
+        return ArtifactExistsVerifier([str(path) for path in spec.get("paths", [])])
     raise ValueError(f"unsupported verifier type: {verifier_type}")
 
 
@@ -389,3 +523,35 @@ def _failure_category_for_stop_reason(stop_reason: str) -> str:
     if stop_reason:
         return stop_reason
     return "runner_error"
+
+
+def _event_matches(event: dict[str, Any], event_name: str, fields: dict[str, Any]) -> bool:
+    if event.get("event") != event_name:
+        return False
+    return all(event.get(key) == value for key, value in fields.items())
+
+
+def _event_path(event: dict[str, Any]) -> str:
+    for container in (event, event.get("args") or {}, event.get("input") or {}):
+        if isinstance(container, dict):
+            value = container.get("path") or container.get("file") or container.get("target")
+            if value:
+                return str(value)
+    return ""
+
+
+def _event_text(event: dict[str, Any]) -> str:
+    parts: list[str] = []
+    _collect_strings(event, parts)
+    return " ".join(parts)
+
+
+def _collect_strings(value: Any, parts: list[str]) -> None:
+    if isinstance(value, str):
+        parts.append(value)
+    elif isinstance(value, dict):
+        for item in value.values():
+            _collect_strings(item, parts)
+    elif isinstance(value, list):
+        for item in value:
+            _collect_strings(item, parts)

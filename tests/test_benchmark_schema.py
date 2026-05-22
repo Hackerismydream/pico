@@ -47,19 +47,8 @@ def test_load_benchmark_normalizes_json_yaml_and_fixture_paths(tmp_path):
 def test_repo_picobench_core_suite_has_ten_tasks():
     loaded = load_benchmark("benchmarks/picobench-core-v1.yaml")
 
-    assert len(loaded.tasks) == 10
-    assert {task.task_id for task in loaded.tasks} == {
-        "core_001",
-        "core_002",
-        "core_003",
-        "core_004",
-        "core_005",
-        "core_006",
-        "core_007",
-        "core_008",
-        "core_009",
-        "core_010",
-    }
+    assert len(loaded.tasks) >= 25
+    assert {f"core_{index:03d}" for index in range(1, 26)}.issubset({task.task_id for task in loaded.tasks})
     assert all(task.hidden_fixture_path and task.hidden_fixture_path.exists() for task in loaded.tasks)
     assert not any((task.fixture_path / "hidden_tests").exists() for task in loaded.tasks)
 
@@ -83,6 +72,18 @@ def test_repo_picobench_agentic_suite_delegates_priority_gates_to_v3_human_gate(
     ]
     assert all(task.driver == "v3_human_gate" for task in loaded.tasks)
     assert {task.scenario_id for task in loaded.tasks} == {task.task_id for task in loaded.tasks}
+
+
+def test_repo_picobench_agentic_native_suite_has_plan_skill_memory_examples():
+    loaded = load_benchmark("benchmarks/picobench-agentic-native-v0.yaml")
+
+    assert [task.task_id for task in loaded.tasks] == [
+        "agentic_native_plan_001",
+        "agentic_native_skill_001",
+        "agentic_native_memory_001",
+    ]
+    assert {task.category for task in loaded.tasks} == {"plan_mode", "skill", "memory"}
+    assert all(task.driver in {"repl", "one_shot_cli"} for task in loaded.tasks)
 
 
 def test_normalize_benchmark_rejects_duplicate_task_ids(tmp_path):

@@ -53,6 +53,12 @@ SUPPORTED_VERIFIERS = {
     "evidence",
     "trace_consistency",
     "secret_redaction",
+    "required_tool_sequence",
+    "must_run_tests",
+    "must_read_before_write",
+    "required_trace_event",
+    "required_session_event",
+    "artifact_exists",
 }
 
 

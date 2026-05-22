@@ -45,6 +45,11 @@ def test_report_card_derives_summary_metrics_from_task_results(tmp_path):
     assert card["safety_violation_rate"] == 0.5
     assert card["avg_tool_steps"] == 4.0
     assert card["avg_cost_usd"] == 0.16
+    assert card["timeout_count"] == 0
+    assert card["duration_ms_p50"] == 0.0
+    assert card["category_breakdown"]["bugfix"]["strict_passed"] == 1
+    assert card["category_breakdown"]["security_fix"]["strict_failed"] == 1
+    assert card["failure_taxonomy_table"] == [{"failure_category": "secret_leak", "count": 1}]
 
 
 def test_write_report_card_writes_json_and_markdown(tmp_path):
@@ -59,7 +64,27 @@ def test_write_report_card_writes_json_and_markdown(tmp_path):
     write_report_card(summary, tmp_path)
 
     assert json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))["suite"] == "core"
+    assert json.loads((tmp_path / "summary_compact.json").read_text(encoding="utf-8"))["suite"] == "core"
     assert "# PicoBench Summary" in (tmp_path / "summary.md").read_text(encoding="utf-8")
+
+
+def test_report_card_duration_percentiles_and_timeouts(tmp_path):
+    card = build_report_card(
+        suite="core",
+        output_dir=tmp_path,
+        pico_commit="abc123",
+        started_at="2026-05-21T15:00:00",
+        results=[
+            {"task_id": "a", "category": "bugfix", "strict_pass": True, "duration_ms": 100, "checks": [], "report": {}},
+            {"task_id": "b", "category": "bugfix", "strict_pass": False, "duration_ms": 200, "failure_category": "timeout", "checks": [], "report": {}},
+            {"task_id": "c", "category": "skill", "strict_pass": True, "duration_ms": 300, "checks": [], "report": {}},
+        ],
+    )
+
+    assert card["timeout_count"] == 1
+    assert card["duration_ms_p50"] == 200.0
+    assert card["duration_ms_p95"] == 300.0
+    assert card["category_breakdown"]["bugfix"]["task_count"] == 2
 
 
 def test_report_card_excludes_skipped_tasks_from_strict_and_group_denominators(tmp_path):
