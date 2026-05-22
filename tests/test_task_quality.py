@@ -29,10 +29,10 @@ def _task(task_id, fixture, hidden_fixture):
 def test_task_quality_accepts_repo_core_suite_phase2_floor():
     benchmark = load_benchmark("benchmarks/picobench-core-v1.yaml")
 
-    report = check_benchmark_quality(benchmark, min_tasks=25, require_hidden=True)
+    report = check_benchmark_quality(benchmark, min_tasks=30, require_hidden=True)
 
     assert report.passed, [issue.to_dict() for issue in report.issues]
-    assert report.task_count >= 25
+    assert report.task_count >= 30
     assert report.hidden_fixture_count == report.task_count
 
 
@@ -60,7 +60,7 @@ def test_task_quality_rejects_visible_hidden_tests_and_missing_metadata(tmp_path
 
 
 def test_check_picobench_tasks_cli_writes_json(tmp_path):
-    output = tmp_path / "quality.json"
+    output = tmp_path / "nested" / "quality.json"
 
     completed = subprocess.run(
         [
@@ -69,7 +69,7 @@ def test_check_picobench_tasks_cli_writes_json(tmp_path):
             "--benchmark",
             "benchmarks/picobench-core-v1.yaml",
             "--min-tasks",
-            "25",
+            "30",
             "--json-output",
             str(output),
         ],
@@ -81,4 +81,106 @@ def test_check_picobench_tasks_cli_writes_json(tmp_path):
     assert completed.returncode == 0, completed.stderr
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["passed"] is True
-    assert payload["task_count"] >= 25
+    assert payload["task_count"] >= 30
+
+
+def test_check_picobench_tasks_cli_runs_executable_subset(tmp_path):
+    output = tmp_path / "quality-exec.json"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/check_picobench_tasks.py",
+            "--benchmark",
+            "benchmarks/picobench-core-v1.yaml",
+            "--task",
+            "core_011",
+            "--min-tasks",
+            "1",
+            "--run-public-tests",
+            "--run-hidden-tests",
+            "--require-initial-failing",
+            "--json-output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    assert payload["task_count"] == 1
+
+
+def test_task_quality_executable_checks_detect_initial_all_green(tmp_path):
+    fixture = tmp_path / "fixtures" / "green"
+    hidden = tmp_path / "hidden" / "green"
+    (fixture / "tests").mkdir(parents=True)
+    (hidden / "hidden_tests").mkdir(parents=True)
+    (fixture / "app.py").write_text("def value():\n    return 1\n", encoding="utf-8")
+    (fixture / "tests" / "test_app.py").write_text(
+        "from app import value\n\n\ndef test_value():\n    assert value() == 1\n",
+        encoding="utf-8",
+    )
+    (hidden / "hidden_tests" / "test_app_edge.py").write_text(
+        "from app import value\n\n\ndef test_value_edge():\n    assert value() == 1\n",
+        encoding="utf-8",
+    )
+    benchmark = normalize_benchmark(
+        {
+            "schema_version": 1,
+            "suite": "picobench-core",
+            "tasks": [_task("core_green", "fixtures/green", "hidden/green")],
+        },
+        repo_root=tmp_path,
+    )
+
+    report = check_benchmark_quality(
+        benchmark,
+        min_tasks=1,
+        require_hidden=True,
+        run_public_tests=True,
+        run_hidden_tests=True,
+        require_initial_failing=True,
+    )
+
+    codes = {issue.code for issue in report.issues}
+    assert "initial_all_green" in codes
+    assert "hidden_initial_all_green" in codes
+
+
+def test_task_quality_executable_checks_accept_initial_failing_task(tmp_path):
+    fixture = tmp_path / "fixtures" / "red"
+    hidden = tmp_path / "hidden" / "red"
+    (fixture / "tests").mkdir(parents=True)
+    (hidden / "hidden_tests").mkdir(parents=True)
+    (fixture / "app.py").write_text("def value():\n    return 1\n", encoding="utf-8")
+    (fixture / "tests" / "test_app.py").write_text(
+        "from app import value\n\n\ndef test_value():\n    assert value() == 2\n",
+        encoding="utf-8",
+    )
+    (hidden / "hidden_tests" / "test_app_edge.py").write_text(
+        "from app import value\n\n\ndef test_value_edge():\n    assert value() == 3\n",
+        encoding="utf-8",
+    )
+    benchmark = normalize_benchmark(
+        {
+            "schema_version": 1,
+            "suite": "picobench-core",
+            "tasks": [_task("core_red", "fixtures/red", "hidden/red")],
+        },
+        repo_root=tmp_path,
+    )
+
+    report = check_benchmark_quality(
+        benchmark,
+        min_tasks=1,
+        require_hidden=True,
+        run_public_tests=True,
+        run_hidden_tests=True,
+        require_initial_failing=True,
+    )
+
+    assert report.passed, [issue.to_dict() for issue in report.issues]

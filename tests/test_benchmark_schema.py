@@ -47,8 +47,8 @@ def test_load_benchmark_normalizes_json_yaml_and_fixture_paths(tmp_path):
 def test_repo_picobench_core_suite_has_ten_tasks():
     loaded = load_benchmark("benchmarks/picobench-core-v1.yaml")
 
-    assert len(loaded.tasks) >= 25
-    assert {f"core_{index:03d}" for index in range(1, 26)}.issubset({task.task_id for task in loaded.tasks})
+    assert len(loaded.tasks) >= 30
+    assert {f"core_{index:03d}" for index in range(1, 31)}.issubset({task.task_id for task in loaded.tasks})
     assert all(task.hidden_fixture_path and task.hidden_fixture_path.exists() for task in loaded.tasks)
     assert not any((task.fixture_path / "hidden_tests").exists() for task in loaded.tasks)
 
@@ -84,6 +84,18 @@ def test_repo_picobench_agentic_native_suite_has_plan_skill_memory_examples():
     ]
     assert {task.category for task in loaded.tasks} == {"plan_mode", "skill", "memory"}
     assert all(task.driver in {"repl", "one_shot_cli"} for task in loaded.tasks)
+
+
+def test_agentic_native_skill_uses_repl_slash_and_preset_project_skill():
+    loaded = load_benchmark("benchmarks/picobench-agentic-native-v0.yaml")
+    task = next(task for task in loaded.tasks if task.task_id == "agentic_native_skill_001")
+
+    assert task.driver == "repl"
+    assert task.prompt == "/release staging\n/exit"
+    assert (task.fixture_path / ".pico" / "skills" / "release" / "SKILL.md").is_file()
+    verifier_specs = {(spec.get("type"), spec.get("event")) for spec in task.verifiers}
+    assert ("required_session_event", "skill_invoked") in verifier_specs
+    assert ("required_session_event", "skill_completed") in verifier_specs
 
 
 def test_normalize_benchmark_rejects_duplicate_task_ids(tmp_path):

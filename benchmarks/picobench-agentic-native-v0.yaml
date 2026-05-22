@@ -26,16 +26,15 @@
       "title": "Native project skill invocation",
       "suite": "picobench-agentic-native",
       "category": "skill",
-      "repo": {"fixture": "tests/fixtures/picobench/agentic_smoke"},
-      "prompt": {
-        "text": "创建项目 skill `.pico/skills/release/SKILL.md`，然后通过 REPL 调用 `/release staging`，要求 skill 输出 reports/release.md，最后退出。"
-      },
-      "execution": {"driver": "one_shot_cli", "approval": "auto", "sandbox": "best_effort", "max_steps": 12, "timeout_sec": 360},
-      "tests": {"public": ["python -c \"from pathlib import Path; assert Path('reports/release.md').exists()\""]},
+      "repo": {"fixture": "tests/fixtures/picobench/agentic_skill_project"},
+      "prompt": {"text": "/release staging\n/exit"},
+      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 8, "timeout_sec": 360},
+      "tests": {"public": ["python -c \"from pathlib import Path; text=Path('reports/release.md').read_text(encoding='utf-8'); assert 'staging' in text and 'release readiness' in text\""]},
       "verifiers": [
         {"type": "evidence"},
         {"type": "artifact_exists", "paths": ["reports/release.md"]},
-        {"type": "required_session_event", "event": "skill_invoked"}
+        {"type": "required_session_event", "event": "skill_invoked"},
+        {"type": "required_session_event", "event": "skill_completed"}
       ],
       "expected": {"changed_paths": {"any": ["reports/release.md"]}, "stop_reason": "final_answer_returned"},
       "metadata": {"source": "synthetic", "contamination_risk": "low", "issue_clarity": "clear", "test_coverage": "medium"}

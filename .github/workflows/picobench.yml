@@ -1,0 +1,25 @@
+name: PicoBench
+
+on:
+  pull_request:
+  push:
+    branches:
+      - v3
+      - codex/picobench-v3
+
+jobs:
+  picobench-static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install Python
+        run: uv python install 3.12
+      - name: Schema and validator tests
+        run: uv run pytest tests/test_benchmark_schema.py tests/test_task_quality.py tests/test_process_validators.py tests/test_evaluation_validators.py tests/test_report_card.py -q
+      - name: Task quality gate
+        run: uv run python scripts/check_picobench_tasks.py --benchmark benchmarks/picobench-core-v1.yaml --min-tasks 30 --json-output /tmp/picobench-task-quality.json
+      - name: Executable task quality subset
+        run: uv run python scripts/check_picobench_tasks.py --benchmark benchmarks/picobench-core-v1.yaml --task core_011 --task core_026 --min-tasks 2 --run-public-tests --run-hidden-tests --require-initial-failing --json-output /tmp/picobench-task-quality-exec.json
+      - name: L0 runtime regression
+        run: uv run python scripts/run_picobench_runtime.py --benchmark benchmarks/picobench-runtime-v1.json --output-dir /tmp/picobench-runtime-ci --json

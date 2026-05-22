@@ -353,14 +353,19 @@ class RequiredSessionEventVerifier:
 
 
 class ArtifactExistsVerifier:
-    def __init__(self, paths: list[str]):
+    def __init__(self, paths: list[str], from_evidence: bool = False, from_manifest: bool = False):
         self.paths = paths
+        self.from_evidence = from_evidence
+        self.from_manifest = from_manifest
 
     def run(self, workspace: str | Path) -> CheckResult:
         workspace = Path(workspace)
         evidence = RunEvidence.latest(workspace)
+        evidence_artifacts = evidence.full_output_artifacts() if self.from_evidence else []
+        manifest_artifacts = _manifest_artifacts(evidence.run_dir) if self.from_manifest else []
+        paths = list(dict.fromkeys([*self.paths, *evidence_artifacts, *manifest_artifacts]))
         missing = []
-        for raw_path in self.paths:
+        for raw_path in paths:
             path = Path(raw_path)
             candidates = []
             if path.is_absolute():
@@ -375,7 +380,12 @@ class ArtifactExistsVerifier:
             name="artifact_exists",
             passed=not missing,
             message="" if not missing else f"missing artifacts: {', '.join(missing)}",
-            details={"paths": self.paths, "missing": missing},
+            details={
+                "paths": paths,
+                "missing": missing,
+                "evidence_artifacts": evidence_artifacts,
+                "manifest_artifacts": manifest_artifacts,
+            },
             failure_category=None if not missing else "trace_report_inconsistent",
         )
 
@@ -429,7 +439,11 @@ def build_verifier(spec: dict[str, Any]):
     if verifier_type == "required_session_event":
         return RequiredSessionEventVerifier(str(spec.get("event") or ""), dict(spec.get("fields") or {}))
     if verifier_type == "artifact_exists":
-        return ArtifactExistsVerifier([str(path) for path in spec.get("paths", [])])
+        return ArtifactExistsVerifier(
+            [str(path) for path in spec.get("paths", [])],
+            from_evidence=bool(spec.get("from_evidence")),
+            from_manifest=bool(spec.get("from_manifest")),
+        )
     raise ValueError(f"unsupported verifier type: {verifier_type}")
 
 
@@ -466,7 +480,7 @@ def git_changed_paths(workspace: str | Path) -> list[str]:
             continue
         path = line[3:].strip()
         if path:
-            untracked.append(path.rstrip("/"))
+            untracked.extend(_expand_untracked_path(workspace, path.rstrip("/")))
     return sorted(path for path in {*tracked, *untracked} if not _ignored_diff_path(path))
 
 
@@ -499,6 +513,17 @@ def _ignored_diff_path(path: str) -> bool:
         path in IGNORED_DIFF_NAMES
         or any(path.startswith(prefix) for prefix in IGNORED_DIFF_PREFIXES)
     )
+
+
+def _expand_untracked_path(workspace: Path, path: str) -> list[str]:
+    full_path = workspace / path
+    if not full_path.is_dir():
+        return [path]
+    paths = []
+    for child in full_path.rglob("*"):
+        if child.is_file():
+            paths.append(str(child.relative_to(workspace)))
+    return paths or [path]
 
 
 def _category_for_check(name: str) -> str:
@@ -555,3 +580,23 @@ def _collect_strings(value: Any, parts: list[str]) -> None:
     elif isinstance(value, list):
         for item in value:
             _collect_strings(item, parts)
+
+
+def _manifest_artifacts(run_dir: Path | None) -> list[str]:
+    if run_dir is None:
+        return []
+    paths: list[str] = []
+    for manifest_name in ("artifact_manifest.json", "evidence_bundle_manifest.json"):
+        manifest_path = run_dir / manifest_name
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        for item in manifest.get("artifacts") or []:
+            if isinstance(item, dict) and item.get("path"):
+                paths.append(str(item["path"]))
+        for item in manifest.get("files") or []:
+            paths.append(str(item))
+    return list(dict.fromkeys(paths))

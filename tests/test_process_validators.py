@@ -68,3 +68,39 @@ def test_process_validators_report_specific_failures(tmp_path):
     assert build_verifier({"type": "must_read_before_write"}).run(tmp_path).failure_category == "tool_policy_violation"
     assert build_verifier({"type": "required_session_event", "event": "skill_invoked", "fields": {"name": "deploy"}}).run(tmp_path).passed is True
     assert build_verifier({"type": "required_session_event", "event": "memory_note_appended"}).run(tmp_path).passed is False
+
+
+def test_artifact_exists_accepts_trace_artifact_references(tmp_path):
+    run_dir = _write_evidence(
+        tmp_path,
+        [
+            {
+                "event": "tool_executed",
+                "name": "run_shell",
+                "full_output_artifact": "artifacts/full-output.txt",
+            },
+            {"event": "run_finished", "status": "completed", "stop_reason": "final_answer_returned"},
+        ],
+    )
+    (run_dir / "artifacts").mkdir()
+    (run_dir / "artifacts" / "full-output.txt").write_text("large output\n", encoding="utf-8")
+
+    result = build_verifier({"type": "artifact_exists", "from_evidence": True}).run(tmp_path)
+
+    assert result.passed is True
+    assert result.details["evidence_artifacts"] == ["artifacts/full-output.txt"]
+
+
+def test_artifact_exists_accepts_evidence_bundle_manifest(tmp_path):
+    run_dir = _write_evidence(
+        tmp_path,
+        [{"event": "run_finished", "status": "completed", "stop_reason": "final_answer_returned"}],
+    )
+    (run_dir / "evidence_bundle_manifest.json").write_text(
+        json.dumps({"files": ["report.json", "trace.jsonl"]}),
+        encoding="utf-8",
+    )
+
+    result = build_verifier({"type": "artifact_exists", "paths": ["trace.jsonl"], "from_manifest": True}).run(tmp_path)
+
+    assert result.passed is True

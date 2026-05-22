@@ -1801,6 +1801,376 @@
         "issue_clarity": "clear",
         "test_coverage": "medium"
       }
+    },
+    {
+      "task_id": "core_026",
+      "title": "Order service coupon and inventory pipeline",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/order_service_pipeline",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_026"
+      },
+      "prompt": {
+        "text": "订单服务跨 catalog、discounts、checkout 三个文件。读 tests/test_checkout.py 和 src/*.py，修复结账流程：应用 coupon、扣库存、库存不足时报错，并运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 32,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "src/checkout.py",
+            "src/discounts.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "src/checkout.py",
+            "src/discounts.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_027",
+      "title": "Markdown frontmatter renderer",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/frontmatter_renderer",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_027"
+      },
+      "prompt": {
+        "text": "这个 Markdown 工具有 parser.py 和 renderer.py。读 tests/test_renderer.py，支持 YAML-like frontmatter 的 title/tags 解析，并让 render_summary 输出标题和标签。运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 32,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "parser.py",
+            "renderer.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "parser.py",
+            "renderer.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_028",
+      "title": "Permission audit with redaction",
+      "suite": "picobench-core",
+      "category": "security_fix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/permission_audit",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_028"
+      },
+      "prompt": {
+        "text": "权限检查分散在 models.py、permissions.py、audit.py。读 tests/test_permissions.py，修复 role 权限继承，并确保 audit 日志不泄露 token。运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 32,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "permissions.py",
+            "audit.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "permissions.py",
+            "audit.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_029",
+      "title": "Config file env and CLI precedence",
+      "suite": "picobench-core",
+      "category": "configuration",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/config_cli_merge",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_029"
+      },
+      "prompt": {
+        "text": "配置加载涉及 config.py 和 cli.py。读 tests/test_cli.py，实现 file < env < CLI 的 timeout precedence，并保持 parse_args 可测试。运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 32,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "config.py",
+            "cli.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "config.py",
+            "cli.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_030",
+      "title": "Task graph scheduler",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/task_graph_scheduler",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_030"
+      },
+      "prompt": {
+        "text": "调度器跨 graph.py 和 scheduler.py。读 tests/test_scheduler.py，实现依赖拓扑排序和 cycle detection。运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 32,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "graph.py",
+            "scheduler.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "graph.py",
+            "scheduler.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
     }
   ]
 }

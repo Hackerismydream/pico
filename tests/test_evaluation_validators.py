@@ -122,6 +122,23 @@ def test_git_changed_paths_include_tracked_and_untracked_workspace_files(tmp_pat
     assert git_changed_paths(workspace) == ["new.txt", "tracked.txt"]
 
 
+def test_git_changed_paths_expands_untracked_directories_to_files(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=workspace, check=True)
+    (workspace / "README.md").write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=workspace, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@example.invalid", "-c", "user.name=T", "commit", "-qm", "initial"],
+        cwd=workspace,
+        check=True,
+    )
+    (workspace / "reports").mkdir()
+    (workspace / "reports" / "release.md").write_text("ok\n", encoding="utf-8")
+
+    assert git_changed_paths(workspace) == ["reports/release.md"]
+
+
 def test_stop_reason_verifier_classifies_model_error_before_public_test_failure(tmp_path):
     workspace = tmp_path / "workspace"
     run_dir = workspace / ".pico" / "runs" / "run_1"

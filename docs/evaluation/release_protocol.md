@@ -43,8 +43,22 @@ Task quality gate:
 ```bash
 uv run python scripts/check_picobench_tasks.py \
   --benchmark benchmarks/picobench-core-v1.yaml \
-  --min-tasks 25 \
+  --min-tasks 30 \
   --json-output /tmp/picobench-task-quality.json
+```
+
+Executable task-quality subset:
+
+```bash
+uv run python scripts/check_picobench_tasks.py \
+  --benchmark benchmarks/picobench-core-v1.yaml \
+  --task core_011 \
+  --task core_026 \
+  --min-tasks 2 \
+  --run-public-tests \
+  --run-hidden-tests \
+  --require-initial-failing \
+  --json-output /tmp/picobench-task-quality-exec.json
 ```
 
 Native agentic schema smoke:
