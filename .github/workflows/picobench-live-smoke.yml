@@ -1,0 +1,76 @@
+name: PicoBench Live Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: "Provider"
+        required: true
+        default: "deepseek"
+      tasks:
+        description: "Comma-separated task ids"
+        required: true
+        default: "core_001"
+
+permissions:
+  contents: read
+
+jobs:
+  live-smoke:
+    runs-on: ubuntu-latest
+    environment: picobench-live
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Run live PicoBench smoke
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_API_BASE: ${{ secrets.DEEPSEEK_API_BASE }}
+          DEEPSEEK_BASE_URL: ${{ secrets.DEEPSEEK_BASE_URL }}
+          DEEPSEEK_MODEL: ${{ secrets.DEEPSEEK_MODEL }}
+        shell: bash
+        run: |
+          test -n "$DEEPSEEK_API_KEY" || (echo "Missing DEEPSEEK_API_KEY" && exit 1)
+          OUT="/tmp/picobench-live-smoke"
+          IFS=',' read -ra TASKS <<< "${{ github.event.inputs.tasks }}"
+          CMD=(uv run python scripts/run_picobench.py \
+            --suite core \
+            --benchmark benchmarks/picobench-core-v1.yaml \
+            --output-dir "$OUT" \
+            --provider "${{ github.event.inputs.provider }}" \
+            --approval auto \
+            --sandbox best_effort \
+            --json)
+          for task in "${TASKS[@]}"; do
+            trimmed="$(echo "$task" | xargs)"
+            if [ -n "$trimmed" ]; then
+              CMD+=(--task "$trimmed")
+            fi
+          done
+          "${CMD[@]}"
+          uv run python scripts/write_picobench_run_manifest.py \
+            --output-dir "$OUT" \
+            --benchmark benchmarks/picobench-core-v1.yaml \
+            --provider "${{ github.event.inputs.provider }}" \
+            --approval auto \
+            --sandbox best_effort
+
+      - name: Upload live smoke artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: picobench-live-smoke
+          if-no-files-found: error
+          path: |
+            /tmp/picobench-live-smoke/summary.json
+            /tmp/picobench-live-smoke/summary_compact.json
+            /tmp/picobench-live-smoke/summary.md
+            /tmp/picobench-live-smoke/task_results.jsonl
+            /tmp/picobench-live-smoke/logs/
+            /tmp/picobench-live-smoke/evidence/
+            /tmp/picobench-live-smoke/failures/
+            /tmp/picobench-live-smoke/run_manifest.json
+            /tmp/picobench-live-smoke/provider_config_redacted.json

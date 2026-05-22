@@ -15,6 +15,8 @@ Each release run must produce:
 - `evidence/<task>-runN/session.json`
 - `evidence/<task>-runN/events.jsonl`
 - `evidence/<task>-runN/evidence_bundle_manifest.json`
+- `run_manifest.json`
+- `provider_config_redacted.json`
 
 ## Commands
 
@@ -109,6 +111,17 @@ Full unit regression:
 
 ```bash
 uv run pytest tests/ -q
+```
+
+Live run manifest:
+
+```bash
+uv run python scripts/write_picobench_run_manifest.py \
+  --output-dir /tmp/picobench-core-live-smoke \
+  --benchmark benchmarks/picobench-core-v1.yaml \
+  --provider deepseek \
+  --approval auto \
+  --sandbox best_effort
 ```
 
 ## Reporting Rule

@@ -135,6 +135,20 @@ The ablation runner still records planned variants only. Real ablation numbers
 require product-level feature flags for disabling memory, plan mode, subagents,
 and skills through the same public CLI boundary.
 
+## Phase 3 Transition
+
+Phase 2 hardening is complete enough to move from benchmark framework
+construction into controlled live benchmark operation. Phase 3 keeps default CI
+as a no-key deterministic gate and moves live provider calls into manual smoke
+runs with redacted manifests and evidence bundles. Current Phase 3 status lives
+in:
+
+- `docs/evaluation/phase3_plan.md`
+- `docs/evaluation/ci_strategy.md`
+- `docs/evaluation/live_benchmark_runbook.md`
+- `docs/evaluation/live_execution_log.md`
+- `docs/evaluation/live_results_summary.md`
+
 ## Hardening Addendum
 
 Fresh local hardening verification on 2026-05-22:
