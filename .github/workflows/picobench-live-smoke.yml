@@ -7,6 +7,14 @@ on:
         description: "Provider"
         required: true
         default: "deepseek"
+      suite:
+        description: "Benchmark suite"
+        required: true
+        default: "core"
+      benchmark:
+        description: "Benchmark YAML/JSON path"
+        required: true
+        default: "benchmarks/picobench-core-v1.yaml"
       tasks:
         description: "Comma-separated task ids"
         required: true
@@ -35,11 +43,11 @@ jobs:
         shell: bash
         run: |
           test -n "$DEEPSEEK_API_KEY" || (echo "Missing DEEPSEEK_API_KEY" && exit 1)
-          OUT="/tmp/picobench-live-smoke"
+          OUT="/tmp/picobench-live-smoke-${{ github.event.inputs.suite }}"
           IFS=',' read -ra TASKS <<< "${{ github.event.inputs.tasks }}"
           CMD=(uv run python scripts/run_picobench.py \
-            --suite core \
-            --benchmark benchmarks/picobench-core-v1.yaml \
+            --suite "${{ github.event.inputs.suite }}" \
+            --benchmark "${{ github.event.inputs.benchmark }}" \
             --output-dir "$OUT" \
             --provider "${{ github.event.inputs.provider }}" \
             --approval auto \
@@ -54,7 +62,8 @@ jobs:
           "${CMD[@]}"
           uv run python scripts/write_picobench_run_manifest.py \
             --output-dir "$OUT" \
-            --benchmark benchmarks/picobench-core-v1.yaml \
+            --suite "${{ github.event.inputs.suite }}" \
+            --benchmark "${{ github.event.inputs.benchmark }}" \
             --provider "${{ github.event.inputs.provider }}" \
             --approval auto \
             --sandbox best_effort
@@ -62,15 +71,15 @@ jobs:
       - name: Upload live smoke artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: picobench-live-smoke
+          name: picobench-live-smoke-${{ github.event.inputs.suite }}
           if-no-files-found: error
           path: |
-            /tmp/picobench-live-smoke/summary.json
-            /tmp/picobench-live-smoke/summary_compact.json
-            /tmp/picobench-live-smoke/summary.md
-            /tmp/picobench-live-smoke/task_results.jsonl
-            /tmp/picobench-live-smoke/logs/
-            /tmp/picobench-live-smoke/evidence/
-            /tmp/picobench-live-smoke/failures/
-            /tmp/picobench-live-smoke/run_manifest.json
-            /tmp/picobench-live-smoke/provider_config_redacted.json
+            /tmp/picobench-live-smoke-*/summary.json
+            /tmp/picobench-live-smoke-*/summary_compact.json
+            /tmp/picobench-live-smoke-*/summary.md
+            /tmp/picobench-live-smoke-*/task_results.jsonl
+            /tmp/picobench-live-smoke-*/logs/
+            /tmp/picobench-live-smoke-*/evidence/
+            /tmp/picobench-live-smoke-*/failures/
+            /tmp/picobench-live-smoke-*/run_manifest.json
+            /tmp/picobench-live-smoke-*/provider_config_redacted.json

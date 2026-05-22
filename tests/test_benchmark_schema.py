@@ -84,6 +84,7 @@ def test_repo_picobench_agentic_native_suite_has_plan_skill_memory_examples():
     ]
     assert {task.category for task in loaded.tasks} == {"plan_mode", "skill", "memory"}
     assert all(task.driver in {"repl", "one_shot_cli"} for task in loaded.tasks)
+    assert all(any(spec.get("type") == "evidence" for spec in task.verifiers) for task in loaded.tasks)
 
 
 def test_agentic_native_skill_uses_repl_slash_and_preset_project_skill():

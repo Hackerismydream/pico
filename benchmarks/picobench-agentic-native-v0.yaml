@@ -49,6 +49,7 @@
       "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 4, "timeout_sec": 180},
       "tests": {"public": ["python -c \"from pathlib import Path; assert list(Path('.pico/memory/logs').rglob('*.md'))\""]},
       "verifiers": [
+        {"type": "evidence"},
         {"type": "required_session_event", "event": "memory_note_appended"},
         {"type": "artifact_exists", "paths": [".pico/memory/logs"]}
       ],

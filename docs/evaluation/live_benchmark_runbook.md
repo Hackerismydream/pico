@@ -59,6 +59,29 @@ uv run python scripts/run_picobench.py \
   --json
 ```
 
+Phase 3B 10-task core subset:
+
+```bash
+uv run python scripts/run_picobench.py \
+  --suite core \
+  --benchmark benchmarks/picobench-core-v1.yaml \
+  --task core_001 \
+  --task core_003 \
+  --task core_011 \
+  --task core_017 \
+  --task core_021 \
+  --task core_026 \
+  --task core_027 \
+  --task core_028 \
+  --task core_029 \
+  --task core_030 \
+  --output-dir /tmp/picobench-phase3b-core10 \
+  --provider deepseek \
+  --approval auto \
+  --sandbox best_effort \
+  --json
+```
+
 Small mixed core smoke:
 
 ```bash

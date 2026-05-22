@@ -29,6 +29,12 @@ three agentic-native tasks. Results are recorded in
 Recommended next subset: `core_001`, `core_003`, `core_011`, `core_017`,
 `core_021`, `core_026`, `core_027`, `core_028`, `core_029`, `core_030`.
 
+Status on 2026-05-22: completed once on DeepSeek at commit
+`068318fea6d5aee29353656464c598667f678466`. Result: 10 tasks, 8 strict
+passes, 2 strict failures, pass rate `0.8`. Both failures were
+`hidden_test_failure` on `core_027` and `core_028`; evidence consistency was
+`1.0`. Failure triage is in `docs/evaluation/phase3b_failure_triage.md`.
+
 ## Phase 3C: Full 30-Task Core Live Run
 
 - Run all 30 core tasks only after Phase 3A and 3B are stable.
