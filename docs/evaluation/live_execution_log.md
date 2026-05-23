@@ -191,3 +191,85 @@ triggered from GitHub.
 | `agentic_native_plan_001` | none | none | none | Keep in smoke set |
 | `agentic_native_skill_001` | none | none | none | Keep in smoke set |
 | `agentic_native_memory_001` | none | none | none | Review evidence-consistency metric before release runs |
+
+## Run 2026-05-23-deepseek-core30
+
+- commit: `2372068723af8b1c06b3e43362193e91fdbe3c41`
+- branch: `codex/picobench-v3`
+- provider: `deepseek`
+- model: `deepseek-v4-pro`
+- suite: `core`
+- tasks: all 30 `picobench-core-v1` tasks
+- command: `uv run python scripts/run_picobench.py --suite core --benchmark benchmarks/picobench-core-v1.yaml --output-dir /tmp/picobench-20260523-core30 --provider deepseek --approval auto --sandbox best_effort --json`
+- output_dir: `/tmp/picobench-20260523-core30`
+- status: completed with strict failures
+- strict_pass_rate: `0.7333333333333333`
+- failures: `core_016`, `core_018`, `core_019`, `core_023`, `core_027`, `core_028`, `core_029`, `core_030`
+- notes: full 30-task live run. Evidence consistency rate was `1.0`, timeout count was `0`, and failures are benchmark signal rather than runner/provider failure.
+
+### Artifacts
+
+- summary: `/tmp/picobench-20260523-core30/summary.json`
+- evidence bundle: `/tmp/picobench-20260523-core30/evidence/`
+- failure reports: `/tmp/picobench-20260523-core30/failures/`
+- manifest: `/tmp/picobench-20260523-core30/run_manifest.json`
+- provider config: `/tmp/picobench-20260523-core30/provider_config_redacted.json`
+
+### Failure analysis
+
+| Task | Failure | Category | Suspected cause | Action |
+|---|---|---|---|---|
+| `core_016` | Hidden test failed for numeric strings in JSON filter | `hidden_test_failure` | Model handled numeric values but did not coerce numeric strings | Keep as benchmark signal |
+| `core_018` | Hidden test failed for todo item whitespace trimming | `hidden_test_failure` | Model preserved extra leading spaces in parsed item text | Keep as benchmark signal |
+| `core_019` | Hidden test failed for empty URL path normalization | `hidden_test_failure` | Model kept trailing slash when path was empty | Keep as benchmark signal |
+| `core_023` | Hidden test failed for `None` table cell rendering | `hidden_test_failure` | Model rendered `None` as text instead of empty cell | Keep as benchmark signal |
+| `core_027` | Hidden tests failed for no-frontmatter summary fallback and empty tag filtering | `hidden_test_failure` | Same hidden-edge class as the Phase 3B run | Keep as stable pressure task |
+| `core_028` | Hidden test failed for blank-token audit behavior | `hidden_test_failure` | Same hidden-edge class as the Phase 3B run | Keep as stable pressure task |
+| `core_029` | Functional patch passed, but write happened before reading exact target path | `tool_policy_violation` | Process validator caught `patch_file` on `config.py` before `read_file config.py` | Keep strict failure; validator is working |
+| `core_030` | Hidden test failed for implicit dependency nodes in scheduler | `hidden_test_failure` | Model treated implicit dependency-only node as a dependency cycle | Keep as benchmark signal |
+
+## Run 2026-05-23-deepseek-agentic-native
+
+- commit: `2372068723af8b1c06b3e43362193e91fdbe3c41`
+- branch: `codex/picobench-v3`
+- provider: `deepseek`
+- model: `deepseek-v4-pro`
+- suite: `agentic-native`
+- tasks: `agentic_native_plan_001`, `agentic_native_skill_001`, `agentic_native_memory_001`
+- command: `uv run python scripts/run_picobench.py --suite agentic-native --benchmark benchmarks/picobench-agentic-native-v0.yaml --output-dir /tmp/picobench-20260523-agentic-native --provider deepseek --approval auto --sandbox best_effort --json`
+- output_dir: `/tmp/picobench-20260523-agentic-native`
+- status: completed with strict failures
+- strict_pass_rate: `0.6666666666666666`
+- failures: `agentic_native_memory_001`
+- notes: plan and skill tasks strictly passed; memory task passed functional behavior but failed evidence consistency because copied evidence missed required report, trace, and task-state paths.
+
+### Artifacts
+
+- summary: `/tmp/picobench-20260523-agentic-native/summary.json`
+- evidence bundle: `/tmp/picobench-20260523-agentic-native/evidence/`
+- failure reports: `/tmp/picobench-20260523-agentic-native/failures/`
+- manifest: `/tmp/picobench-20260523-agentic-native/run_manifest.json`
+- provider config: `/tmp/picobench-20260523-agentic-native/provider_config_redacted.json`
+
+### Failure analysis
+
+| Task | Failure | Category | Suspected cause | Action |
+|---|---|---|---|---|
+| `agentic_native_plan_001` | none | none | none | Keep in native smoke |
+| `agentic_native_skill_001` | none | none | none | Keep in native smoke |
+| `agentic_native_memory_001` | Missing `report_path`, `trace_path`, and `task_state_path` in evidence bundle | `trace_report_inconsistent` | Evidence copy path is incomplete for this slash-command memory scenario | Fix evidence bundling before claiming native memory strict pass |
+
+## Run 2026-05-23-deepseek-agentic-v1
+
+- commit: `2372068723af8b1c06b3e43362193e91fdbe3c41`
+- branch: `codex/picobench-v3`
+- provider: `deepseek`
+- model: `deepseek-v4-pro`
+- suite: `agentic`
+- tasks: 12 delegated v3 human-gate scenarios
+- command: `uv run python scripts/run_picobench.py --suite agentic --benchmark benchmarks/picobench-agentic-v1.yaml --output-dir /tmp/picobench-20260523-agentic-v1 --provider deepseek --approval auto --sandbox best_effort --json`
+- output_dir: `/tmp/picobench-20260523-agentic-v1`
+- status: completed
+- strict_pass_rate: `1.0`
+- failures: none
+- notes: v3 human-gate wrapper scenarios all strictly passed in this run. Evidence consistency is reported as `0.0` for this suite because the delegated gate driver does not emit the same evidence files as native PicoBench tasks.

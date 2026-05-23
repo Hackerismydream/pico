@@ -41,11 +41,23 @@ passes, 2 strict failures, pass rate `0.8`. Both failures were
 - Preserve full evidence bundles.
 - Review hidden test failures before changing any task.
 
+Status on 2026-05-23: completed once on DeepSeek at commit
+`2372068723af8b1c06b3e43362193e91fdbe3c41`. Result: 30 tasks, 22 strict
+passes, 8 strict failures, pass rate `0.7333333333333333`. Evidence
+consistency was `1.0`; failures were 7 `hidden_test_failure` rows and 1
+`tool_policy_violation`.
+
 ## Phase 3D: Agentic-Native Live Run
 
 - Run plan, skill, and memory tasks.
 - Validate required session events such as skill invocation and memory events.
 - Keep native-agentic evidence separate from core file-editing results.
+
+Status on 2026-05-23: completed once on DeepSeek at commit
+`2372068723af8b1c06b3e43362193e91fdbe3c41`. Result: 3 tasks, 2 strict
+passes, 1 strict failure. The failure was `trace_report_inconsistent` on the
+memory example: functional memory behavior passed, but the evidence bundle was
+missing `report_path`, `trace_path`, and `task_state_path`.
 
 ## Phase 3E: Dogfood/Held-Out Seed Tasks
 
