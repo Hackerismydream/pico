@@ -142,11 +142,13 @@ def _check_executable_task(
     require_initial_failing: bool,
 ) -> list[TaskQualityIssue]:
     issues: list[TaskQualityIssue] = []
+    public_expectation = _initial_expectation(task, "initial_public", require_initial_failing)
+    hidden_expectation = _initial_expectation(task, "initial_hidden", require_initial_failing)
     if run_public_tests:
         with _workspace_copy(task.fixture_path) as workspace:
             results = [_run_command(command, workspace) for command in task.public_tests]
         public_passed = bool(results) and all(result["returncode"] == 0 for result in results)
-        if require_initial_failing and public_passed:
+        if public_expectation == "fail" and public_passed:
             issues.append(
                 TaskQualityIssue(
                     "initial_all_green",
@@ -155,7 +157,7 @@ def _check_executable_task(
                     {"commands": results},
                 )
             )
-        if not require_initial_failing and not public_passed:
+        if public_expectation == "pass" and not public_passed:
             issues.append(
                 TaskQualityIssue(
                     "public_tests_fail_initially",
@@ -172,7 +174,7 @@ def _check_executable_task(
                 _inject_hidden_tests(task.hidden_fixture_path, workspace)
                 results = [_run_command(command, workspace) for command in task.hidden_tests]
             hidden_passed = bool(results) and all(result["returncode"] == 0 for result in results)
-            if require_initial_failing and hidden_passed:
+            if hidden_expectation == "fail" and hidden_passed:
                 issues.append(
                     TaskQualityIssue(
                         "hidden_initial_all_green",
@@ -181,7 +183,7 @@ def _check_executable_task(
                         {"commands": results},
                     )
                 )
-            if not require_initial_failing and not hidden_passed:
+            if hidden_expectation == "pass" and not hidden_passed:
                 issues.append(
                     TaskQualityIssue(
                         "hidden_tests_fail_initially",
@@ -191,6 +193,14 @@ def _check_executable_task(
                     )
                 )
     return issues
+
+
+def _initial_expectation(task: BenchmarkTask, key: str, require_initial_failing: bool) -> str:
+    quality = task.raw.get("quality") or {}
+    value = str(quality.get(key) or "").strip().lower()
+    if value in {"pass", "fail", "either"}:
+        return value
+    return "fail" if require_initial_failing else "pass"
 
 
 def _has_evidence_verifier(task: BenchmarkTask) -> bool:

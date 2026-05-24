@@ -47,6 +47,14 @@ passes, 8 strict failures, pass rate `0.7333333333333333`. Evidence
 consistency was `1.0`; failures were 7 `hidden_test_failure` rows and 1
 `tool_policy_violation`.
 
+Status update on 2026-05-24: formal triage is complete in
+`docs/evaluation/phase3c_core30_failure_triage.md`. Targeted stability reruns
+completed twice on DeepSeek. Six tasks (`core_016`, `core_018`, `core_019`,
+`core_023`, `core_027`, `core_028`) failed consistently as hidden-test
+benchmark signal. `core_029` passed both targeted reruns after the original
+process-policy failure; `core_030` passed one targeted rerun and failed the
+other, so both are stability-sensitive.
+
 ## Phase 3D: Agentic-Native Live Run
 
 - Run plan, skill, and memory tasks.
@@ -59,12 +67,38 @@ passes, 1 strict failure. The failure was `trace_report_inconsistent` on the
 memory example: functional memory behavior passed, but the evidence bundle was
 missing `report_path`, `trace_path`, and `task_state_path`.
 
+Status update on 2026-05-24: `agentic_native_memory_001` was fixed by replacing
+the slash-only prompt with a remember-plus-confirmation turn and increasing the
+step budget. DeepSeek rerun at `/tmp/picobench-agentic-native-rerun2` passed
+3/3 with evidence consistency `1.0`.
+
+## Phase 3D.1: Agentic-Native v1 Expansion
+
+- Expand native scenarios from 3 to 8.
+- Keep native evidence separate from delegated human-gate evidence.
+- Classify functional, evidence, step-budget, and task-design failures
+  separately.
+
+Status on 2026-05-24: `benchmarks/picobench-agentic-native-v1.yaml` contains
+8 tasks. DeepSeek live smoke at `/tmp/picobench-v03-agentic-native` completed:
+8 tasks, 6 strict passes, 2 strict failures, pass rate `0.75`, evidence
+consistency `1.0`. Failures were `agentic_native_resume_001`
+(`public_test_failure`) and `agentic_native_subagent_001`
+(`step_budget_exceeded`). These are v1 readiness blockers, not evidence
+blockers.
+
 ## Phase 3E: Dogfood/Held-Out Seed Tasks
 
 - Keep held-out source private.
 - Require hidden fail-to-pass tests.
 - Require task-quality notes.
 - Run three stability trials before promotion.
+
+Status on 2026-05-24: core suite expanded from 30 to 40. Ten new core tasks
+include 8 multi-file tasks and 6 Pico dogfood-derived tasks. New-core
+executable quality passed for all 10 tasks. DeepSeek live smoke passed 9/10
+strict with evidence consistency `1.0`; only `core_032` failed hidden report
+manifest edges.
 
 ## Phase 3F: Baseline/Ablation
 

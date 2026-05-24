@@ -1,6 +1,9 @@
 # Agentic-Native Evidence Review
 
-Source run: `/tmp/picobench-live-smoke-agentic-native`
+Source runs:
+
+- original smoke: `/tmp/picobench-live-smoke-agentic-native`
+- v0 evidence fix rerun: `/tmp/picobench-agentic-native-rerun2`
 
 - commit: `f7cdecc28060d2bef46240f380966976c2a99b09`
 - provider: `deepseek`
@@ -10,14 +13,15 @@ Source run: `/tmp/picobench-live-smoke-agentic-native`
 
 ## Finding
 
-The lower evidence consistency rate was caused by
-`agentic_native_memory_001`. The task strictly passed, but it did not include
-the `evidence` verifier, so its checks did not include
-`report_trace_session_consistency`. The report card treats missing evidence
-consistency checks as false for that metric.
+The original lower evidence consistency rate was caused by
+`agentic_native_memory_001`. Earlier smoke evidence showed a verifier gap; the
+2026-05-23 full native run then exposed the stricter blocker: the slash-only
+memory scenario could write memory but still miss `report_path`, `trace_path`,
+and `task_state_path` in the copied evidence bundle.
 
-This was not a trace/report contradiction. It was a benchmark task verifier
-gap.
+The fix is task design, not hidden-test relaxation: the memory scenario now
+forces a model turn after `/remember`, gives the runner enough steps to finish,
+and includes the native `evidence` verifier.
 
 ## Task Review
 
@@ -25,13 +29,21 @@ gap.
 |---|---:|---:|---|
 | `agentic_native_plan_001` | 1 | 1 | Report, trace, and task state matched |
 | `agentic_native_skill_001` | 1 | 1 | Report, trace, and task state matched |
-| `agentic_native_memory_001` | 1 | 0 | Missing `evidence` verifier, not a failed consistency check |
+| `agentic_native_memory_001` | 1 | 1 | Fixed by replacing slash-only prompt with remember plus confirmation turn |
 
 ## Decision
 
-Fix the task, not the runner or runtime. `agentic_native_memory_001` should
-include the `evidence` verifier like the plan and skill tasks.
+Fixed in `benchmarks/picobench-agentic-native-v0.yaml` and carried into
+`benchmarks/picobench-agentic-native-v1.yaml`.
 
-The previous agentic-native smoke remains useful as functional smoke evidence,
-but it should not be treated as release-grade agentic evidence until rerun with
-the memory task evidence verifier present.
+Rerun result:
+
+- command: `uv run python scripts/run_picobench.py --suite agentic-native --benchmark benchmarks/picobench-agentic-native-v0.yaml --output-dir /tmp/picobench-agentic-native-rerun2 --provider deepseek --approval auto --sandbox best_effort --json`
+- tasks: 3
+- strict_passed: 3
+- strict_failed: 0
+- strict_pass_rate: `1.0`
+- evidence_consistency_rate: `1.0`
+
+The previous 2026-05-23 memory failure is closed for v0. Native v1 still needs
+its own live smoke because it adds five drafted native scenarios.

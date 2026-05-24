@@ -44,11 +44,11 @@ def test_load_benchmark_normalizes_json_yaml_and_fixture_paths(tmp_path):
     assert loaded.tasks[0].public_tests == ["python -m pytest -q"]
 
 
-def test_repo_picobench_core_suite_has_ten_tasks():
+def test_repo_picobench_core_suite_has_v03_task_floor():
     loaded = load_benchmark("benchmarks/picobench-core-v1.yaml")
 
-    assert len(loaded.tasks) >= 30
-    assert {f"core_{index:03d}" for index in range(1, 31)}.issubset({task.task_id for task in loaded.tasks})
+    assert len(loaded.tasks) >= 40
+    assert {f"core_{index:03d}" for index in range(1, 41)}.issubset({task.task_id for task in loaded.tasks})
     assert all(task.hidden_fixture_path and task.hidden_fixture_path.exists() for task in loaded.tasks)
     assert not any((task.fixture_path / "hidden_tests").exists() for task in loaded.tasks)
 
@@ -87,6 +87,22 @@ def test_repo_picobench_agentic_native_suite_has_plan_skill_memory_examples():
     assert all(any(spec.get("type") == "evidence" for spec in task.verifiers) for task in loaded.tasks)
 
 
+def test_repo_picobench_agentic_native_v1_expands_native_capabilities():
+    loaded = load_benchmark("benchmarks/picobench-agentic-native-v1.yaml")
+
+    assert [task.task_id for task in loaded.tasks] == [
+        "agentic_native_plan_001",
+        "agentic_native_skill_001",
+        "agentic_native_memory_001",
+        "agentic_native_resume_001",
+        "agentic_native_subagent_001",
+        "agentic_native_approval_001",
+        "agentic_native_sandbox_001",
+        "agentic_native_long_output_001",
+    ]
+    assert {task.category for task in loaded.tasks} >= {"resume", "subagent", "tool_policy", "sandbox", "evidence"}
+
+
 def test_agentic_native_skill_uses_repl_slash_and_preset_project_skill():
     loaded = load_benchmark("benchmarks/picobench-agentic-native-v0.yaml")
     task = next(task for task in loaded.tasks if task.task_id == "agentic_native_skill_001")
@@ -97,6 +113,16 @@ def test_agentic_native_skill_uses_repl_slash_and_preset_project_skill():
     verifier_specs = {(spec.get("type"), spec.get("event")) for spec in task.verifiers}
     assert ("required_session_event", "skill_invoked") in verifier_specs
     assert ("required_session_event", "skill_completed") in verifier_specs
+
+
+def test_agentic_native_memory_triggers_model_turn_after_remember_slash():
+    loaded = load_benchmark("benchmarks/picobench-agentic-native-v0.yaml")
+    task = next(task for task in loaded.tasks if task.task_id == "agentic_native_memory_001")
+
+    assert task.driver == "repl"
+    assert "/remember PicoBench native memory task uses pytest evidence" in task.prompt
+    assert "/exit" not in task.prompt
+    assert "Confirm the memory note was saved." in task.prompt
 
 
 def test_normalize_benchmark_rejects_duplicate_task_ids(tmp_path):

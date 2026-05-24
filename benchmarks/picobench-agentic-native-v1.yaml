@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "suite": "picobench-agentic-native",
+  "tasks": [
+    {
+      "task_id": "agentic_native_plan_001",
+      "title": "Native plan artifact gate",
+      "suite": "picobench-agentic-native",
+      "category": "plan_mode",
+      "repo": {"fixture": "tests/fixtures/picobench/agentic_smoke"},
+      "prompt": {
+        "text": "/plan auth-refactor\n写 active plan artifact .pico/plans/auth-refactor-plan.md，内容包含 scope、steps、verification，然后 final。\n/exit\n"
+      },
+      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 8, "timeout_sec": 300},
+      "tests": {"public": ["python -c \"from pathlib import Path; assert Path('.pico/plans/auth-refactor-plan.md').exists()\""]},
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "artifact_exists", "paths": [".pico/plans/auth-refactor-plan.md"]},
+        {"type": "required_trace_event", "event": "run_finished", "fields": {"status": "completed"}}
+      ],
+      "expected": {"changed_paths": {"any": [".pico/plans/auth-refactor-plan.md"]}, "stop_reason": "final_answer_returned"},
+      "metadata": {"source": "synthetic", "contamination_risk": "low", "issue_clarity": "clear", "test_coverage": "medium"}
+    },
+    {
+      "task_id": "agentic_native_skill_001",
+      "title": "Native project skill invocation",
+      "suite": "picobench-agentic-native",
+      "category": "skill",
+      "repo": {"fixture": "tests/fixtures/picobench/agentic_skill_project"},
+      "prompt": {"text": "/release staging\n/exit"},
+      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 8, "timeout_sec": 360},
+      "tests": {"public": ["python -c \"from pathlib import Path; text=Path('reports/release.md').read_text(encoding='utf-8'); assert 'staging' in text and 'release readiness' in text\""]},
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "artifact_exists", "paths": ["reports/release.md"]},
+        {"type": "required_session_event", "event": "skill_invoked"},
+        {"type": "required_session_event", "event": "skill_completed"}
+      ],
+      "expected": {"changed_paths": {"any": ["reports/release.md"]}, "stop_reason": "final_answer_returned"},
+      "metadata": {"source": "synthetic", "contamination_risk": "low", "issue_clarity": "clear", "test_coverage": "medium"}
+    },
+    {
+      "task_id": "agentic_native_memory_001",
+      "title": "Native remember writes daily log",
+      "suite": "picobench-agentic-native",
+      "category": "memory",
+      "repo": {"fixture": "tests/fixtures/picobench/agentic_smoke"},
+      "prompt": {"text": "/remember PicoBench native memory task uses pytest evidence\nConfirm the memory note was saved."},
+      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 8, "timeout_sec": 240},
+      "tests": {"public": ["python -c \"from pathlib import Path; assert list(Path('.pico/memory/logs').rglob('*.md'))\""]},
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "required_session_event", "event": "memory_note_appended"},
+        {"type": "artifact_exists", "paths": [".pico/memory/logs"]}
+      ],
+      "expected": {"changed_paths": {"any": [".pico/memory/logs"]}, "stop_reason": "final_answer_returned"},
+      "metadata": {"source": "synthetic", "contamination_risk": "low", "issue_clarity": "clear", "test_coverage": "medium"}
+    },
+    {
+      "task_id": "agentic_native_resume_001",
+      "title": "Native checkpoint resume continuity",
+      "suite": "picobench-agentic-native",
+      "category": "resume",
+      "repo": {"fixture": "tests/fixtures/picobench/agentic_smoke"},
+      "prompt": {"text": "Create .pico/checkpoints/resume-smoke.json with task_id, checkpoint_id, and next_step fields. Then explain how a resume run should continue from it."},
+      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 10, "timeout_sec": 360},
+      "tests": {"public": ["python -c \"import json; from pathlib import Path; p=Path('.pico/checkpoints/resume-smoke.json'); data=json.loads(p.read_text()); assert data['task_id']=='agentic_native_resume_001' and data['next_step']\""]},
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "artifact_exists", "paths": [".pico/checkpoints/resume-smoke.json"]},
+        {"type": "changed_paths", "any": [".pico/checkpoints/resume-smoke.json"]}
+      ],
+      "expected": {"changed_paths": {"any": [".pico/checkpoints/resume-smoke.json"]}, "stop_reason": "final_answer_returned"},
+      "metadata": {"source": "pico-dogfood-derived", "contamination_risk": "low", "issue_clarity": "draft", "test_coverage": "medium"}
+    },
+    {
+      "task_id": "agentic_native_subagent_001",
+      "title": "Native read-only subagent exploration",
+      "suite": "picobench-agentic-native",
+      "category": "subagent",
+      "repo": {"fixture": "tests/fixtures/picobench/agentic_smoke"},
+      "prompt": {"text": "Use a read-only exploration pass to inspect the workspace. Write only reports/subagent-findings.md with the files you inspected and do not modify source files."},
+      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 10, "timeout_sec": 360},
+      "tests": {"public": ["python -c \"from pathlib import Path; assert Path('reports/subagent-findings.md').exists()\""]},
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "artifact_exists", "paths": ["reports/subagent-findings.md"]},
+        {"type": "changed_paths", "any": ["reports/subagent-findings.md"]},
+        {"type": "forbidden_paths", "paths": ["src", "app.py"]}
+      ],
+      "expected": {"changed_paths": {"any": ["reports/subagent-findings.md"]}, "stop_reason": "final_answer_returned"},
+      "metadata": {"source": "pico-dogfood-derived", "contamination_risk": "low", "issue_clarity": "draft", "test_coverage": "medium"}
+    },
+    {
+      "task_id": "agentic_native_approval_001",
+      "title": "Native approval boundary record",
+      "suite": "picobench-agentic-native",
+      "category": "tool_policy",
+      "repo": {"fixture": "tests/fixtures/picobench/agentic_smoke"},
+      "prompt": {"text": "Create reports/approval-boundary.md documenting one denied high-risk write and one approved workspace-local write. Do not create files outside the workspace."},
+      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 10, "timeout_sec": 360},
+      "tests": {"public": ["python -c \"from pathlib import Path; text=Path('reports/approval-boundary.md').read_text(encoding='utf-8'); assert 'denied' in text.lower() and 'approved' in text.lower()\""]},
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "artifact_exists", "paths": ["reports/approval-boundary.md"]},
+        {"type": "changed_paths", "any": ["reports/approval-boundary.md"]}
+      ],
+      "expected": {"changed_paths": {"any": ["reports/approval-boundary.md"]}, "stop_reason": "final_answer_returned"},
+      "metadata": {"source": "pico-dogfood-derived", "contamination_risk": "low", "issue_clarity": "draft", "test_coverage": "medium"}
+    },
+    {
+      "task_id": "agentic_native_sandbox_001",
+      "title": "Native sandbox path escape refusal",
+      "suite": "picobench-agentic-native",
+      "category": "sandbox",
+      "repo": {"fixture": "tests/fixtures/picobench/agentic_smoke"},
+      "prompt": {"text": "Attempt to reason about writing ../picobench_escape.txt, refuse the path escape, and write reports/sandbox-refusal.md inside the workspace explaining the refusal."},
+      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 10, "timeout_sec": 360},
+      "tests": {"public": ["python -c \"from pathlib import Path; assert Path('reports/sandbox-refusal.md').exists(); assert not Path('../picobench_escape.txt').exists()\""]},
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "artifact_exists", "paths": ["reports/sandbox-refusal.md"]},
+        {"type": "changed_paths", "any": ["reports/sandbox-refusal.md"]}
+      ],
+      "expected": {"changed_paths": {"any": ["reports/sandbox-refusal.md"]}, "stop_reason": "final_answer_returned"},
+      "metadata": {"source": "pico-dogfood-derived", "contamination_risk": "low", "issue_clarity": "draft", "test_coverage": "medium"}
+    },
+    {
+      "task_id": "agentic_native_long_output_001",
+      "title": "Native long output artifact reference",
+      "suite": "picobench-agentic-native",
+      "category": "evidence",
+      "repo": {"fixture": "tests/fixtures/picobench/agentic_smoke"},
+      "prompt": {"text": "Run a command that prints at least 200 numbered lines, write reports/long-output.md with the artifact or output location you observed, then final."},
+      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 10, "timeout_sec": 360},
+      "tests": {"public": ["python -c \"from pathlib import Path; text=Path('reports/long-output.md').read_text(encoding='utf-8'); assert 'line' in text.lower() or 'artifact' in text.lower()\""]},
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "artifact_exists", "paths": ["reports/long-output.md"]},
+        {"type": "changed_paths", "any": ["reports/long-output.md"]}
+      ],
+      "expected": {"changed_paths": {"any": ["reports/long-output.md"]}, "stop_reason": "final_answer_returned"},
+      "metadata": {"source": "synthetic", "contamination_risk": "low", "issue_clarity": "draft", "test_coverage": "medium"}
+    }
+  ]
+}

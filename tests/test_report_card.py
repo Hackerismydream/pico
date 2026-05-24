@@ -124,3 +124,28 @@ def test_report_card_excludes_skipped_tasks_from_strict_and_group_denominators(t
     assert card["strict_pass_rate"] == 1.0
     assert card["functional_pass_rate"] == 1.0
     assert card["failure_category_counts"] == {}
+
+
+def test_report_card_marks_delegated_human_gate_evidence_not_applicable(tmp_path):
+    card = build_report_card(
+        suite="agentic",
+        output_dir=tmp_path,
+        pico_commit="abc123",
+        started_at="2026-05-21T15:00:00",
+        results=[
+            {
+                "task_id": "R01",
+                "category": "feature",
+                "strict_pass": True,
+                "evidence_mode": "delegated_human_gate",
+                "checks": [{"name": "v3_human_gate", "passed": True}],
+                "report": {},
+            }
+        ],
+    )
+
+    assert card["evidence_mode"] == "delegated_human_gate"
+    assert card["evidence_consistency_rate"] == "not_applicable"
+    assert "evidence_consistency_rate: not_applicable" in __import__(
+        "pico.evaluation.report_card", fromlist=["summary_markdown"]
+    ).summary_markdown(card)

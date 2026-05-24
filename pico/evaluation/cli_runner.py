@@ -169,6 +169,7 @@ class PicoBenchRunner:
             "duration_ms": int((time.monotonic() - started) * 1000),
             "workspace": str(workspace),
             "evidence_path": str(evidence_path),
+            "evidence_mode": "native",
             "command": {
                 "command": command_record.command,
                 "returncode": command_record.returncode,
@@ -269,6 +270,7 @@ class PicoBenchRunner:
             "duration_ms": int((time.monotonic() - started) * 1000),
             "workspace": str(workspace),
             "evidence_path": str(scenario_output),
+            "evidence_mode": "delegated_human_gate",
             "command": {
                 "command": command,
                 "returncode": returncode,
@@ -302,6 +304,7 @@ class PicoBenchRunner:
             "duration_ms": int((time.monotonic() - started) * 1000),
             "workspace": str(workspace),
             "evidence_path": "",
+            "evidence_mode": "native",
             "command": {},
             "report": {},
             "checks": [],

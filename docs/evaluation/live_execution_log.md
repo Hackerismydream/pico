@@ -272,4 +272,85 @@ triggered from GitHub.
 - status: completed
 - strict_pass_rate: `1.0`
 - failures: none
-- notes: v3 human-gate wrapper scenarios all strictly passed in this run. Evidence consistency is reported as `0.0` for this suite because the delegated gate driver does not emit the same evidence files as native PicoBench tasks.
+- notes: v3 human-gate wrapper scenarios all strictly passed in this run. This older report showed evidence consistency as `0.0`; current report-card code classifies delegated human-gate as `evidence_mode=delegated_human_gate` and reports evidence consistency as `not_applicable`.
+
+## Current HEAD deterministic verification 2026-05-24
+
+- commit: `3bf2b2ddac7f84cf91592c444524f403fa08626c`
+- branch: `codex/picobench-v3`
+- provider: none
+- model: none
+- suite: no-key gates
+- tasks: deterministic/static gates only
+- command: `uv run pytest tests/ -q`; `uv run python scripts/check_picobench_tasks.py --benchmark benchmarks/picobench-core-v1.yaml --min-tasks 40 --json-output /tmp/picobench-latest-quality.json`; `uv run python scripts/run_picobench_runtime.py --benchmark benchmarks/picobench-runtime-v1.json --output-dir /tmp/picobench-latest-runtime --json`
+- output_dir: `/tmp/picobench-latest-runtime`
+- status: completed
+- strict_pass_rate: not applicable
+- failures: none
+- notes: local latest-HEAD no-key verification passed: `271 passed, 2 skipped, 6 warnings`; task quality reported 40 tasks and 40 hidden fixtures with no issues; L0 runtime passed `2/2`.
+
+### Artifacts
+
+- summary: `/tmp/picobench-latest-quality.json`
+- evidence bundle: `/tmp/picobench-latest-runtime/runtime_artifact.json`
+- failure reports: none
+
+## Run 2026-05-24-deepseek-agentic-native-v0-rerun
+
+- commit: `3bf2b2ddac7f84cf91592c444524f403fa08626c`
+- branch: `codex/picobench-v3`
+- provider: `deepseek`
+- model: `deepseek-v4-pro`
+- suite: `agentic-native`
+- tasks: `agentic_native_plan_001`, `agentic_native_skill_001`, `agentic_native_memory_001`
+- command: `uv run python scripts/run_picobench.py --suite agentic-native --benchmark benchmarks/picobench-agentic-native-v0.yaml --output-dir /tmp/picobench-agentic-native-rerun2 --provider deepseek --approval auto --sandbox best_effort --json`
+- output_dir: `/tmp/picobench-agentic-native-rerun2`
+- status: completed
+- strict_pass_rate: `1.0`
+- failures: none
+- notes: memory scenario evidence blocker fixed; evidence consistency rate was `1.0`.
+
+## Run 2026-05-24-deepseek-phase3c-failure-stability
+
+- commit: `3bf2b2ddac7f84cf91592c444524f403fa08626c`
+- branch: `codex/picobench-v3`
+- provider: `deepseek`
+- model: `deepseek-v4-pro`
+- suite: `core`
+- tasks: `core_016`, `core_018`, `core_019`, `core_023`, `core_027`, `core_028`, `core_029`, `core_030`
+- command: targeted failure rerun loop recorded in `docs/evaluation/phase3c_failure_stability.md`
+- output_dir: `/tmp/picobench-phase3c-failures-rerun-1`, `/tmp/picobench-phase3c-failures-rerun-2`
+- status: completed with strict failures
+- strict_pass_rate: attempt 1 `0.25`; attempt 2 `0.125`
+- failures: attempt 1 `core_016`, `core_018`, `core_019`, `core_023`, `core_027`, `core_028`; attempt 2 those six plus `core_030`
+- notes: both attempts had evidence consistency `1.0`. `core_029` passed both targeted reruns after the original process-policy failure; `core_030` is stability-sensitive.
+
+## Run 2026-05-24-deepseek-v03-new-core
+
+- commit: `3bf2b2ddac7f84cf91592c444524f403fa08626c`
+- branch: `codex/picobench-v3`
+- provider: `deepseek`
+- model: `deepseek-v4-pro`
+- suite: `core`
+- tasks: `core_031`-`core_040`
+- command: two 5-task live smoke batches recorded in `/tmp/picobench-v03-new-core-a` and `/tmp/picobench-v03-new-core-b`
+- output_dir: `/tmp/picobench-v03-new-core-a`, `/tmp/picobench-v03-new-core-b`
+- status: completed with strict failures
+- strict_pass_rate: batch A `0.8`; batch B `1.0`; combined `0.9`
+- failures: `core_032`
+- notes: both batches had evidence consistency `1.0`; the only new-core failure was a hidden-edge report manifest failure.
+
+## Run 2026-05-24-deepseek-agentic-native-v1
+
+- commit: `3bf2b2ddac7f84cf91592c444524f403fa08626c`
+- branch: `codex/picobench-v3`
+- provider: `deepseek`
+- model: `deepseek-v4-pro`
+- suite: `agentic-native`
+- tasks: 8 native tasks in `benchmarks/picobench-agentic-native-v1.yaml`
+- command: `uv run python scripts/run_picobench.py --suite agentic-native --benchmark benchmarks/picobench-agentic-native-v1.yaml --output-dir /tmp/picobench-v03-agentic-native --provider deepseek --approval auto --sandbox best_effort --json`
+- output_dir: `/tmp/picobench-v03-agentic-native`
+- status: completed with strict failures
+- strict_pass_rate: `0.75`
+- failures: `agentic_native_resume_001`, `agentic_native_subagent_001`
+- notes: evidence consistency was `1.0`. Resume failed public/changed-path checks; subagent hit step budget and did not create the expected report. Treat these as v1 task-design/runtime-readiness blockers, not evidence failures.

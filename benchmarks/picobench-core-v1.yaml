@@ -2171,6 +2171,429 @@
         "issue_clarity": "clear",
         "test_coverage": "high"
       }
+    },
+    {
+      "task_id": "core_031",
+      "title": "Config defaults and CLI overrides",
+      "suite": "picobench-core",
+      "category": "configuration",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/config_defaults_cli",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_031"
+      },
+      "prompt": {
+        "text": "配置默认值和 CLI override 分散在 config.py 和 cli.py。先读 tests/test_cli_config.py、config.py 和 cli.py，修复默认 retries 丢失以及 CLI 覆盖逻辑，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 32,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": ["python -m pytest tests -q"],
+        "hidden": ["python -m pytest hidden_tests -q"]
+      },
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "changed_paths", "any": ["config.py", "cli.py"]},
+        {"type": "forbidden_paths", "paths": [".env"]},
+        {"type": "required_tool_sequence", "sequence": ["read_file", "run_shell"]},
+        {"type": "must_run_tests"},
+        {"type": "must_read_before_write"}
+      ],
+      "expected": {
+        "changed_paths": {"any": ["config.py", "cli.py"]},
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "pico-dogfood-derived",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_032",
+      "title": "Report manifest status fields",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/report_manifest",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_032"
+      },
+      "prompt": {
+        "text": "报告 manifest 缺少 status 和 summary 字段。读 tests/test_manifest.py、report.py 和 manifest.py，补齐 report 输出聚合逻辑，保持 schema_version 不变，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 32,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": ["python -m pytest tests -q"],
+        "hidden": ["python -m pytest hidden_tests -q"]
+      },
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "changed_paths", "any": ["report.py", "manifest.py"]},
+        {"type": "forbidden_paths", "paths": [".env"]},
+        {"type": "required_tool_sequence", "sequence": ["read_file", "run_shell"]},
+        {"type": "must_run_tests"},
+        {"type": "must_read_before_write"}
+      ],
+      "expected": {
+        "changed_paths": {"any": ["report.py", "manifest.py"]},
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "pico-dogfood-derived",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_033",
+      "title": "Nested secret redaction",
+      "suite": "picobench-core",
+      "category": "security_fix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/nested_secret_redaction",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_033"
+      },
+      "prompt": {
+        "text": "redact_payload 现在只处理顶层字段，会漏掉 nested dict/list 里的 token/password/api_key。读 tests/test_redact.py 和 redact.py，修复为递归脱敏且不修改输入对象，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": ["python -m pytest tests -q"],
+        "hidden": ["python -m pytest hidden_tests -q"]
+      },
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "changed_paths", "any": ["redact.py"]},
+        {"type": "forbidden_paths", "paths": [".env"]},
+        {"type": "required_tool_sequence", "sequence": ["read_file", "run_shell"]},
+        {"type": "must_run_tests"},
+        {"type": "must_read_before_write"}
+      ],
+      "expected": {
+        "changed_paths": {"any": ["redact.py"]},
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_034",
+      "title": "Tests-only parser repair",
+      "suite": "picobench-core",
+      "category": "test_repair",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/tests_only_repair",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_034"
+      },
+      "prompt": {
+        "text": "这个任务只允许改测试。parser.py 的 parse_pair 行为是正确的，当前 public test 期望错了。读 parser.py 和 tests/test_parser.py，修复测试期望并运行 python -m pytest tests -q。不要改 parser.py。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 20,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": ["python -m pytest tests -q"],
+        "hidden": ["python -m pytest hidden_tests -q"]
+      },
+      "quality": {
+        "initial_hidden": "pass"
+      },
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "changed_paths", "any": ["tests/test_parser.py"]},
+        {"type": "forbidden_paths", "paths": ["parser.py", ".env"]},
+        {"type": "required_tool_sequence", "sequence": ["read_file", "run_shell"]},
+        {"type": "must_run_tests"},
+        {"type": "must_read_before_write"}
+      ],
+      "expected": {
+        "changed_paths": {"any": ["tests/test_parser.py"]},
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_035",
+      "title": "Parser renderer refactor invariant",
+      "suite": "picobench-core",
+      "category": "refactor",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/refactor_invariant",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_035"
+      },
+      "prompt": {
+        "text": "parse_items 和 render_items 的职责需要整理，但外部 API 不能变。读 tests/test_renderer.py、parser.py、renderer.py，去掉空项、trim 值，并保持 renderer 输出稳定，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": ["python -m pytest tests -q"],
+        "hidden": ["python -m pytest hidden_tests -q"]
+      },
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "changed_paths", "any": ["parser.py", "renderer.py"]},
+        {"type": "forbidden_paths", "paths": [".env"]},
+        {"type": "required_tool_sequence", "sequence": ["read_file", "run_shell"]},
+        {"type": "must_run_tests"},
+        {"type": "must_read_before_write"}
+      ],
+      "expected": {
+        "changed_paths": {"any": ["parser.py", "renderer.py"]},
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_036",
+      "title": "Checkpoint resume state preservation",
+      "suite": "picobench-core",
+      "category": "resume",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/checkpoint_resume",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_036"
+      },
+      "prompt": {
+        "text": "resume_state 覆盖 step 时必须保留 checkpoint 里的已有字段。读 tests/test_resume.py、checkpoint.py 和 resume.py，修复恢复逻辑，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": ["python -m pytest tests -q"],
+        "hidden": ["python -m pytest hidden_tests -q"]
+      },
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "changed_paths", "any": ["checkpoint.py", "resume.py"]},
+        {"type": "forbidden_paths", "paths": [".env"]},
+        {"type": "required_tool_sequence", "sequence": ["read_file", "run_shell"]},
+        {"type": "must_run_tests"},
+        {"type": "must_read_before_write"}
+      ],
+      "expected": {
+        "changed_paths": {"any": ["checkpoint.py", "resume.py"]},
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "pico-dogfood-derived",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_037",
+      "title": "Trace report consistency summary",
+      "suite": "picobench-core",
+      "category": "evidence",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/trace_report_consistency",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_037"
+      },
+      "prompt": {
+        "text": "report.py 没有把 trace summary 写进报告，failed event 也没有进入状态判断。读 tests/test_report.py、trace.py 和 report.py，修复 summary/status 一致性，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": ["python -m pytest tests -q"],
+        "hidden": ["python -m pytest hidden_tests -q"]
+      },
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "changed_paths", "any": ["trace.py", "report.py"]},
+        {"type": "forbidden_paths", "paths": [".env"]},
+        {"type": "required_tool_sequence", "sequence": ["read_file", "run_shell"]},
+        {"type": "must_run_tests"},
+        {"type": "must_read_before_write"}
+      ],
+      "expected": {
+        "changed_paths": {"any": ["trace.py", "report.py"]},
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "pico-dogfood-derived",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_038",
+      "title": "Sandbox path policy normalization",
+      "suite": "picobench-core",
+      "category": "sandbox",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/sandbox_path_policy",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_038"
+      },
+      "prompt": {
+        "text": "path policy 现在只做字符串前缀判断，../ escape 和 sibling prefix 都可能误判。读 tests/test_policy.py、paths.py 和 policy.py，基于 resolved path 修复 sandbox 判断，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": ["python -m pytest tests -q"],
+        "hidden": ["python -m pytest hidden_tests -q"]
+      },
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "changed_paths", "any": ["paths.py", "policy.py"]},
+        {"type": "forbidden_paths", "paths": [".env"]},
+        {"type": "required_tool_sequence", "sequence": ["read_file", "run_shell"]},
+        {"type": "must_run_tests"},
+        {"type": "must_read_before_write"}
+      ],
+      "expected": {
+        "changed_paths": {"any": ["paths.py", "policy.py"]},
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_039",
+      "title": "Provider config fallback",
+      "suite": "picobench-core",
+      "category": "provider",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/provider_config_fallback",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_039"
+      },
+      "prompt": {
+        "text": "provider_config 需要在 provider-specific model 缺失时回退到 PICO_DEFAULT_MODEL，同时保留 provider-specific API key。读 tests/test_providers.py、config.py 和 providers.py，修复 fallback，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": ["python -m pytest tests -q"],
+        "hidden": ["python -m pytest hidden_tests -q"]
+      },
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "changed_paths", "any": ["config.py", "providers.py"]},
+        {"type": "forbidden_paths", "paths": [".env"]},
+        {"type": "required_tool_sequence", "sequence": ["read_file", "run_shell"]},
+        {"type": "must_run_tests"},
+        {"type": "must_read_before_write"}
+      ],
+      "expected": {
+        "changed_paths": {"any": ["config.py", "providers.py"]},
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "pico-dogfood-derived",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_040",
+      "title": "Evidence bundle includes task state",
+      "suite": "picobench-core",
+      "category": "evidence",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/evidence_bundle_copy",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_040"
+      },
+      "prompt": {
+        "text": "copy_bundle 现在只复制 report 和 trace，导致 task_state 缺失。读 tests/test_evidence.py、evidence.py 和 manifest.py，确保 REQUIRED 里的文件都会复制并写入 manifest，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": ["python -m pytest tests -q"],
+        "hidden": ["python -m pytest hidden_tests -q"]
+      },
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "changed_paths", "any": ["evidence.py", "manifest.py"]},
+        {"type": "forbidden_paths", "paths": [".env"]},
+        {"type": "required_tool_sequence", "sequence": ["read_file", "run_shell"]},
+        {"type": "must_run_tests"},
+        {"type": "must_read_before_write"}
+      ],
+      "expected": {
+        "changed_paths": {"any": ["evidence.py", "manifest.py"]},
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "pico-dogfood-derived",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
     }
   ]
 }
