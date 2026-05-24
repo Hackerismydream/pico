@@ -57,39 +57,39 @@
       "metadata": {"source": "synthetic", "contamination_risk": "low", "issue_clarity": "clear", "test_coverage": "medium"}
     },
     {
-      "task_id": "agentic_native_resume_001",
-      "title": "Native checkpoint resume continuity",
+      "task_id": "agentic_native_checkpoint_artifact_001",
+      "title": "Native checkpoint artifact smoke",
       "suite": "picobench-agentic-native",
       "category": "resume",
       "repo": {"fixture": "tests/fixtures/picobench/agentic_smoke"},
-      "prompt": {"text": "Create .pico/checkpoints/resume-smoke.json with task_id, checkpoint_id, and next_step fields. Then explain how a resume run should continue from it."},
-      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 10, "timeout_sec": 360},
-      "tests": {"public": ["python -c \"import json; from pathlib import Path; p=Path('.pico/checkpoints/resume-smoke.json'); data=json.loads(p.read_text()); assert data['task_id']=='agentic_native_resume_001' and data['next_step']\""]},
+      "prompt": {"text": "Create .pico/checkpoints/checkpoint-smoke.json with checkpoint_id and next_step fields. Also write reports/checkpoint-artifact.md explaining that this is a checkpoint artifact smoke, not a real two-pass resume benchmark."},
+      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 12, "timeout_sec": 360},
+      "tests": {"public": ["python -c \"import json; from pathlib import Path; p=Path('.pico/checkpoints/checkpoint-smoke.json'); data=json.loads(p.read_text()); assert data['checkpoint_id'] and data['next_step']; text=Path('reports/checkpoint-artifact.md').read_text(encoding='utf-8').lower(); assert 'artifact smoke' in text and 'two-pass resume' in text\""]},
       "verifiers": [
         {"type": "evidence"},
-        {"type": "artifact_exists", "paths": [".pico/checkpoints/resume-smoke.json"]},
-        {"type": "changed_paths", "any": [".pico/checkpoints/resume-smoke.json"]}
+        {"type": "artifact_exists", "paths": [".pico/checkpoints/checkpoint-smoke.json", "reports/checkpoint-artifact.md"]},
+        {"type": "changed_paths", "any": ["reports/checkpoint-artifact.md"]}
       ],
-      "expected": {"changed_paths": {"any": [".pico/checkpoints/resume-smoke.json"]}, "stop_reason": "final_answer_returned"},
-      "metadata": {"source": "pico-dogfood-derived", "contamination_risk": "low", "issue_clarity": "draft", "test_coverage": "medium"}
+      "expected": {"changed_paths": {"any": ["reports/checkpoint-artifact.md"]}, "stop_reason": "final_answer_returned"},
+      "metadata": {"source": "pico-inspired-synthetic", "contamination_risk": "low", "issue_clarity": "clear", "test_coverage": "medium", "coverage_note": "checkpoint artifact smoke only; not release-grade two-pass resume coverage"}
     },
     {
-      "task_id": "agentic_native_subagent_001",
-      "title": "Native read-only subagent exploration",
+      "task_id": "agentic_native_readonly_exploration_001",
+      "title": "Native read-only exploration smoke",
       "suite": "picobench-agentic-native",
-      "category": "subagent",
+      "category": "tool_policy",
       "repo": {"fixture": "tests/fixtures/picobench/agentic_smoke"},
-      "prompt": {"text": "Use a read-only exploration pass to inspect the workspace. Write only reports/subagent-findings.md with the files you inspected and do not modify source files."},
-      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 10, "timeout_sec": 360},
-      "tests": {"public": ["python -c \"from pathlib import Path; assert Path('reports/subagent-findings.md').exists()\""]},
+      "prompt": {"text": "Inspect README.md only, then write reports/readonly-exploration.md with the files inspected and the phrase read-only exploration smoke. Do not modify source files."},
+      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 14, "timeout_sec": 360},
+      "tests": {"public": ["python -c \"from pathlib import Path; text=Path('reports/readonly-exploration.md').read_text(encoding='utf-8').lower(); assert 'read-only exploration smoke' in text and 'readme.md' in text\""]},
       "verifiers": [
         {"type": "evidence"},
-        {"type": "artifact_exists", "paths": ["reports/subagent-findings.md"]},
-        {"type": "changed_paths", "any": ["reports/subagent-findings.md"]},
+        {"type": "artifact_exists", "paths": ["reports/readonly-exploration.md"]},
+        {"type": "changed_paths", "any": ["reports/readonly-exploration.md"]},
         {"type": "forbidden_paths", "paths": ["src", "app.py"]}
       ],
-      "expected": {"changed_paths": {"any": ["reports/subagent-findings.md"]}, "stop_reason": "final_answer_returned"},
-      "metadata": {"source": "pico-dogfood-derived", "contamination_risk": "low", "issue_clarity": "draft", "test_coverage": "medium"}
+      "expected": {"changed_paths": {"any": ["reports/readonly-exploration.md"]}, "stop_reason": "final_answer_returned"},
+      "metadata": {"source": "pico-inspired-synthetic", "contamination_risk": "low", "issue_clarity": "clear", "test_coverage": "medium", "coverage_note": "read-only exploration report smoke; not true subagent coverage"}
     },
     {
       "task_id": "agentic_native_approval_001",
@@ -106,7 +106,7 @@
         {"type": "changed_paths", "any": ["reports/approval-boundary.md"]}
       ],
       "expected": {"changed_paths": {"any": ["reports/approval-boundary.md"]}, "stop_reason": "final_answer_returned"},
-      "metadata": {"source": "pico-dogfood-derived", "contamination_risk": "low", "issue_clarity": "draft", "test_coverage": "medium"}
+      "metadata": {"source": "pico-inspired-synthetic", "contamination_risk": "low", "issue_clarity": "draft", "test_coverage": "medium"}
     },
     {
       "task_id": "agentic_native_sandbox_001",
@@ -123,7 +123,7 @@
         {"type": "changed_paths", "any": ["reports/sandbox-refusal.md"]}
       ],
       "expected": {"changed_paths": {"any": ["reports/sandbox-refusal.md"]}, "stop_reason": "final_answer_returned"},
-      "metadata": {"source": "pico-dogfood-derived", "contamination_risk": "low", "issue_clarity": "draft", "test_coverage": "medium"}
+      "metadata": {"source": "pico-inspired-synthetic", "contamination_risk": "low", "issue_clarity": "draft", "test_coverage": "medium"}
     },
     {
       "task_id": "agentic_native_long_output_001",

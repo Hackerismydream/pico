@@ -87,6 +87,17 @@ consistency `1.0`. Failures were `agentic_native_resume_001`
 (`step_budget_exceeded`). These are v1 readiness blockers, not evidence
 blockers.
 
+Status update after review: the failed resume proxy was downgraded and renamed
+to `agentic_native_checkpoint_artifact_001`, explicitly a checkpoint artifact
+smoke rather than a true two-pass resume benchmark. The failed subagent proxy
+was quarantined as `agentic_native_subagent_001` and replaced in v1 by
+`agentic_native_readonly_exploration_001`, a read-only exploration report smoke
+that must not be counted as true subagent coverage.
+
+Final v0.3 verification: revised agentic-native v1 passed 8/8 strict on
+DeepSeek with evidence consistency `1.0` at
+`/tmp/picobench-v03-final-agentic-native-7218d68`.
+
 ## Phase 3E: Dogfood/Held-Out Seed Tasks
 
 - Keep held-out source private.
@@ -95,10 +106,11 @@ blockers.
 - Run three stability trials before promotion.
 
 Status on 2026-05-24: core suite expanded from 30 to 40. Ten new core tasks
-include 8 multi-file tasks and 6 Pico dogfood-derived tasks. New-core
-executable quality passed for all 10 tasks. DeepSeek live smoke passed 9/10
-strict with evidence consistency `1.0`; only `core_032` failed hidden report
-manifest edges.
+include 8 multi-file tasks. Provenance audit reclassified the six previously
+claimed dogfood-derived tasks as `pico-inspired-synthetic` because they do not
+have source commits or reference patches. New-core executable quality passed
+for all 10 tasks. DeepSeek live smoke passed 9/10 strict with evidence
+consistency `1.0`; only `core_032` failed hidden report manifest edges.
 
 ## Phase 3F: Baseline/Ablation
 

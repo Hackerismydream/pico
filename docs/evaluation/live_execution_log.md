@@ -354,3 +354,26 @@ triggered from GitHub.
 - strict_pass_rate: `0.75`
 - failures: `agentic_native_resume_001`, `agentic_native_subagent_001`
 - notes: evidence consistency was `1.0`. Resume failed public/changed-path checks; subagent hit step budget and did not create the expected report. Treat these as v1 task-design/runtime-readiness blockers, not evidence failures.
+
+Post-review update: `agentic_native_resume_001` was replaced by
+`agentic_native_checkpoint_artifact_001`, a checkpoint artifact smoke. It is not
+a true two-pass resume benchmark. `agentic_native_subagent_001` was quarantined
+until real subagent trace/session events are verified, and v1 now uses
+`agentic_native_readonly_exploration_001` only as a read-only exploration smoke.
+The revised suite needs a fresh live rerun before any release-candidate claim.
+
+## Run 2026-05-24-deepseek-agentic-native-v1-final
+
+- commit: post-review hardening working tree; runner summary recorded
+  `7218d68338dbefe16ac710986cd1312008395a68` before the final doc-only amend
+- branch: `codex/picobench-v3`
+- provider: `deepseek`
+- model: `deepseek-v4-pro`
+- suite: `agentic-native`
+- tasks: 8 revised native tasks in `benchmarks/picobench-agentic-native-v1.yaml`
+- command: `uv run python scripts/run_picobench.py --suite agentic-native --benchmark benchmarks/picobench-agentic-native-v1.yaml --output-dir /tmp/picobench-v03-final-agentic-native-7218d68 --provider deepseek --approval auto --sandbox best_effort --json`
+- output_dir: `/tmp/picobench-v03-final-agentic-native-7218d68`
+- status: completed
+- strict_pass_rate: `1.0`
+- failures: none
+- notes: revised suite passed 8/8 strict with evidence consistency `1.0`. This verifies the smoke-level checkpoint/read-only replacements, not true two-pass resume or true subagent coverage.

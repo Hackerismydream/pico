@@ -72,15 +72,22 @@ Private benchmark operation:
 
 ## Current Status
 
-The push run for commit `068318fea6d5aee29353656464c598667f678466` completed
-successfully:
+The push run for commit `2c7b9df25843444bb58a10f49fa580b63b3b713c`
+completed successfully:
 
-- run id: `26271849474`
+- run id: `26351780359`
 - workflow: `PicoBench`
 - result: success
-- schema/validator/report-card tests: `27 passed`
-- task quality gate: `30` tasks, no issues
+- job: `picobench-static`
+- job id: `77571192510`
+- schema/validator/report-card tests: `31 passed`
+- task quality gate: `40` tasks, no issues
 - executable task-quality subset: `2` tasks, no issues
 - L0 runtime regression: `2/2`
 - uploaded artifact: `picobench-deterministic-artifacts`, artifact id
-  `7154009507`
+  `7182157242`
+- run URL: `https://github.com/Hackerismydream/pico/actions/runs/26351780359`
+
+Earlier deterministic confirmation for commit
+`068318fea6d5aee29353656464c598667f678466` remains run id
+`26271849474`, but it is no longer the latest v0.3 branch CI reference.

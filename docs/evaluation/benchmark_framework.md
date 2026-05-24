@@ -10,8 +10,8 @@ test policy are used.
 | Level | Suite | Purpose | Provider required |
 |---|---|---|---|
 | L0 | Runtime regression | Deterministic checks for benchmark runner plumbing and locked fixtures | No |
-| L1 | Human scenario gate | Existing v3 human-scenario acceptance wrapper | Optional |
-| L2 | PicoBench-Core | File-editing and bugfix tasks with visible fixtures and hidden fail-to-pass tests | Yes for live runs |
+| L1 | Human scenario gate | Existing v3 human-scenario acceptance wrapper, delegated through the scenario gate driver | Optional |
+| L2 | PicoBench-Core | Native file-editing and bugfix tasks with visible fixtures and hidden fail-to-pass tests | Yes for live runs |
 | L3 | PicoBench-Agentic | Native Pico behaviors such as planning, skills, memory, and session events | Yes for live runs |
 | L4 | Live/dogfood | Controlled live and held-out tasks with stability and contamination controls | Yes |
 
@@ -52,6 +52,21 @@ Each run preserves enough evidence to audit a score:
 Evidence consistency checks compare the trace, report, session events, changed
 paths, and claimed outputs. A task should not be counted as a strict pass if the
 functional tests pass but the evidence is missing or contradictory.
+
+Evidence mode is explicit:
+
+- `evidence_mode=native`: L2/L3 PicoBench tasks run through the Pico public
+  entry boundary and must produce native report, trace, task state, session, and
+  session-event evidence.
+- `evidence_mode=delegated_human_gate`: L1 v3 human-gate tasks delegate to the
+  existing scenario gate and do not emit the same native PicoBench evidence
+  bundle.
+- `evidence_mode=mixed`: summary-level mode when a report contains both native
+  and delegated tasks.
+
+Strict pass can be recorded for both native and delegated suites, but evidence
+consistency is calculated only for native PicoBench tasks. Delegated human-gate
+evidence consistency is `not_applicable`, not `0.0`.
 
 ## Task Quality
 

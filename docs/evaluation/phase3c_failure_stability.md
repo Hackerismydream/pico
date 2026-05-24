@@ -57,6 +57,10 @@ uv run python scripts/run_picobench.py \
   failing the original full core run on process policy; `core_030` passed
   attempt 1 but failed attempt 2 and the original full core run.
 
+`core_029` and `core_030` must not be counted in the same bucket as the six
+stable hidden-edge failures. See
+`docs/evaluation/phase3c_stability_sensitive_tasks.md` for release treatment.
+
 ## Interpretation Rules
 
 - If a task fails in the same way across reruns and the task contract is valid,

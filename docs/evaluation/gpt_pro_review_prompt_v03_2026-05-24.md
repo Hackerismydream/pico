@@ -1,5 +1,11 @@
 # GPT Pro Review Prompt: PicoBench v0.3 Candidate
 
+Update note: this prompt captured the `2c7b9df` review handoff. Post-review
+fixes reclassified unsupported dogfood labels to `pico-inspired-synthetic`,
+downgraded the resume proxy to checkpoint artifact smoke, and quarantined the
+subagent proxy. For current status, read
+`docs/evaluation/picobench_v03_results_summary.md` first.
+
 请你以 benchmark / coding-agent harness reviewer 的角度 review 这个分支：
 
 - repo: `Hackerismydream/pico`
@@ -33,7 +39,8 @@ Pico" 的 v0.3：
   - added `core_031`-`core_040`.
   - 10 new visible fixtures and 10 new hidden fixture directories were added.
   - at least 8 of 10 are multi-file tasks.
-  - 6 are marked `pico-dogfood-derived`.
+  - original review found 6 unsupported `pico-dogfood-derived` labels; they
+    were later reclassified as `pico-inspired-synthetic`.
 - `benchmarks/picobench-agentic-native-v0.yaml`
   - fixed `agentic_native_memory_001` by replacing slash-only prompt with a
     remember-plus-confirmation turn and increasing step budget.

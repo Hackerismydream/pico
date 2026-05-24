@@ -7,14 +7,15 @@
 - provider: `deepseek`
 - model: `deepseek-v4-pro`
 - suite: `agentic-native`
-- tasks: 8 `picobench-agentic-native-v1` tasks
-- strict_pass_rate: `0.75`
-- failures: `agentic_native_resume_001`, `agentic_native_subagent_001`
+- tasks: 8 revised `picobench-agentic-native-v1` tasks
+- strict_pass_rate: `1.0`
+- failures: none
 
 ## Results by suite
 
 | Suite | Tasks | Strict passed | Strict failed | Skipped | Pass rate |
 |---|---:|---:|---:|---:|---:|
+| agentic-native v1 final verification 2026-05-24 | 8 | 8 | 0 | 0 | 1.0 |
 | agentic-native v1 live 2026-05-24 | 8 | 6 | 2 | 0 | 0.75 |
 | v0.3 new core live 2026-05-24 | 10 | 9 | 1 | 0 | 0.9 |
 | Phase 3C failure stability attempt 2 | 8 | 1 | 7 | 0 | 0.125 |
@@ -32,10 +33,10 @@
 
 | Category | Count | Notes |
 |---|---:|---|
-| `hidden_test_failure` | 14 | Phase 3C stability reruns kept six historical core failures stable, plus `core_030` in attempt 2 and `core_032` in the v0.3 new-core smoke |
-| `public_test_failure` | 1 | `agentic_native_resume_001` created an artifact but did not satisfy the public JSON/changed-path contract |
-| `step_budget_exceeded` | 1 | `agentic_native_subagent_001` reached step limit and did not write the expected report |
-| `tool_policy_violation` | 1 | Original full-core `core_029` failure; targeted reruns passed, so it is stability-sensitive |
+| `hidden_test_failure` | stable core: 12; stability-sensitive: 1; new core: 1 | Stable Phase 3C failures are `core_016`, `core_018`, `core_019`, `core_023`, `core_027`, `core_028` across two reruns. `core_030` is stability-sensitive and `core_032` is a new-core hidden edge. |
+| `public_test_failure` | 1 historical v1 smoke | Previous `agentic_native_resume_001` failed before downgrade to `agentic_native_checkpoint_artifact_001`; revised suite rerun passed 8/8 |
+| `step_budget_exceeded` | 1 historical v1 smoke | Previous `agentic_native_subagent_001` failed and is quarantined; revised read-only exploration smoke rerun passed 8/8 |
+| `tool_policy_violation` | 1 historical full-core run | Original full-core `core_029` failure; targeted reruns passed, so it is stability-sensitive and not a stable hidden-edge failure |
 | `trace_report_inconsistent` | 0 | `agentic_native_memory_001` evidence blocker fixed in rerun: 3/3 strict pass, evidence consistency `1.0` |
 
 ## Notes
@@ -58,6 +59,9 @@
   `/tmp/picobench-v03-new-core-a`,
   `/tmp/picobench-v03-new-core-b`, and
   `/tmp/picobench-v03-agentic-native`.
+- Revised agentic-native v1 final verification is stored under
+  `/tmp/picobench-v03-final-agentic-native-7218d68`: 8/8 strict pass, evidence
+  consistency `1.0`.
 - Current HEAD no-key verification passed locally on 2026-05-24:
   `uv run pytest tests/ -q` reported `271 passed, 2 skipped, 6 warnings`;
   task quality reported 40 tasks and 40 hidden fixtures with no issues; L0
@@ -65,4 +69,8 @@
 - Delegated human-gate evidence is now reported with
   `evidence_mode=delegated_human_gate` and evidence consistency
   `not_applicable` instead of `0.0` in newly generated report cards.
+- Mixed native/delegated reports calculate evidence consistency only over
+  native tasks; delegated rows show `n/a`.
+- GitHub Actions run for `2c7b9df25843444bb58a10f49fa580b63b3b713c` passed:
+  run id `26351780359`, artifact id `7182157242`.
 - Previous 2026-05-22 GitHub Actions run `26271849474` passed for `068318f`.

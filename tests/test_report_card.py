@@ -1,6 +1,7 @@
 import json
 
 from pico.evaluation.report_card import build_report_card, write_report_card
+from pico.evaluation.report_card import summary_markdown
 
 
 def test_report_card_derives_summary_metrics_from_task_results(tmp_path):
@@ -149,3 +150,39 @@ def test_report_card_marks_delegated_human_gate_evidence_not_applicable(tmp_path
     assert "evidence_consistency_rate: not_applicable" in __import__(
         "pico.evaluation.report_card", fromlist=["summary_markdown"]
     ).summary_markdown(card)
+
+
+def test_report_card_mixed_evidence_mode_counts_only_native_evidence(tmp_path):
+    card = build_report_card(
+        suite="mixed",
+        output_dir=tmp_path,
+        pico_commit="abc123",
+        started_at="2026-05-21T15:00:00",
+        results=[
+            {
+                "task_id": "core_001",
+                "category": "bugfix",
+                "strict_pass": True,
+                "evidence_mode": "native",
+                "checks": [
+                    {"name": "public_test", "passed": True},
+                    {"name": "report_trace_session_consistency", "passed": True},
+                ],
+                "report": {},
+            },
+            {
+                "task_id": "R01",
+                "category": "feature",
+                "strict_pass": True,
+                "evidence_mode": "delegated_human_gate",
+                "checks": [{"name": "v3_human_gate", "passed": True}],
+                "report": {},
+            },
+        ],
+    )
+
+    markdown = summary_markdown(card)
+
+    assert card["evidence_mode"] == "mixed"
+    assert card["evidence_consistency_rate"] == 1.0
+    assert "| R01 | feature | 1 | 0 | 1 | n/a |  |  |" in markdown

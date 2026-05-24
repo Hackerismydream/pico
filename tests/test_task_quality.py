@@ -163,7 +163,11 @@ def test_task_quality_respects_per_task_initial_expectations(tmp_path):
         "suite": "picobench-core",
         "tasks": [_task("core_mixed", "fixtures/mixed", "hidden/mixed")],
     }
-    payload["tasks"][0]["quality"] = {"initial_public": "pass", "initial_hidden": "fail"}
+    payload["tasks"][0]["quality"] = {
+        "initial_public": "pass",
+        "initial_hidden": "fail",
+        "rationale": "public smoke tests intentionally pass before hidden fail-to-pass edge",
+    }
     benchmark = normalize_benchmark(payload, repo_root=tmp_path)
 
     report = check_benchmark_quality(
@@ -174,6 +178,56 @@ def test_task_quality_respects_per_task_initial_expectations(tmp_path):
     )
 
     assert report.passed, [issue.to_dict() for issue in report.issues]
+
+
+def test_task_quality_requires_rationale_for_initial_pass_expectation(tmp_path):
+    fixture = tmp_path / "fixtures" / "mixed"
+    hidden = tmp_path / "hidden" / "mixed" / "hidden_tests"
+    (fixture / "tests").mkdir(parents=True)
+    hidden.mkdir(parents=True)
+    (fixture / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (fixture / "tests" / "test_public.py").write_text("def test_public(): assert True\n", encoding="utf-8")
+    (hidden / "test_hidden.py").write_text("def test_hidden(): assert False\n", encoding="utf-8")
+    payload = {
+        "schema_version": 1,
+        "suite": "picobench-core",
+        "tasks": [_task("core_mixed", "fixtures/mixed", "hidden/mixed")],
+    }
+    payload["tasks"][0]["quality"] = {"initial_public": "pass", "initial_hidden": "fail"}
+    benchmark = normalize_benchmark(payload, repo_root=tmp_path)
+
+    report = check_benchmark_quality(benchmark, require_hidden=True)
+
+    assert not report.passed
+    assert [issue.code for issue in report.issues] == ["initial_expectation_requires_rationale"]
+
+
+def test_task_quality_requires_rationale_for_either_expectation(tmp_path):
+    fixture = tmp_path / "fixtures" / "either"
+    hidden = tmp_path / "hidden" / "either"
+    fixture.mkdir(parents=True)
+    hidden.mkdir(parents=True)
+    (fixture / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    payload = {
+        "schema_version": 1,
+        "suite": "picobench-core",
+        "tasks": [_task("core_either", "fixtures/either", "hidden/either")],
+    }
+    payload["tasks"][0]["quality"] = {"initial_hidden": "either"}
+    benchmark = normalize_benchmark(payload, repo_root=tmp_path)
+
+    report = check_benchmark_quality(benchmark, require_hidden=True)
+
+    assert not report.passed
+    assert [issue.code for issue in report.issues] == ["initial_expectation_either_requires_rationale"]
+
+
+def test_repo_core_034_documents_tests_only_quality_rationale():
+    benchmark = load_benchmark("benchmarks/picobench-core-v1.yaml")
+    task = next(task for task in benchmark.tasks if task.task_id == "core_034")
+
+    assert task.raw["quality"]["initial_hidden"] == "pass"
+    assert "tests-only repair" in task.raw["quality"]["rationale"]
 
 
 def test_task_quality_executable_checks_accept_initial_failing_task(tmp_path):

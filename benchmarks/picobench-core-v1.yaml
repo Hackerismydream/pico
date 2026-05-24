@@ -2208,7 +2208,7 @@
         "stop_reason": "final_answer_returned"
       },
       "metadata": {
-        "source": "pico-dogfood-derived",
+        "source": "pico-inspired-synthetic",
         "contamination_risk": "low",
         "issue_clarity": "clear",
         "test_coverage": "high"
@@ -2250,7 +2250,7 @@
         "stop_reason": "final_answer_returned"
       },
       "metadata": {
-        "source": "pico-dogfood-derived",
+        "source": "pico-inspired-synthetic",
         "contamination_risk": "low",
         "issue_clarity": "clear",
         "test_coverage": "high"
@@ -2322,7 +2322,8 @@
         "hidden": ["python -m pytest hidden_tests -q"]
       },
       "quality": {
-        "initial_hidden": "pass"
+        "initial_hidden": "pass",
+        "rationale": "tests-only repair task; hidden tests check parser behavior and should pass before modifying public tests"
       },
       "verifiers": [
         {"type": "evidence"},
@@ -2421,7 +2422,7 @@
         "stop_reason": "final_answer_returned"
       },
       "metadata": {
-        "source": "pico-dogfood-derived",
+        "source": "pico-inspired-synthetic",
         "contamination_risk": "low",
         "issue_clarity": "clear",
         "test_coverage": "high"
@@ -2463,7 +2464,7 @@
         "stop_reason": "final_answer_returned"
       },
       "metadata": {
-        "source": "pico-dogfood-derived",
+        "source": "pico-inspired-synthetic",
         "contamination_risk": "low",
         "issue_clarity": "clear",
         "test_coverage": "high"
@@ -2547,7 +2548,7 @@
         "stop_reason": "final_answer_returned"
       },
       "metadata": {
-        "source": "pico-dogfood-derived",
+        "source": "pico-inspired-synthetic",
         "contamination_risk": "low",
         "issue_clarity": "clear",
         "test_coverage": "high"
@@ -2589,7 +2590,7 @@
         "stop_reason": "final_answer_returned"
       },
       "metadata": {
-        "source": "pico-dogfood-derived",
+        "source": "pico-inspired-synthetic",
         "contamination_risk": "low",
         "issue_clarity": "clear",
         "test_coverage": "high"

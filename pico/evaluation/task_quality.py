@@ -22,6 +22,7 @@ class TaskQualityIssue:
     message: str
     task_id: str = ""
     details: dict[str, Any] = field(default_factory=dict)
+    severity: str = "error"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -29,6 +30,7 @@ class TaskQualityIssue:
             "message": self.message,
             "task_id": self.task_id,
             "details": self.details,
+            "severity": self.severity,
         }
 
 
@@ -131,6 +133,7 @@ def _check_task(task: BenchmarkTask, *, require_hidden: bool) -> list[TaskQualit
         issues.append(TaskQualityIssue("missing_evidence_verifier", "task should verify run evidence", task.task_id))
     if not _expected_changed_paths(task):
         issues.append(TaskQualityIssue("missing_expected_changed_paths", "task should declare expected changed paths", task.task_id))
+    issues.extend(_check_quality_metadata(task))
     return issues
 
 
@@ -201,6 +204,30 @@ def _initial_expectation(task: BenchmarkTask, key: str, require_initial_failing:
     if value in {"pass", "fail", "either"}:
         return value
     return "fail" if require_initial_failing else "pass"
+
+
+def _check_quality_metadata(task: BenchmarkTask) -> list[TaskQualityIssue]:
+    quality = task.raw.get("quality")
+    if not isinstance(quality, dict):
+        return []
+    rationale = str(quality.get("rationale") or "").strip()
+    issues: list[TaskQualityIssue] = []
+    for key in ("initial_public", "initial_hidden"):
+        value = str(quality.get(key) or "").strip().lower()
+        if value not in {"pass", "either"}:
+            continue
+        if rationale:
+            continue
+        code = "initial_expectation_either_requires_rationale" if value == "either" else "initial_expectation_requires_rationale"
+        issues.append(
+            TaskQualityIssue(
+                code=code,
+                message=f"quality.{key}={value} requires quality.rationale",
+                task_id=task.task_id,
+                details={"quality_key": key, "quality_value": value},
+            )
+        )
+    return issues
 
 
 def _has_evidence_verifier(task: BenchmarkTask) -> bool:

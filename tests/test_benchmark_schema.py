@@ -94,13 +94,13 @@ def test_repo_picobench_agentic_native_v1_expands_native_capabilities():
         "agentic_native_plan_001",
         "agentic_native_skill_001",
         "agentic_native_memory_001",
-        "agentic_native_resume_001",
-        "agentic_native_subagent_001",
+        "agentic_native_checkpoint_artifact_001",
+        "agentic_native_readonly_exploration_001",
         "agentic_native_approval_001",
         "agentic_native_sandbox_001",
         "agentic_native_long_output_001",
     ]
-    assert {task.category for task in loaded.tasks} >= {"resume", "subagent", "tool_policy", "sandbox", "evidence"}
+    assert {task.category for task in loaded.tasks} >= {"resume", "tool_policy", "sandbox", "evidence"}
 
 
 def test_agentic_native_skill_uses_repl_slash_and_preset_project_skill():

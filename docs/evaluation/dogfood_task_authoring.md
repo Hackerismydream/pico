@@ -27,7 +27,9 @@ tests/fixtures/picobench_hidden/<task_id>/hidden_tests/
 
 ## Required Metadata
 
-- `metadata.source`: use `pico-dogfood-derived`
+- `metadata.source`: use `pico-dogfood-derived` only when the task has an
+  auditable Pico source commit or reference patch; otherwise use
+  `pico-inspired-synthetic`
 - `metadata.source_commit`: original commit or reference patch id
 - `metadata.contamination_risk`
 - `metadata.issue_clarity`
