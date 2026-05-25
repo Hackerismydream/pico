@@ -3,7 +3,7 @@
 ## Latest run
 
 - date: 2026-05-24
-- commit: `3bf2b2ddac7f84cf91592c444524f403fa08626c`
+- commit: `67a4853d061bcfe9b41714a0d5ec658adba3766c`
 - provider: `deepseek`
 - model: `deepseek-v4-pro`
 - suite: `agentic-native`
@@ -62,15 +62,20 @@
 - Revised agentic-native v1 final verification is stored under
   `/tmp/picobench-v03-final-agentic-native-7218d68`: 8/8 strict pass, evidence
   consistency `1.0`.
-- Current HEAD no-key verification passed locally on 2026-05-24:
-  `uv run pytest tests/ -q` reported `271 passed, 2 skipped, 6 warnings`;
+- Current HEAD no-key verification passed locally on 2026-05-25:
+  `uv run pytest tests/ -q` reported `275 passed, 2 skipped, 6 warnings`;
   task quality reported 40 tasks and 40 hidden fixtures with no issues; L0
-  runtime passed 2/2.
+  runtime passed 2/2. Artifacts: `/tmp/picobench-v03-rc-quality.json` and
+  `/tmp/picobench-v03-rc-runtime`.
 - Delegated human-gate evidence is now reported with
   `evidence_mode=delegated_human_gate` and evidence consistency
   `not_applicable` instead of `0.0` in newly generated report cards.
 - Mixed native/delegated reports calculate evidence consistency only over
   native tasks; delegated rows show `n/a`.
-- GitHub Actions run for `2c7b9df25843444bb58a10f49fa580b63b3b713c` passed:
-  run id `26351780359`, artifact id `7182157242`.
+- GitHub Actions run for `67a4853d061bcfe9b41714a0d5ec658adba3766c`
+  passed and is the latest v0.3 release-candidate CI reference: run id
+  `26352879944`, job `picobench-static`, artifact
+  `picobench-deterministic-artifacts`, artifact id `7182495097`.
+- This is not a final v0.3 release, not a public leaderboard, and not yet a
+  release-grade mini SWE benchmark.
 - Previous 2026-05-22 GitHub Actions run `26271849474` passed for `068318f`.

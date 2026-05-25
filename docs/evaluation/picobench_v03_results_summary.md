@@ -1,6 +1,6 @@
 # PicoBench v0.3 Results Summary
 
-Status: release-candidate hardening in progress.
+Status: v0.3 release candidate.
 
 ## Task Count
 
@@ -20,10 +20,10 @@ Status: release-candidate hardening in progress.
 | New core executable quality | 10/10 task subset passed | `/tmp/picobench-quality-new10.json` |
 | Phase 3C core30 triage | complete | `docs/evaluation/phase3c_core30_failure_triage.md` |
 | Phase 3C failure stability | complete; attempts passed 2/8 and 1/8 strict, both evidence consistency `1.0` | `/tmp/picobench-phase3c-failures-rerun-1`, `/tmp/picobench-phase3c-failures-rerun-2` |
-| Latest HEAD no-key gates | passed: `271 passed, 2 skipped, 6 warnings`; task quality 40/40; L0 runtime 2/2 | `/tmp/picobench-latest-quality.json`, `/tmp/picobench-latest-runtime` |
+| Latest HEAD no-key gates | passed: `275 passed, 2 skipped, 6 warnings`; task quality 40/40; L0 runtime 2/2 | `/tmp/picobench-v03-rc-quality.json`, `/tmp/picobench-v03-rc-runtime` |
 | New core live smoke | complete; 9/10 strict pass, evidence consistency `1.0` | `/tmp/picobench-v03-new-core-a`, `/tmp/picobench-v03-new-core-b` |
 | Agentic-native v1 final verification | revised suite passed 8/8 strict, evidence consistency `1.0` | `/tmp/picobench-v03-final-agentic-native-7218d68` |
-| GitHub Actions for `2c7b9df` | success; run id `26351780359`; artifact id `7182157242` | `https://github.com/Hackerismydream/pico/actions/runs/26351780359` |
+| GitHub Actions for `67a4853` | success; run id `26352879944`; artifact id `7182495097` | `https://github.com/Hackerismydream/pico/actions/runs/26352879944` |
 
 ## Readiness
 
@@ -33,6 +33,26 @@ agentic-native v1 verification, it can be treated as a v0.3 release candidate.
 It should not be called final v0.3 release: v0.3 has no auditable
 dogfood-derived tasks after provenance cleanup, true two-pass resume is not
 implemented, and true subagent evidence is quarantined.
+
+PicoBench v0.3 release candidate is accepted for internal review and
+resume/project evidence. It is not final v0.3 release. It is not a public
+leaderboard. It is not yet release-grade mini SWE for Pico.
+
+## RC Boundary
+
+v0.3 RC includes 60 live/agent tasks:
+
+- 40 core coding tasks
+- 12 delegated v3 human-gate scenarios
+- 8 agentic-native smoke/native tasks
+
+v0.3 RC does not include:
+
+- audited dogfood-derived tasks
+- true two-pass resume benchmark
+- true subagent benchmark
+- real ablation results
+- public leaderboard protocol
 
 ## Failures To Carry Forward
 

@@ -113,6 +113,28 @@ The report card writes:
 Only `strict_pass_rate` is treated as the main benchmark result. Functional
 pass rate is diagnostic.
 
+## v0.3 Release-Candidate Boundary
+
+PicoBench v0.3 RC includes 60 live/agent tasks:
+
+- 40 core coding tasks;
+- 12 delegated v3 human-gate scenarios;
+- 8 agentic-native smoke/native tasks.
+
+PicoBench v0.3 RC does not include:
+
+- audited dogfood-derived tasks;
+- true two-pass resume benchmark;
+- true subagent benchmark;
+- real ablation results;
+- public leaderboard protocol.
+
+Agentic-native v1 passed 8/8 strict with evidence consistency `1.0`, but parts
+of it are smoke-level coverage. `agentic_native_checkpoint_artifact_001` is
+checkpoint artifact smoke, not true two-pass resume coverage.
+`agentic_native_readonly_exploration_001` is read-only exploration smoke, not
+true subagent coverage.
+
 ## Failure Taxonomy
 
 Failures are grouped into runner, provider, model, task, evidence, tool policy,

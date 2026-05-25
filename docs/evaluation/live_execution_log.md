@@ -274,25 +274,25 @@ triggered from GitHub.
 - failures: none
 - notes: v3 human-gate wrapper scenarios all strictly passed in this run. This older report showed evidence consistency as `0.0`; current report-card code classifies delegated human-gate as `evidence_mode=delegated_human_gate` and reports evidence consistency as `not_applicable`.
 
-## Current HEAD deterministic verification 2026-05-24
+## Current HEAD deterministic verification 2026-05-25
 
-- commit: `3bf2b2ddac7f84cf91592c444524f403fa08626c`
+- commit: `67a4853d061bcfe9b41714a0d5ec658adba3766c`
 - branch: `codex/picobench-v3`
 - provider: none
 - model: none
 - suite: no-key gates
 - tasks: deterministic/static gates only
-- command: `uv run pytest tests/ -q`; `uv run python scripts/check_picobench_tasks.py --benchmark benchmarks/picobench-core-v1.yaml --min-tasks 40 --json-output /tmp/picobench-latest-quality.json`; `uv run python scripts/run_picobench_runtime.py --benchmark benchmarks/picobench-runtime-v1.json --output-dir /tmp/picobench-latest-runtime --json`
-- output_dir: `/tmp/picobench-latest-runtime`
+- command: `uv run pytest tests/ -q`; `uv run python scripts/check_picobench_tasks.py --benchmark benchmarks/picobench-core-v1.yaml --min-tasks 40 --json-output /tmp/picobench-v03-rc-quality.json`; `uv run python scripts/run_picobench_runtime.py --benchmark benchmarks/picobench-runtime-v1.json --output-dir /tmp/picobench-v03-rc-runtime --json`
+- output_dir: `/tmp/picobench-v03-rc-runtime`
 - status: completed
 - strict_pass_rate: not applicable
 - failures: none
-- notes: local latest-HEAD no-key verification passed: `271 passed, 2 skipped, 6 warnings`; task quality reported 40 tasks and 40 hidden fixtures with no issues; L0 runtime passed `2/2`.
+- notes: local latest-HEAD no-key verification passed: `275 passed, 2 skipped, 6 warnings`; task quality reported 40 tasks and 40 hidden fixtures with no issues; L0 runtime passed `2/2`.
 
 ### Artifacts
 
-- summary: `/tmp/picobench-latest-quality.json`
-- evidence bundle: `/tmp/picobench-latest-runtime/runtime_artifact.json`
+- summary: `/tmp/picobench-v03-rc-quality.json`
+- evidence bundle: `/tmp/picobench-v03-rc-runtime/runtime_artifact.json`
 - failure reports: none
 
 ## Run 2026-05-24-deepseek-agentic-native-v0-rerun
