@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "description": "PicoBench L0 deterministic runtime regression seed. Uses the existing fixed evaluator and ScriptedModelClient.",
+  "tasks": [
+    {
+      "id": "readme_intro_locked",
+      "prompt": "In the README fixture, replace the placeholder opening sentence with 'This fixture is a locked benchmark workspace.'",
+      "fixture_repo": "tests/fixtures/bench_repo_readme",
+      "allowed_tools": ["read_file", "patch_file"],
+      "step_budget": 4,
+      "expected_artifact": "README.md opening sentence is locked benchmark workspace text",
+      "verifier": "python3 -c \"from pathlib import Path; text = Path('README.md').read_text(encoding='utf-8'); assert 'This fixture is a locked benchmark workspace.' in text\"",
+      "category": "documentation"
+    },
+    {
+      "id": "sample_beta_locked",
+      "prompt": "In sample.txt, replace beta with beta-locked.",
+      "fixture_repo": "tests/fixtures/bench_repo_patch",
+      "allowed_tools": ["read_file", "patch_file"],
+      "step_budget": 4,
+      "expected_artifact": "sample.txt contains beta-locked",
+      "verifier": "python3 -c \"from pathlib import Path; text = Path('sample.txt').read_text(encoding='utf-8'); assert 'beta-locked' in text and '\\nbeta\\n' not in text\"",
+      "category": "text-edit"
+    }
+  ]
+}

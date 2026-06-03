@@ -32,4 +32,7 @@ norecursedirs = [
   "artifacts",
   "build",
   "dist",
+  "_local",
+  "tests/fixtures/picobench",
+  "tests/fixtures/picobench_hidden",
 ]

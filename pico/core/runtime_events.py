@@ -18,8 +18,12 @@ PHASE_BY_EVENT = {
 
 def build_runtime_event(runtime, task_state, event, payload):
     payload = dict(payload or {})
+    created_at = now()
+    payload.setdefault("schema_version", 1)
     payload["event"] = str(event)
-    payload["created_at"] = now()
+    payload.setdefault("event_type", str(event))
+    payload["created_at"] = created_at
+    payload.setdefault("started_at", created_at)
     payload.setdefault("trace_id", task_state.run_id)
     payload.setdefault("turn_id", task_state.task_id)
     payload.setdefault("phase", PHASE_BY_EVENT.get(str(event), "runtime"))
@@ -31,6 +35,7 @@ def build_runtime_event(runtime, task_state, event, payload):
     payload.setdefault("estimated_output_tokens", int(payload.get("estimated_output_tokens", 0) or 0))
     payload.setdefault("artifact_paths", list(payload.get("affected_paths", []) or []))
     payload.setdefault("error_type", _error_type(payload))
+    payload.setdefault("error_code", _error_code(payload))
     payload.setdefault("parent_span_id", runtime._last_trace_span_id.get(task_state.run_id, ""))
     runtime._trace_seq += 1
     payload.setdefault("span_id", f"span_{runtime._trace_seq:06d}")
@@ -52,3 +57,7 @@ def _status_for(event, payload):
 
 def _error_type(payload):
     return str(payload.get("tool_error_code") or payload.get("security_event_type") or payload.get("error_type") or "")
+
+
+def _error_code(payload):
+    return str(payload.get("tool_error_code") or payload.get("error_code") or "")

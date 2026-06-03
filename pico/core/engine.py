@@ -72,6 +72,7 @@ class Engine:
         agent.current_turn_id = task_state.task_id
         agent.current_run_id = task_state.run_id
         agent.current_run_dir = agent.run_store.start_run(task_state)
+        agent.write_run_manifest(task_state)
         agent.session_event_bus.emit(
             "turn_started",
             {
@@ -419,6 +420,7 @@ class Engine:
             agent.run_store.write_report(
                 task_state, agent.redact_artifact(agent.build_report(task_state))
             )
+            agent.write_run_manifest(task_state)
             yield from self._drain_worker_notification_events()
             agent.current_turn_id = ""
             agent.current_run_id = ""

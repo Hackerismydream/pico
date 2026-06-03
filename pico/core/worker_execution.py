@@ -17,6 +17,18 @@ def run_worker(manager, task, prompt, action):
         "worker_started",
         {"worker_id": task.id, "description": task.description, "subagent_type": task.subagent_type, "action": action},
     )
+    manager.runtime.session_event_bus.emit(
+        "subagent_started",
+        {
+            "worker_id": task.id,
+            "description": task.description,
+            "subagent_type": task.subagent_type,
+            "subagent_mode": _subagent_mode(task.subagent_type),
+            "action": action,
+            "read_only": bool(getattr(task.runtime, "read_only", False)),
+            "write_scope": list(task.write_scope),
+        },
+    )
     manager._save()
     started = time.monotonic()
     try:
@@ -43,4 +55,20 @@ def run_worker(manager, task, prompt, action):
         "worker_finished",
         {"worker_id": task.id, "status": status, "duration_ms": item["duration_ms"]},
     )
+    manager.runtime.session_event_bus.emit(
+        "subagent_completed",
+        {
+            "worker_id": task.id,
+            "subagent_type": task.subagent_type,
+            "subagent_mode": _subagent_mode(task.subagent_type),
+            "status": status,
+            "duration_ms": item["duration_ms"],
+            "read_only": bool(getattr(task.runtime, "read_only", False)),
+            "write_scope": list(task.write_scope),
+        },
+    )
     manager._save()
+
+
+def _subagent_mode(subagent_type: str) -> str:
+    return "explore" if str(subagent_type).lower() == "explore" else "worker"

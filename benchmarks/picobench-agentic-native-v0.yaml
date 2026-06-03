@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "suite": "picobench-agentic-native",
+  "tasks": [
+    {
+      "task_id": "agentic_native_plan_001",
+      "title": "Native plan artifact gate",
+      "suite": "picobench-agentic-native",
+      "category": "plan_mode",
+      "repo": {"fixture": "tests/fixtures/picobench/agentic_smoke"},
+      "prompt": {
+        "text": "/plan auth-refactor\n写 active plan artifact .pico/plans/auth-refactor-plan.md，内容包含 scope、steps、verification，然后 final。\n/exit\n"
+      },
+      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 8, "timeout_sec": 300},
+      "tests": {"public": ["python -c \"from pathlib import Path; assert Path('.pico/plans/auth-refactor-plan.md').exists()\""]},
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "artifact_exists", "paths": [".pico/plans/auth-refactor-plan.md"]},
+        {"type": "required_trace_event", "event": "run_finished", "fields": {"status": "completed"}}
+      ],
+      "expected": {"changed_paths": {"any": [".pico/plans/auth-refactor-plan.md"]}, "stop_reason": "final_answer_returned"},
+      "metadata": {"source": "synthetic", "contamination_risk": "low", "issue_clarity": "clear", "test_coverage": "medium"}
+    },
+    {
+      "task_id": "agentic_native_skill_001",
+      "title": "Native project skill invocation",
+      "suite": "picobench-agentic-native",
+      "category": "skill",
+      "repo": {"fixture": "tests/fixtures/picobench/agentic_skill_project"},
+      "prompt": {"text": "/release staging\n/exit"},
+      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 8, "timeout_sec": 360},
+      "tests": {"public": ["python -c \"from pathlib import Path; text=Path('reports/release.md').read_text(encoding='utf-8'); assert 'staging' in text and 'release readiness' in text\""]},
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "artifact_exists", "paths": ["reports/release.md"]},
+        {"type": "required_session_event", "event": "skill_invoked"},
+        {"type": "required_session_event", "event": "skill_completed"}
+      ],
+      "expected": {"changed_paths": {"any": ["reports/release.md"]}, "stop_reason": "final_answer_returned"},
+      "metadata": {"source": "synthetic", "contamination_risk": "low", "issue_clarity": "clear", "test_coverage": "medium"}
+    },
+    {
+      "task_id": "agentic_native_memory_001",
+      "title": "Native remember writes daily log",
+      "suite": "picobench-agentic-native",
+      "category": "memory",
+      "repo": {"fixture": "tests/fixtures/picobench/agentic_smoke"},
+      "prompt": {"text": "/remember PicoBench native memory task uses pytest evidence\nConfirm the memory note was saved."},
+      "execution": {"driver": "repl", "approval": "auto", "sandbox": "best_effort", "max_steps": 8, "timeout_sec": 240},
+      "tests": {"public": ["python -c \"from pathlib import Path; assert list(Path('.pico/memory/logs').rglob('*.md'))\""]},
+      "verifiers": [
+        {"type": "evidence"},
+        {"type": "required_session_event", "event": "memory_note_appended"},
+        {"type": "artifact_exists", "paths": [".pico/memory/logs"]}
+      ],
+      "expected": {"changed_paths": {"any": [".pico/memory/logs"]}, "stop_reason": "final_answer_returned"},
+      "metadata": {"source": "synthetic", "contamination_risk": "low", "issue_clarity": "clear", "test_coverage": "medium"}
+    }
+  ]
+}

@@ -15,12 +15,14 @@ from pathlib import Path
 class RunEvidence:
     workspace: Path
     run_dir: Path | None
+    run_manifest_path: Path | None
     report_path: Path | None
     trace_path: Path | None
     task_state_path: Path | None
     session_path: Path | None
     session_event_path: Path | None
     report: dict
+    run_manifest: dict
     task_state: dict
     trace_events: list[dict]
     session_events: list[dict]
@@ -29,6 +31,7 @@ class RunEvidence:
     def latest(cls, workspace: Path) -> "RunEvidence":
         workspace = Path(workspace).resolve()
         run_dir = _latest_dir(workspace / ".pico" / "runs")
+        run_manifest_path = _existing(run_dir / "run_manifest.json") if run_dir else None
         report_path = _existing(run_dir / "report.json") if run_dir else None
         trace_path = _existing(run_dir / "trace.jsonl") if run_dir else None
         task_state_path = _existing(run_dir / "task_state.json") if run_dir else None
@@ -37,12 +40,14 @@ class RunEvidence:
         return cls(
             workspace=workspace,
             run_dir=run_dir,
+            run_manifest_path=run_manifest_path,
             report_path=report_path,
             trace_path=trace_path,
             task_state_path=task_state_path,
             session_path=session_path,
             session_event_path=session_event_path,
             report=_read_json(report_path),
+            run_manifest=_read_json(run_manifest_path),
             task_state=_read_json(task_state_path),
             trace_events=_read_jsonl(trace_path),
             session_events=_read_jsonl(session_event_path),

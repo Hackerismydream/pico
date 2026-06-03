@@ -118,6 +118,7 @@ def finish_stopped_run(
     agent.run_store.write_report(
         task_state, agent.redact_artifact(agent.build_report(task_state))
     )
+    agent.write_run_manifest(task_state)
     agent.current_turn_id = ""
     agent.current_run_id = ""
     yield {"type": "stop", "run_id": task_state.run_id, "content": final}
@@ -172,6 +173,7 @@ def finish_limited_run(engine, task_state, user_message, final, run_started_at):
     agent.run_store.write_report(
         task_state, agent.redact_artifact(agent.build_report(task_state))
     )
+    agent.write_run_manifest(task_state)
     agent.current_turn_id = ""
     agent.current_run_id = ""
     yield {"type": "stop", "run_id": task_state.run_id, "content": final}

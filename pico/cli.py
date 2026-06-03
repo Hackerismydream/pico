@@ -205,7 +205,8 @@ def build_agent(args):
     if session_id == "latest":
         session_id = store.latest()
     memory_dir = getattr(args, "memory_dir", None)
-    auto_dream = not getattr(args, "no_auto_dream", False)
+    feature_flags = _runtime_feature_flags(args)
+    auto_dream = (not getattr(args, "no_auto_dream", False)) and feature_flags.get("memory", True)
     dream_interval = getattr(args, "dream_interval", 24.0)
     dream_min_sessions = getattr(args, "dream_min_sessions", 5)
     ask_user_callback = None if getattr(args, "prompt", None) else _cli_ask_user
@@ -219,6 +220,7 @@ def build_agent(args):
             max_steps=args.max_steps,
             max_new_tokens=args.max_new_tokens,
             secret_env_names=configured_secret_names,
+            feature_flags=feature_flags,
             memory_dir=memory_dir,
             auto_dream=auto_dream,
             dream_interval_hours=dream_interval,
@@ -235,6 +237,7 @@ def build_agent(args):
         max_steps=args.max_steps,
         max_new_tokens=args.max_new_tokens,
         secret_env_names=configured_secret_names,
+        feature_flags=feature_flags,
         memory_dir=memory_dir,
         auto_dream=auto_dream,
         dream_interval_hours=dream_interval,
@@ -243,6 +246,20 @@ def build_agent(args):
         sandbox_config=sandbox_config,
         ask_user_callback=ask_user_callback,
     )
+
+
+def _runtime_feature_flags(args):
+    flags = {}
+    if getattr(args, "disable_memory", False):
+        flags["memory"] = False
+        flags["relevant_memory"] = False
+    if getattr(args, "disable_plan_mode", False):
+        flags["plan_mode"] = False
+    if getattr(args, "disable_subagents", False):
+        flags["subagents"] = False
+    if getattr(args, "disable_skills", False):
+        flags["skills"] = False
+    return flags
 
 
 def build_arg_parser():
@@ -293,6 +310,26 @@ def build_arg_parser():
         "--no-auto-dream",
         action="store_true",
         help="Disable automatic memory consolidation.",
+    )
+    parser.add_argument(
+        "--disable-memory",
+        action="store_true",
+        help="Disable working/durable memory recall, relevant memory, /remember, and auto-dream for this run.",
+    )
+    parser.add_argument(
+        "--disable-plan-mode",
+        action="store_true",
+        help="Disable plan mode slash/tool entry points for this run.",
+    )
+    parser.add_argument(
+        "--disable-subagents",
+        action="store_true",
+        help="Disable subagent tools and slash entry points for this run.",
+    )
+    parser.add_argument(
+        "--disable-skills",
+        action="store_true",
+        help="Disable bundled, user, and project Pico skills for this run.",
     )
     parser.add_argument(
         "--dream-interval",
@@ -375,20 +412,32 @@ def handle_repl_command(agent, user_input):
     if user_input == "/help":
         return True, False, HELP_DETAILS
     if user_input == "/memory":
+        if not agent.feature_enabled("memory"):
+            return True, False, "memory is disabled"
         return True, False, agent.memory_command_text()
     if user_input == "/working-memory":
+        if not agent.feature_enabled("memory"):
+            return True, False, "memory is disabled"
         return True, False, agent.memory_text()
     if user_input.startswith("/remember"):
+        if not agent.feature_enabled("memory"):
+            return True, False, "memory is disabled"
         _, _, note = user_input.partition(" ")
         if not note.strip():
             return True, False, "Usage: /remember <text>"
         agent.remember_durable_note(note)
         return True, False, "Saved to daily log."
     if user_input == "/dream":
+        if not agent.feature_enabled("memory"):
+            return True, False, "memory is disabled"
         return True, False, agent.run_dream()
     if user_input == "/skills":
+        if not agent.feature_enabled("skills"):
+            return True, False, "skills are disabled"
         return True, False, skillslib.render_skills_list(agent.skills)
     if user_input == "/plan" or user_input.startswith("/plan "):
+        if not agent.feature_enabled("plan_mode"):
+            return True, False, "plan mode is disabled"
         _, _, raw_topic = user_input.partition(" ")
         topic = raw_topic.strip()
         if not topic:
@@ -403,6 +452,8 @@ def handle_repl_command(agent, user_input):
             return True, False, f"error: {exc}"
         return True, False, f"mode: plan\nplan path: {plan_path}"
     if user_input == "/plan-exit":
+        if not agent.feature_enabled("plan_mode"):
+            return True, False, "plan mode is disabled"
         agent.exit_plan_mode()
         return True, False, "mode: default"
     if user_input == "/mode":
@@ -410,8 +461,12 @@ def handle_repl_command(agent, user_input):
     if user_input == "/session":
         return True, False, _format_session_status(agent)
     if command_name == "agents":
+        if not agent.feature_enabled("subagents"):
+            return True, False, "subagents are disabled"
         return True, False, _format_subagent_status(agent)
     if command_name == "subagent":
+        if not agent.feature_enabled("subagents"):
+            return True, False, "subagents are disabled"
         payload, error = parse_subagent_args(command_args)
         if error:
             return True, False, error
@@ -460,6 +515,8 @@ def handle_repl_command(agent, user_input):
         return True, False, "session reset"
     command, arguments = skillslib.parse_slash_command(user_input)
     if command and command in agent.skills:
+        if not agent.feature_enabled("skills"):
+            return True, False, "skills are disabled"
         return True, False, invoke_skill(agent, command, arguments)
     return False, False, ""
 

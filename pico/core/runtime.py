@@ -22,6 +22,7 @@ from .engine import Engine
 from . import model_output, tool_executor
 from .plan_mode import PlanModeController
 from .permissions import PermissionChecker
+from .run_manifest import build_run_manifest
 from .run_store import RunStore
 from .runtime_consumers import default_runtime_consumers
 from .runtime_checkpoints import RuntimeCheckpointsMixin
@@ -58,6 +59,9 @@ DEFAULT_FEATURE_FLAGS = {
     "relevant_memory": True,
     "context_reduction": True,
     "prompt_cache": True,
+    "plan_mode": True,
+    "subagents": True,
+    "skills": True,
 }
 CHECKPOINT_SCHEMA_VERSION = "phase1-v1"
 CHECKPOINT_NONE_STATUS = "no-checkpoint"
@@ -178,7 +182,11 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.self_authored_file_freshness = {}
         self.todo_ledger = TodoLedger(self)
         self.worker_manager = WorkerManager(self)
-        self.skills = skillslib.discover_skills(self.root)
+        self.skills = (
+            skillslib.discover_skills(self.root)
+            if self.feature_enabled("skills")
+            else {}
+        )
         self.tools = self._apply_tool_allowlist(self.build_tools())
         self.tool_profiles = build_tool_profiles(self.tools)
         self._active_tool_profile_name = (
@@ -407,7 +415,14 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         del bucket[:-limit]
 
     def build_tools(self):
-        return toolkit.build_tool_registry(self)
+        tools = toolkit.build_tool_registry(self)
+        if not self.feature_enabled("plan_mode"):
+            for name in ("enter_plan_mode", "exit_plan_mode"):
+                tools.pop(name, None)
+        if not self.feature_enabled("subagents"):
+            for name in ("agent", "send_message", "task_stop"):
+                tools.pop(name, None)
+        return tools
 
     @staticmethod
     def _normalize_allowed_tools(allowed_tools):
@@ -465,16 +480,29 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
             risk = "approval required" if tool["risky"] else "safe"
             tool_lines.append(f"- {name}({fields}) [{risk}] {tool['description']}")
         tool_text = "\n".join(tool_lines)
-        examples = "\n".join(
-            [
-                '<tool>{"name":"list_files","args":{"path":"."}}</tool>',
-                '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":80}}</tool>',
-                '<tool name="write_file" path="binary_search.py"><content>def binary_search(nums, target):\n    return -1\n</content></tool>',
-                '<tool name="patch_file" path="binary_search.py"><old_text>return -1</old_text><new_text>return mid</new_text></tool>',
-                '<tool>{"name":"run_shell","args":{"command":"uv run --with pytest python -m pytest -q","timeout":20}}</tool>',
-                '<tool>{"name":"agent","args":{"description":"Inspect auth","prompt":"Find auth entry points","subagent_type":"Explore"}}</tool>',
-                "<final>Done.</final>",
-            ]
+        examples = [
+            '<tool>{"name":"list_files","args":{"path":"."}}</tool>',
+            '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":80}}</tool>',
+            '<tool name="write_file" path="binary_search.py"><content>def binary_search(nums, target):\n    return -1\n</content></tool>',
+            '<tool name="patch_file" path="binary_search.py"><old_text>return -1</old_text><new_text>return mid</new_text></tool>',
+            '<tool>{"name":"run_shell","args":{"command":"uv run --with pytest python -m pytest -q","timeout":20}}</tool>',
+        ]
+        if self.feature_enabled("subagents"):
+            examples.append(
+                '<tool>{"name":"agent","args":{"description":"Inspect auth","prompt":"Find auth entry points","subagent_type":"Explore"}}</tool>'
+            )
+        examples.append("<final>Done.</final>")
+        examples_text = "\n".join(examples)
+        subagent_rule = (
+            "- Use agent for bounded subagents. Explore is read-only; worker writes must stay inside write_scope.\n"
+            "            - Use send_message to continue an existing worker instead of spawning a fresh worker with missing context."
+            if self.feature_enabled("subagents")
+            else "- Subagents are disabled in this run."
+        )
+        skill_rule = (
+            f"- {skillslib.SKILL_FILE_CREATION_GUIDE}"
+            if self.feature_enabled("skills")
+            else "- Skills are disabled in this run."
         )
         # prefix 可以理解成 agent 的“工作手册”：
         # 它是谁、工具怎么调用、当前仓库是什么状态，都写在这里。
@@ -499,9 +527,8 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
             - New files should be complete and runnable, including obvious imports.
             - Do not repeat the same tool call with the same arguments if it did not help. Choose a different tool or return a final answer.
             - Required tool arguments must not be empty. Do not call read_file, write_file, patch_file, run_shell, or agent with args={{}}.
-            - Use agent for bounded subagents. Explore is read-only; worker writes must stay inside write_scope.
-            - Use send_message to continue an existing worker instead of spawning a fresh worker with missing context.
-            - {skillslib.SKILL_FILE_CREATION_GUIDE}
+            {subagent_rule}
+            {skill_rule}
 
             {self.runtime_mode_text()}
 
@@ -509,7 +536,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
             {tool_text}
 
             Valid response examples:
-            {examples}
+            {examples_text}
 
             {self.workspace.text()}
             """
@@ -567,9 +594,13 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         )
 
     def runtime_mode_text(self):
+        if not self.feature_enabled("plan_mode"):
+            return "Runtime mode: default\n- Plan mode is disabled in this run."
         return self.plan_mode.prompt_text()
 
     def enter_plan_mode(self, topic, path=None):
+        if not self.feature_enabled("plan_mode"):
+            raise ValueError("plan mode is disabled")
         return self.plan_mode.enter(topic, path=path)
 
     def exit_plan_mode(self):
@@ -724,6 +755,11 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
                 continue
         self.run_store.write_task_state(task_state)
         return payload
+
+    def write_run_manifest(self, task_state):
+        return self.run_store.write_run_manifest(
+            task_state, self.redact_artifact(build_run_manifest(self, task_state))
+        )
 
     def infer_next_step(self, task_state):
         if task_state.status == "completed":

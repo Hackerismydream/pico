@@ -1,0 +1,7477 @@
+{
+  "schema_version": 1,
+  "suite": "picobench-core",
+  "tasks": [
+    {
+      "task_id": "core_001",
+      "title": "Order discount bugfix",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/orders_api",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_001"
+      },
+      "prompt": {
+        "text": "订单折扣算错了。先读 tests/test_order_pricing.py 和 src/order_pricing.py，修复折扣计算，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 20,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "src/order_pricing.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "src/order_pricing.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_002",
+      "title": "Inventory bad row handling",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/inventory_importer",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_002"
+      },
+      "prompt": {
+        "text": "库存 CSV 导入器遇到空 sku、空白 sku、非数字数量、负数数量会失败或导入脏数据。读测试和 inventory.py，修复 import_inventory，并运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "inventory.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "inventory.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_003",
+      "title": "CLI uppercase flag",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/cli_app",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_003"
+      },
+      "prompt": {
+        "text": "给这个小 CLI 增加 --uppercase 参数。默认行为保持 hello name，小写；带 --uppercase 时返回 HELLO NAME。读 app.py 和测试，修改后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "app.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "app.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_004",
+      "title": "Dataclass CRUD store",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/dataclass_crud",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_004"
+      },
+      "prompt": {
+        "text": "StudentStore 只有 add/get。补齐 update/delete/list，保持 Student dataclass，不改测试语义，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "store.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "store.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_005",
+      "title": "Markdown linter refactor",
+      "suite": "picobench-core",
+      "category": "refactor",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/markdown_linter",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_005"
+      },
+      "prompt": {
+        "text": "重构 markdown linter，把规则检查拆成 check_trailing_space 和 check_heading 等可读的小函数，保持 lint_markdown 和 has_errors 行为不变。修改后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 20,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "linter.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "linter.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_006",
+      "title": "Repair incorrect math test",
+      "suite": "picobench-core",
+      "category": "test_repair",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/flaky_test_math",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_006"
+      },
+      "prompt": {
+        "text": "这个项目的实现是正确的，测试断言写错了。只修 tests/test_math_utils.py，让测试表达 stable_total([1,2,3]) 的真实结果 6，并运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 16,
+        "timeout_sec": 240
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "tests/test_math_utils.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "tests/test_math_utils.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_007",
+      "title": "README and CLI help consistency",
+      "suite": "picobench-core",
+      "category": "documentation",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/docs_cli",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_007"
+      },
+      "prompt": {
+        "text": "README 里的 CLI 用法和实际 argparse 子命令不一致。读 README.md 和 tool.py，只修文档让它匹配真实 help，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 16,
+        "timeout_sec": 240
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "README.md"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "README.md"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_008",
+      "title": "Path traversal note reader",
+      "suite": "picobench-core",
+      "category": "security_fix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/vulnerable_parser",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_008"
+      },
+      "prompt": {
+        "text": "read_note 存在 path traversal。修复它：只能读取 root 内的相对路径，遇到 ../ 或绝对路径抛 ValueError。运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "notes.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "notes.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_009",
+      "title": "Secret redaction in logs",
+      "suite": "picobench-core",
+      "category": "security_fix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/secret_logger",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_009"
+      },
+      "prompt": {
+        "text": "log_request 不能把 API key 写进日志。修复 logger.py，非空 key 用 [REDACTED] 表示，空 key 不输出 key 字段。运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 20,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "logger.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "logger.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_010",
+      "title": "Pytest config repair",
+      "suite": "picobench-core",
+      "category": "configuration",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/pytest_config",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_010"
+      },
+      "prompt": {
+        "text": "pyproject.toml 的 pytest testpaths 指向了不存在目录，导致配置不可信。修复配置，让 testpaths 指向 tests，并让 python -m pytest -q 能找到公开测试。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 16,
+        "timeout_sec": 240
+      },
+      "tests": {
+        "public": [
+          "python -m pytest -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "pyproject.toml"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "pyproject.toml"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_011",
+      "title": "Slugify punctuation handling",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/text_slugger",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_011"
+      },
+      "prompt": {
+        "text": "slugify 没有正确处理标点和连续空白。读 tests/test_slugify.py 和 slugify.py，修复 slugify，并运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "slugify.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "slugify.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_012",
+      "title": "CSV bad row aggregation",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/csv_reporter",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_012"
+      },
+      "prompt": {
+        "text": "CSV 金额汇总遇到坏行会崩。读 tests/test_reporter.py 和 reporter.py，跳过缺失、空、非数字和负数 amount，并运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "reporter.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "reporter.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_013",
+      "title": "Email validator shape checks",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/email_validator",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_013"
+      },
+      "prompt": {
+        "text": "email 校验太宽松。读 tests/test_emailer.py 和 emailer.py，要求单个 @、本地部分非空、domain 包含点且无空白，并运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "emailer.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "emailer.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_014",
+      "title": "TTL cache expiry",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/cache_ttl",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_014"
+      },
+      "prompt": {
+        "text": "TTLCache.get 没有处理过期。读 tests/test_cache.py 和 cache.py，让过期 key 返回 None 并清理条目，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "cache.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "cache.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_015",
+      "title": "Config defaults merge",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/config_loader",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_015"
+      },
+      "prompt": {
+        "text": "load_config 没有合并 defaults。读 tests/test_config_loader.py 和 config_loader.py，返回 defaults 与文件配置的合并结果且不修改 defaults，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "config_loader.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "config_loader.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_016",
+      "title": "JSON numeric filter",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/json_filter",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_016"
+      },
+      "prompt": {
+        "text": "filter_records 要按指定字段筛出数值大于等于 minimum 的记录；字段缺失、非数字值要跳过；数字字符串也要按数字处理。读 tests/test_filterer.py 和 filterer.py，修复后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "filterer.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "filterer.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_017",
+      "title": "Retry policy attempts",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/retry_policy",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_017"
+      },
+      "prompt": {
+        "text": "retry 只调用一次。读 tests/test_retry.py 和 retry.py，实现最多 attempts 次重试，成功即返回，全部失败抛最后一次异常，并运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "retry.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "retry.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_018",
+      "title": "Todo parser open items",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/todo_parser",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_018"
+      },
+      "prompt": {
+        "text": "parse_todos 只返回未完成的 - [ ] todo 文本；跳过 - [x] 和普通文本；todo 内容需要去掉多余空白。读 tests/test_todo.py 和 todo.py，修复后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "todo.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "todo.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_019",
+      "title": "URL join normalization",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/url_joiner",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_019"
+      },
+      "prompt": {
+        "text": "join_url 要规范化 base/path 的斜杠，避免重复斜杠；path 为空时返回不带结尾斜杠的 base。读 tests/test_url_tools.py 和 url_tools.py，修复后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "url_tools.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "url_tools.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_020",
+      "title": "Password strength policy",
+      "suite": "picobench-core",
+      "category": "security_fix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/password_policy",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_020"
+      },
+      "prompt": {
+        "text": "is_strong 只检查长度。读 tests/test_passwords.py 和 passwords.py，要求至少 8 位、大小写字母和数字且无空白，并运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "passwords.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "passwords.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_021",
+      "title": "ISO date parser",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/date_parser",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_021"
+      },
+      "prompt": {
+        "text": "parse_iso_date 返回字符串 tuple 且不校验日期。读 tests/test_dates.py 和 dates.py，返回 datetime.date 并拒绝非法输入，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "dates.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "dates.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_022",
+      "title": "Environment defaults",
+      "suite": "picobench-core",
+      "category": "configuration",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/env_defaults",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_022"
+      },
+      "prompt": {
+        "text": "get_setting 在变量缺失时抛 KeyError。读 tests/test_env_defaults.py 和 env_defaults.py，缺失时返回 default；如果 default 也是 None 就返回 None；存在时返回环境变量，并运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "env_defaults.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "env_defaults.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_023",
+      "title": "Markdown table formatter",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/table_formatter",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_023"
+      },
+      "prompt": {
+        "text": "render_table 要输出 Markdown 表格；所有单元格转字符串；None 要渲染为空单元格。读 tests/test_table.py 和 table.py，修复后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "table.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "table.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_024",
+      "title": "Counter increment amount",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/metrics_counter",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_024"
+      },
+      "prompt": {
+        "text": "Counter.inc 不支持 amount。读 tests/test_metrics_counter.py 和 metrics.py，支持默认 1、自定义正数 amount，并拒绝负数，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "metrics.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "metrics.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_025",
+      "title": "Router path normalization",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/api_router",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_025"
+      },
+      "prompt": {
+        "text": "Router 没有归一化 trailing slash。读 tests/test_router.py 和 router.py，让 add/get 对 /users 和 /users/ 一致，根路径保持 /，并运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 24,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "router.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "router.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_026",
+      "title": "Order service coupon and inventory pipeline",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/order_service_pipeline",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_026"
+      },
+      "prompt": {
+        "text": "订单服务跨 catalog、discounts、checkout 三个文件。读 tests/test_checkout.py 和 src/*.py，修复结账流程：应用 coupon、扣库存、库存不足时报错，并运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 32,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "src/checkout.py",
+            "src/discounts.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "src/checkout.py",
+            "src/discounts.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_027",
+      "title": "Markdown frontmatter renderer",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/frontmatter_renderer",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_027"
+      },
+      "prompt": {
+        "text": "parse_document 要解析 YAML-like frontmatter，title 为字符串，tags 按逗号切分并去掉空 tag；render_summary 有 frontmatter 时输出 title 和 tags，没有 frontmatter 时返回正文第一行。读 tests/test_renderer.py、parser.py、renderer.py，修复后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 32,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "parser.py",
+            "renderer.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "parser.py",
+            "renderer.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_028",
+      "title": "Permission audit with redaction",
+      "suite": "picobench-core",
+      "category": "security_fix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/permission_audit",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_028"
+      },
+      "prompt": {
+        "text": "权限和审计需要修复：admin 可 delete，maintainer 可 read/write，viewer 不可 write，未知角色没有权限；audit_line 必须隐藏非空 token，空 token 不输出 [REDACTED]。读 tests/test_permissions.py 和实现文件，修复后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 32,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "permissions.py",
+            "audit.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "permissions.py",
+            "audit.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_029",
+      "title": "Config file env and CLI precedence",
+      "suite": "picobench-core",
+      "category": "configuration",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/config_cli_merge",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_029"
+      },
+      "prompt": {
+        "text": "配置加载涉及 config.py 和 cli.py。读 tests/test_cli.py，实现 file < env < CLI 的 timeout precedence，并保持 parse_args 可测试。运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 32,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "config.py",
+            "cli.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "config.py",
+            "cli.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_030",
+      "title": "Task graph scheduler",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/task_graph_scheduler",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_030"
+      },
+      "prompt": {
+        "text": "TaskGraph scheduler 要做稳定拓扑排序；依赖在前；只出现在 depends_on 里的隐式节点也要进入结果；有环要抛 ValueError。读 tests/test_scheduler.py、graph.py、scheduler.py，修复后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 32,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "graph.py",
+            "scheduler.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "graph.py",
+            "scheduler.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_031",
+      "title": "Config defaults and CLI overrides",
+      "suite": "picobench-core",
+      "category": "configuration",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/config_defaults_cli",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_031"
+      },
+      "prompt": {
+        "text": "配置默认值和 CLI override 分散在 config.py 和 cli.py。先读 tests/test_cli_config.py、config.py 和 cli.py，修复默认 retries 丢失以及 CLI 覆盖逻辑，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 32,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "config.py",
+            "cli.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "config.py",
+            "cli.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "pico-inspired-synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_032",
+      "title": "Report manifest status fields",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/report_manifest",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_032"
+      },
+      "prompt": {
+        "text": "build_manifest 要包含 schema_version、report、status、summary；任一 check 失败或 check 列表为空时 status 为 failed；summary 用 x/y checks passed。读 tests/test_manifest.py 和 manifest.py，修复后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 32,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "report.py",
+            "manifest.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "report.py",
+            "manifest.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "pico-inspired-synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_033",
+      "title": "Nested secret redaction",
+      "suite": "picobench-core",
+      "category": "security_fix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/nested_secret_redaction",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_033"
+      },
+      "prompt": {
+        "text": "redact_payload 现在只处理顶层字段，会漏掉 nested dict/list 里的 token/password/api_key。读 tests/test_redact.py 和 redact.py，修复为递归脱敏且不修改输入对象，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "redact.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "redact.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_034",
+      "title": "Tests-only parser repair",
+      "suite": "picobench-core",
+      "category": "test_repair",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/tests_only_repair",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_034"
+      },
+      "prompt": {
+        "text": "这个任务只允许改测试。parser.py 的 parse_pair 行为是正确的，当前 public test 期望错了。读 parser.py 和 tests/test_parser.py，修复测试期望并运行 python -m pytest tests -q。不要改 parser.py。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 20,
+        "timeout_sec": 300
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "quality": {
+        "initial_hidden": "pass",
+        "rationale": "tests-only repair task; hidden tests check parser behavior and should pass before modifying public tests"
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "tests/test_parser.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            "parser.py",
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "tests/test_parser.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      }
+    },
+    {
+      "task_id": "core_035",
+      "title": "Parser renderer refactor invariant",
+      "suite": "picobench-core",
+      "category": "refactor",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/refactor_invariant",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_035"
+      },
+      "prompt": {
+        "text": "parse_items 和 render_items 的职责需要整理，但外部 API 不能变。读 tests/test_renderer.py、parser.py、renderer.py，去掉空项、trim 值，并保持 renderer 输出稳定，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "parser.py",
+            "renderer.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "parser.py",
+            "renderer.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_036",
+      "title": "Checkpoint resume state preservation",
+      "suite": "picobench-core",
+      "category": "resume",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/checkpoint_resume",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_036"
+      },
+      "prompt": {
+        "text": "resume_state 覆盖 step 时必须保留 checkpoint 里的已有字段。读 tests/test_resume.py、checkpoint.py 和 resume.py，修复恢复逻辑，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "checkpoint.py",
+            "resume.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "checkpoint.py",
+            "resume.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "pico-inspired-synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_037",
+      "title": "Trace report consistency summary",
+      "suite": "picobench-core",
+      "category": "evidence",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/trace_report_consistency",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_037"
+      },
+      "prompt": {
+        "text": "report.py 没有把 trace summary 写进报告，failed event 也没有进入状态判断。读 tests/test_report.py、trace.py 和 report.py，修复 summary/status 一致性，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "trace.py",
+            "report.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "trace.py",
+            "report.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "pico-inspired-synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_038",
+      "title": "Sandbox path policy normalization",
+      "suite": "picobench-core",
+      "category": "sandbox",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/sandbox_path_policy",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_038"
+      },
+      "prompt": {
+        "text": "沙箱路径策略要规范化路径：相对路径在 root 内允许，.. 越界拒绝，a/../b.txt 这类 dot segment 要用纯路径规范化解析成 root/b.txt；不要用 resolve/realpath 把 /tmp 解析成 /private/tmp。读 tests/test_policy.py、paths.py、policy.py，修复后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "paths.py",
+            "policy.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "paths.py",
+            "policy.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_039",
+      "title": "Provider config fallback",
+      "suite": "picobench-core",
+      "category": "provider",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/provider_config_fallback",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_039"
+      },
+      "prompt": {
+        "text": "provider_config 需要在 provider-specific model 缺失时回退到 PICO_DEFAULT_MODEL，同时保留 provider-specific API key。读 tests/test_providers.py、config.py 和 providers.py，修复 fallback，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "config.py",
+            "providers.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "config.py",
+            "providers.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "pico-inspired-synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_040",
+      "title": "Evidence bundle includes task state",
+      "suite": "picobench-core",
+      "category": "evidence",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/evidence_bundle_copy",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_040"
+      },
+      "prompt": {
+        "text": "copy_bundle 现在只复制 report 和 trace，导致 task_state 缺失。读 tests/test_evidence.py、evidence.py 和 manifest.py，确保 REQUIRED 里的文件都会复制并写入 manifest，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "evidence.py",
+            "manifest.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "evidence.py",
+            "manifest.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "pico-inspired-synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "high"
+      }
+    },
+    {
+      "task_id": "core_041",
+      "title": "令牌预算解析器处理非法值",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/token_budget_parser",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_041"
+      },
+      "prompt": {
+        "text": "修复 budget.py 的 parse_budget：支持 k 后缀，例如 8k -> 8000；字符串 none 和 None 返回 None；0 返回 0；负数必须抛出 ValueError；其他无法解析的值返回 None。读 tests/test_public.py 和 budget.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "budget.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "budget.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_042",
+      "title": "工具结果预算保留头部并标记大输出",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/tool_result_budget",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_042"
+      },
+      "prompt": {
+        "text": "修复 tool_result.py 的 render_tool_result：输出不超过 limit 时原样 inline 且 artifact_required 为 False；超过 limit 时保留头部 limit 个字符并把 artifact_required 设为 True；limit=0 时非空文本 inline 为空且需要 artifact。读 tests/test_public.py 和 tool_result.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "tool_result.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "tool_result.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_043",
+      "title": "审批台账按工具和决策汇总",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/approval_ledger",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_043"
+      },
+      "prompt": {
+        "text": "修复 approvals.py 的 ApprovalLedger.summary：按工具名统计 allow/deny 次数；空工具名记录必须忽略；不要把 reason 混入计数键。读 tests/test_public.py 和 approvals.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "approvals.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "approvals.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_044",
+      "title": "工作进程生命周期阻止非法状态转换",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/worker_lifecycle",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_044"
+      },
+      "prompt": {
+        "text": "修复 worker_state.py 的 WorkerState.transition：只允许 queued、running、completed、failed；completed/failed 是终态，进入终态后不能再转换；未知状态必须抛出 ValueError。读 tests/test_public.py 和 worker_state.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "worker_state.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "worker_state.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_045",
+      "title": "运行清单更新保留身份字段并深度合并路径",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/run_manifest_merger",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_045"
+      },
+      "prompt": {
+        "text": "修复 manifest_merge.py 的 merge_manifest_update：status/stop_reason 可以更新，但 run_id/task_id/provider 等身份字段不能丢；paths 等嵌套 dict 要深度合并，不能覆盖已有条目。读 tests/test_public.py 和 manifest_merge.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "manifest_merge.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "manifest_merge.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_046",
+      "title": "追踪跨度校验父节点顺序",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/trace_span_validator",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_046"
+      },
+      "prompt": {
+        "text": "修复 spans.py 的 validate_spans：每个 span_id 必须唯一；子 span 的 parent_span_id 必须引用已经出现过的父 span；根节点 parent_span_id 可以为空；合法根子链返回 True。读 tests/test_public.py 和 spans.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "spans.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "spans.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_047",
+      "title": "沙箱网络策略解析器规范化模式",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/sandbox_policy_parser",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_047"
+      },
+      "prompt": {
+        "text": "修复 sandbox_policy.py 的 parse_network_policy：off/deny/none 都表示无网络；allow: host1, host2 表示 allow 模式并规范化 host 小写与空白；空值默认 none。读 tests/test_public.py 和 sandbox_policy.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "sandbox_policy.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "sandbox_policy.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_048",
+      "title": "记忆来源过滤未验证记录",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/memory_provenance",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_048"
+      },
+      "prompt": {
+        "text": "修复 memory_select.py 的 select_memory_notes：只返回可信 note；source=model 未验证记录要过滤；source=tool 必须 verified=True 才保留；保留输入顺序；缺少 text 的记录要跳过。读 tests/test_public.py 和 memory_select.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "memory_select.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "memory_select.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_049",
+      "title": "仓库规则编译器提取禁止写入路径",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/repo_rule_compiler",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_049"
+      },
+      "prompt": {
+        "text": "修复 rules.py 的 compile_repo_rules：从 - deny_write: path 行提取路径；忽略注释、空行和 allow 规则；路径要 trim 空白。读 tests/test_public.py 和 rules.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "rules.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "rules.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_050",
+      "title": "证据包校验器要求关键运行文件",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/evidence_bundle_verifier",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_050"
+      },
+      "prompt": {
+        "text": "修复 bundle.py 的 verify_bundle：证据包必须包含 summary.json、run_manifest.json、provider_config_redacted.json、trace.jsonl、report.json、task_state.json；缺任何一个都返回 False。读 tests/test_public.py 和 bundle.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "bundle.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "bundle.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_051",
+      "title": "成本计量器汇总令牌数和费用",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/cost_meter",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_051"
+      },
+      "prompt": {
+        "text": "修复 costs.py 的 meter_cost：汇总 input/output tokens；按费率计算成本；缺失字段按 0 处理。读 tests/test_public.py 和 costs.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "costs.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "costs.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_052",
+      "title": "失败分类器区分模型服务和证据失败",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/failure_taxonomy",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_052"
+      },
+      "prompt": {
+        "text": "修复 taxonomy.py 的 classify_failure：认证/限流属于 provider；trace/report/evidence 不一致属于 evidence；超时文本属于 timeout；其他失败保留为 unknown。读 tests/test_public.py 和 taxonomy.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "taxonomy.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "taxonomy.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_053",
+      "title": "交接摘要保留约束和变更路径",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/handoff_summary",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_053"
+      },
+      "prompt": {
+        "text": "修复 handoff.py 的 build_handoff：摘要必须保留 constraints、changed_paths 和 next_steps；缺失字段用空列表；路径顺序稳定。读 tests/test_public.py 和 handoff.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "handoff.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "handoff.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_054",
+      "title": "重放命令隐藏环境变量密钥",
+      "suite": "picobench-core",
+      "category": "security_fix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/replay_command",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_054"
+      },
+      "prompt": {
+        "text": "修复 replay.py 的 replay_command：命令中的 API key/token/secret 值必须替换为 <redacted>；普通环境变量要以 KEY=value 形式保留；普通参数保持不变。读 tests/test_public.py 和 replay.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "replay.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "replay.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_055",
+      "title": "提示片段注册表按优先级和生命周期排序",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/section_registry",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_055"
+      },
+      "prompt": {
+        "text": "修复 sections.py 的 render_sections：过滤 expired=True 的 section；剩余 section 按 priority 从小到大输出 name；同优先级保持稳定顺序。读 tests/test_public.py 和 sections.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "sections.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "sections.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_056",
+      "title": "工具结构差异检测被删除字段",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/tool_schema_diff",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_056"
+      },
+      "prompt": {
+        "text": "修复 schema_diff.py 的 diff_schema：检测 removed/added/changed 字段；返回的字段名列表必须按字母序稳定排序；嵌套 properties 也要比较。读 tests/test_public.py 和 schema_diff.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "schema_diff.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "schema_diff.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_057",
+      "title": "任务阶段门阻止编辑阶段直接完成",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/task_phase_gate",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_057"
+      },
+      "prompt": {
+        "text": "修复 phase_gate.py 的 can_finish：edit 阶段未 verified 不能 finish；verified 后可 finish；final 阶段有 blocked_reason 时可结束；其他阶段按测试规格处理。读 tests/test_public.py 和 phase_gate.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "phase_gate.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "phase_gate.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_058",
+      "title": "重试预算按错误码分别计数",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/retry_budget",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_058"
+      },
+      "prompt": {
+        "text": "修复 retry_budget.py 的 RetryBudget：每个错误码单独计数；同一错误码超过 limit 后返回 False；不同错误码互不影响。读 tests/test_public.py 和 retry_budget.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "retry_budget.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "retry_budget.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_059",
+      "title": "产物清单规范化相对路径",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/artifact_manifest",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_059"
+      },
+      "prompt": {
+        "text": "修复 artifacts.py 的 normalize_artifacts：去掉 ./ 前缀，拒绝绝对路径和 .. 路径，输出稳定排序且去重的相对路径。读 tests/test_public.py 和 artifacts.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "artifacts.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "artifacts.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_060",
+      "title": "评测矩阵展开模型服务和任务组合",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/benchmark_matrix",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_060"
+      },
+      "prompt": {
+        "text": "修复 matrix.py 的 expand_matrix：把 providers 与 tasks 展开成稳定的笛卡尔积，保留 provider/task 字段；providers 为空时使用 default，tasks 为空时返回空列表。读 tests/test_public.py 和 matrix.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "matrix.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "matrix.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_061",
+      "title": "策略规范化助手用例 61",
+      "suite": "picobench-core",
+      "category": "configuration",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_61",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_061"
+      },
+      "prompt": {
+        "text": "修复 policy_61.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_61.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_61.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_61.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_062",
+      "title": "策略规范化助手用例 62",
+      "suite": "picobench-core",
+      "category": "evidence",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_62",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_062"
+      },
+      "prompt": {
+        "text": "修复 policy_62.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_62.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_62.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_62.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_063",
+      "title": "策略规范化助手用例 63",
+      "suite": "picobench-core",
+      "category": "tool_policy",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_63",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_063"
+      },
+      "prompt": {
+        "text": "修复 policy_63.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_63.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_63.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_63.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_064",
+      "title": "策略规范化助手用例 64",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_64",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_064"
+      },
+      "prompt": {
+        "text": "修复 policy_64.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_64.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_64.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_64.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_065",
+      "title": "策略规范化助手用例 65",
+      "suite": "picobench-core",
+      "category": "configuration",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_65",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_065"
+      },
+      "prompt": {
+        "text": "修复 policy_65.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_65.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_65.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_65.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_066",
+      "title": "策略规范化助手用例 66",
+      "suite": "picobench-core",
+      "category": "evidence",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_66",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_066"
+      },
+      "prompt": {
+        "text": "修复 policy_66.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_66.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_66.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_66.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_067",
+      "title": "策略规范化助手用例 67",
+      "suite": "picobench-core",
+      "category": "tool_policy",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_67",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_067"
+      },
+      "prompt": {
+        "text": "修复 policy_67.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_67.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_67.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_67.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_068",
+      "title": "策略规范化助手用例 68",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_68",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_068"
+      },
+      "prompt": {
+        "text": "修复 policy_68.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_68.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_68.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_68.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_069",
+      "title": "策略规范化助手用例 69",
+      "suite": "picobench-core",
+      "category": "configuration",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_69",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_069"
+      },
+      "prompt": {
+        "text": "修复 policy_69.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_69.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_69.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_69.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_070",
+      "title": "策略规范化助手用例 70",
+      "suite": "picobench-core",
+      "category": "evidence",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_70",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_070"
+      },
+      "prompt": {
+        "text": "修复 policy_70.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_70.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_70.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_70.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_071",
+      "title": "策略规范化助手用例 71",
+      "suite": "picobench-core",
+      "category": "tool_policy",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_71",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_071"
+      },
+      "prompt": {
+        "text": "修复 policy_71.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_71.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_71.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_71.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_072",
+      "title": "策略规范化助手用例 72",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_72",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_072"
+      },
+      "prompt": {
+        "text": "修复 policy_72.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_72.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_72.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_72.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_073",
+      "title": "策略规范化助手用例 73",
+      "suite": "picobench-core",
+      "category": "configuration",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_73",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_073"
+      },
+      "prompt": {
+        "text": "修复 policy_73.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_73.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_73.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_73.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_074",
+      "title": "策略规范化助手用例 74",
+      "suite": "picobench-core",
+      "category": "evidence",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_74",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_074"
+      },
+      "prompt": {
+        "text": "修复 policy_74.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_74.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_74.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_74.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_075",
+      "title": "策略规范化助手用例 75",
+      "suite": "picobench-core",
+      "category": "tool_policy",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_75",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_075"
+      },
+      "prompt": {
+        "text": "修复 policy_75.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_75.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_75.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_75.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_076",
+      "title": "策略规范化助手用例 76",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_76",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_076"
+      },
+      "prompt": {
+        "text": "修复 policy_76.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_76.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_76.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_76.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_077",
+      "title": "策略规范化助手用例 77",
+      "suite": "picobench-core",
+      "category": "configuration",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_77",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_077"
+      },
+      "prompt": {
+        "text": "修复 policy_77.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_77.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_77.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_77.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_078",
+      "title": "策略规范化助手用例 78",
+      "suite": "picobench-core",
+      "category": "evidence",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_78",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_078"
+      },
+      "prompt": {
+        "text": "修复 policy_78.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_78.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_78.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_78.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_079",
+      "title": "策略规范化助手用例 79",
+      "suite": "picobench-core",
+      "category": "tool_policy",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_79",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_079"
+      },
+      "prompt": {
+        "text": "修复 policy_79.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_79.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_79.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_79.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_080",
+      "title": "策略规范化助手用例 80",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/policy_case_80",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_080"
+      },
+      "prompt": {
+        "text": "修复 policy_80.py 的 normalize：None 变为空字符串；普通输入先转字符串、去首尾空白、转小写；list/dict 必须抛出 TypeError。读 tests/test_public.py 和 policy_80.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 28,
+        "timeout_sec": 360
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "policy_80.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "policy_80.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_081",
+      "title": "上下文预算分配器保留必需片段",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/context_budget_allocator",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_081"
+      },
+      "prompt": {
+        "text": "修复 context_budget.py 的 allocate_sections：输入 sections 包含 name、tokens、priority、required；必须先保留 required 片段，再按 priority 从高到低加入可选片段，不能超过 budget，返回 section name 列表。读 tests/test_public.py 和 context_budget.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "context_budget.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "context_budget.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_082",
+      "title": "提示缓存键忽略易变运行字段",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/prompt_cache_key",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_082"
+      },
+      "prompt": {
+        "text": "修复 prompt_cache.py 的 build_cache_key：缓存键要由模型名和 section name/content 决定；忽略 created_at、run_id 等易变字段；section 顺序变化不能影响结果。读 tests/test_public.py 和 prompt_cache.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "prompt_cache.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "prompt_cache.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_083",
+      "title": "密钥环境变量检测器识别敏感名称",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/secret_env_detector",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_083"
+      },
+      "prompt": {
+        "text": "修复 secrets.py 的 secret_env_names：从 env dict 中返回敏感变量名，名称包含 KEY、TOKEN、SECRET、PASSWORD 即视为敏感；大小写不敏感；值为空的变量忽略；返回排序后的变量名列表。读 tests/test_public.py 和 secrets.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "secrets.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "secrets.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_084",
+      "title": "命令风险分类器识别破坏性 shell",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/command_risk_classifier",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_084"
+      },
+      "prompt": {
+        "text": "修复 risk.py 的 classify_command：只读命令如 ls/cat/pytest 为 low；写文件、rm、chmod、curl pipe shell 等为 high；空命令为 low；匹配时要按 shell token 而不是简单子串。读 tests/test_public.py 和 risk.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "risk.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "risk.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_085",
+      "title": "写入范围匹配器阻止越界路径",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/write_scope_matcher",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_085"
+      },
+      "prompt": {
+        "text": "修复 scope.py 的 allowed_write：scope 是允许写入的相对路径前缀列表；路径必须规范化，禁止绝对路径和 .. 越界；命中某个 scope 本身或其子路径才允许。读 tests/test_public.py 和 scope.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "scope.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "scope.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_086",
+      "title": "追踪摘要统计工具和终止原因",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/trace_summary_builder",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_086"
+      },
+      "prompt": {
+        "text": "修复 trace_summary.py 的 summarize_trace：从 event 列表统计 tool_executed 的工具名次数、最后一个 run_finished 的 status/stop_reason、以及 error_code 非空次数；返回字段名必须包含 tool_name_counts、status、stop_reason、error_count。读 tests/test_public.py 和 trace_summary.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "trace_summary.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "trace_summary.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_087",
+      "title": "模型服务配置脱敏器保留审计字段",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/provider_config_redactor",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_087"
+      },
+      "prompt": {
+        "text": "修复 redactor.py 的 redact_provider_config：输出 provider、protocol、model、base_url_host、has_api_key；不能输出 api_key 原文；base_url_host 使用 URL netloc，存在端口时要保留 host:port。读 tests/test_public.py 和 redactor.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "redactor.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "redactor.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_088",
+      "title": "输出截断策略生成产物提示",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/output_truncation_policy",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_088"
+      },
+      "prompt": {
+        "text": "修复 truncation.py 的 truncate_output：短输出原样返回；长输出保留头尾，中间插入包含 omitted 字符数的提示；返回 dict 包含 text、truncated、omitted_chars。读 tests/test_public.py 和 truncation.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "truncation.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "truncation.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_089",
+      "title": "检查点选择器返回最新有效检查点",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/checkpoint_selector",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_089"
+      },
+      "prompt": {
+        "text": "修复 checkpoint.py 的 latest_checkpoint：从 checkpoint 列表中返回 created_at 最大且 status 为 valid 的 checkpoint_id；没有有效检查点返回 None。读 tests/test_public.py 和 checkpoint.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "checkpoint.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "checkpoint.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_090",
+      "title": "会话事件过滤器按运行和事件名筛选",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/session_event_filter",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_090"
+      },
+      "prompt": {
+        "text": "修复 session_events.py 的 filter_events：按 run_id 和 event 名筛选 session events；None 表示不过滤该字段；保持原始顺序。读 tests/test_public.py 和 session_events.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "session_events.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "session_events.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_091",
+      "title": "依赖图排序器按依赖关系输出任务",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/dependency_graph_sorter",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_091"
+      },
+      "prompt": {
+        "text": "修复 dep_graph.py 的 topo_sort：输入 dict 表示 task -> dependencies；输出依赖在前的稳定拓扑序；遇到环抛出 ValueError。读 tests/test_public.py 和 dep_graph.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "dep_graph.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "dep_graph.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_092",
+      "title": "评测检查聚合器分类失败原因",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/eval_check_aggregator",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_092"
+      },
+      "prompt": {
+        "text": "修复 checks.py 的 aggregate_checks：所有 check passed 才 strict_pass；failure_category 取第一个失败 check 的 failure_category，缺失时为 unknown；同时返回 passed/failed 计数。读 tests/test_public.py 和 checks.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "checks.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "checks.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_093",
+      "title": "失败报告渲染器列出未通过检查",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/failure_report_renderer",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_093"
+      },
+      "prompt": {
+        "text": "修复 failure_report.py 的 render_failure_report：生成 markdown 字符串，包含 task_id、failure_category，以及每个未通过 check 的 name/message；通过的 check 不需要列出。读 tests/test_public.py 和 failure_report.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "failure_report.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "failure_report.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_094",
+      "title": "恢复链路校验器检查父运行关系",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/resume_lineage_verifier",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_094"
+      },
+      "prompt": {
+        "text": "修复 lineage.py 的 verify_resume_lineage：resumed run 的 parent_run_id 必须等于 previous run_id；session_id 必须一致；checkpoint_id 必须存在于 previous checkpoints。读 tests/test_public.py 和 lineage.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "lineage.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "lineage.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_095",
+      "title": "工作进程交接校验器要求证据字段",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/worker_handoff_validator",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_095"
+      },
+      "prompt": {
+        "text": "修复 handoff_check.py 的 validate_handoff：handoff 必须包含 intent、changed_paths、tests_run、evidence_paths、open_risks；changed_paths/tests_run/evidence_paths 必须是列表；缺字段返回 False。读 tests/test_public.py 和 handoff_check.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "handoff_check.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "handoff_check.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_096",
+      "title": "沙箱路径清理器拒绝危险路径",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/sandbox_path_sanitizer",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_096"
+      },
+      "prompt": {
+        "text": "修复 sandbox_paths.py 的 sanitize_path：返回规范化相对路径；拒绝绝对路径、空路径、包含 .. 的路径、以及 home 展开路径。读 tests/test_public.py 和 sandbox_paths.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "sandbox_paths.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "sandbox_paths.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_097",
+      "title": "工具调用去重器保留第一次调用",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/tool_call_deduplicator",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_097"
+      },
+      "prompt": {
+        "text": "修复 dedupe.py 的 dedupe_tool_calls：按 name 和 args 去重，保留第一次出现的调用；args 字典顺序不同也视为同一次调用；保持输出顺序。读 tests/test_public.py 和 dedupe.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "dedupe.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "dedupe.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_098",
+      "title": "记忆过期过滤器按文件指纹失效",
+      "suite": "picobench-core",
+      "category": "bugfix",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/memory_staleness_filter",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_098"
+      },
+      "prompt": {
+        "text": "修复 stale_memory.py 的 filter_fresh_memories：memory 记录包含 path 和 fingerprint；只有当前 fingerprints 中同一路径的 fingerprint 相同才保留；没有 path 的全局记忆保留。读 tests/test_public.py 和 stale_memory.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "stale_memory.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "stale_memory.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_099",
+      "title": "审批策略解析器合并工具风险和用户模式",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/approval_policy_resolver",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_099"
+      },
+      "prompt": {
+        "text": "修复 approval_policy.py 的 should_request_approval：policy 为 never 时永不请求；ask 时 high risk 请求、low risk 不请求；auto 时 destructive=True 的操作仍请求。读 tests/test_public.py 和 approval_policy.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "approval_policy.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "approval_policy.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    },
+    {
+      "task_id": "core_100",
+      "title": "运行产物定位器解析相对证据路径",
+      "suite": "picobench-core",
+      "category": "feature",
+      "repo": {
+        "fixture": "tests/fixtures/picobench/run_artifact_locator",
+        "hidden_fixture": "tests/fixtures/picobench_hidden/core_100"
+      },
+      "prompt": {
+        "text": "修复 artifact_locator.py 的 locate_artifacts：manifest 的 evidence_paths 是相对 output_dir 的路径；返回绝对路径字符串列表；拒绝绝对 evidence path 和 .. 越界路径。读 tests/test_public.py 和 artifact_locator.py，修复实现，然后运行 python -m pytest tests -q。"
+      },
+      "execution": {
+        "driver": "one_shot_cli",
+        "approval": "auto",
+        "sandbox": "best_effort",
+        "max_steps": 30,
+        "timeout_sec": 420
+      },
+      "tests": {
+        "public": [
+          "python -m pytest tests -q"
+        ],
+        "hidden": [
+          "python -m pytest hidden_tests -q"
+        ]
+      },
+      "verifiers": [
+        {
+          "type": "evidence"
+        },
+        {
+          "type": "changed_paths",
+          "any": [
+            "artifact_locator.py"
+          ]
+        },
+        {
+          "type": "forbidden_paths",
+          "paths": [
+            ".env"
+          ]
+        },
+        {
+          "type": "required_tool_sequence",
+          "sequence": [
+            "read_file",
+            "run_shell"
+          ]
+        },
+        {
+          "type": "must_run_tests"
+        },
+        {
+          "type": "must_read_before_write"
+        }
+      ],
+      "expected": {
+        "changed_paths": {
+          "any": [
+            "artifact_locator.py"
+          ]
+        },
+        "stop_reason": "final_answer_returned"
+      },
+      "metadata": {
+        "source": "synthetic",
+        "contamination_risk": "low",
+        "issue_clarity": "clear",
+        "test_coverage": "medium"
+      },
+      "quality": {
+        "initial_public": "fail",
+        "initial_hidden": "fail"
+      }
+    }
+  ]
+}

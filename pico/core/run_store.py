@@ -32,6 +32,9 @@ class RunStore:
     def report_path(self, run_id):
         return self.run_dir(run_id) / "report.json"
 
+    def run_manifest_path(self, run_id):
+        return self.run_dir(run_id) / "run_manifest.json"
+
     def artifacts_dir(self, run_id):
         return self.run_dir(run_id) / "artifacts"
 
@@ -71,6 +74,12 @@ class RunStore:
         path = self.report_path(task_state)
         path.parent.mkdir(parents=True, exist_ok=True)
         self._write_json_atomic(path, report)
+        return path
+
+    def write_run_manifest(self, task_state, manifest):
+        path = self.run_manifest_path(task_state)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._write_json_atomic(path, manifest)
         return path
 
     def load_task_state(self, task_id):

@@ -67,6 +67,7 @@ def finish_model_error(engine, task_state, user_message, prompt_metadata, exc, d
         },
     )
     agent.run_store.write_report(task_state, agent.redact_artifact(agent.build_report(task_state)))
+    agent.write_run_manifest(task_state)
     agent.current_turn_id = ""
     agent.current_run_id = ""
     yield {"type": "stop", "run_id": task_state.run_id, "content": final}
