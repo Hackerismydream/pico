@@ -11,6 +11,7 @@ import os
 import shutil
 import sys
 import textwrap
+from pathlib import Path
 from urllib.parse import urlparse
 
 from .commands.slash import command_help_text, parse_subagent_args, resolve_command
@@ -22,11 +23,12 @@ from .config import (
     resolve_project_sandbox_config,
     resolve_provider_config,
 )
+from .features import memory as memorylib
 from .features import skills as skillslib
 from .features.skills_runtime import invoke_skill
 from .providers import AnthropicCompatibleModelClient, OpenAICompatibleModelClient
 from .core.runtime import Pico, SessionStore
-from .core.workspace import WorkspaceContext, middle
+from .core.workspace import WorkspaceContext, middle, now
 
 DEFAULT_SECRET_ENV_NAMES = (
     "PICO_API_KEY",
@@ -175,7 +177,10 @@ def build_agent(args):
     """
     # 这里是 CLI 到 runtime 的装配点：
     # 先采集工作区快照，再整理 secret 名单、模型后端和 session。
-    workspace = WorkspaceContext.build(args.cwd)
+    workspace = WorkspaceContext.build(
+        args.cwd,
+        repo_root_override=getattr(args, "repo_root", None),
+    )
     store = SessionStore(workspace.repo_root + "/.pico/sessions")
     provider_config = resolve_provider_config(
         getattr(args, "provider", None),
@@ -201,14 +206,23 @@ def build_agent(args):
     )
     load_project_env(workspace.repo_root, override=False)
     configured_secret_names = _configured_secret_names(args)
-    session_id = args.resume
+    session_id = getattr(args, "resume", None)
+    fixed_session_id = getattr(args, "session_id", None)
     if session_id == "latest":
         session_id = store.latest()
     memory_dir = getattr(args, "memory_dir", None)
     auto_dream = not getattr(args, "no_auto_dream", False)
     dream_interval = getattr(args, "dream_interval", 24.0)
     dream_min_sessions = getattr(args, "dream_min_sessions", 5)
-    ask_user_callback = None if getattr(args, "prompt", None) else _cli_ask_user
+    ask_user_callback = (
+        None
+        if (
+            getattr(args, "prompt", None)
+            or getattr(args, "prompt_file", None)
+            or getattr(args, "non_interactive", False)
+        )
+        else _cli_ask_user
+    )
     if session_id:
         return Pico.from_session(
             model_client=model,
@@ -227,10 +241,24 @@ def build_agent(args):
             sandbox_config=sandbox_config,
             ask_user_callback=ask_user_callback,
         )
+    session = None
+    if fixed_session_id:
+        session_path = store.path(fixed_session_id)
+        if session_path.exists():
+            session = store.load(fixed_session_id)
+        else:
+            session = {
+                "id": fixed_session_id,
+                "created_at": now(),
+                "workspace_root": workspace.repo_root,
+                "history": [],
+                "memory": memorylib.default_memory_state(),
+            }
     return Pico(
         model_client=model,
         workspace=workspace,
         session_store=store,
+        session=session,
         approval_policy=args.approval,
         max_steps=args.max_steps,
         max_new_tokens=args.max_new_tokens,
@@ -252,6 +280,11 @@ def build_arg_parser():
     )
     parser.add_argument("prompt", nargs="*", help="Optional one-shot prompt.")
     parser.add_argument("--cwd", default=".", help="Workspace directory.")
+    parser.add_argument(
+        "--repo-root",
+        default=None,
+        help="Override the repository root used for Pico state and relative paths.",
+    )
     parser.add_argument(
         "--config", default=None, help="Path to a Pico TOML config file."
     )
@@ -283,6 +316,21 @@ def build_arg_parser():
     )
     parser.add_argument(
         "--resume", default=None, help="Session id to resume or 'latest'."
+    )
+    parser.add_argument(
+        "--prompt-file",
+        default=None,
+        help="Read a one-shot prompt from a UTF-8 text file.",
+    )
+    parser.add_argument(
+        "--session-id",
+        default=None,
+        help="Create or resume a fixed session id.",
+    )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Disable prompts that wait for stdin.",
     )
     parser.add_argument(
         "--memory-dir",
@@ -595,7 +643,7 @@ def _drain_idle_worker_notifications(agent):
 
 
 def interaction_mode(args):
-    if args.prompt:
+    if args.prompt or getattr(args, "prompt_file", None):
         return "one_shot"
     if getattr(args, "repl", False):
         return "repl"
@@ -604,8 +652,28 @@ def interaction_mode(args):
     return "repl"
 
 
+def validate_args(args):
+    if getattr(args, "prompt_file", None) and getattr(args, "prompt", None):
+        return "--prompt-file cannot be combined with positional prompt"
+    if getattr(args, "session_id", None) and getattr(args, "resume", None):
+        return "--session-id cannot be combined with --resume"
+    if getattr(args, "non_interactive", False) and args.approval == "ask":
+        return "--non-interactive requires --approval auto or --approval never"
+    return ""
+
+
+def _one_shot_prompt(args):
+    if getattr(args, "prompt_file", None):
+        return Path(args.prompt_file).read_text(encoding="utf-8")
+    return " ".join(args.prompt).strip()
+
+
 def main(argv=None):
     args = build_arg_parser().parse_args(argv)
+    validation_error = validate_args(args)
+    if validation_error:
+        print(validation_error, file=sys.stderr)
+        return 2
     try:
         agent = build_agent(args)
     except ValueError as exc:
@@ -631,7 +699,11 @@ def main(argv=None):
 
     if mode == "one_shot":
         # one-shot 模式：只跑一次 ask，不进入 REPL 循环。
-        prompt = " ".join(args.prompt).strip()
+        try:
+            prompt = _one_shot_prompt(args)
+        except OSError as exc:
+            print(f"could not read prompt file: {exc}", file=sys.stderr)
+            return 2
         if prompt:
             print()
             try:

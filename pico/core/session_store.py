@@ -86,4 +86,6 @@ def _safe_session_id(session_id):
     value = str(session_id or "").strip()
     if not value or value in {".", ".."} or "/" in value or "\\" in value:
         raise ValueError("invalid session id")
+    if any(ord(ch) < 32 for ch in value):
+        raise ValueError("invalid session id")
     return value
