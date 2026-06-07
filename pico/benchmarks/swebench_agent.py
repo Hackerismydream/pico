@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Callable
 
 from ..providers.base import complete_model
+from ..providers.errors import ProviderError
 from .swebench_docker import CommandResult
 
 
@@ -49,7 +50,7 @@ class SWEBenchAgent:
         for _ in range(self.max_steps):
             prompt = _render_transcript(transcript)
             try:
-                result = complete_model(self.model_client, prompt, self.max_new_tokens)
+                result = self._complete_with_retry(prompt)
             except Exception as exc:
                 trajectory.exit_status = "model_error"
                 trajectory.model_error = str(exc)
@@ -65,9 +66,20 @@ class SWEBenchAgent:
             }
             final = _extract_tag(text, "final")
             if final is not None:
-                trajectory.exit_status = "final"
+                diff = run_shell(FINAL_DIFF_COMMAND)
+                step["tool_call"] = {"name": "run_shell", "command": FINAL_DIFF_COMMAND}
+                step["tool_result"] = _command_result_dict(diff)
                 trajectory.steps.append(step)
-                break
+                if diff.returncode == 0 and diff.stdout:
+                    trajectory.exit_status = "final"
+                    trajectory.model_patch = diff.stdout
+                    trajectory.model_patch_chars = len(trajectory.model_patch)
+                    break
+                correction = "Final answer ignored because git diff is empty. Modify the repository, then finish."
+                step["parse_error"] = correction
+                transcript.append({"role": "assistant", "content": "<final>" + final + "</final>"})
+                transcript.append({"role": "user", "content": correction})
+                continue
             command = _extract_tool_command(text)
             if command is None:
                 correction = (
@@ -80,30 +92,43 @@ class SWEBenchAgent:
                 transcript.append({"role": "assistant", "content": text})
                 transcript.append({"role": "user", "content": correction})
                 continue
-            tool_result = run_shell(command)
+            tool_result = _guard_command(command) or run_shell(command)
             step["tool_call"] = {"name": "run_shell", "command": command}
             step["tool_result"] = _command_result_dict(tool_result)
             trajectory.steps.append(step)
-            transcript.append({"role": "assistant", "content": text})
+            transcript.append({"role": "assistant", "content": _format_tool_call(command)})
             transcript.append({"role": "user", "content": _format_command_result(tool_result)})
         else:
             trajectory.exit_status = "step_limit"
 
-        diff = run_shell(FINAL_DIFF_COMMAND)
-        trajectory.steps.append(
-            {
-                "model_output": "",
-                "metadata": {},
-                "parse_error": "",
-                "tool_call": {"name": "run_shell", "command": FINAL_DIFF_COMMAND},
-                "tool_result": _command_result_dict(diff),
-            }
-        )
-        trajectory.model_patch = diff.stdout if diff.returncode == 0 else ""
-        trajectory.model_patch_chars = len(trajectory.model_patch)
+        if not trajectory.model_patch:
+            diff = run_shell(FINAL_DIFF_COMMAND)
+            trajectory.steps.append(
+                {
+                    "model_output": "",
+                    "metadata": {},
+                    "parse_error": "",
+                    "tool_call": {"name": "run_shell", "command": FINAL_DIFF_COMMAND},
+                    "tool_result": _command_result_dict(diff),
+                }
+            )
+            trajectory.model_patch = diff.stdout if diff.returncode == 0 else ""
+            trajectory.model_patch_chars = len(trajectory.model_patch)
         if trajectory.model_patch and trajectory.exit_status in {"submitted", "final", "step_limit"}:
             trajectory.exit_status = "submitted"
         return trajectory
+
+    def _complete_with_retry(self, prompt: str):
+        attempts = 3
+        last_exc = None
+        for _ in range(attempts):
+            try:
+                return complete_model(self.model_client, prompt, self.max_new_tokens)
+            except ProviderError as exc:
+                last_exc = exc
+                if not exc.retryable:
+                    raise
+        raise last_exc
 
 
 def initial_prompt(instance: dict) -> str:
@@ -117,6 +142,7 @@ def initial_prompt(instance: dict) -> str:
             "<final>brief summary</final>",
             "Do not modify tests.",
             "Leave the final patch in git diff.",
+            "Avoid broad cat commands on source files; use grep -n, sed -n, or small Python scripts to inspect focused regions.",
             "",
             f"Instance: {instance.get('instance_id', '')}",
             "",
@@ -155,8 +181,33 @@ def _extract_tag(text: str, tag: str) -> str | None:
 def _format_command_result(result: CommandResult) -> str:
     return (
         f"run_shell returncode={result.returncode} timed_out={result.timed_out}\n"
-        f"stdout:\n{_clip(result.stdout)}\n\nstderr:\n{_clip(result.stderr)}"
+        f"stdout:\n{_clip(result.stdout, 4000)}\n\nstderr:\n{_clip(result.stderr, 2000)}"
     )
+
+
+def _format_tool_call(command: str) -> str:
+    return f'<tool name="run_shell"><command>{command}</command></tool>'
+
+
+def _guard_command(command: str) -> CommandResult | None:
+    stripped = command.strip()
+    parts = [part.strip() for part in stripped.replace(";", "&&").split("&&")]
+    cat_parts = [part for part in parts if part.startswith("cat ")]
+    if not cat_parts:
+        return None
+    target = cat_parts[-1].split()[-1]
+    if target.endswith((".py", ".pyi", ".rst", ".md", ".txt")):
+        return CommandResult(
+            command=command,
+            returncode=2,
+            stdout="",
+            stderr=(
+                "Broad cat commands are disabled in pico-swebench to keep model context bounded. "
+                "Use grep -n, sed -n with a small line range, or a focused Python script instead."
+            ),
+            timed_out=False,
+        )
+    return None
 
 
 def _command_result_dict(result: CommandResult) -> dict:

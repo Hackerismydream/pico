@@ -279,6 +279,20 @@ def _provider_failure(provider, model, base_url, code, message, request_metadata
     return error
 
 
+def _empty_response_failure(provider, model, base_url, request_metadata=None):
+    request_metadata = request_metadata or {}
+    return ProviderError(
+        f"{provider.capitalize()}-compatible error: could not extract text from response",
+        provider=provider,
+        model=model,
+        base_url=base_url,
+        code="empty_response",
+        retryable=True,
+        attempts=request_metadata.get("provider_attempts", 1),
+        retry_count=request_metadata.get("provider_retry_count", 0),
+    )
+
+
 class OpenAICompatibleModelClient:
     def __init__(self, model, base_url, api_key, temperature, timeout):
         self.model = model
@@ -530,13 +544,6 @@ class AnthropicCompatibleModelClient:
         if text:
             self.last_completion_metadata = dict(request_metadata)
             return text
-        error = _provider_failure(
-            "anthropic",
-            self.model,
-            self.base_url,
-            "empty_response",
-            "Anthropic-compatible error: could not extract text from response",
-            request_metadata,
-        )
+        error = _empty_response_failure("anthropic", self.model, self.base_url, request_metadata)
         self.last_completion_metadata = error.to_metadata()
         raise error

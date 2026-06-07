@@ -7,6 +7,7 @@ from pico import cli
 from pico.benchmarks import swebench
 from pico.benchmarks.swebench_agent import FINAL_DIFF_COMMAND, SWEBenchAgent, initial_prompt
 from pico.benchmarks.swebench_docker import CommandResult, resolve_image
+from pico.providers.errors import ProviderError
 from pico.testing import ScriptedModelClient
 
 
@@ -375,6 +376,63 @@ def test_swe_summarizer_preserves_zero_resolved(tmp_path):
     assert summary["resolved_rate"] == 0.0
 
 
+def test_swe_summarizer_uses_submitted_instances_for_eval_rate(tmp_path):
+    output = tmp_path / "out"
+    eval_report = tmp_path / "eval"
+    output.mkdir()
+    eval_report.mkdir()
+    (output / "summary.json").write_text(
+        json.dumps({"selected_instances": 1, "attempted_instances": 1, "non_empty_predictions": 1}),
+        encoding="utf-8",
+    )
+    (output / "preds.json").write_text(json.dumps({"demo__demo-1": {"model_patch": "diff"}}), encoding="utf-8")
+    (eval_report / "report.json").write_text(
+        json.dumps(
+            {
+                "total_instances": 300,
+                "submitted_instances": 1,
+                "completed_instances": 1,
+                "resolved_instances": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    module = load_script("scripts/summarize-swebench.py")
+
+    summary = module.summarize(output, eval_report)
+
+    assert summary["submitted_instances"] == 1
+    assert summary["completed_instances"] == 1
+    assert summary["resolved_instances"] == 1
+    assert summary["resolved_rate"] == 1.0
+
+
+def test_swe_summarizer_prefers_official_report_when_directory_has_summaries(tmp_path):
+    output = tmp_path / "out"
+    eval_report = tmp_path / "eval"
+    output.mkdir()
+    eval_report.mkdir()
+    (output / "summary.json").write_text(
+        json.dumps({"selected_instances": 1, "attempted_instances": 1, "non_empty_predictions": 1}),
+        encoding="utf-8",
+    )
+    (output / "preds.json").write_text(json.dumps({"demo__demo-1": {"model_patch": "diff"}}), encoding="utf-8")
+    (eval_report / "a-summary.json").write_text(
+        json.dumps({"resolved_instances": 1, "resolved_rate": None}),
+        encoding="utf-8",
+    )
+    (eval_report / "z-official-report.json").write_text(
+        json.dumps({"total_instances": 300, "submitted_instances": 1, "resolved_instances": 1}),
+        encoding="utf-8",
+    )
+    module = load_script("scripts/summarize-swebench.py")
+
+    summary = module.summarize(output, eval_report)
+
+    assert summary["submitted_instances"] == 1
+    assert summary["resolved_rate"] == 1.0
+
+
 def test_swe_agent_collects_final_diff():
     commands = []
 
@@ -399,4 +457,61 @@ def test_swe_agent_collects_final_diff():
     trajectory = agent.run({"instance_id": "demo__demo-1", "problem_statement": "Fix bug."}, run_shell)
 
     assert commands == ["pytest -q", FINAL_DIFF_COMMAND]
+    assert trajectory.model_patch == "diff --git a/demo.py b/demo.py\n"
+
+
+def test_swe_agent_blocks_broad_cat_source_commands():
+    commands = []
+
+    def run_shell(command):
+        commands.append(command)
+        if command == FINAL_DIFF_COMMAND:
+            return CommandResult(command, 0, "diff --git a/demo.py b/demo.py\n", "")
+        return CommandResult(command, 0, "unexpected\n", "")
+
+    agent = SWEBenchAgent(
+        ScriptedModelClient(
+            [
+                '<tool name="run_shell"><command>cat /testbed/pkg/module.py</command></tool>',
+                "<final>done</final>",
+            ]
+        ),
+        model="deepseek-v4-pro",
+        max_steps=4,
+        max_new_tokens=1024,
+    )
+
+    trajectory = agent.run({"instance_id": "demo__demo-1", "problem_statement": "Fix bug."}, run_shell)
+
+    assert commands == [FINAL_DIFF_COMMAND]
+    assert trajectory.steps[0]["tool_result"]["returncode"] == 2
+    assert "Broad cat commands are disabled" in trajectory.steps[0]["tool_result"]["stderr"]
+
+
+def test_swe_agent_retries_retryable_provider_errors():
+    class FlakyClient:
+        model = "deepseek-v4-pro"
+
+        def __init__(self):
+            self.calls = 0
+
+        def complete_result(self, prompt, max_new_tokens, **kwargs):
+            del prompt, max_new_tokens, kwargs
+            self.calls += 1
+            if self.calls == 1:
+                raise ProviderError("empty", provider="anthropic", code="empty_response", retryable=True)
+            return ScriptedModelClient(["<final>done</final>"]).complete_result("", 1)
+
+    commands = []
+
+    def run_shell(command):
+        commands.append(command)
+        return CommandResult(command, 0, "diff --git a/demo.py b/demo.py\n", "")
+
+    client = FlakyClient()
+    agent = SWEBenchAgent(client, model="deepseek-v4-pro", max_steps=2, max_new_tokens=1024)
+
+    trajectory = agent.run({"instance_id": "demo__demo-1", "problem_statement": "Fix bug."}, run_shell)
+
+    assert client.calls == 2
     assert trajectory.model_patch == "diff --git a/demo.py b/demo.py\n"

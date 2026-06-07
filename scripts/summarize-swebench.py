@@ -38,13 +38,18 @@ def summarize(output_dir: Path, eval_report_dir: Path | None = None) -> dict[str
         "model_error_count": run_summary.get("model_error_count"),
         "timeout_count": run_summary.get("timeout_count"),
         "predictions_count": len(preds) if isinstance(preds, dict) else 0,
+        "submitted_instances": None,
+        "completed_instances": None,
         "resolved_instances": None,
         "resolved_rate": None,
     }
     if eval_report_dir:
-        resolved, total = _read_eval_counts(eval_report_dir)
+        resolved, total, submitted, completed = _read_eval_counts(eval_report_dir)
+        denominator = submitted if submitted is not None else total
+        result["submitted_instances"] = submitted
+        result["completed_instances"] = completed
         result["resolved_instances"] = resolved
-        result["resolved_rate"] = (resolved / total) if resolved is not None and total else None
+        result["resolved_rate"] = (resolved / denominator) if resolved is not None and denominator else None
     return result
 
 
@@ -55,7 +60,8 @@ def _load_json(path: Path, fallback: Any) -> Any:
         return fallback
 
 
-def _read_eval_counts(root: Path) -> tuple[int | None, int | None]:
+def _read_eval_counts(root: Path) -> tuple[int | None, int | None, int | None, int | None]:
+    fallback = (None, None, None, None)
     for path in sorted(root.rglob("*.json")):
         payload = _load_json(path, None)
         if not isinstance(payload, dict):
@@ -72,13 +78,28 @@ def _read_eval_counts(root: Path) -> tuple[int | None, int | None]:
             total = payload["total_instances"]
         else:
             total = None
+        submitted = payload.get("submitted_instances")
+        completed = payload.get("completed_instances")
         if isinstance(resolved, list):
             resolved = len(resolved)
         if isinstance(total, list):
             total = len(total)
+        if isinstance(submitted, list):
+            submitted = len(submitted)
+        if isinstance(completed, list):
+            completed = len(completed)
         if isinstance(resolved, int):
-            return resolved, total if isinstance(total, int) else None
-    return None, None
+            counts = (
+                resolved,
+                total if isinstance(total, int) else None,
+                submitted if isinstance(submitted, int) else None,
+                completed if isinstance(completed, int) else None,
+            )
+            if counts[2] is not None:
+                return counts
+            if fallback == (None, None, None, None):
+                fallback = counts
+    return fallback
 
 
 if __name__ == "__main__":
