@@ -132,6 +132,14 @@ def test_non_interactive_with_approval_ask_returns_2(tmp_path, capsys):
     assert "--non-interactive requires" in captured.err
 
 
+def test_non_interactive_without_prompt_returns_2(tmp_path, capsys):
+    code = cli.main(["--cwd", str(tmp_path), "--approval", "auto", "--non-interactive"])
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert "--non-interactive requires a positional prompt or --prompt-file" in captured.err
+
+
 def test_harness_summarizer_reads_nested_scores_and_usage(tmp_path):
     results = tmp_path / "results"
     results.mkdir()
@@ -227,6 +235,89 @@ def test_swe_resume_preserves_existing_prediction(tmp_path, monkeypatch):
     assert preds["new__case-1"]["model_patch"] == new_patch
 
 
+def test_swe_summary_ignores_predictions_outside_selected_scope(tmp_path, monkeypatch):
+    output = tmp_path / "out"
+    output.mkdir()
+    old_patch = "diff --git a/old.py b/old.py\n"
+    (output / "preds.json").write_text(
+        json.dumps(
+            {
+                "old__case-1": {
+                    "model_name_or_path": "pico-v3/model",
+                    "instance_id": "old__case-1",
+                    "model_patch": old_patch,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(swebench, "load_instances", lambda args: [{"instance_id": "new__case-1"}])
+    monkeypatch.setattr(
+        swebench,
+        "run_instance",
+        lambda instance, args: swebench.Trajectory(
+            instance_id="new__case-1",
+            model="deepseek-v4-pro",
+            setup_error="docker unavailable",
+            exit_status="setup_error",
+        ),
+    )
+
+    code = swebench.main(["--output", str(output), "--provider", "deepseek"])
+
+    summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
+    assert code == 1
+    assert summary["selected_instances"] == 1
+    assert summary["non_empty_predictions"] == 0
+    assert summary["total_predictions_in_file"] == 1
+    assert summary["failed_instance_ids"] == ["new__case-1"]
+
+
+def test_swe_redo_existing_clears_stale_patch_before_failed_rerun(tmp_path, monkeypatch):
+    output = tmp_path / "out"
+    output.mkdir()
+    stale_patch = "diff --git a/stale.py b/stale.py\n"
+    (output / "preds.json").write_text(
+        json.dumps(
+            {
+                "demo__case-1": {
+                    "model_name_or_path": "pico-v3/model",
+                    "instance_id": "demo__case-1",
+                    "model_patch": stale_patch,
+                },
+                "other__case-1": {
+                    "model_name_or_path": "pico-v3/model",
+                    "instance_id": "other__case-1",
+                    "model_patch": "diff --git a/other.py b/other.py\n",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(swebench, "load_instances", lambda args: [{"instance_id": "demo__case-1"}])
+    monkeypatch.setattr(
+        swebench,
+        "run_instance",
+        lambda instance, args: swebench.Trajectory(
+            instance_id="demo__case-1",
+            model="deepseek-v4-pro",
+            setup_error="docker unavailable",
+            exit_status="setup_error",
+        ),
+    )
+
+    code = swebench.main(["--output", str(output), "--provider", "deepseek", "--redo-existing"])
+
+    summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
+    preds = json.loads((output / "preds.json").read_text(encoding="utf-8"))
+    assert code == 1
+    assert "demo__case-1" not in preds
+    assert "other__case-1" in preds
+    assert summary["non_empty_predictions"] == 0
+    assert summary["total_predictions_in_file"] == 1
+    assert summary["empty_patch_count"] == 1
+
+
 def test_swe_setup_error_exits_1_and_writes_summary(tmp_path, monkeypatch):
     output = tmp_path / "out"
     monkeypatch.setattr(swebench, "load_instances", lambda args: [{"instance_id": "demo__demo-1"}])
@@ -243,6 +334,45 @@ def test_swe_setup_error_exits_1_and_writes_summary(tmp_path, monkeypatch):
     assert summary["non_empty_predictions"] == 0
     assert preds == {}
     assert "docker unavailable" in traj["setup_error"]
+
+
+def test_swe_provider_build_error_writes_model_error_summary(tmp_path, monkeypatch):
+    output = tmp_path / "out"
+    monkeypatch.setattr(swebench, "load_instances", lambda args: [{"instance_id": "demo__demo-1"}])
+    monkeypatch.setattr(
+        "pico.benchmarks.swebench._build_model_client",
+        lambda args: (_ for _ in ()).throw(RuntimeError("bad config")),
+    )
+
+    code = swebench.main(["--output", str(output), "--provider", "deepseek"])
+
+    summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
+    preds = json.loads((output / "preds.json").read_text(encoding="utf-8"))
+    traj = json.loads((output / "demo__demo-1" / "demo__demo-1.traj.json").read_text(encoding="utf-8"))
+    assert code == 1
+    assert summary["model_error_count"] == 1
+    assert summary["non_empty_predictions"] == 0
+    assert preds == {}
+    assert "bad config" in traj["model_error"]
+
+
+def test_swe_summarizer_preserves_zero_resolved(tmp_path):
+    output = tmp_path / "out"
+    eval_report = tmp_path / "eval"
+    output.mkdir()
+    eval_report.mkdir()
+    (output / "summary.json").write_text(
+        json.dumps({"selected_instances": 1, "attempted_instances": 1, "non_empty_predictions": 1}),
+        encoding="utf-8",
+    )
+    (output / "preds.json").write_text(json.dumps({"demo__demo-1": {"model_patch": "diff"}}), encoding="utf-8")
+    (eval_report / "report.json").write_text(json.dumps({"resolved": 0, "total": 1}), encoding="utf-8")
+    module = load_script("scripts/summarize-swebench.py")
+
+    summary = module.summarize(output, eval_report)
+
+    assert summary["resolved_instances"] == 0
+    assert summary["resolved_rate"] == 0.0
 
 
 def test_swe_agent_collects_final_diff():

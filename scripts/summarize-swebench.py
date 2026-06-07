@@ -60,8 +60,18 @@ def _read_eval_counts(root: Path) -> tuple[int | None, int | None]:
         payload = _load_json(path, None)
         if not isinstance(payload, dict):
             continue
-        resolved = payload.get("resolved") or payload.get("resolved_instances")
-        total = payload.get("total") or payload.get("total_instances")
+        if "resolved" in payload:
+            resolved = payload["resolved"]
+        elif "resolved_instances" in payload:
+            resolved = payload["resolved_instances"]
+        else:
+            resolved = None
+        if "total" in payload:
+            total = payload["total"]
+        elif "total_instances" in payload:
+            total = payload["total_instances"]
+        else:
+            total = None
         if isinstance(resolved, list):
             resolved = len(resolved)
         if isinstance(total, list):

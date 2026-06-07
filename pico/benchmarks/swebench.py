@@ -34,7 +34,11 @@ def main(argv: list[str] | None = None) -> int:
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
     predictions = load_predictions(output / "preds.json")
-    selected_count = len(instances)
+    selected_ids = [str(instance["instance_id"]) for instance in instances]
+    selected_count = len(selected_ids)
+    if args.redo_existing:
+        for instance_id in selected_ids:
+            predictions.pop(instance_id, None)
     selected = filter_rerun_instances(instances, predictions, redo_existing=args.redo_existing)
     skipped = selected_count - len(selected)
 
@@ -43,7 +47,19 @@ def main(argv: list[str] | None = None) -> int:
         futures = {executor.submit(run_instance, dict(instance), args): str(instance["instance_id"]) for instance in selected}
         for future in as_completed(futures):
             instance_id = futures[future]
-            trajectory = future.result()
+            try:
+                trajectory = future.result()
+            except Exception as exc:
+                trajectory = Trajectory(
+                    instance_id=instance_id,
+                    model=args.model or args.provider,
+                    image="",
+                    model_error=str(exc),
+                    exit_status="model_error",
+                    model_patch_chars=0,
+                    model_patch="",
+                    steps=[{"model_error": str(exc)}],
+                )
             trajectories.append(trajectory)
             write_trajectory(output, trajectory)
             if trajectory.model_patch or args.include_empty_predictions:
@@ -55,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
                 write_predictions(output / "preds.json", predictions)
 
     write_predictions(output / "preds.json", predictions)
-    summary = build_summary(args, output, selected_count, len(selected), skipped, predictions, trajectories)
+    summary = build_summary(args, output, selected_ids, len(selected), skipped, predictions, trajectories)
     write_json(output / "summary.json", summary)
     return exit_code(summary)
 
@@ -122,33 +138,48 @@ def filter_rerun_instances(
 
 
 def run_instance(instance: dict[str, Any], args) -> Trajectory:
-    provider_config = resolve_provider_config(
-        args.provider,
-        start=".",
-        config_path=args.config,
-        model=args.model,
-        base_url=args.base_url or args.host,
-        api_key=args.api_key,
-    )
-    client = _build_model_client(
-        SimpleNamespace(
-            cwd=".",
-            config=args.config,
-            provider=args.provider,
+    instance_id = str(instance.get("instance_id", ""))
+    model_name = args.model or args.provider
+    image = resolve_image_best_effort(instance)
+    try:
+        provider_config = resolve_provider_config(
+            args.provider,
+            start=".",
+            config_path=args.config,
             model=args.model,
             base_url=args.base_url or args.host,
             api_key=args.api_key,
-            temperature=args.temperature,
-            openai_timeout=args.openai_timeout,
         )
-    )
-    actual_model = (
-        getattr(client, "model", None)
-        or provider_config.model
-        or args.model
-        or args.provider
-    )
-    image = resolve_image(instance)
+        client = _build_model_client(
+            SimpleNamespace(
+                cwd=".",
+                config=args.config,
+                provider=args.provider,
+                model=args.model,
+                base_url=args.base_url or args.host,
+                api_key=args.api_key,
+                temperature=args.temperature,
+                openai_timeout=args.openai_timeout,
+            )
+        )
+        actual_model = (
+            getattr(client, "model", None)
+            or provider_config.model
+            or args.model
+            or args.provider
+        )
+    except Exception as exc:
+        return Trajectory(
+            instance_id=instance_id,
+            model=model_name,
+            image=image,
+            model_error=str(exc),
+            exit_status="model_error",
+            model_patch_chars=0,
+            model_patch="",
+            steps=[{"model_error": str(exc)}],
+        )
+
     agent = SWEBenchAgent(
         client,
         model=actual_model,
@@ -163,9 +194,9 @@ def run_instance(instance: dict[str, Any], args) -> Trajectory:
             lambda command: run_shell(container, command, timeout=args.command_timeout),
             image=image,
         )
-    except Exception as exc:
+    except RuntimeError as exc:
         return Trajectory(
-            instance_id=str(instance.get("instance_id", "")),
+            instance_id=instance_id,
             model=actual_model,
             image=image,
             setup_error=str(exc),
@@ -173,21 +204,46 @@ def run_instance(instance: dict[str, Any], args) -> Trajectory:
             model_patch_chars=0,
             model_patch="",
         )
+    except Exception as exc:
+        return Trajectory(
+            instance_id=instance_id,
+            model=actual_model,
+            image=image,
+            model_error=str(exc),
+            exit_status="model_error",
+            model_patch_chars=0,
+            model_patch="",
+            steps=[{"model_error": str(exc)}],
+        )
     finally:
         if container is not None:
             stop_container(container)
 
 
+def resolve_image_best_effort(instance: dict[str, Any]) -> str:
+    try:
+        return resolve_image(instance)
+    except Exception:
+        return ""
+
+
 def build_summary(
     args,
     output: Path,
-    selected_count: int,
+    selected_ids: list[str],
     attempted_count: int,
     skipped_count: int,
     predictions: dict[str, dict[str, Any]],
     trajectories: list[Trajectory],
 ) -> dict[str, Any]:
-    non_empty = sum(1 for row in predictions.values() if str(row.get("model_patch") or ""))
+    selected_id_set = set(selected_ids)
+    attempted_ids = {item.instance_id for item in trajectories}
+    skipped_ids = sorted(selected_id_set - attempted_ids)
+    non_empty = sum(
+        1
+        for instance_id in selected_ids
+        if str((predictions.get(instance_id) or {}).get("model_patch") or "")
+    )
     empty_patch_count = sum(1 for item in trajectories if not item.model_patch)
     setup_error_count = sum(1 for item in trajectories if item.exit_status == "setup_error")
     model_error_count = sum(1 for item in trajectories if item.exit_status == "model_error")
@@ -205,10 +261,11 @@ def build_summary(
     return {
         "subset": args.subset,
         "split": args.split,
-        "selected_instances": selected_count,
+        "selected_instances": len(selected_ids),
         "attempted_instances": attempted_count,
         "skipped_instances": skipped_count,
         "non_empty_predictions": non_empty,
+        "total_predictions_in_file": len(predictions),
         "empty_patch_count": empty_patch_count,
         "setup_error_count": setup_error_count,
         "model_error_count": model_error_count,
@@ -216,6 +273,7 @@ def build_summary(
         "predictions_path": str(output / "preds.json"),
         "trajectory_root": str(output),
         "failed_instance_ids": failed_ids,
+        "skipped_instance_ids": skipped_ids,
     }
 
 

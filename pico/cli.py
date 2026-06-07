@@ -659,6 +659,12 @@ def validate_args(args):
         return "--session-id cannot be combined with --resume"
     if getattr(args, "non_interactive", False) and args.approval == "ask":
         return "--non-interactive requires --approval auto or --approval never"
+    if (
+        getattr(args, "non_interactive", False)
+        and not getattr(args, "prompt", None)
+        and not getattr(args, "prompt_file", None)
+    ):
+        return "--non-interactive requires a positional prompt or --prompt-file"
     return ""
 
 

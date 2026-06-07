@@ -20,6 +20,7 @@ class Trajectory:
     model: str
     image: str = ""
     setup_error: str = ""
+    model_error: str = ""
     exit_status: str = "submitted"
     model_patch_chars: int = 0
     model_patch: str = ""
@@ -51,6 +52,7 @@ class SWEBenchAgent:
                 result = complete_model(self.model_client, prompt, self.max_new_tokens)
             except Exception as exc:
                 trajectory.exit_status = "model_error"
+                trajectory.model_error = str(exc)
                 trajectory.steps.append({"model_error": str(exc)})
                 break
             text = result.text
