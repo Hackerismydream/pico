@@ -1,10 +1,9 @@
 import re
 from pathlib import Path
 
-ENTRYPOINT_NAME = "MEMORY.md"
+from .dream_store import ENTRYPOINT_NAME, collect_non_runtime_files, is_official_memory_payload
+
 MAX_ENTRYPOINT_LINES = 200
-DREAM_DIR_NAME = ".dream"
-LOCK_FILE_NAME = ".consolidate-lock"
 
 SECRET_VALUE_PATTERN = re.compile(
     r"(?i)(sk-[A-Za-z0-9_-]{6,}|ghp_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:api[_ -]?key|token|secret|password)\s*[:=]\s*\S{8,})"
@@ -28,43 +27,6 @@ TRANSIENT_MEMORY_PREFIXES = (
     "已完成",
     "已排除",
 )
-
-
-def _runtime_memory_parts(path):
-    try:
-        return Path(path).parts
-    except TypeError:
-        return ()
-
-
-def _is_runtime_memory_path(relative_path):
-    parts = _runtime_memory_parts(relative_path)
-    return bool(parts and parts[0] in {"logs", DREAM_DIR_NAME, LOCK_FILE_NAME})
-
-
-def _is_official_memory_payload(relative_path):
-    path = Path(relative_path)
-    if path.as_posix() == ENTRYPOINT_NAME:
-        return True
-    return len(path.parts) >= 2 and path.parts[0] == "topics" and path.suffix == ".md"
-
-
-def _managed_file_texts(root):
-    root = Path(root)
-    result = {}
-    if not root.exists():
-        return result
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        relative = path.relative_to(root).as_posix()
-        if _is_runtime_memory_path(relative):
-            continue
-        try:
-            result[relative] = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-    return result
 
 
 def _frontmatter(text):
@@ -122,8 +84,8 @@ def lint_memory_candidate(candidate_root):
             if not target_path.exists():
                 issues.append({"severity": "error", "code": "broken_index_link", "path": ENTRYPOINT_NAME, "target": target})
 
-    for relative, text in _managed_file_texts(candidate_root).items():
-        if not _is_official_memory_payload(relative):
+    for relative, text in collect_non_runtime_files(candidate_root).items():
+        if not is_official_memory_payload(relative):
             warnings.append({"severity": "warning", "code": "ignored_non_memory_payload", "path": relative})
             continue
         lowered = text.lower()

@@ -2,7 +2,8 @@ import difflib
 from pathlib import Path
 
 from ..core.workspace import clip
-from .dream_lint import BASE64_LIKE_PATTERN, SECRET_VALUE_PATTERN, _managed_file_texts
+from .dream_lint import BASE64_LIKE_PATTERN, SECRET_VALUE_PATTERN
+from .dream_store import collect_non_runtime_files
 
 
 def redact_sensitive_text(text):
@@ -11,8 +12,8 @@ def redact_sensitive_text(text):
 
 
 def write_dream_diff(before_root, candidate_root, diff_path):
-    before = _managed_file_texts(before_root)
-    after = _managed_file_texts(candidate_root)
+    before = collect_non_runtime_files(before_root)
+    after = collect_non_runtime_files(candidate_root)
     lines = []
     for relative in sorted(set(before) | set(after)):
         old_lines = before.get(relative, "").splitlines()

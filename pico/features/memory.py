@@ -8,7 +8,6 @@ session history 负责保存完整事件流；这个模块只保存更小的一�
 import hashlib
 import json
 import os
-import shutil
 import threading
 from datetime import date, datetime
 import re
@@ -181,84 +180,63 @@ def _lock_path(memory_dir):
 
 
 def _dream_dir(memory_dir):
-    return Path(memory_dir) / DREAM_DIR_NAME
+    from .dream_store import dream_dir
+
+    return dream_dir(memory_dir)
 
 
 def _dream_lock_path(memory_dir):
-    return _dream_dir(memory_dir) / DREAM_LOCK_FILE_NAME
+    from .dream_store import dream_lock_path
+
+    return dream_lock_path(memory_dir)
 
 
 def _dream_state_path(memory_dir):
-    return _dream_dir(memory_dir) / DREAM_STATE_NAME
+    from .dream_store import dream_state_path
+
+    return dream_state_path(memory_dir)
 
 
 def _dream_runs_dir(memory_dir):
-    return _dream_dir(memory_dir) / "runs"
+    from .dream_store import dream_runs_dir
+
+    return dream_runs_dir(memory_dir)
 
 
 def _dream_snapshots_dir(memory_dir):
-    return _dream_dir(memory_dir) / "snapshots"
+    from .dream_store import dream_snapshots_dir
+
+    return dream_snapshots_dir(memory_dir)
 
 
 def _iso_to_timestamp(value):
-    if not value:
-        return 0.0
-    try:
-        return datetime.fromisoformat(str(value)).timestamp()
-    except Exception:
-        return 0.0
+    from .dream_store import iso_to_timestamp
+
+    return iso_to_timestamp(value)
 
 
 def default_dream_state():
-    return {
-        "last_scan_at": "",
-        "last_candidate_at": "",
-        "last_apply_at": "",
-        "last_success_at": "",
-        "pending_session_ids": [],
-        "processed_session_ids": [],
-        "failed_session_ids": [],
-        "last_task_id": "",
-    }
+    from .dream_store import default_dream_state as _default_dream_state
+
+    return _default_dream_state()
 
 
 def load_dream_state(memory_dir):
-    path = _dream_state_path(memory_dir)
-    state = default_dream_state()
-    try:
-        loaded = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return state
-    if not isinstance(loaded, dict):
-        return state
-    state.update({key: loaded.get(key, value) for key, value in state.items()})
-    for key in ("pending_session_ids", "processed_session_ids", "failed_session_ids"):
-        state[key] = _dedupe_preserve_order(str(item) for item in _ensure_list(state.get(key)))
-    state["last_success_at"] = str(state.get("last_success_at", ""))
-    state["last_task_id"] = str(state.get("last_task_id", ""))
-    return state
+    from .dream_store import load_dream_state as _load_dream_state
+
+    return _load_dream_state(memory_dir)
 
 
 def write_dream_state(memory_dir, state):
-    path = _dream_state_path(memory_dir)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    normalized = default_dream_state()
-    normalized.update(state or {})
-    for key in ("pending_session_ids", "processed_session_ids", "failed_session_ids"):
-        normalized[key] = _dedupe_preserve_order(str(item) for item in _ensure_list(normalized.get(key)))
-    path.write_text(json.dumps(normalized, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return normalized
+    from .dream_store import write_dream_state as _write_dream_state
+
+    return _write_dream_state(memory_dir, state)
 
 
 def read_last_consolidated_at(memory_dir):
-    state = load_dream_state(memory_dir)
-    state_ts = _iso_to_timestamp(state.get("last_scan_at")) or _iso_to_timestamp(state.get("last_success_at"))
-    if state_ts > 0:
-        return state_ts
-    try:
-        return _lock_path(memory_dir).stat().st_mtime
-    except OSError:
-        return 0.0
+    from .dream_store import read_last_consolidated_at as _read_last_consolidated_at
+
+    return _read_last_consolidated_at(memory_dir)
 
 
 def try_acquire_lock(memory_dir):
@@ -300,65 +278,27 @@ def record_consolidation(memory_dir):
 
 
 def _lock_holder_pid(text):
-    try:
-        payload = json.loads(text)
-        return int(payload.get("pid", 0))
-    except (ValueError, TypeError, json.JSONDecodeError, AttributeError):
-        try:
-            return int(str(text).strip())
-        except ValueError:
-            return 0
+    from .dream_store import _lock_holder_pid as _parse_lock_holder_pid
+
+    return _parse_lock_holder_pid(text)
 
 
 def _lock_pid_is_live(pid):
-    if not pid:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+    from .dream_store import _lock_pid_is_live as _check_lock_pid_is_live
+
+    return _check_lock_pid_is_live(pid)
 
 
 def try_acquire_dream_lock(memory_dir, purpose="dream", task_id=""):
-    ensure_memory_dir(memory_dir)
-    lock_path = _dream_lock_path(memory_dir)
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "pid": os.getpid(),
-        "purpose": purpose,
-        "task_id": task_id,
-        "created_at": now(),
-    }
-    for _attempt in range(2):
-        try:
-            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            try:
-                stat = lock_path.stat()
-                age = datetime.now().timestamp() - stat.st_mtime
-                holder_pid = _lock_holder_pid(lock_path.read_text(encoding="utf-8", errors="replace"))
-            except OSError:
-                return False
-            if age < HOLDER_STALE_S and _lock_pid_is_live(holder_pid):
-                return False
-            try:
-                lock_path.unlink()
-            except OSError:
-                return False
-            continue
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, sort_keys=True) + "\n")
-        return True
-    return False
+    from .dream_store import try_acquire_dream_lock as _try_acquire_dream_lock
+
+    return _try_acquire_dream_lock(memory_dir, purpose=purpose, task_id=task_id)
 
 
 def release_dream_lock(memory_dir):
-    lock_path = _dream_lock_path(memory_dir)
-    try:
-        lock_path.unlink()
-    except OSError:
-        pass
+    from .dream_store import release_dream_lock as _release_dream_lock
+
+    return _release_dream_lock(memory_dir)
 
 
 def list_sessions_since(since_ts, sessions_dir=None, current_session_id="", until_ts=None):
@@ -642,71 +582,51 @@ def _new_dream_task_id(trigger="manual"):
 
 
 def _runtime_memory_parts(path):
-    try:
-        return Path(path).parts
-    except TypeError:
-        return ()
+    from .dream_store import runtime_memory_parts
+
+    return runtime_memory_parts(path)
 
 
 def _is_runtime_memory_path(relative_path):
-    parts = _runtime_memory_parts(relative_path)
-    return bool(parts and parts[0] in {"logs", DREAM_DIR_NAME, LOCK_FILE_NAME})
+    from .dream_store import is_runtime_memory_path
+
+    return is_runtime_memory_path(relative_path)
 
 
 def _is_official_memory_payload(relative_path):
-    path = Path(relative_path)
-    if path.as_posix() == ENTRYPOINT_NAME:
-        return True
-    return len(path.parts) >= 2 and path.parts[0] == "topics" and path.suffix == ".md"
+    from .dream_store import is_official_memory_payload
+
+    return is_official_memory_payload(relative_path)
 
 
 def _copy_memory_tree(source, target):
-    source = Path(source)
-    target = Path(target)
-    target.mkdir(parents=True, exist_ok=True)
-    if not source.exists():
-        ensure_memory_dir(target)
-        return
+    from .dream_store import copy_memory_tree
 
-    def ignore(_dir, names):
-        return {name for name in names if name == DREAM_DIR_NAME}
-
-    shutil.copytree(source, target, dirs_exist_ok=True, ignore=ignore)
-    ensure_memory_dir(target)
+    return copy_memory_tree(source, target)
 
 
 def _managed_file_texts(root):
-    root = Path(root)
-    result = {}
-    if not root.exists():
-        return result
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        relative = path.relative_to(root).as_posix()
-        if _is_runtime_memory_path(relative):
-            continue
-        try:
-            result[relative] = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-    return result
+    from .dream_store import collect_non_runtime_files
+
+    return collect_non_runtime_files(root)
 
 
 def _official_payload_texts(root):
-    return {
-        relative: text
-        for relative, text in _managed_file_texts(root).items()
-        if _is_official_memory_payload(relative)
-    }
+    from .dream_store import official_payload_texts
+
+    return official_payload_texts(root)
 
 
 def _hash_texts(texts):
-    return {relative: hashlib.sha256(text.encode("utf-8")).hexdigest() for relative, text in sorted(texts.items())}
+    from .dream_store import hash_texts
+
+    return hash_texts(texts)
 
 
 def _official_payload_hashes(root):
-    return _hash_texts(_official_payload_texts(root))
+    from .dream_store import official_payload_hashes
+
+    return official_payload_hashes(root)
 
 
 def _redact_sensitive_text(text):
@@ -740,22 +660,21 @@ def lint_memory_candidate(candidate_root):
 
 
 def _task_path(memory_dir, task_id, name):
-    return _dream_runs_dir(memory_dir) / task_id / name
+    from .dream_store import task_path
+
+    return task_path(memory_dir, task_id, name)
 
 
 def load_dream_task(memory_dir, task_id):
-    path = _task_path(memory_dir, task_id, "task.json")
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
+    from .dream_store import load_dream_task as _load_dream_task
+
+    return _load_dream_task(memory_dir, task_id)
 
 
 def _write_dream_task(memory_dir, task):
-    path = _task_path(memory_dir, task["id"], "task.json")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(task, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return task
+    from .dream_store import write_dream_task
+
+    return write_dream_task(memory_dir, task)
 
 
 def _write_dream_report(task, lint_result, changed_files, model_result):
@@ -795,27 +714,9 @@ def dream_status_text_for_task(task):
 
 
 def _copy_managed_candidate_to_official(candidate_root, memory_dir):
-    candidate_root = Path(candidate_root)
-    memory_dir = Path(memory_dir)
-    before = _official_payload_texts(memory_dir)
-    after = _official_payload_texts(candidate_root)
-    for relative in sorted(set(before) - set(after)):
-        target = memory_dir / relative
-        try:
-            target.unlink()
-        except OSError:
-            pass
-    for relative in sorted(after):
-        source = candidate_root / relative
-        target = memory_dir / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-    for directory in sorted((memory_dir / "topics").glob("**/*"), reverse=True) if (memory_dir / "topics").exists() else []:
-        if directory.is_dir():
-            try:
-                directory.rmdir()
-            except OSError:
-                pass
+    from .dream_store import apply_candidate_payload
+
+    return apply_candidate_payload(candidate_root, memory_dir)
 
 
 def apply_dream_task(agent, task_id):

@@ -7,6 +7,7 @@ from pico.cli import handle_repl_command
 from pico.commands.dream import handle_dream_command
 from pico.features.dream_lint import lint_memory_candidate as lint_candidate_direct
 from pico.features.dream_report import redact_sensitive_text
+from pico.features.dream_store import DreamLock, collect_non_runtime_files, is_official_memory_payload
 from pico.features.memory import (
     DREAM_SESSION_CAP,
     apply_dream_task,
@@ -367,6 +368,39 @@ def test_dream_report_redacts_secret_values():
     assert "sk-test-token" not in redacted
     assert "<redacted>" in redacted
     assert "normal text" in redacted
+
+
+def test_dream_store_payload_allowlist(tmp_path):
+    candidate = tmp_path / "candidate"
+    (candidate / "topics").mkdir(parents=True)
+    (candidate / "logs").mkdir()
+    (candidate / ".dream").mkdir()
+    (candidate / "MEMORY.md").write_text("# Durable Memory Index\n", encoding="utf-8")
+    (candidate / "topics" / "good.md").write_text("# Good\n", encoding="utf-8")
+    (candidate / "logs" / "ignored.md").write_text("ignored\n", encoding="utf-8")
+    (candidate / ".dream" / "ignored.md").write_text("ignored\n", encoding="utf-8")
+    (candidate / "scratch.txt").write_text("scratch\n", encoding="utf-8")
+
+    texts = collect_non_runtime_files(candidate)
+
+    assert "MEMORY.md" in texts
+    assert "topics/good.md" in texts
+    assert "scratch.txt" in texts
+    assert "logs/ignored.md" not in texts
+    assert ".dream/ignored.md" not in texts
+    assert is_official_memory_payload("MEMORY.md") is True
+    assert is_official_memory_payload("topics/good.md") is True
+    assert is_official_memory_payload("scratch.txt") is False
+
+
+def test_dream_lock_context_manager_releases_lock(tmp_path):
+    agent = build_agent(tmp_path)
+
+    with DreamLock(agent.memory_dir).acquire(purpose="test", task_id="task"):
+        assert try_acquire_dream_lock(agent.memory_dir) is False
+
+    assert try_acquire_dream_lock(agent.memory_dir) is True
+    release_dream_lock(agent.memory_dir)
 
 
 def test_em_dash_index_and_non_notes_topic_are_retrievable(tmp_path):
