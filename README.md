@@ -196,6 +196,8 @@ pico --no-auto-dream              # 关闭后台 memory 整合
 > /test tests/test_config.py
 > /remember 这个项目用 DeepSeek 的 Anthropic-compatible endpoint
 > /dream
+> /dream review dream_...
+> /dream apply dream_...
 ```
 
 常用命令：
@@ -212,7 +214,11 @@ pico --no-auto-dream              # 关闭后台 memory 整合
 | `/memory` | 查看 durable memory 索引。 |
 | `/working-memory` | 查看当前 session 工作记忆。 |
 | `/remember <text>` | 保存一条 durable note 到 daily log。 |
-| `/dream` | 把 daily log 整合成 durable memory topics。 |
+| `/dream` | 生成 memory candidate、diff、lint 和 report。 |
+| `/dream status` | 查看最近一次 Dream task。 |
+| `/dream review <id>` | 审查 candidate diff 和 lint。 |
+| `/dream apply <id>` | 将 lint 通过的 candidate 应用到正式 memory。 |
+| `/dream discard <id>` | 标记未应用的 candidate 为 discarded。 |
 | `/plan <topic>` | 进入 plan mode。 |
 | `/plan-exit` | 退出 plan mode。 |
 | `/agents` | 查看子 agent 状态。 |

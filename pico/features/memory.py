@@ -6,8 +6,10 @@ session history 负责保存完整事件流；这个模块只保存更小的一�
 """
 
 import hashlib
+import difflib
 import json
 import os
+import shutil
 import threading
 from datetime import date, datetime
 import re
@@ -22,6 +24,9 @@ MAX_MEMORY_INDEX_CHARS = 10000
 MAX_ENTRYPOINT_LINES = 200
 ENTRYPOINT_NAME = "MEMORY.md"
 LOCK_FILE_NAME = ".consolidate-lock"
+DREAM_DIR_NAME = ".dream"
+DREAM_LOCK_FILE_NAME = "lock"
+DREAM_STATE_NAME = "state.json"
 HOLDER_STALE_S = 3600
 # 单次 dream 最多消化的 session 数。超出时 dream prompt 只列最近 N 个，
 # 防止 75+ session ID 撑爆模型上下文导致 empty_response。
@@ -43,6 +48,24 @@ DURABLE_MEMORY_LINE_PATTERNS = (
     ("user-preferences", re.compile(r"^偏好：\s*(.+)$")),
 )
 SECRET_SHAPED_TEXT_PATTERN = re.compile(r"(?i)(\b(api[_ -]?key|token|secret|password)\b|sk-[A-Za-z0-9_-]{6,})")
+RAW_OUTPUT_PATTERN = re.compile(r"(?i)\b(stdout|stderr|traceback|exit_code)\b")
+BASE64_LIKE_PATTERN = re.compile(r"\b[A-Za-z0-9+/]{80,}={0,2}\b")
+ALLOWED_DURABLE_TYPES = {"user", "feedback", "project", "reference"}
+TRANSIENT_MEMORY_PREFIXES = (
+    "current goal",
+    "current blocker",
+    "next step",
+    "current phase",
+    "key files",
+    "freshness",
+    "当前目标",
+    "当前卡点",
+    "下一步",
+    "当前阶段",
+    "关键文件",
+    "已完成",
+    "已排除",
+)
 
 DURABLE_TOPIC_DEFAULTS = {
     "project-conventions": {
@@ -84,6 +107,14 @@ def ensure_memory_dir(memory_dir):
     return memory_dir
 
 
+class DreamLockHeld(RuntimeError):
+    pass
+
+
+class DreamApplyError(RuntimeError):
+    pass
+
+
 def daily_log_path(memory_dir, today=None):
     today = today or date.today()
     memory_dir = ensure_memory_dir(memory_dir)
@@ -123,26 +154,6 @@ def _agent_relative_path(agent, path):
         return Path(path).resolve().relative_to(agent.root).as_posix()
     except ValueError:
         return str(path)
-
-
-def _memory_file_snapshot(agent):
-    memory_dir = Path(agent.memory_dir)
-    if not memory_dir.exists():
-        return {}
-    snapshot = {}
-    for path in memory_dir.rglob("*"):
-        if not path.is_file() or path.name == LOCK_FILE_NAME:
-            continue
-        relative = _agent_relative_path(agent, path)
-        try:
-            snapshot[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
-        except OSError:
-            continue
-    return snapshot
-
-
-def _changed_memory_files(before, after):
-    return sorted(path for path in set(before) | set(after) if before.get(path) != after.get(path))
 
 
 def _emit_memory_trace(agent, event, payload):
@@ -187,7 +198,77 @@ def _lock_path(memory_dir):
     return Path(memory_dir) / LOCK_FILE_NAME
 
 
+def _dream_dir(memory_dir):
+    return Path(memory_dir) / DREAM_DIR_NAME
+
+
+def _dream_lock_path(memory_dir):
+    return _dream_dir(memory_dir) / DREAM_LOCK_FILE_NAME
+
+
+def _dream_state_path(memory_dir):
+    return _dream_dir(memory_dir) / DREAM_STATE_NAME
+
+
+def _dream_runs_dir(memory_dir):
+    return _dream_dir(memory_dir) / "runs"
+
+
+def _dream_snapshots_dir(memory_dir):
+    return _dream_dir(memory_dir) / "snapshots"
+
+
+def _iso_to_timestamp(value):
+    if not value:
+        return 0.0
+    try:
+        return datetime.fromisoformat(str(value)).timestamp()
+    except Exception:
+        return 0.0
+
+
+def default_dream_state():
+    return {
+        "last_success_at": "",
+        "pending_session_ids": [],
+        "processed_session_ids": [],
+        "failed_session_ids": [],
+        "last_task_id": "",
+    }
+
+
+def load_dream_state(memory_dir):
+    path = _dream_state_path(memory_dir)
+    state = default_dream_state()
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return state
+    if not isinstance(loaded, dict):
+        return state
+    state.update({key: loaded.get(key, value) for key, value in state.items()})
+    for key in ("pending_session_ids", "processed_session_ids", "failed_session_ids"):
+        state[key] = _dedupe_preserve_order(str(item) for item in _ensure_list(state.get(key)))
+    state["last_success_at"] = str(state.get("last_success_at", ""))
+    state["last_task_id"] = str(state.get("last_task_id", ""))
+    return state
+
+
+def write_dream_state(memory_dir, state):
+    path = _dream_state_path(memory_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    normalized = default_dream_state()
+    normalized.update(state or {})
+    for key in ("pending_session_ids", "processed_session_ids", "failed_session_ids"):
+        normalized[key] = _dedupe_preserve_order(str(item) for item in _ensure_list(normalized.get(key)))
+    path.write_text(json.dumps(normalized, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return normalized
+
+
 def read_last_consolidated_at(memory_dir):
+    state_ts = _iso_to_timestamp(load_dream_state(memory_dir).get("last_success_at"))
+    if state_ts > 0:
+        return state_ts
     try:
         return _lock_path(memory_dir).stat().st_mtime
     except OSError:
@@ -232,6 +313,37 @@ def record_consolidation(memory_dir):
     os.utime(lock_path, (timestamp, timestamp))
 
 
+def try_acquire_dream_lock(memory_dir):
+    ensure_memory_dir(memory_dir)
+    lock_path = _dream_lock_path(memory_dir)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    current_pid = os.getpid()
+    try:
+        stat = lock_path.stat()
+        age = datetime.now().timestamp() - stat.st_mtime
+        holder_pid = int(lock_path.read_text(encoding="utf-8").strip())
+        if age < HOLDER_STALE_S:
+            try:
+                os.kill(holder_pid, 0)
+                return False
+            except OSError:
+                pass
+    except (OSError, ValueError):
+        pass
+    lock_path.write_text(str(current_pid), encoding="utf-8")
+    return True
+
+
+def release_dream_lock(memory_dir):
+    lock_path = _dream_lock_path(memory_dir)
+    try:
+        timestamp = datetime.now().timestamp()
+        lock_path.write_text("released", encoding="utf-8")
+        os.utime(lock_path, (timestamp, timestamp))
+    except OSError:
+        pass
+
+
 def list_sessions_since(since_ts, sessions_dir=None, current_session_id=""):
     scan_dir = Path(sessions_dir) if sessions_dir is not None else None
     if scan_dir is None or not scan_dir.exists():
@@ -256,7 +368,11 @@ def evaluate_auto_dream_gate(memory_dir, min_hours, min_sessions, current_sessio
     last = read_last_consolidated_at(memory_dir)
     current = datetime.now().timestamp()
     hours_since = (current - last) / 3600 if last > 0 else float("inf")
-    session_ids = list_sessions_since(last, sessions_dir=sessions_dir, current_session_id=current_session_id)
+    state = load_dream_state(memory_dir)
+    processed = set(state.get("processed_session_ids", []))
+    pending = [session_id for session_id in state.get("pending_session_ids", []) if session_id not in processed]
+    new_sessions = list_sessions_since(last, sessions_dir=sessions_dir, current_session_id=current_session_id)
+    session_ids = sorted({session_id for session_id in pending + new_sessions if session_id not in processed})
     result = {
         "should_run": False,
         "skip_reason": "",
@@ -500,43 +616,454 @@ def promote_durable_memory(agent, user_message, final_answer):
     return promoted, rejections, superseded
 
 
-def run_dream(agent, quiet=False, session_ids=None):
+def _new_dream_task_id(trigger="manual"):
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    suffix = hashlib.sha1(f"{stamp}-{os.getpid()}-{trigger}".encode("utf-8")).hexdigest()[:6]
+    return f"dream_{stamp}_{suffix}"
+
+
+def _runtime_memory_parts(path):
+    try:
+        return Path(path).parts
+    except TypeError:
+        return ()
+
+
+def _is_runtime_memory_path(relative_path):
+    parts = _runtime_memory_parts(relative_path)
+    return bool(parts and parts[0] in {"logs", DREAM_DIR_NAME, LOCK_FILE_NAME})
+
+
+def _copy_memory_tree(source, target):
+    source = Path(source)
+    target = Path(target)
+    target.mkdir(parents=True, exist_ok=True)
+    if not source.exists():
+        ensure_memory_dir(target)
+        return
+
+    def ignore(_dir, names):
+        return {name for name in names if name == DREAM_DIR_NAME}
+
+    shutil.copytree(source, target, dirs_exist_ok=True, ignore=ignore)
+    ensure_memory_dir(target)
+
+
+def _managed_file_texts(root):
+    root = Path(root)
+    result = {}
+    if not root.exists():
+        return result
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root).as_posix()
+        if _is_runtime_memory_path(relative):
+            continue
+        try:
+            result[relative] = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+    return result
+
+
+def _write_dream_diff(before_root, candidate_root, diff_path):
+    before = _managed_file_texts(before_root)
+    after = _managed_file_texts(candidate_root)
+    lines = []
+    for relative in sorted(set(before) | set(after)):
+        old_lines = before.get(relative, "").splitlines()
+        new_lines = after.get(relative, "").splitlines()
+        if old_lines == new_lines:
+            continue
+        lines.extend(
+            difflib.unified_diff(
+                old_lines,
+                new_lines,
+                fromfile=f"official/{relative}",
+                tofile=f"candidate/{relative}",
+                lineterm="",
+            )
+        )
+        lines.append("\n")
+    diff_path.parent.mkdir(parents=True, exist_ok=True)
+    diff_text = "\n".join(lines).rstrip() + ("\n" if lines else "")
+    diff_path.write_text(diff_text, encoding="utf-8")
+    return sorted(relative for relative in set(before) | set(after) if before.get(relative) != after.get(relative))
+
+
+def _frontmatter(text):
+    if not text.startswith("---\n"):
+        return None
+    end = text.find("\n---", 4)
+    if end < 0:
+        return None
+    metadata = {}
+    for raw in text[4:end].splitlines():
+        if ":" not in raw:
+            continue
+        key, value = raw.split(":", 1)
+        metadata[key.strip()] = value.strip().strip('"')
+    return metadata
+
+
+def _legacy_topic_metadata(text):
+    metadata = {}
+    for raw in text.splitlines()[:20]:
+        line = raw.strip()
+        if line.startswith("- topic:"):
+            metadata["name"] = line.split(":", 1)[1].strip()
+        elif line.startswith("- summary:"):
+            metadata["description"] = line.split(":", 1)[1].strip()
+        elif line.startswith("- tags:"):
+            metadata.setdefault("type", "project")
+    return metadata or None
+
+
+def lint_memory_candidate(candidate_root):
+    candidate_root = Path(candidate_root)
+    issues = []
+    warnings = []
+    index_path = candidate_root / ENTRYPOINT_NAME
+    if not index_path.exists():
+        issues.append({"severity": "error", "code": "missing_index", "path": ENTRYPOINT_NAME})
+    else:
+        index_text = index_path.read_text(encoding="utf-8", errors="replace")
+        index_lines = index_text.splitlines()
+        if len(index_lines) > MAX_ENTRYPOINT_LINES:
+            issues.append({"severity": "error", "code": "index_too_long", "path": ENTRYPOINT_NAME, "lines": len(index_lines)})
+        if len(index_text.encode("utf-8")) > 25_000:
+            issues.append({"severity": "error", "code": "index_too_large", "path": ENTRYPOINT_NAME})
+        for match in re.finditer(r"\]\(([^)]+)\)", index_text):
+            target = match.group(1).strip()
+            if "://" in target or target.startswith("#"):
+                continue
+            target_path = (candidate_root / target).resolve()
+            try:
+                target_path.relative_to(candidate_root.resolve())
+            except ValueError:
+                issues.append({"severity": "error", "code": "index_link_escapes", "path": ENTRYPOINT_NAME, "target": target})
+                continue
+            if not target_path.exists():
+                issues.append({"severity": "error", "code": "broken_index_link", "path": ENTRYPOINT_NAME, "target": target})
+
+    for relative, text in _managed_file_texts(candidate_root).items():
+        lowered = text.lower()
+        if SECRET_SHAPED_TEXT_PATTERN.search(text) or BASE64_LIKE_PATTERN.search(text):
+            issues.append({"severity": "error", "code": "secret_shaped", "path": relative})
+        if RAW_OUTPUT_PATTERN.search(text):
+            issues.append({"severity": "error", "code": "raw_output", "path": relative})
+        for prefix in TRANSIENT_MEMORY_PREFIXES:
+            if prefix.lower() in lowered:
+                issues.append({"severity": "error", "code": "transient_task_state", "path": relative, "match": prefix})
+                break
+        if relative == ENTRYPOINT_NAME:
+            continue
+        if relative.endswith(".md"):
+            metadata = _frontmatter(text) or _legacy_topic_metadata(text)
+            if metadata is None:
+                warnings.append({"severity": "warning", "code": "missing_frontmatter", "path": relative})
+                continue
+            missing = [key for key in ("name", "description", "type") if not metadata.get(key)]
+            if missing:
+                warnings.append({"severity": "warning", "code": "incomplete_metadata", "path": relative, "missing": missing})
+            memory_type = str(metadata.get("type", "")).strip()
+            if memory_type and memory_type not in ALLOWED_DURABLE_TYPES:
+                issues.append({"severity": "error", "code": "invalid_type", "path": relative, "type": memory_type})
+
+    status = "failed" if issues else "warning" if warnings else "passed"
+    return {"status": status, "errors": issues, "warnings": warnings}
+
+
+def _task_path(memory_dir, task_id, name):
+    return _dream_runs_dir(memory_dir) / task_id / name
+
+
+def load_dream_task(memory_dir, task_id):
+    path = _task_path(memory_dir, task_id, "task.json")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _write_dream_task(memory_dir, task):
+    path = _task_path(memory_dir, task["id"], "task.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(task, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return task
+
+
+def _write_dream_report(task, lint_result, changed_files, model_result):
+    report_path = Path(task["report_path"])
+    lines = [
+        f"# Dream Report: {task['id']}",
+        "",
+        f"- trigger: {task['trigger']}",
+        f"- status: {task['status']}",
+        f"- candidate: {task['candidate_store']}",
+        f"- lint: {lint_result['status']}",
+        "",
+        "## Inputs",
+    ]
+    for session_id in task.get("input_sessions", []):
+        lines.append(f"- session:{session_id}")
+    if not task.get("input_sessions"):
+        lines.append("- none")
+    lines.extend(["", "## Changed files"])
+    for path in changed_files:
+        lines.append(f"- {path}")
+    if not changed_files:
+        lines.append("- none")
+    lines.extend(["", "## Lint"])
+    for issue in lint_result.get("errors", []):
+        lines.append(f"- error:{issue['code']} {issue.get('path', '')}".rstrip())
+    for warning in lint_result.get("warnings", []):
+        lines.append(f"- warning:{warning['code']} {warning.get('path', '')}".rstrip())
+    if not lint_result.get("errors") and not lint_result.get("warnings"):
+        lines.append("- passed")
+    lines.extend(["", "## Model result", str(model_result).strip() or "(empty)"])
+    report_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def dream_status_text(agent):
+    state = load_dream_state(agent.memory_dir)
+    task_id = state.get("last_task_id", "")
+    if not task_id:
+        return "No dream tasks yet."
+    task = load_dream_task(agent.memory_dir, task_id)
+    if not task:
+        return f"Last dream task: {task_id}\nstatus: missing task file"
+    return "\n".join(
+        [
+            f"dream: {task_id}",
+            f"status: {task.get('status', 'unknown')}",
+            f"lint: {task.get('lint_status', 'unknown')}",
+            f"candidate: {task.get('candidate_store', '')}",
+        ]
+    )
+
+
+def dream_review_text(agent, task_id):
+    task = load_dream_task(agent.memory_dir, task_id)
+    if not task:
+        return f"error: dream task not found: {task_id}"
+    parts = [
+        dream_status_text_for_task(task),
+        "",
+        "Changed files:",
+    ]
+    for path in task.get("changed_files", []):
+        parts.append(f"- {path}")
+    if not task.get("changed_files"):
+        parts.append("- none")
+    diff_path = Path(task.get("diff_path", ""))
+    if diff_path.exists():
+        diff = clip(diff_path.read_text(encoding="utf-8", errors="replace"), 4000)
+        parts.extend(["", "Diff:", diff or "(empty)"])
+    return "\n".join(parts)
+
+
+def dream_status_text_for_task(task):
+    lines = [
+        f"dream: {task.get('id', '')}",
+        f"status: {task.get('status', 'unknown')}",
+        f"lint: {task.get('lint_status', 'unknown')}",
+    ]
+    for issue in task.get("lint_errors", []):
+        lines.append(f"error: {issue.get('code', '')} {issue.get('path', '')}".rstrip())
+    for warning in task.get("lint_warnings", []):
+        lines.append(f"warning: {warning.get('code', '')} {warning.get('path', '')}".rstrip())
+    return "\n".join(lines)
+
+
+def _copy_managed_candidate_to_official(candidate_root, memory_dir):
+    candidate_root = Path(candidate_root)
+    memory_dir = Path(memory_dir)
+    before = _managed_file_texts(memory_dir)
+    after = _managed_file_texts(candidate_root)
+    for relative in sorted(set(before) - set(after)):
+        target = memory_dir / relative
+        try:
+            target.unlink()
+        except OSError:
+            pass
+    for relative in sorted(after):
+        source = candidate_root / relative
+        target = memory_dir / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    for directory in sorted((memory_dir / "topics").glob("**/*"), reverse=True) if (memory_dir / "topics").exists() else []:
+        if directory.is_dir():
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
+
+
+def apply_dream_task(agent, task_id):
+    task = load_dream_task(agent.memory_dir, task_id)
+    if not task:
+        raise DreamApplyError(f"dream task not found: {task_id}")
+    if task.get("status") == "applied":
+        return f"Dream task already applied: {task_id}"
+    if task.get("lint_status") != "passed":
+        raise DreamApplyError(f"dream task cannot be applied with lint status: {task.get('lint_status', 'unknown')}")
+    candidate = Path(task["candidate_store"])
+    if not candidate.exists():
+        raise DreamApplyError(f"dream candidate missing: {candidate}")
+    snapshot_id = f"snapshot_{datetime.now().strftime('%Y%m%d-%H%M%S')}_{task_id}"
+    snapshot_path = _dream_snapshots_dir(agent.memory_dir) / snapshot_id
+    _copy_memory_tree(agent.memory_dir, snapshot_path)
+    _copy_managed_candidate_to_official(candidate, agent.memory_dir)
+    state = load_dream_state(agent.memory_dir)
+    processed = _dedupe_preserve_order([*state.get("processed_session_ids", []), *task.get("input_sessions", [])])
+    pending = [session_id for session_id in state.get("pending_session_ids", []) if session_id not in set(processed)]
+    state.update({"processed_session_ids": processed, "pending_session_ids": pending, "last_task_id": task_id})
+    write_dream_state(agent.memory_dir, state)
+    task.update({"status": "applied", "applied_at": now(), "snapshot_id": snapshot_id, "snapshot_path": str(snapshot_path)})
+    _write_dream_task(agent.memory_dir, task)
+    agent.memory.state = normalize_memory_state(agent.memory.state, agent.root)
+    agent.session["memory"] = agent.memory.to_dict()
+    return f"Applied dream task {task_id}.\nsnapshot: {snapshot_id}"
+
+
+def discard_dream_task(agent, task_id):
+    task = load_dream_task(agent.memory_dir, task_id)
+    if not task:
+        return f"error: dream task not found: {task_id}"
+    if task.get("status") == "applied":
+        return f"error: dream task already applied: {task_id}"
+    task["status"] = "discarded"
+    task["discarded_at"] = now()
+    _write_dream_task(agent.memory_dir, task)
+    return f"Discarded dream task {task_id}."
+
+
+def run_dream(agent, quiet=False, session_ids=None, trigger="manual", raise_on_lock=False):
     from ..core.runtime import Pico
 
     ensure_memory_dir(agent.memory_dir)
-    session_ids = list(session_ids or [])
-    before_snapshot = _memory_file_snapshot(agent)
-    dream_prompt = build_dream_prompt(agent.memory_dir, transcript_dir=str(agent.session_store.root), session_ids=session_ids)
+    if not try_acquire_dream_lock(agent.memory_dir):
+        if raise_on_lock:
+            raise DreamLockHeld("dream already running")
+        return "Dream already running."
+    state = load_dream_state(agent.memory_dir)
+    discovered = list(session_ids or [])
+    processed = set(state.get("processed_session_ids", []))
+    pending = _dedupe_preserve_order([*state.get("pending_session_ids", []), *discovered])
+    pending = [session_id for session_id in pending if session_id not in processed]
+    selected_session_ids = pending[-DREAM_SESSION_CAP:] if len(pending) > DREAM_SESSION_CAP else list(pending)
+    task_id = _new_dream_task_id(trigger=trigger)
+    run_dir = _dream_runs_dir(agent.memory_dir) / task_id
+    input_snapshot = run_dir / "input-snapshot"
+    candidate_store = run_dir / "candidate"
+    diff_path = run_dir / "diff.patch"
+    lint_path = run_dir / "lint.json"
+    report_path = run_dir / "report.md"
+    task = {
+        "id": task_id,
+        "trigger": trigger,
+        "status": "running",
+        "created_at": now(),
+        "started_at": now(),
+        "ended_at": "",
+        "input_sessions": selected_session_ids,
+        "candidate_store": str(candidate_store),
+        "diff_path": str(diff_path),
+        "lint_path": str(lint_path),
+        "report_path": str(report_path),
+        "changed_files": [],
+        "lint_status": "unknown",
+        "lint_errors": [],
+        "lint_warnings": [],
+        "error": "",
+    }
+    _write_dream_task(agent.memory_dir, task)
     try:
-        memory_scope = Path(agent.memory_dir).resolve().relative_to(agent.root)
-    except ValueError:
-        memory_scope = Path(".pico") / "memory"
-    dream_agent = Pico(
-        model_client=agent.model_client,
-        workspace=WorkspaceContext.build(agent.root),
-        session_store=agent.session_store,
-        approval_policy="auto",
-        max_steps=max(agent.max_steps, 20),
-        max_new_tokens=max(agent.max_new_tokens, DREAM_MIN_NEW_TOKENS),
-        secret_env_names=agent.secret_env_names,
-        feature_flags={**agent.feature_flags, "memory": False, "relevant_memory": False},
-        write_scope=[str(memory_scope)],
-        memory_dir=agent.memory_dir,
-        auto_dream=False,
-    )
-    dream_agent.set_tool_profile("dream")
-    dream_agent.refresh_prefix(force=True)
-    result = dream_agent.ask(dream_prompt)
-    record_consolidation(agent.memory_dir)
-    changed_files = _changed_memory_files(before_snapshot, _memory_file_snapshot(agent))
-    agent.last_dream_changed_files = changed_files
-    agent.session_event_bus.emit(
-        "dream_consolidated",
-        {"quiet": bool(quiet), "session_ids": session_ids, "memory_dir": str(agent.memory_dir), "changed_files": changed_files},
-    )
-    agent.memory.state = normalize_memory_state(agent.memory.state, agent.root)
-    agent.session["memory"] = agent.memory.to_dict()
-    return result
+        _copy_memory_tree(agent.memory_dir, input_snapshot)
+        _copy_memory_tree(agent.memory_dir, candidate_store)
+        dream_prompt = build_dream_prompt(candidate_store, transcript_dir=str(agent.session_store.root), session_ids=selected_session_ids)
+        try:
+            memory_scope = candidate_store.resolve().relative_to(agent.root)
+        except ValueError:
+            memory_scope = Path(".pico") / "memory" / DREAM_DIR_NAME / "runs" / task_id / "candidate"
+        dream_agent = Pico(
+            model_client=agent.model_client,
+            workspace=WorkspaceContext.build(agent.root),
+            session_store=agent.session_store,
+            approval_policy="auto",
+            max_steps=max(agent.max_steps, 20),
+            max_new_tokens=max(agent.max_new_tokens, DREAM_MIN_NEW_TOKENS),
+            secret_env_names=agent.secret_env_names,
+            feature_flags={**agent.feature_flags, "memory": False, "relevant_memory": False},
+            write_scope=[str(memory_scope)],
+            memory_dir=agent.memory_dir,
+            auto_dream=False,
+        )
+        dream_agent.set_tool_profile("dream")
+        dream_agent.refresh_prefix(force=True)
+        result = dream_agent.ask(dream_prompt)
+        changed_files = _write_dream_diff(input_snapshot, candidate_store, diff_path)
+        lint_result = lint_memory_candidate(candidate_store)
+        lint_path.write_text(json.dumps(lint_result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        task.update(
+            {
+                "status": "completed_candidate" if lint_result["status"] == "passed" else "lint_failed",
+                "ended_at": now(),
+                "changed_files": changed_files,
+                "lint_status": lint_result["status"],
+                "lint_errors": lint_result.get("errors", []),
+                "lint_warnings": lint_result.get("warnings", []),
+            }
+        )
+        _write_dream_task(agent.memory_dir, task)
+        _write_dream_report(task, lint_result, changed_files, result)
+        state.update(
+            {
+                "last_success_at": now(),
+                "pending_session_ids": pending,
+                "last_task_id": task_id,
+            }
+        )
+        write_dream_state(agent.memory_dir, state)
+        agent.last_dream_changed_files = changed_files
+        agent.last_dream_task_id = task_id
+        agent.session_event_bus.emit(
+            "dream_consolidated",
+            {
+                "quiet": bool(quiet),
+                "trigger": trigger,
+                "task_id": task_id,
+                "session_ids": selected_session_ids,
+                "memory_dir": str(agent.memory_dir),
+                "candidate_store": str(candidate_store),
+                "changed_files": changed_files,
+                "lint_status": lint_result["status"],
+            },
+        )
+        agent.memory.state = normalize_memory_state(agent.memory.state, agent.root)
+        agent.session["memory"] = agent.memory.to_dict()
+        summary = [
+            f"Dream task {task_id} created.",
+            f"status: {task['status']}",
+            f"lint: {lint_result['status']}",
+            f"candidate: {candidate_store.relative_to(agent.root).as_posix()}",
+        ]
+        if changed_files:
+            summary.append("changed:")
+            summary.extend(f"- {path}" for path in changed_files)
+        if str(result).strip():
+            summary.extend(["model:", str(result).strip()])
+        return "\n".join(summary)
+    except Exception as exc:
+        task.update({"status": "failed", "ended_at": now(), "error": str(exc)})
+        _write_dream_task(agent.memory_dir, task)
+        state.update({"failed_session_ids": _dedupe_preserve_order([*state.get("failed_session_ids", []), *selected_session_ids]), "last_task_id": task_id})
+        write_dream_state(agent.memory_dir, state)
+        raise
+    finally:
+        release_dream_lock(agent.memory_dir)
 
 
 def maintain_memory_after_turn(agent, final_answer):
@@ -564,11 +1091,6 @@ def maintain_memory_after_turn(agent, final_answer):
         audit["auto_dream"]["skip_reason"] = gate["skip_reason"]
         _emit_memory_trace(agent, "memory_auto_dream_skipped", dict(audit["auto_dream"]))
         return audit
-    previous_mtime = read_last_consolidated_at(agent.memory_dir)
-    if not try_acquire_lock(agent.memory_dir):
-        audit["auto_dream"]["skip_reason"] = "lock_held"
-        _emit_memory_trace(agent, "memory_auto_dream_skipped", dict(audit["auto_dream"]))
-        return audit
     session_ids = list(gate["session_ids"])
     task_state = getattr(agent, "current_task_state", None)
     audit["auto_dream"]["triggered"] = True
@@ -579,20 +1101,18 @@ def maintain_memory_after_turn(agent, final_answer):
 
     def _background_dream():
         try:
-            run_dream(agent, quiet=True, session_ids=session_ids)
+            run_dream(agent, quiet=True, session_ids=session_ids, trigger="auto", raise_on_lock=True)
             audit["auto_dream"]["status"] = "finished"
             audit["auto_dream"]["changed_files"] = list(getattr(agent, "last_dream_changed_files", []))
+            audit["auto_dream"]["task_id"] = getattr(agent, "last_dream_task_id", "")
             _emit_memory_trace(agent, "memory_auto_dream_finished", dict(audit["auto_dream"]))
-            release_lock(agent.memory_dir)
+        except DreamLockHeld:
+            audit["auto_dream"]["status"] = "skipped"
+            audit["auto_dream"]["skip_reason"] = "lock_held"
+            _emit_memory_trace(agent, "memory_auto_dream_skipped", dict(audit["auto_dream"]))
         except Exception as exc:
             audit["auto_dream"]["status"] = "failed"
             audit["errors"].append(str(exc))
-            lock_path = Path(agent.memory_dir) / LOCK_FILE_NAME
-            if lock_path.exists():
-                try:
-                    os.utime(lock_path, (previous_mtime, previous_mtime))
-                except OSError:
-                    pass
             agent.session_event_bus.emit("memory_auto_dream_failed", {"error": clip(str(exc), 300), "session_ids": session_ids})
             _emit_memory_trace(agent, "memory_auto_dream_failed", {"error": clip(str(exc), 300), "session_ids": session_ids})
         finally:
@@ -640,11 +1160,12 @@ class DurableMemoryStore:
         current = None
         for raw in lines:
             line = raw.strip()
-            match = re.match(r"- \[([^\]]+)\]\([^)]+\):\s*(.+)", line)
+            match = re.match(r"- \[([^\]]+)\]\(([^)]+)\):\s*(.+)", line)
             if match:
+                topic_path = Path(match.group(2).strip())
                 current = {
-                    "topic": match.group(1).strip(),
-                    "title": match.group(2).strip(),
+                    "topic": topic_path.stem or match.group(1).strip(),
+                    "title": match.group(3).strip(),
                     "summary": "",
                     "tags": [],
                 }

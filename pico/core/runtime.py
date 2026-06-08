@@ -700,6 +700,18 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
     def run_dream(self, quiet=False, session_ids=None):
         return memorylib.run_dream(self, quiet=quiet, session_ids=session_ids)
 
+    def dream_status_text(self):
+        return memorylib.dream_status_text(self)
+
+    def dream_review_text(self, task_id):
+        return memorylib.dream_review_text(self, task_id)
+
+    def apply_dream(self, task_id):
+        return memorylib.apply_dream_task(self, task_id)
+
+    def discard_dream(self, task_id):
+        return memorylib.discard_dream_task(self, task_id)
+
     def maintain_memory_after_turn(self, final_answer):
         return memorylib.maintain_memory_after_turn(self, final_answer)
 
@@ -932,8 +944,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         path = Path(raw_path)
         path = path if path.is_absolute() else self.root / path
         resolved = path.resolve()
-        # 所有文件类工具都被锚定在 workspace root 之下。
-        # 这样既能防住 "../" 逃逸，也能防住符号链接解析后跳出仓库。
+        # 所有文件类工具都锚定在 workspace root，防住 "../" 和符号链接逃逸。
         if os.path.commonpath([str(self.root), str(resolved)]) != str(self.root):
             raise ValueError(f"path escapes workspace: {raw_path}")
         return resolved

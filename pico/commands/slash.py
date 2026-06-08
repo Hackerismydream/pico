@@ -19,7 +19,7 @@ SLASH_COMMANDS: tuple[SlashCommand, ...] = (
     SlashCommand("clear", "/clear", "Create a new empty session."),
     SlashCommand("compact", "/compact", "Compact older session history."),
     SlashCommand("context", "/context", "Show prompt context usage."),
-    SlashCommand("dream", "/dream", "Consolidate durable memory."),
+    SlashCommand("dream", "/dream [status|review|apply|discard]", "Consolidate durable memory."),
     SlashCommand("history", "/history", "List saved sessions."),
     SlashCommand("memory", "/memory", "Show durable memory index."),
     SlashCommand("mode", "/mode", "Show runtime mode."),

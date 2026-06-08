@@ -384,8 +384,30 @@ def handle_repl_command(agent, user_input):
             return True, False, "Usage: /remember <text>"
         agent.remember_durable_note(note)
         return True, False, "Saved to daily log."
-    if user_input == "/dream":
-        return True, False, agent.run_dream()
+    if command_name == "dream":
+        if not command_args:
+            return True, False, agent.run_dream()
+        action, _, rest = command_args.partition(" ")
+        action = action.strip().lower()
+        task_id = rest.strip()
+        if action == "status":
+            return True, False, agent.dream_status_text()
+        if action == "review":
+            if not task_id:
+                return True, False, "Usage: /dream review <task_id>"
+            return True, False, agent.dream_review_text(task_id)
+        if action == "apply":
+            if not task_id:
+                return True, False, "Usage: /dream apply <task_id>"
+            try:
+                return True, False, agent.apply_dream(task_id)
+            except Exception as exc:
+                return True, False, f"error: {exc}"
+        if action == "discard":
+            if not task_id:
+                return True, False, "Usage: /dream discard <task_id>"
+            return True, False, agent.discard_dream(task_id)
+        return True, False, "Usage: /dream [status|review <task_id>|apply <task_id>|discard <task_id>]"
     if user_input == "/skills":
         return True, False, skillslib.render_skills_list(agent.skills)
     if user_input == "/plan" or user_input.startswith("/plan "):

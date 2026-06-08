@@ -74,7 +74,7 @@
 | S41 | task_stop worker | one-shot CLI / DeepSeek | task_stop、worker completion | passed |
 | S42 | `/clear` stops worker | one-shot + REPL clear | clear session、worker cleanup | passed |
 | S43 | `/remember` 写 daily log | PTY-style stdin REPL | durable memory、daily log | passed |
-| S44 | `/dream` 写 memory | PTY REPL / DeepSeek | dream/consolidation、memory artifacts | passed |
+| S44 | `/dream` candidate / apply | PTY REPL / DeepSeek | dream candidate、lint、review、apply、snapshot | passed |
 | S45 | secret-shaped memory rejected | one-shot CLI / DeepSeek | durable rejection、secret redaction | passed |
 
 ## Provider / Recovery / Safety

@@ -125,10 +125,7 @@ def test_dream_slash_command_consolidates_daily_log_into_memory_files(tmp_path):
     agent = build_agent(
         tmp_path,
         [
-            '<tool>{"name":"read_file","args":{"path":".pico/memory/MEMORY.md","start":1,"end":50}}</tool>',
-            '<tool>{"name":"write_file","args":{"path":".pico/memory/MEMORY.md","content":"# Durable Memory Index\\n\\n- [User Preferences](topics/user-preferences.md): User preferences\\n"}}</tool>',
-            '<tool>{"name":"write_file","args":{"path":".pico/memory/topics/user-preferences.md","content":"# User Preferences\\n\\n## Notes\\n- Prefers concise reports.\\n"}}</tool>',
-            "<final>Dream consolidation complete.</final>",
+            "<final>Dream candidate checked.</final>",
         ],
     )
     handle_repl_command(agent, "/remember Prefers concise reports.")
@@ -137,11 +134,10 @@ def test_dream_slash_command_consolidates_daily_log_into_memory_files(tmp_path):
 
     assert handled is True
     assert should_exit is False
-    assert "Dream consolidation complete" in output
-    assert "User preferences" in (tmp_path / ".pico" / "memory" / "MEMORY.md").read_text(encoding="utf-8")
-    assert "Prefers concise reports" in (tmp_path / ".pico" / "memory" / "topics" / "user-preferences.md").read_text(encoding="utf-8")
-    # dream prompt 是发给 dream 子 agent 的，加了 read step 后总 prompt 数 +1，索引相应调整
-    assert "Dream: Memory Consolidation" in agent.model_client.prompts[-4]
+    assert "Dream task" in output
+    assert "Dream candidate checked" in output
+    assert "Prefers concise reports" not in (tmp_path / ".pico" / "memory" / "MEMORY.md").read_text(encoding="utf-8")
+    assert "Dream: Memory Consolidation" in agent.model_client.prompts[-1]
 
 
 def test_dream_cannot_write_outside_memory_directory(tmp_path):
@@ -157,7 +153,8 @@ def test_dream_cannot_write_outside_memory_directory(tmp_path):
 
     assert handled is True
     assert should_exit is False
-    assert output == "Dream stopped."
+    assert "Dream task" in output
+    assert "Dream stopped." in output
     assert (tmp_path / "README.md").read_text(encoding="utf-8") == "demo\n"
 
 
