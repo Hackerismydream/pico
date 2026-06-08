@@ -1,0 +1,10 @@
+{
+  "exit_status": "setup_error",
+  "image": "docker.io/swebench/sweb.eval.x86_64.astropy_1776_astropy-14365:latest",
+  "instance_id": "astropy__astropy-14365",
+  "model": "deepseek-v4-pro",
+  "model_error": "",
+  "model_patch_chars": 0,
+  "setup_error": "docker run failed for docker.io/swebench/sweb.eval.x86_64.astropy_1776_astropy-14365:latest: Unable to find image 'swebench/sweb.eval.x86_64.astropy_1776_astropy-14365:latest' locally\nlatest: Pulling from swebench/sweb.eval.x86_64.astropy_1776_astropy-14365\ndocker: failed to copy: httpReadSeeker: failed open: failed to do request: Get \"https://production.cloudfront.docker.com/registry-v2/docker/registry/v2/blobs/sha256/39/3925b434247f8fc7aabe79a902d03d4566d697c4f35b7a39fdfa209263efb358/data?Expires=1780906321&Signature=QOcBcczDFQN~UdlEjzOVmEZgncvruf~GnXQvgSu8krS7ZYwpfUwN0sF1CFXMl0FwspRcCIPR1V2CqsZmA56GdPmHUx3TUu4x-ctF-zHxg2a8F2wqL11U8HgrQan6AQXq4oMR4RgGwkmkApyLbARcVyl9p4W~iKXD7RMLRqlRIHjlxIC5QxMOIjD3nu-0yr~560AAJxL8sukYcpbqjapdiHr5NMI7tUB09TIeT6QA3OcyYs4DDGRaNusggNDvESYT4AO-wuda7ToHJwQn2I-6Teyx6J0-ZYZfK9L4LRTAWI7JxYGhLqV7Y838WSmgG1QQQznNdryj50ajiQn1DtnNpg__&Key-Pair-Id=K2C9XPB6FLAKUF\": net/http: TLS handshake timeout\n\nRun 'docker run --help' for more information",
+  "steps": []
+}

@@ -1,0 +1,10 @@
+{
+  "exit_status": "setup_error",
+  "image": "docker.io/swebench/sweb.eval.x86_64.django_1776_django-14017:latest",
+  "instance_id": "django__django-14017",
+  "model": "deepseek-v4-pro",
+  "model_error": "",
+  "model_patch_chars": 0,
+  "setup_error": "docker run failed for docker.io/swebench/sweb.eval.x86_64.django_1776_django-14017:latest: Unable to find image 'swebench/sweb.eval.x86_64.django_1776_django-14017:latest' locally\ndocker: Error response from daemon: failed to resolve reference \"docker.io/swebench/sweb.eval.x86_64.django_1776_django-14017:latest\": failed to do request: Head \"https://registry-1.docker.io/v2/swebench/sweb.eval.x86_64.django_1776_django-14017/manifests/latest\": EOF\n\nRun 'docker run --help' for more information",
+  "steps": []
+}

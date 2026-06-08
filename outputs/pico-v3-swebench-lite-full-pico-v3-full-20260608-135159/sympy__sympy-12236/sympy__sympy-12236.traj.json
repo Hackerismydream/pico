@@ -1,0 +1,10 @@
+{
+  "exit_status": "setup_error",
+  "image": "docker.io/swebench/sweb.eval.x86_64.sympy_1776_sympy-12236:latest",
+  "instance_id": "sympy__sympy-12236",
+  "model": "deepseek-v4-pro",
+  "model_error": "",
+  "model_patch_chars": 0,
+  "setup_error": "docker run failed for docker.io/swebench/sweb.eval.x86_64.sympy_1776_sympy-12236:latest: Unable to find image 'swebench/sweb.eval.x86_64.sympy_1776_sympy-12236:latest' locally\nlatest: Pulling from swebench/sweb.eval.x86_64.sympy_1776_sympy-12236\nee8c1822cf79: Pulling fs layer\n8ace1963477c: Pulling fs layer\n4d763b46830f: Pulling fs layer\nbbcef7140cea: Pulling fs layer\n5bdc9d2f9a08: Pulling fs layer\ne716feecb3a2: Pulling fs layer\n4fc36a21161c: Pulling fs layer\ne716feecb3a2: Download complete\ndocker: failed to copy: httpReadSeeker: failed open: failed to do request: Get \"https://production.cloudfront.docker.com/registry-v2/docker/registry/v2/blobs/sha256/4f/4fc36a21161c764cdfefa74216126d74f03fdfd17acb89ca3874f3a2065f71d1/data?Expires=1780907483&Signature=w6CjY8FWxmpFGZ5x7e7FElQ7z1StacrKYcQfNgWwYhkHiPPMtMwccwYo61sWmn--PGda0Rw0R3Dj7r0LbD57BFIh~yiUjkL~HYhRl7ANUXm55nWTJk3Cyta4tzWMDLH7LL2GzVrB~GlpSCo4dbr6775CY6opFfCuyMgzfbsHVMa9V3fI4YNnXirpo~H6t8T0iTf7VOZm6AY0SE07uYLxg2L85RdWc5sRJwT~CkzXqw99xam3PXKgPxtVNkDTZA3Vn114eir-hXbdVtrQe3BUihKIydrCkXJGbLhSOxtDfVfl-h3nTlJLKyUzPPavs71Hx-9L5qeIOFhmJgBLHfHCfQ__&Key-Pair-Id=K2C9XPB6FLAKUF\": net/http: TLS handshake timeout\n\nRun 'docker run --help' for more information",
+  "steps": []
+}

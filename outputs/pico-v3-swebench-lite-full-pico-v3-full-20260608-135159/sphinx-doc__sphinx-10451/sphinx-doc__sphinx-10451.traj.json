@@ -1,0 +1,10 @@
+{
+  "exit_status": "setup_error",
+  "image": "docker.io/swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-10451:latest",
+  "instance_id": "sphinx-doc__sphinx-10451",
+  "model": "deepseek-v4-pro",
+  "model_error": "",
+  "model_patch_chars": 0,
+  "setup_error": "docker run failed for docker.io/swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-10451:latest: Unable to find image 'swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-10451:latest' locally\nlatest: Pulling from swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-10451\n65daa445c6e4: Pulling fs layer\nd02f7e5e18a6: Pulling fs layer\n6c7f281aae1f: Pulling fs layer\nba24823afb19: Pulling fs layer\nd5ed986cea84: Pulling fs layer\nba24823afb19: Already exists\nd02f7e5e18a6: Already exists\ndocker: failed to copy: httpReadSeeker: failed open: failed to do request: Get \"https://production.cloudfront.docker.com/registry-v2/docker/registry/v2/blobs/sha256/d5/d5ed986cea84f4edb6eaa5d0a69fa12017159ca10e366ee0a0b0b9423f6c3ebe/data?Expires=1780907346&Signature=J6tE2w6HnvjJsQ-XtwkmYXNFLNys0a0ECSBT944Spa3aNOunogcwEVkgjOEtpuv1JVylWs8l2brR9TTzbVs-xbkIXGDtnEWsluP9dWvJ9c~v9cjXGAKwkoPedsbVSDh7nGYRvpZyNAeDEQGNcnZ6PMFy8sKtPzsvOAk-evJHqCTMHuGDDNK8Pe4dh-rokN4pycmA5ogAsdnuXfzjm58x4lcJEgw182e1HBW7XtNeKsCgCP7b2uncezDZFsmbqRCuFeZh17HDqrzG1stfglqCEjqUd~KvEUIL9D-N5qg3Pth4vdxKMAgnLkQmoCG-ioZK0hWiyDKTqHhovwLY0VREFg__&Key-Pair-Id=K2C9XPB6FLAKUF\": net/http: TLS handshake timeout\n\nRun 'docker run --help' for more information",
+  "steps": []
+}

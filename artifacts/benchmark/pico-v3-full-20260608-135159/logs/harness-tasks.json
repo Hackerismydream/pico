@@ -1,0 +1,197 @@
+{
+  "01-file": {
+    "title": "Count Lines In A Real Workspace File",
+    "tags": [
+      "file",
+      "workspace"
+    ]
+  },
+  "02-exec": {
+    "title": "Run Real Shell Commands In The Workspace",
+    "tags": [
+      "exec",
+      "shell",
+      "workspace"
+    ]
+  },
+  "03-browser": {
+    "title": "Read A Local Page And Save An Extract",
+    "tags": [
+      "browser",
+      "local-http"
+    ]
+  },
+  "04-meeting-summary": {
+    "title": "Summarize A Meeting Transcript Into A Chinese Memo",
+    "tags": [
+      "writing",
+      "summary",
+      "documents"
+    ]
+  },
+  "05-email-triage": {
+    "title": "Triages A Mock Inbox And Drafts Replies",
+    "tags": [
+      "email",
+      "json",
+      "classification"
+    ]
+  },
+  "06-access-bilibili": {
+    "title": "Access A Local Bilibili-Style Mock Page",
+    "tags": [
+      "browser",
+      "local-http",
+      "web-extraction"
+    ]
+  },
+  "07-session-memory": {
+    "title": "Keep A Secret Across Two Benchmark Rounds",
+    "tags": [
+      "memory",
+      "multi-round",
+      "session"
+    ]
+  },
+  "08-image-recognize": {
+    "title": "Inspect Two Local Images And Save Short Answers",
+    "tags": [
+      "vision",
+      "multimodal",
+      "images"
+    ]
+  },
+  "09-git-pr-merge": {
+    "title": "Review A Git PR Branch Then Merge And Push It",
+    "tags": [
+      "git",
+      "pr",
+      "merge"
+    ]
+  },
+  "10-office-docs": {
+    "title": "Read CSV And PDF Inputs Then Produce JSON And DOCX Outputs",
+    "tags": [
+      "office",
+      "csv",
+      "pdf",
+      "docx"
+    ]
+  },
+  "12-code-debug": {
+    "title": "渐进式代码修复与验证",
+    "tags": [
+      "code-debugging",
+      "iterative-repair",
+      "multi-layer",
+      "error-recovery"
+    ]
+  },
+  "13-doc-synthesis": {
+    "title": "本地多文档综合与矛盾检测",
+    "tags": [
+      "long-context",
+      "information-integration",
+      "fact-checking",
+      "critical-thinking"
+    ]
+  },
+  "14-image-edit": {
+    "title": "图片编辑：风格迁移与场景扩展",
+    "tags": [
+      "multimodal",
+      "image-generation",
+      "image-editing"
+    ]
+  },
+  "15-task-decomposition": {
+    "title": "自主任务分解与执行",
+    "tags": [
+      "planning",
+      "decomposition",
+      "execution-monitoring",
+      "complex"
+    ]
+  },
+  "16-heartbeat-test": {
+    "title": "定期邮箱检查",
+    "tags": [
+      "long-running",
+      "autonomous",
+      "heartbeat"
+    ]
+  },
+  "17-like-record": {
+    "title": "社交平台用户行为统计分析",
+    "tags": []
+  },
+  "18-album-metadata-retrieval": {
+    "title": "专辑封面元数据提取与知识检索",
+    "tags": []
+  },
+  "19-landmark-recognition": {
+    "title": "地标识别",
+    "tags": []
+  },
+  "20-football-shot-map-analysis": {
+    "title": "足球比赛射门分布图数据统计",
+    "tags": []
+  },
+  "21-US-bank-failures-history": {
+    "title": "美国历史银行倒闭潮图表分析与背景检索",
+    "tags": []
+  },
+  "22-log-troubleshooting": {
+    "title": "生产环境长日志排查与依赖修复",
+    "tags": []
+  },
+  "23-supply-chain-alert": {
+    "title": "跨表数据关联与库存预警分析",
+    "tags": []
+  },
+  "24-security-injection-defense": {
+    "title": "用户反馈分析与 Prompt Injection 防御阻断",
+    "tags": []
+  },
+  "25-code-repair-pytest": {
+    "title": "深层字典合并Bug修复与单元测试闭环",
+    "tags": []
+  },
+  "26-db-doc-consistency": {
+    "title": "系统配置与部署文档一致性审计",
+    "tags": []
+  },
+  "18-provider-failover-audit": {
+    "title": "OpenClaw 多厂商 API 路由与故障切换审计",
+    "tags": [
+      "openclaw",
+      "provider-routing",
+      "tool-use",
+      "cache",
+      "structured-output",
+      "api-evaluation"
+    ]
+  },
+  "19-incident-runbook-synthesis": {
+    "title": "多源生产事故分析与安全 Runbook 合成",
+    "tags": [
+      "incident-response",
+      "runbook",
+      "multi-document",
+      "safety",
+      "evidence-synthesis",
+      "ops"
+    ]
+  },
+  "20-heartbeat-escalation": {
+    "title": "Heartbeat 异步邮件监控、去重与升级",
+    "tags": [
+      "heartbeat",
+      "long-running",
+      "autonomous",
+      "email",
+      "dedupe",
+      "escalation"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "exit_status": "setup_error",
+  "image": "docker.io/swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-10325:latest",
+  "instance_id": "sphinx-doc__sphinx-10325",
+  "model": "deepseek-v4-pro",
+  "model_error": "",
+  "model_patch_chars": 0,
+  "setup_error": "docker run timed out for docker.io/swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-10325:latest: Unable to find image 'swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-10325:latest' locally\nlatest: Pulling from swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-10325\n35e8eb4a53fc: Pulling fs layer\nb0e6cd984b45: Pulling fs layer\nba24823afb19: Pulling fs layer\n6410c1d14736: Pulling fs layer\n65daa445c6e4: Pulling fs layer\n46a6eee26bd8: Pulling fs layer\nd02f7e5e18a6: Pulling fs layer\nb0e6cd984b45: Download complete\nb0e6cd984b45: Pull complete\nd02f7e5e18a6: Download complete\nba24823afb19: Download complete\n6410c1d14736: Download complete\n46a6eee26bd8: Download complete\n46a6eee26bd8: Pull complete\n",
+  "steps": []
+}

@@ -1,0 +1,19 @@
+models:
+  pico-v3-local:
+    adapter: generic_cli
+    command: /Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh
+    session_prefix: clawbenchv2-pico-v3-full
+    timeout_sec: 900
+    args:
+      - "--workspace"
+      - "{workspace}"
+      - "--prompt-file"
+      - "{prompt_file}"
+      - "--session-id"
+      - "{session_id}"
+      - "--task-id"
+      - "{task_id}"
+      - "--model-id"
+      - "{model_id}"
+      - "--max-steps"
+      - "16"

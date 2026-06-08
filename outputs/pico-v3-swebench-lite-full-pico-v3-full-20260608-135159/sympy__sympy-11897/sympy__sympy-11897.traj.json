@@ -1,0 +1,10 @@
+{
+  "exit_status": "setup_error",
+  "image": "docker.io/swebench/sweb.eval.x86_64.sympy_1776_sympy-11897:latest",
+  "instance_id": "sympy__sympy-11897",
+  "model": "deepseek-v4-pro",
+  "model_error": "",
+  "model_patch_chars": 0,
+  "setup_error": "docker run failed for docker.io/swebench/sweb.eval.x86_64.sympy_1776_sympy-11897:latest: Unable to find image 'swebench/sweb.eval.x86_64.sympy_1776_sympy-11897:latest' locally\nlatest: Pulling from swebench/sweb.eval.x86_64.sympy_1776_sympy-11897\ndocker: failed to copy: httpReadSeeker: failed open: failed to do request: Get \"https://registry-1.docker.io/v2/swebench/sweb.eval.x86_64.sympy_1776_sympy-11897/manifests/sha256:fc006b6a7bda77474808b4aaab2f39e7e72a3dccff3a1636bb113a3f60c85e7f\": net/http: TLS handshake timeout\n\nRun 'docker run --help' for more information",
+  "steps": []
+}

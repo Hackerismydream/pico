@@ -1,0 +1,10 @@
+{
+  "exit_status": "setup_error",
+  "image": "docker.io/swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-8506:latest",
+  "instance_id": "sphinx-doc__sphinx-8506",
+  "model": "deepseek-v4-pro",
+  "model_error": "",
+  "model_patch_chars": 0,
+  "setup_error": "docker run failed for docker.io/swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-8506:latest: Unable to find image 'swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-8506:latest' locally\nlatest: Pulling from swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-8506\ndocker: failed to copy: httpReadSeeker: failed open: failed to do request: Get \"https://registry-1.docker.io/v2/swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-8506/manifests/sha256:eaa95141297c5133fc8fbe5c64cb0e2411ffec08b395ef1fb39658cf71f501d3\": net/http: TLS handshake timeout\n\nRun 'docker run --help' for more information",
+  "steps": []
+}

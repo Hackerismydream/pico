@@ -1,0 +1,10 @@
+{
+  "exit_status": "setup_error",
+  "image": "docker.io/swebench/sweb.eval.x86_64.sympy_1776_sympy-18698:latest",
+  "instance_id": "sympy__sympy-18698",
+  "model": "deepseek-v4-pro",
+  "model_error": "",
+  "model_patch_chars": 0,
+  "setup_error": "docker run timed out for docker.io/swebench/sweb.eval.x86_64.sympy_1776_sympy-18698:latest: Unable to find image 'swebench/sweb.eval.x86_64.sympy_1776_sympy-18698:latest' locally\nlatest: Pulling from swebench/sweb.eval.x86_64.sympy_1776_sympy-18698\n1d3438604484: Pulling fs layer\n149048d5f615: Pulling fs layer\n33a75f20a27a: Pulling fs layer\n149048d5f615: Pulling fs layer\n0f98663161b0: Pulling fs layer\n53e8198d1720: Pulling fs layer\n8cdf43a3fe65: Pulling fs layer\n26b01d730493: Pulling fs layer\n7d1a54512fd3: Pulling fs layer\n149048d5f615: Download complete\n149048d5f615: Pull complete\n26b01d730493: Download complete\n33a75f20a27a: Download complete\n53e8198d1720: Download complete\n0f98663161b0: Download complete\n0f98663161b0: Pull complete\n7d1a54512fd3: Download complete\n",
+  "steps": []
+}

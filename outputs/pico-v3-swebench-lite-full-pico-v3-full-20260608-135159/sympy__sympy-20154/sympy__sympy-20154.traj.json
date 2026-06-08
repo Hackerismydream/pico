@@ -1,0 +1,10 @@
+{
+  "exit_status": "setup_error",
+  "image": "docker.io/swebench/sweb.eval.x86_64.sympy_1776_sympy-20154:latest",
+  "instance_id": "sympy__sympy-20154",
+  "model": "deepseek-v4-pro",
+  "model_error": "",
+  "model_patch_chars": 0,
+  "setup_error": "docker run failed for docker.io/swebench/sweb.eval.x86_64.sympy_1776_sympy-20154:latest: Unable to find image 'swebench/sweb.eval.x86_64.sympy_1776_sympy-20154:latest' locally\nlatest: Pulling from swebench/sweb.eval.x86_64.sympy_1776_sympy-20154\na4a05974a151: Pulling fs layer\n8cdf43a3fe65: Pulling fs layer\n33a75f20a27a: Pulling fs layer\n326dcb00054e: Pulling fs layer\n326dcb00054e: Pulling fs layer\n53e8198d1720: Pulling fs layer\n53e8198d1720: Already exists\n33a75f20a27a: Already exists\n326dcb00054e: Download complete\ndocker: short read: expected 302640002 bytes but got 51039606: unexpected EOF\n\nRun 'docker run --help' for more information",
+  "steps": []
+}

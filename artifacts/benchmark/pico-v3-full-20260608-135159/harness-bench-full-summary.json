@@ -1,0 +1,267 @@
+{
+  "attempted_tasks": 26,
+  "average_combined_score": 0.6188461538461538,
+  "average_outcome_score": 0.47842105263157897,
+  "average_process_score": null,
+  "average_total_tokens": null,
+  "failed_task_ids": [
+    "06-access-bilibili",
+    "10-office-docs",
+    "12-code-debug",
+    "13-doc-synthesis",
+    "15-task-decomposition",
+    "16-heartbeat-test",
+    "17-like-record",
+    "18-album-metadata-retrieval",
+    "18-provider-failover-audit",
+    "19-incident-runbook-synthesis",
+    "19-landmark-recognition",
+    "20-football-shot-map-analysis",
+    "20-heartbeat-escalation",
+    "21-US-bank-failures-history",
+    "22-log-troubleshooting",
+    "24-security-injection-defense",
+    "25-code-repair-pytest",
+    "26-db-doc-consistency"
+  ],
+  "model_id": "pico-v3-local",
+  "oracle_failed_tasks": 18,
+  "oracle_pass_rate": 0.3076923076923077,
+  "oracle_passed_tasks": 8,
+  "task_rows": [
+    {
+      "combined_score": 1.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": 1.0,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/01-file.json",
+      "process_score": null,
+      "task_id": "01-file",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 1.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": 1.0,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/02-exec.json",
+      "process_score": null,
+      "task_id": "02-exec",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 1.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": 1.0,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/03-browser.json",
+      "process_score": null,
+      "task_id": "03-browser",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 1.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": 1.0,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/04-meeting-summary.json",
+      "process_score": null,
+      "task_id": "04-meeting-summary",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 1.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": 1.0,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/05-email-triage.json",
+      "process_score": null,
+      "task_id": "05-email-triage",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 0.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": 0.0,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/06-access-bilibili.json",
+      "process_score": null,
+      "task_id": "06-access-bilibili",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 1.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": 1.0,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/07-session-memory.json",
+      "process_score": null,
+      "task_id": "07-session-memory",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 1.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": 1.0,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/08-image-recognize.json",
+      "process_score": null,
+      "task_id": "08-image-recognize",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 0.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": 0.0,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/10-office-docs.json",
+      "process_score": null,
+      "task_id": "10-office-docs",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 0.25,
+      "model_id": "pico-v3-local",
+      "outcome_score": 0.25,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/12-code-debug.json",
+      "process_score": null,
+      "task_id": "12-code-debug",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 0.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": 0.0,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/13-doc-synthesis.json",
+      "process_score": null,
+      "task_id": "13-doc-synthesis",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 1.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": 1.0,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/14-image-edit.json",
+      "process_score": null,
+      "task_id": "14-image-edit",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 0.45,
+      "model_id": "pico-v3-local",
+      "outcome_score": 0.45,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/15-task-decomposition.json",
+      "process_score": null,
+      "task_id": "15-task-decomposition",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 0.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": 0.0,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/16-heartbeat-test.json",
+      "process_score": null,
+      "task_id": "16-heartbeat-test",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 0.07,
+      "model_id": "pico-v3-local",
+      "outcome_score": 0.07,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/17-like-record.json",
+      "process_score": null,
+      "task_id": "17-like-record",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 0.32,
+      "model_id": "pico-v3-local",
+      "outcome_score": 0.32,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/18-album-metadata-retrieval.json",
+      "process_score": null,
+      "task_id": "18-album-metadata-retrieval",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 0.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": 0.0,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/18-provider-failover-audit.json",
+      "process_score": null,
+      "task_id": "18-provider-failover-audit",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 0.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": 0.0,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/19-incident-runbook-synthesis.json",
+      "process_score": null,
+      "task_id": "19-incident-runbook-synthesis",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 1.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": null,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/19-landmark-recognition.json",
+      "process_score": null,
+      "task_id": "19-landmark-recognition",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 1.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": null,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/20-football-shot-map-analysis.json",
+      "process_score": null,
+      "task_id": "20-football-shot-map-analysis",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 0.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": 0.0,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/20-heartbeat-escalation.json",
+      "process_score": null,
+      "task_id": "20-heartbeat-escalation",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 1.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": null,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/21-US-bank-failures-history.json",
+      "process_score": null,
+      "task_id": "21-US-bank-failures-history",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 1.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": null,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/22-log-troubleshooting.json",
+      "process_score": null,
+      "task_id": "22-log-troubleshooting",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 1.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": null,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/24-security-injection-defense.json",
+      "process_score": null,
+      "task_id": "24-security-injection-defense",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 1.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": null,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/25-code-repair-pytest.json",
+      "process_score": null,
+      "task_id": "25-code-repair-pytest",
+      "total_tokens": null
+    },
+    {
+      "combined_score": 1.0,
+      "model_id": "pico-v3-local",
+      "outcome_score": null,
+      "path": "/Users/martinlos/code/harness-bench/data/pico-v3-full/results/pico-v3-local/26-db-doc-consistency.json",
+      "process_score": null,
+      "task_id": "26-db-doc-consistency",
+      "total_tokens": null
+    }
+  ]
+}

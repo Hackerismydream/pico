@@ -1,0 +1,10 @@
+{
+  "exit_status": "setup_error",
+  "image": "docker.io/swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13142:latest",
+  "instance_id": "scikit-learn__scikit-learn-13142",
+  "model": "deepseek-v4-pro",
+  "model_error": "",
+  "model_patch_chars": 0,
+  "setup_error": "docker run timed out for docker.io/swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13142:latest: Unable to find image 'swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13142:latest' locally\nlatest: Pulling from swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13142\n6d40507a7a9c: Pulling fs layer\nd8cb7a6e23fc: Pulling fs layer\n77e1fc57d336: Pulling fs layer\na8960c12d3f3: Pulling fs layer\n729981885922: Pulling fs layer\nd8cb7a6e23fc: Pulling fs layer\n0830421d14fc: Pulling fs layer\n7f281a0b1368: Pulling fs layer\neeabd4509783: Pulling fs layer\nd8cb7a6e23fc: Download complete\nd8cb7a6e23fc: Pull complete\n7f281a0b1368: Download complete\neeabd4509783: Download complete\n77e1fc57d336: Download complete\na8960c12d3f3: Download complete\n729981885922: Download complete\n77e1fc57d336: Pull complete\n0830421d14fc: Download complete\n",
+  "steps": []
+}

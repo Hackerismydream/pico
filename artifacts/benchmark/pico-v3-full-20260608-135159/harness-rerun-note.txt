@@ -1,0 +1,1 @@
+First Harness-Bench attempt completed but provider env was sourced without export; preserved as env-not-exported artifacts.
