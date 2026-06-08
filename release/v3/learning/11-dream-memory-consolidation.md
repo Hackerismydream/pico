@@ -175,7 +175,7 @@ flowchart TD
 
 代价也很清楚：如果 lock 文件被外部手动改动，时间门槛判断会被影响；如果进程异常退出，需要 stale holder 逻辑兜底。当前实现里 `HOLDER_STALE_S = 3600`，一小时内如果 holder pid 还活着就认为锁还被占用，超过或 pid 不存在则允许接管。
 
-当前实现把这两个职责拆开：`.dream/lock` 只负责并发，`.dream/state.json` 记录 `pending_session_ids`、`processed_session_ids`、`failed_session_ids` 和最近一次 task。这样超过 `DREAM_SESSION_CAP` 的 session 不会因为一次 candidate 生成成功就被静默跳过。
+当前实现把这两个职责拆开：`.dream/lock` 只负责并发，`.dream/state.json` 记录 `last_scan_at`、`last_candidate_at`、`last_apply_at`、`pending_session_ids`、`processed_session_ids`、`failed_session_ids` 和最近一次 task。这样超过 `DREAM_SESSION_CAP` 的 session 不会因为一次 candidate 生成成功就被静默跳过；Dream 运行期间新写入的 session 也不会被 completion time 误吞。
 
 ---
 
@@ -248,13 +248,13 @@ CLI 里 `/remember` 会调用 `agent.remember_durable_note(note)`，后者调用
 
 前两个门槛满足后，`maintain_memory_after_turn()` 会启动后台 Dream，后台入口会尝试拿 `.dream/lock`。
 
-如果拿不到，返回 `lock_held`。如果拿到锁，就创建 Dream task，复制 input snapshot 和 candidate store，发出 `auto_dream_started` 事件，启动名为 `pico-auto-dream` 的 daemon thread。
+如果拿不到，返回 `lock_held`。如果拿到锁，就创建 Dream task，复制 input snapshot 和 candidate store，记录 official memory 的 base hash，发出 `auto_dream_started` 事件，启动名为 `pico-auto-dream` 的 daemon thread。
 
 这里没有阻塞主回答。用户已经拿到了 final answer，后台整理继续跑。
 
 ### 单次 session cap
 
-`DREAM_SESSION_CAP = 30`。如果待整理 session 超过 30 个，`build_dream_prompt()` 只列最近 30 个，并在 prompt 里说明这次只处理最近一批，下一次 Dream 再继续。
+`DREAM_SESSION_CAP = 30`。如果待整理 session 超过 30 个，Dream 先处理最老的 30 个 pending session，apply 成功后才把它们移入 processed。这样持续高频 session 下也不会让旧 pending starvation。
 
 这个 cap 是一个实际运行经验驱动的保护。
 
@@ -652,13 +652,14 @@ MemGPT 从操作系统的层级内存得到启发，把有限 context window 外
 
 用户可能正在手动改 `.pico/memory`，后台 Dream 同时 patch 文件。
 
-当前防线较弱。
+当前防线已经比较硬。
 
-可以补：
+防线包括：
 
 - Dream 开始前保存 memory snapshot。
-- 写入前检查文件 hash 是否仍等于开始时读取的版本。
-- 如果不一致，写入候选 patch 而不是直接覆盖。
+- candidate 创建时保存 official memory base hash。
+- apply 时重新 lint candidate，并检查 official memory hash 是否仍等于 base。
+- 如果 official memory 已变化，拒绝 apply，要求重新 `/dream`。
 
 ### 5. Provider 返回空响应或超时
 
@@ -682,8 +683,8 @@ MemGPT 从操作系统的层级内存得到启发，把有限 context window 外
 
 当前实现已经拆成两部分：
 
-- `.dream/lock` 只负责手动和自动 Dream 的互斥。
-- `.dream/state.json` 保存 `last_success_at`、pending/processed/failed session ids 和最近 task。
+- `.dream/lock` 只负责手动 Dream、auto Dream 和 apply 的互斥，使用原子 create。
+- `.dream/state.json` 保存 `last_scan_at`、`last_candidate_at`、`last_apply_at`、pending/processed/failed session ids 和最近 task。
 
 这样 gate 逻辑和并发锁更清晰，超过 `DREAM_SESSION_CAP` 的 session 也不会因为一次 candidate 生成成功就被静默丢掉。
 
@@ -717,13 +718,14 @@ MemGPT 从操作系统的层级内存得到启发，把有限 context window 外
 
 ### 已完成：统一手动和自动 Dream 的锁
 
-lock 逻辑已经下沉到 Dream 执行入口，`/dream` 和 auto dream 不会并发写同一个 candidate/official apply 边界。
+lock 逻辑已经下沉到 Dream 执行入口和 apply 入口，`/dream`、auto dream 和 `/dream apply` 不会并发写同一个 candidate/official apply 边界。
 
 验收标准：
 
 - 自动 Dream 持锁时，手动 `/dream` 返回明确提示。
+- Dream 持锁时，`/dream apply` 返回明确提示。
 - 手动 `/dream` 跑完后更新 `.dream/state.json`。
-- 测试覆盖 stale lock、lock held、manual run 三种情况。
+- 测试覆盖 lock held、manual run 和 apply lock 三种情况。
 
 ### 已完成：增加 memory lint
 
@@ -735,11 +737,13 @@ Dream 写完后跑一个确定性检查：
 - `type` 在允许集合内。
 - 文件中没有明显 secret-shaped 文本。
 - 文件中没有常见 transient task state 前缀。
+- 非 `MEMORY.md` / `topics/**/*.md` 的 candidate 文件只给 warning，不会 apply。
 
 验收标准：
 
-- lint warning 进入 run report。
+- lint warning 进入 run report，manual apply 允许 warning。
 - 严重问题可以让 Dream 标记 failed 或 partial。
+- apply 前重新运行 lint，candidate 被篡改后不能凭旧 lint 状态进入 official memory。
 
 ### 已完成：Dream report 结构化
 
@@ -804,9 +808,10 @@ Dream 写完后跑一个确定性检查：
 
 - 输入 memory 不直接被破坏。
 - 用户可以 review patch。
+- apply 会检查 official base hash，防止 stale candidate 覆盖新 memory。
 - apply 后再更新 `.dream/state.json`。
 
-这个改动已经落地为 P0 事务边界。后续可以继续补 cancel、rollback 命令、tombstone 和更强的 `MemoryItem` schema。
+这个改动已经落地为 P0.5 事务边界。后续可以继续补 cancel、rollback 命令、tombstone 和更强的 `MemoryItem` schema。
 
 ### P3：更细的 session 选择策略
 
@@ -840,9 +845,12 @@ Dream 写完后跑一个确定性检查：
 7. Dream 子 runtime 的 tool profile 不允许 run_shell、agent、ask_user。
 8. write_scope 指向 candidate，能挡住 candidate 目录外写入。
 9. 手动 `/dream` 和 auto-dream 共享 `.dream/lock`。
-10. lint failed candidate 不能 apply，official memory 不变。
-11. 超过 `DREAM_SESSION_CAP` 的 session 保留在 pending，apply 后才进入 processed。
-12. auto Dream 成功后能记录 candidate changed_files、task_id 和 `dream_consolidated` event。
+10. `/dream apply` 也共享 `.dream/lock`，并拒绝 discarded/failed/running task。
+11. lint failed candidate 不能 apply，official memory 不变；warning candidate 可手动 apply。
+12. apply 前重新 lint，并校验 official base hash。
+13. 超过 `DREAM_SESSION_CAP` 的 session 保留在 pending，按 oldest-first 分批，apply 后才进入 processed。
+14. auto Dream 成功后能记录 candidate changed_files、task_id 和 `dream_consolidated` event。
+15. `/dream review` 不展示 raw secret-shaped 内容。
 
 ### 真实 CLI 验收
 
@@ -864,6 +872,7 @@ find .pico/memory -maxdepth 3 -type f | sort
 1. `.pico/memory/logs/` 是否有原始 note。
 2. `/dream` 是否创建 `.pico/memory/.dream/runs/<task_id>/candidate/`、`diff.patch`、`lint.json` 和 `report.md`。
 3. apply 前 official `MEMORY.md` 是否不变，apply 后 topic/index 才进入正式 memory。
+4. stale candidate、discarded candidate、lint failed candidate 是否都会被拒绝。
 
 ### 回归风险验收
 

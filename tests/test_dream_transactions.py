@@ -1,10 +1,13 @@
 import re
+import os
+from pathlib import Path
 
 from pico import Pico, SessionStore, WorkspaceContext
 from pico.cli import handle_repl_command
 from pico.features.memory import (
     DREAM_SESSION_CAP,
     apply_dream_task,
+    evaluate_auto_dream_gate,
     load_dream_state,
     load_dream_task,
     release_dream_lock,
@@ -51,6 +54,59 @@ class DreamPathModelClient:
                     + '/topics/user-preferences.md","content":"---\\nname: User Preferences\\ndescription: User preferences\\ntype: user\\n---\\n\\n# User Preferences\\n\\n## Notes\\n- Prefers concise reports.\\n"}}</tool>',
                     "<final>Dream candidate ready.</final>",
                 ]
+        if not self._dream_outputs:
+            raise RuntimeError("dream scripted model ran out of outputs")
+        return self._dream_outputs.pop(0)
+
+
+class WarningModelClient(DreamPathModelClient):
+    def complete(self, prompt, max_new_tokens, **kwargs):
+        self.prompts.append(prompt)
+        if self._dream_outputs is None:
+            match = re.search(r"Memory directory: `([^`]+)`", prompt)
+            if not match:
+                return "<final>Done.</final>"
+            memory_dir = match.group(1)
+            self._dream_outputs = [
+                '<tool>{"name":"read_file","args":{"path":"'
+                + memory_dir
+                + '/MEMORY.md","start":1,"end":50}}</tool>',
+                '<tool>{"name":"write_file","args":{"path":"'
+                + memory_dir
+                + '/MEMORY.md","content":"# Durable Memory Index\\n\\n- [Loose Memory](topics/loose.md): Loose memory\\n"}}</tool>',
+                '<tool>{"name":"write_file","args":{"path":"'
+                + memory_dir
+                + '/topics/loose.md","content":"# Loose Memory\\n\\n## Notes\\n- Prefers manual review.\\n"}}</tool>',
+                "<final>Dream candidate ready with warnings.</final>",
+            ]
+        if not self._dream_outputs:
+            raise RuntimeError("dream scripted model ran out of outputs")
+        return self._dream_outputs.pop(0)
+
+
+class ExtraFileModelClient(DreamPathModelClient):
+    def complete(self, prompt, max_new_tokens, **kwargs):
+        self.prompts.append(prompt)
+        if self._dream_outputs is None:
+            match = re.search(r"Memory directory: `([^`]+)`", prompt)
+            if not match:
+                return "<final>Done.</final>"
+            memory_dir = match.group(1)
+            self._dream_outputs = [
+                '<tool>{"name":"read_file","args":{"path":"'
+                + memory_dir
+                + '/MEMORY.md","start":1,"end":50}}</tool>',
+                '<tool>{"name":"write_file","args":{"path":"'
+                + memory_dir
+                + '/MEMORY.md","content":"# Durable Memory Index\\n\\n- [User Preferences](topics/user-preferences.md): User preferences\\n"}}</tool>',
+                '<tool>{"name":"write_file","args":{"path":"'
+                + memory_dir
+                + '/topics/user-preferences.md","content":"---\\nname: User Preferences\\ndescription: User preferences\\ntype: user\\n---\\n\\n# User Preferences\\n\\n## Notes\\n- Prefers concise reports.\\n"}}</tool>',
+                '<tool>{"name":"write_file","args":{"path":"'
+                + memory_dir
+                + '/random.txt","content":"scratch\\n"}}</tool>',
+                "<final>Dream candidate ready with scratch file.</final>",
+            ]
         if not self._dream_outputs:
             raise RuntimeError("dream scripted model ran out of outputs")
         return self._dream_outputs.pop(0)
@@ -162,6 +218,126 @@ def test_discard_marks_candidate_without_updating_official_memory(tmp_path):
     assert load_dream_task(agent.memory_dir, task_id)["status"] == "discarded"
     assert "User Preferences" not in (tmp_path / ".pico" / "memory" / "MEMORY.md").read_text(encoding="utf-8")
 
+    handled, should_exit, applied = handle_repl_command(agent, f"/dream apply {task_id}")
+    assert handled is True
+    assert should_exit is False
+    assert "error:" in applied
+    assert "discarded" in applied
+    assert "User Preferences" not in (tmp_path / ".pico" / "memory" / "MEMORY.md").read_text(encoding="utf-8")
+
+
+def test_apply_uses_lock_and_rejects_when_dream_running(tmp_path):
+    agent = build_agent(tmp_path, DreamPathModelClient())
+    handle_repl_command(agent, "/dream")
+    task_id = agent.last_dream_task_id
+    assert try_acquire_dream_lock(agent.memory_dir) is True
+
+    try:
+        handled, should_exit, applied = handle_repl_command(agent, f"/dream apply {task_id}")
+    finally:
+        release_dream_lock(agent.memory_dir)
+
+    assert handled is True
+    assert should_exit is False
+    assert "error:" in applied
+    assert "Dream already running" in applied
+    assert "User Preferences" not in (tmp_path / ".pico" / "memory" / "MEMORY.md").read_text(encoding="utf-8")
+
+
+def test_apply_re_runs_lint_after_candidate_tamper(tmp_path):
+    agent = build_agent(tmp_path, DreamPathModelClient())
+    handle_repl_command(agent, "/dream")
+    task_id = agent.last_dream_task_id
+    task = load_dream_task(agent.memory_dir, task_id)
+    candidate_index = Path(task["candidate_store"]) / "MEMORY.md"
+    candidate_index.write_text("# Durable Memory Index\n\n- [Secret](topics/secret.md): sk-test-token\n", encoding="utf-8")
+
+    handled, should_exit, applied = handle_repl_command(agent, f"/dream apply {task_id}")
+
+    assert handled is True
+    assert should_exit is False
+    assert "error:" in applied
+    assert "lint status" in applied
+    assert "sk-test-token" not in (tmp_path / ".pico" / "memory" / "MEMORY.md").read_text(encoding="utf-8")
+
+
+def test_apply_rejects_stale_candidate_when_official_memory_changed(tmp_path):
+    agent = build_agent(tmp_path, DreamPathModelClient())
+    handle_repl_command(agent, "/dream")
+    task_id = agent.last_dream_task_id
+    official_index = tmp_path / ".pico" / "memory" / "MEMORY.md"
+    official_index.write_text("# Durable Memory Index\n\n- manual edit\n", encoding="utf-8")
+
+    handled, should_exit, applied = handle_repl_command(agent, f"/dream apply {task_id}")
+
+    assert handled is True
+    assert should_exit is False
+    assert "error:" in applied
+    assert "official memory changed" in applied
+    assert official_index.read_text(encoding="utf-8") == "# Durable Memory Index\n\n- manual edit\n"
+
+
+def test_warning_candidate_can_be_manually_applied(tmp_path):
+    agent = build_agent(tmp_path, WarningModelClient())
+
+    handled, should_exit, output = handle_repl_command(agent, "/dream")
+
+    assert handled is True
+    assert should_exit is False
+    assert "lint: warning" in output
+    task_id = agent.last_dream_task_id
+
+    handled, should_exit, applied = handle_repl_command(agent, f"/dream apply {task_id}")
+
+    assert handled is True
+    assert should_exit is False
+    assert "Applied dream task" in applied
+    assert "Loose Memory" in (tmp_path / ".pico" / "memory" / "MEMORY.md").read_text(encoding="utf-8")
+
+
+def test_arbitrary_candidate_file_is_not_applied(tmp_path):
+    agent = build_agent(tmp_path, ExtraFileModelClient())
+    handle_repl_command(agent, "/dream")
+    task_id = agent.last_dream_task_id
+
+    handled, should_exit, applied = handle_repl_command(agent, f"/dream apply {task_id}")
+
+    assert handled is True
+    assert should_exit is False
+    assert "Applied dream task" in applied
+    assert not (tmp_path / ".pico" / "memory" / "random.txt").exists()
+
+
+def test_secret_diff_is_redacted_in_review(tmp_path):
+    agent = build_agent(tmp_path, DreamPathModelClient(mode="secret"))
+    handle_repl_command(agent, "/dream")
+    task_id = agent.last_dream_task_id
+
+    handled, should_exit, review = handle_repl_command(agent, f"/dream review {task_id}")
+
+    assert handled is True
+    assert should_exit is False
+    assert "sk-test-token" not in review
+    assert "<redacted>" in review
+
+
+def test_em_dash_index_and_non_notes_topic_are_retrievable(tmp_path):
+    agent = build_agent(tmp_path)
+    memory_dir = tmp_path / ".pico" / "memory"
+    (memory_dir / "topics").mkdir(parents=True, exist_ok=True)
+    (memory_dir / "MEMORY.md").write_text(
+        "# Durable Memory Index\n\n- [User Preferences](topics/user-preferences.md) — User preferences\n",
+        encoding="utf-8",
+    )
+    (memory_dir / "topics" / "user-preferences.md").write_text(
+        "---\nname: User Preferences\ndescription: User preferences\ntype: user\n---\n\n# User Preferences\n\n## Decisions\n- Prefers concise reports.\n",
+        encoding="utf-8",
+    )
+
+    notes = agent.memory.retrieval_candidates("concise reports", limit=3)
+
+    assert any(note["text"] == "Prefers concise reports." for note in notes)
+
 
 def test_session_cap_keeps_unapplied_sessions_pending_until_apply(tmp_path):
     agent = build_agent(tmp_path, ScriptedModelClient(["<final>No changes.</final>"]))
@@ -173,6 +349,7 @@ def test_session_cap_keeps_unapplied_sessions_pending_until_apply(tmp_path):
     task = load_dream_task(agent.memory_dir, task_id)
     state = load_dream_state(agent.memory_dir)
     assert len(task["input_sessions"]) == DREAM_SESSION_CAP
+    assert task["input_sessions"] == session_ids[:DREAM_SESSION_CAP]
     assert len(state["pending_session_ids"]) == DREAM_SESSION_CAP + 5
     assert state["processed_session_ids"] == []
 
@@ -180,4 +357,39 @@ def test_session_cap_keeps_unapplied_sessions_pending_until_apply(tmp_path):
 
     state = load_dream_state(agent.memory_dir)
     assert len(state["processed_session_ids"]) == DREAM_SESSION_CAP
+    assert state["processed_session_ids"] == session_ids[:DREAM_SESSION_CAP]
     assert len(state["pending_session_ids"]) == 5
+    assert state["pending_session_ids"] == session_ids[DREAM_SESSION_CAP:]
+
+
+def test_session_created_during_dream_scan_window_is_not_lost(tmp_path):
+    agent = build_agent(tmp_path, ScriptedModelClient(["<final>No changes.</final>"]))
+    sessions_dir = tmp_path / ".pico" / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    for index in range(5):
+        (sessions_dir / f"session-{index}.jsonl").write_text("{}\n", encoding="utf-8")
+
+    gate = evaluate_auto_dream_gate(
+        agent.memory_dir,
+        min_hours=0,
+        min_sessions=1,
+        current_session_id=agent.session["id"],
+        sessions_dir=sessions_dir,
+    )
+    assert gate["should_run"] is True
+    assert "scan_cutoff" in gate
+
+    during = sessions_dir / "during-dream.jsonl"
+    during.write_text("{}\n", encoding="utf-8")
+    os.utime(during, (gate["scan_cutoff"] + 0.001, gate["scan_cutoff"] + 0.001))
+
+    agent.run_dream(session_ids=gate["session_ids"], scan_cutoff=gate["scan_cutoff"])
+    next_gate = evaluate_auto_dream_gate(
+        agent.memory_dir,
+        min_hours=0,
+        min_sessions=1,
+        current_session_id=agent.session["id"],
+        sessions_dir=sessions_dir,
+    )
+
+    assert "during-dream" in next_gate["session_ids"]

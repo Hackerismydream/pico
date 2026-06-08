@@ -697,8 +697,8 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
             return index
         return "No durable memories yet. Use /remember <text> and /dream to consolidate daily logs."
 
-    def run_dream(self, quiet=False, session_ids=None):
-        return memorylib.run_dream(self, quiet=quiet, session_ids=session_ids)
+    def run_dream(self, quiet=False, session_ids=None, scan_cutoff=None):
+        return memorylib.run_dream(self, quiet=quiet, session_ids=session_ids, scan_cutoff=scan_cutoff)
 
     def dream_status_text(self):
         return memorylib.dream_status_text(self)

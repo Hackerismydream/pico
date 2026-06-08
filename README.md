@@ -217,7 +217,7 @@ pico --no-auto-dream              # 关闭后台 memory 整合
 | `/dream` | 生成 memory candidate、diff、lint 和 report。 |
 | `/dream status` | 查看最近一次 Dream task。 |
 | `/dream review <id>` | 审查 candidate diff 和 lint。 |
-| `/dream apply <id>` | 将 lint 通过的 candidate 应用到正式 memory。 |
+| `/dream apply <id>` | 将 lint 通过或仅有 warning 的 candidate 应用到正式 memory。 |
 | `/dream discard <id>` | 标记未应用的 candidate 为 discarded。 |
 | `/plan <topic>` | 进入 plan mode。 |
 | `/plan-exit` | 退出 plan mode。 |

@@ -70,7 +70,7 @@ Saved to daily log.
 
 后台启一个隔离的 pico 实例，把 daily log + 最近 session ID 一起喂给模型。这个 child runtime 仍然使用 `dream` tool profile，但 `write_scope` 指向 `.pico/memory/.dream/runs/<id>/candidate/`，不会直接改正式 `MEMORY.md` 和 topic 文件。
 
-Dream 完成后会生成 `task.json`、`diff.patch`、`lint.json` 和 `report.md`。auto-dream 默认只产出 candidate，不自动 apply。
+Dream 完成后会生成 `task.json`、`diff.patch`、`lint.json` 和 `report.md`。auto-dream 默认只产出 candidate，不自动 apply。`diff.patch`、`report.md` 和 `/dream review` 输出会 redaction 明显 secret-shaped 内容。
 
 ### `/dream` — 手动触发
 
@@ -89,6 +89,8 @@ lint: passed
 > /dream review dream_20260608-180000-123456_ab12cd
 > /dream apply dream_20260608-180000-123456_ab12cd
 ```
+
+`apply` 会重新跑 lint、持有同一把 `.dream/lock`、校验 official memory 没有从 candidate 创建时发生变化，并在写入前创建 snapshot。只有 `MEMORY.md` 和 `topics/**/*.md` 会进入正式 memory；candidate 里的 scratch 文件会被忽略并显示 warning。
 
 ## 读取路径
 
@@ -109,7 +111,7 @@ lint: passed
 | `/dream` | 生成 Dream candidate、diff、lint 和 report |
 | `/dream status` | 显示最近一次 Dream task |
 | `/dream review <id>` | 查看 candidate diff 和 lint |
-| `/dream apply <id>` | 将 lint 通过的 candidate 应用到正式 memory |
+| `/dream apply <id>` | 将 lint 通过或仅有 warning 的 candidate 应用到正式 memory |
 | `/dream discard <id>` | 丢弃未应用的 candidate |
 
 ## 关闭
@@ -132,6 +134,7 @@ pico --no-auto-dream     # 只关 auto-dream，保留 /remember /dream
 |------|-------------|
 | `/dream` 输出 `Dream already running.` | 已有手动或后台 Dream 持有 `.pico/memory/.dream/lock`，等它结束后再重试 |
 | auto-dream 不触发 | 检查 `.pico/memory/.dream/state.json`，可能还没到 interval 或 session 门槛 |
+| `/dream apply` 输出 official memory changed | candidate 创建后有人手动改了正式 memory；重新跑 `/dream` |
 | topic 文件没更新但 dream 说成功 | 先 `/dream review <id>` 看 candidate，再 `/dream apply <id>` |
 | MEMORY.md 太长 | Dream lint 会拦截超过 200 行或约 25KB 的 candidate，先 review 再修正或 discard |
 
