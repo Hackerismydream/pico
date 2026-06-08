@@ -2,14 +2,11 @@
 
 import hashlib
 
+from .final_readiness_reasons import FINAL_READINESS_SUMMARY_SCHEMA, reason_message, reason_severity
 
 VALID_MODES = {"off", "warn", "soft", "strict"}
 CONTEXT_HARD_PRESSURE_RATIO = 0.95
 UNRESOLVED_TODO_STATUS = {"pending", "in_progress"}
-HARD_REASONS = {
-    "changed_paths_without_verification", "failed_verification",
-    "governance_denial", "partial_success_workspace_changed",
-}
 
 
 def evaluate_final_readiness(task_state, mode):
@@ -31,7 +28,7 @@ def evaluate_final_readiness(task_state, mode):
             reminded.add(signature)
     elif reasons and mode == "strict":
         decision, action = (
-            ("block", "block") if any(reason in HARD_REASONS for reason in reasons) else ("warn", "none")
+            ("block", "block") if any(reason_severity(reason) == "hard" for reason in reasons) else ("warn", "none")
         )
     state["reminded_reason_signatures"] = sorted(reminded)
     return {
@@ -45,15 +42,19 @@ def evaluate_final_readiness(task_state, mode):
 
 
 def readiness_notice(decision):
-    reasons = ", ".join(decision.get("reasons", [])) or "readiness warning"
+    messages = [reason_message(reason) for reason in decision.get("reasons", [])]
+    text = "\n".join(f"- {message}" for message in messages) or "- Readiness warning."
     if decision.get("action") == "block":
-        return f"Final answer blocked by runtime readiness gate: {reasons}."
-    return ("Before final answer, address this runtime readiness issue: "
-            f"{reasons}. If the current answer is still correct, return final again.")
+        return f"Final answer blocked by runtime readiness gate:\n{text}"
+    return (
+        "Before final answer, address this runtime readiness issue:\n"
+        f"{text}\nReturn final again only after addressing it or explaining why it is unavailable."
+    )
 
 
 def reduce_final_readiness_summary(summary, event):
     summary = dict(summary or {})
+    summary.setdefault("schema_version", FINAL_READINESS_SUMMARY_SCHEMA)
     decision = str(event.get("decision", ""))
     summary[f"{decision}_count"] = int(summary.get(f"{decision}_count", 0) or 0) + 1
     for missing in ("allow_count", "warn_count", "remind_count", "block_count"):
@@ -96,7 +97,6 @@ def _state(task_state):
     summaries["final_readiness_state"] = state
     task_state.evidence_summaries = summaries
     return state
-
 def _has_unresolved_high_priority_todo(task_state):
     latest = {}
     for change in task_state.todo_changes or []:

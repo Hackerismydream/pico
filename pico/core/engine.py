@@ -18,7 +18,14 @@ from .engine_helpers import (
     should_retry_model_error,
 )
 from .task_state import STOP_REASON_FINAL_GATE_BLOCKED, TaskState
-from .turn_transitions import emit_transition
+from .turn_transitions import (
+    CONTINUE_FINAL_READINESS_NOTICE,
+    CONTINUE_PARSE_RETRY,
+    CONTINUE_PLAN_NOTICE,
+    CONTINUE_PROVIDER_RETRY,
+    CONTINUE_TOOL_BATCH_EXECUTED,
+    emit_continue_transition,
+)
 from .workspace import clip, now
 
 CHECKPOINT_NONE_STATUS = "no-checkpoint"
@@ -258,7 +265,7 @@ class Engine:
                             "retry_count": provider_retries[code],
                         },
                     )
-                    emit_transition(agent, task_state, kind="continue", reason="provider_retry")
+                    emit_continue_transition(agent, task_state, CONTINUE_PROVIDER_RETRY)
                     continue
                 yield from finish_model_error(
                     self,
@@ -335,8 +342,8 @@ class Engine:
                         run_started_at,
                     )
                     return
-                emit_transition(
-                    agent, task_state, kind="continue", reason="tool_batch_executed",
+                emit_continue_transition(
+                    agent, task_state, CONTINUE_TOOL_BATCH_EXECUTED,
                     tool_call_count=executed_tools,
                     tool_requested_count=len(tools),
                     tool_executed_count=executed_tools,
@@ -357,7 +364,7 @@ class Engine:
                 )
                 agent.run_store.write_task_state(task_state)
                 yield {"type": "retry", "run_id": task_state.run_id, "content": payload}
-                emit_transition(agent, task_state, kind="continue", reason="parse_retry")
+                emit_continue_transition(agent, task_state, CONTINUE_PARSE_RETRY)
                 continue
 
             final = (payload or raw).strip()
@@ -381,7 +388,7 @@ class Engine:
                     "run_id": task_state.run_id,
                     "content": notice,
                 }
-                emit_transition(agent, task_state, kind="continue", reason="plan_notice")
+                emit_continue_transition(agent, task_state, CONTINUE_PLAN_NOTICE)
                 continue
 
             readiness_action, notice = final_readiness_action(self, task_state)
@@ -391,11 +398,10 @@ class Engine:
                     "run_id": task_state.run_id,
                     "content": notice,
                 }
-                emit_transition(
+                emit_continue_transition(
                     agent,
                     task_state,
-                    kind="continue",
-                    reason="final_readiness_notice",
+                    CONTINUE_FINAL_READINESS_NOTICE,
                 )
                 continue
             if readiness_action == "block":

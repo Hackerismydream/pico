@@ -45,6 +45,8 @@ class ReminderConsumer:
 
 
 class EvidenceSummaryConsumer:
+    critical = True
+
     def handle(self, runtime, task_state, event):
         task_state.evidence_summaries = update_evidence_summaries(
             task_state.evidence_summaries, event, changed_paths=task_state.changed_paths

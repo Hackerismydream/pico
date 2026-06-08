@@ -1,4 +1,4 @@
-from pico.core.final_readiness import evaluate_final_readiness
+from pico.core.final_readiness import evaluate_final_readiness, readiness_notice
 from pico.core.task_state import TaskState
 
 
@@ -93,3 +93,24 @@ def test_final_readiness_blocks_partial_success_workspace_change():
     assert decision["decision"] == "block"
     assert decision["action"] == "block"
     assert decision["reasons"] == ["partial_success_workspace_changed"]
+
+
+def test_readiness_notice_uses_catalog_messages_not_raw_codes():
+    notice = readiness_notice(
+        {
+            "action": "runtime_notice",
+            "reasons": ["changed_paths_without_verification"],
+        }
+    )
+
+    assert "changed_paths_without_verification" not in notice
+    assert "Files changed" in notice
+    assert "successful verification" in notice
+
+
+def test_final_readiness_summary_has_schema_version():
+    from pico.core.final_readiness import reduce_final_readiness_summary
+
+    summary = reduce_final_readiness_summary({}, {"decision": "warn", "reasons": []})
+
+    assert summary["schema_version"] == "pico.final_readiness_summary.v1"

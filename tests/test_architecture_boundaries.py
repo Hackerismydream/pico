@@ -7,6 +7,7 @@ def test_core_modules_stay_below_entropy_budget():
         "pico/core/runtime.py": 950,
         "pico/core/evidence_summaries.py": 90,
         "pico/core/final_readiness.py": 120,
+        "pico/core/final_readiness_reasons.py": 60,
         "pico/core/governance.py": 80,
         "pico/core/runtime_events.py": 90,
         "pico/core/runtime_consumers.py": 90,

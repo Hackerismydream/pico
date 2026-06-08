@@ -1,6 +1,5 @@
 """Loop transition contracts and summary reduction."""
 
-
 CONTINUE_PROVIDER_RETRY = "provider_retry"
 CONTINUE_PARSE_RETRY = "parse_retry"
 CONTINUE_TOOL_BATCH_EXECUTED = "tool_batch_executed"
@@ -14,31 +13,22 @@ TERMINAL_RETRY_LIMIT_REACHED = "retry_limit_reached"
 TERMINAL_FINAL_GATE_BLOCKED = "final_gate_blocked"
 CONTINUE_KIND = "continue"
 TERMINAL_KIND = "terminal"
+TRANSITION_SUMMARY_SCHEMA = "pico.transition_summary.v1"
 
 
-def build_transition(
-    *,
-    kind,
-    reason,
-    turn_index,
-    attempt_index,
-    tool_call_count=0,
-    tool_requested_count=0,
-    tool_executed_count=0,
-    stop_reason="",
-):
+def build_transition(*, kind, reason, attempt_index, tool_call_count=0, tool_requested_count=0, tool_executed_count=0, stop_reason=""):
     payload = {
         "kind": str(kind),
         "reason": str(reason),
-        "turn_index": int(turn_index),
         "attempt_index": int(attempt_index),
     }
-    if tool_call_count:
-        payload["tool_call_count"] = int(tool_call_count)
-    if tool_requested_count:
-        payload["tool_requested_count"] = int(tool_requested_count)
-    if tool_executed_count:
-        payload["tool_executed_count"] = int(tool_executed_count)
+    for key, value in {
+        "tool_call_count": tool_call_count,
+        "tool_requested_count": tool_requested_count,
+        "tool_executed_count": tool_executed_count,
+    }.items():
+        if value:
+            payload[key] = int(value)
     if stop_reason:
         payload["stop_reason"] = str(stop_reason)
     return payload
@@ -46,6 +36,7 @@ def build_transition(
 
 def reduce_transition_summary(summary, transition):
     summary = dict(summary or {})
+    summary.setdefault("schema_version", TRANSITION_SUMMARY_SCHEMA)
     kind = str(transition.get("kind", ""))
     reason = str(transition.get("reason", ""))
     reasons = dict(summary.get("reasons", {}) or {})
@@ -66,21 +57,15 @@ def reduce_transition_summary(summary, transition):
             raise ValueError("run already has a terminal transition")
         summary["terminal_count"] = 1
         summary.setdefault("continue_count", 0)
-        summary["terminal_reason"] = str(
-            transition.get("stop_reason") or transition.get("reason") or ""
-        )
+        summary["terminal_reason"] = str(transition.get("stop_reason") or transition.get("reason") or "")
         return summary
     return summary
 
 
-def emit_transition(
-    agent, task_state, *, kind, reason, tool_call_count=0, tool_requested_count=0,
-    tool_executed_count=0, stop_reason=""
-):
+def emit_transition(agent, task_state, *, kind, reason, tool_call_count=0, tool_requested_count=0, tool_executed_count=0, stop_reason=""):
     payload = build_transition(
         kind=kind,
         reason=reason,
-        turn_index=task_state.attempts,
         attempt_index=task_state.attempts,
         tool_call_count=tool_call_count,
         tool_requested_count=tool_requested_count,
@@ -88,3 +73,9 @@ def emit_transition(
         stop_reason=stop_reason,
     )
     return agent.emit_trace(task_state, "loop_transition", payload)
+
+def emit_continue_transition(agent, task_state, reason, **evidence):
+    return emit_transition(agent, task_state, kind=CONTINUE_KIND, reason=reason, **evidence)
+
+def emit_terminal_transition(agent, task_state, reason, **evidence):
+    return emit_transition(agent, task_state, kind=TERMINAL_KIND, reason=reason, **evidence)

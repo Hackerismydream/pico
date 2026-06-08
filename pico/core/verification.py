@@ -2,6 +2,8 @@
 
 import shlex
 
+VERIFICATION_SIGNAL_SCHEMA = "pico.verification_signal.v1"
+
 
 def reduce_verification_signal(previous, event, changed_paths):
     signal = dict(previous or {})
@@ -9,6 +11,7 @@ def reduce_verification_signal(previous, event, changed_paths):
         return signal
     if event.get("workspace_changed"):
         signal = {
+            "schema_version": VERIFICATION_SIGNAL_SCHEMA,
             "state": "missing",
             "last_workspace_change_span_id": str(event.get("span_id", "")),
             "changed_paths": list(changed_paths or []),
@@ -20,6 +23,7 @@ def reduce_verification_signal(previous, event, changed_paths):
     passed = str(event.get("status", "")) in {"", "ok"}
     signal.update(
         {
+            "schema_version": VERIFICATION_SIGNAL_SCHEMA,
             "state": "passed" if passed else "failed",
             "source_span_id": str(event.get("span_id", "")),
             "command": command,

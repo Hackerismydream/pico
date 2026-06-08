@@ -2,6 +2,15 @@
 
 import json
 from collections import OrderedDict
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class HistoryRetentionContext:
+    recent_turns: set
+    last_failed_tool_event_id: str
+    last_changed_tool_event_id: str
+    changed_paths: set
 
 
 def tail_clip(text, limit):
@@ -92,7 +101,12 @@ class TurnHistoryBuilder:
         last_changed_tool = self._last_matching_tool(
             history_items, lambda item: bool(item.get("workspace_changed"))
         )
-        changed_paths = self._current_changed_paths()
+        retention = HistoryRetentionContext(
+            recent_turns=recent_turns,
+            last_failed_tool_event_id=str((last_failed_tool or {}).get("event_id", "")),
+            last_changed_tool_event_id=str((last_changed_tool or {}).get("event_id", "")),
+            changed_paths=self._current_changed_paths(),
+        )
         details = {
             "recent_window": len(recent_turns),
             "older_entries_count": 0,
@@ -109,9 +123,7 @@ class TurnHistoryBuilder:
                 if item.get("kind") == "compact_summary":
                     lines.extend(str(item.get("content", "")).splitlines())
                     continue
-                if not recent and item.get("role") == "tool" and self._must_preserve_tool(
-                    item, last_failed_tool, last_changed_tool, changed_paths
-                ):
+                if not recent and item.get("role") == "tool" and should_render_tool_inline(item, retention):
                     lines.extend(self._render_item(item, 900))
                     continue
                 if not recent and item.get("role") == "tool" and item.get("name") == "read_file":
@@ -194,15 +206,6 @@ class TurnHistoryBuilder:
         task_state = getattr(self.agent, "current_task_state", None)
         return {str(path) for path in getattr(task_state, "changed_paths", []) if str(path).strip()}
 
-    def _must_preserve_tool(self, item, last_failed_tool, last_changed_tool, changed_paths):
-        if item is last_failed_tool or item is last_changed_tool:
-            return True
-        paths = set(str(path) for path in item.get("affected_paths", []) if str(path).strip())
-        path_arg = str(item.get("args", {}).get("path", "")).strip()
-        if path_arg:
-            paths.add(path_arg)
-        return bool(paths & changed_paths)
-
     @staticmethod
     def _last_matching_tool(history, predicate):
         for item in reversed(history):
@@ -214,3 +217,15 @@ class TurnHistoryBuilder:
     def _is_failed_tool(item):
         status = str(item.get("tool_status", ""))
         return bool(status and status != "ok") or bool(item.get("tool_error_code"))
+
+
+def should_render_tool_inline(item, context):
+    if item.get("turn_id") in context.recent_turns:
+        return True
+    if item.get("event_id") in {context.last_failed_tool_event_id, context.last_changed_tool_event_id}:
+        return True
+    paths = set(str(path) for path in item.get("affected_paths", []) if str(path).strip())
+    path_arg = str(item.get("args", {}).get("path", "")).strip()
+    if path_arg:
+        paths.add(path_arg)
+    return bool(paths & context.changed_paths)

@@ -5,7 +5,7 @@ import time
 from ..providers.base import complete_model
 from ..providers.errors import ProviderError
 from .final_readiness import evaluate_final_readiness, readiness_notice
-from .turn_transitions import emit_transition
+from .turn_transitions import emit_terminal_transition
 from .workspace import clip, now
 
 
@@ -128,10 +128,9 @@ def finish_successful_run(engine, task_state, user_message, final, run_started_a
         {"run_id": task_state.run_id, "kind": "final", "content": clip(final, 500)},
     )
     task_state.finish_success(final)
-    emit_transition(
+    emit_terminal_transition(
         agent,
         task_state,
-        kind="terminal",
         reason=task_state.stop_reason,
         stop_reason=task_state.stop_reason,
     )
@@ -199,10 +198,9 @@ def finish_stopped_run(
     )
     agent.run_store.write_task_state(task_state)
     checkpoint = agent.create_checkpoint(task_state, user_message, trigger=stop_reason)
-    emit_transition(
+    emit_terminal_transition(
         agent,
         task_state,
-        kind="terminal",
         reason=task_state.stop_reason,
         stop_reason=task_state.stop_reason,
     )
@@ -257,10 +255,9 @@ def finish_limited_run(engine, task_state, user_message, final, run_started_at):
     checkpoint = agent.create_checkpoint(
         task_state, user_message, trigger=task_state.stop_reason or "run_stopped"
     )
-    emit_transition(
+    emit_terminal_transition(
         agent,
         task_state,
-        kind="terminal",
         reason=task_state.stop_reason,
         stop_reason=task_state.stop_reason,
     )

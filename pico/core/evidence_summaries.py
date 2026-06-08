@@ -5,6 +5,8 @@ from .governance import reduce_governance_summary
 from .turn_transitions import reduce_transition_summary
 from .verification import reduce_verification_signal
 
+CONTEXT_BUDGET_SCHEMA = "pico.context_budget_summary.v1"
+
 
 def update_evidence_summaries(summaries, event, changed_paths=None):
     summaries = dict(summaries or {})
@@ -38,6 +40,9 @@ def context_budget_summary(metadata):
     effective_window = max(0, window - reserved)
     estimated_tokens = int(usage.get("total_estimated_tokens", 0) or 0)
     return {
+        "schema_version": CONTEXT_BUDGET_SCHEMA,
+        "budget_unit": "tokens_estimated",
+        "token_estimator": "context_usage_analyzer",
         "estimated_tokens": estimated_tokens,
         "effective_window": effective_window,
         "reserved_output_tokens": reserved,

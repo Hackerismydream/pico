@@ -67,6 +67,10 @@ class RunStore:
         path.write_text(str(content), encoding="utf-8")
         return path
 
+    def artifact_ref(self, task_state, path):
+        base = self.root.parent.parent if self.root.parent.name == ".pico" else self.root.parent
+        return path.relative_to(base).as_posix()
+
     def write_report(self, task_state, report):
         path = self.report_path(task_state)
         path.parent.mkdir(parents=True, exist_ok=True)
