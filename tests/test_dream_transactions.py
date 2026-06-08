@@ -1,3 +1,4 @@
+import json
 import re
 import os
 from pathlib import Path
@@ -21,6 +22,32 @@ from pico.features.memory import (
 from pico.testing import ScriptedModelClient
 
 
+def tool_call(name, **args):
+    return "<tool>" + json.dumps({"name": name, "args": args}, ensure_ascii=False) + "</tool>"
+
+
+def read_file_call(memory_dir, relative_path, start=1, end=50):
+    return tool_call("read_file", path=f"{memory_dir}/{relative_path}", start=start, end=end)
+
+
+def write_file_call(memory_dir, relative_path, content):
+    return tool_call("write_file", path=f"{memory_dir}/{relative_path}", content=content)
+
+
+def memory_index(entries):
+    lines = ["# Durable Memory Index", ""]
+    lines.extend(f"- [{title}]({path}): {description}" for title, path, description in entries)
+    return "\n".join(lines) + "\n"
+
+
+def topic_file(title, description, memory_type, notes):
+    note_lines = "\n".join(f"- {note}" for note in notes)
+    return (
+        f"---\nname: {title}\ndescription: {description}\ntype: {memory_type}\n---\n\n"
+        f"# {title}\n\n## Notes\n{note_lines}\n"
+    )
+
+
 class DreamPathModelClient:
     def __init__(self, mode="valid"):
         self.mode = mode
@@ -38,25 +65,27 @@ class DreamPathModelClient:
             memory_dir = match.group(1)
             if self.mode == "secret":
                 self._dream_outputs = [
-                    '<tool>{"name":"read_file","args":{"path":"'
-                    + memory_dir
-                    + '/MEMORY.md","start":1,"end":50}}</tool>',
-                    '<tool>{"name":"write_file","args":{"path":"'
-                    + memory_dir
-                    + '/MEMORY.md","content":"# Durable Memory Index\\n\\n- [Secret](topics/secret.md): sk-test-token\\n"}}</tool>',
+                    read_file_call(memory_dir, "MEMORY.md"),
+                    write_file_call(
+                        memory_dir,
+                        "MEMORY.md",
+                        memory_index([("Secret", "topics/secret.md", "sk-test-token")]),
+                    ),
                     "<final>Dream candidate contains a secret.</final>",
                 ]
             else:
                 self._dream_outputs = [
-                    '<tool>{"name":"read_file","args":{"path":"'
-                    + memory_dir
-                    + '/MEMORY.md","start":1,"end":50}}</tool>',
-                    '<tool>{"name":"write_file","args":{"path":"'
-                    + memory_dir
-                    + '/MEMORY.md","content":"# Durable Memory Index\\n\\n- [User Preferences](topics/user-preferences.md): User preferences\\n"}}</tool>',
-                    '<tool>{"name":"write_file","args":{"path":"'
-                    + memory_dir
-                    + '/topics/user-preferences.md","content":"---\\nname: User Preferences\\ndescription: User preferences\\ntype: user\\n---\\n\\n# User Preferences\\n\\n## Notes\\n- Prefers concise reports.\\n"}}</tool>',
+                    read_file_call(memory_dir, "MEMORY.md"),
+                    write_file_call(
+                        memory_dir,
+                        "MEMORY.md",
+                        memory_index([("User Preferences", "topics/user-preferences.md", "User preferences")]),
+                    ),
+                    write_file_call(
+                        memory_dir,
+                        "topics/user-preferences.md",
+                        topic_file("User Preferences", "User preferences", "user", ["Prefers concise reports."]),
+                    ),
                     "<final>Dream candidate ready.</final>",
                 ]
         if not self._dream_outputs:
@@ -73,15 +102,17 @@ class WarningModelClient(DreamPathModelClient):
                 return "<final>Done.</final>"
             memory_dir = match.group(1)
             self._dream_outputs = [
-                '<tool>{"name":"read_file","args":{"path":"'
-                + memory_dir
-                + '/MEMORY.md","start":1,"end":50}}</tool>',
-                '<tool>{"name":"write_file","args":{"path":"'
-                + memory_dir
-                + '/MEMORY.md","content":"# Durable Memory Index\\n\\n- [Loose Memory](topics/loose.md): Loose memory\\n"}}</tool>',
-                '<tool>{"name":"write_file","args":{"path":"'
-                + memory_dir
-                + '/topics/loose.md","content":"# Loose Memory\\n\\n## Notes\\n- Prefers manual review.\\n"}}</tool>',
+                read_file_call(memory_dir, "MEMORY.md"),
+                write_file_call(
+                    memory_dir,
+                    "MEMORY.md",
+                    memory_index([("Loose Memory", "topics/loose.md", "Loose memory")]),
+                ),
+                write_file_call(
+                    memory_dir,
+                    "topics/loose.md",
+                    "# Loose Memory\n\n## Notes\n- Prefers manual review.\n",
+                ),
                 "<final>Dream candidate ready with warnings.</final>",
             ]
         if not self._dream_outputs:
@@ -98,18 +129,18 @@ class ExtraFileModelClient(DreamPathModelClient):
                 return "<final>Done.</final>"
             memory_dir = match.group(1)
             self._dream_outputs = [
-                '<tool>{"name":"read_file","args":{"path":"'
-                + memory_dir
-                + '/MEMORY.md","start":1,"end":50}}</tool>',
-                '<tool>{"name":"write_file","args":{"path":"'
-                + memory_dir
-                + '/MEMORY.md","content":"# Durable Memory Index\\n\\n- [User Preferences](topics/user-preferences.md): User preferences\\n"}}</tool>',
-                '<tool>{"name":"write_file","args":{"path":"'
-                + memory_dir
-                + '/topics/user-preferences.md","content":"---\\nname: User Preferences\\ndescription: User preferences\\ntype: user\\n---\\n\\n# User Preferences\\n\\n## Notes\\n- Prefers concise reports.\\n"}}</tool>',
-                '<tool>{"name":"write_file","args":{"path":"'
-                + memory_dir
-                + '/random.txt","content":"scratch\\n"}}</tool>',
+                read_file_call(memory_dir, "MEMORY.md"),
+                write_file_call(
+                    memory_dir,
+                    "MEMORY.md",
+                    memory_index([("User Preferences", "topics/user-preferences.md", "User preferences")]),
+                ),
+                write_file_call(
+                    memory_dir,
+                    "topics/user-preferences.md",
+                    topic_file("User Preferences", "User preferences", "user", ["Prefers concise reports."]),
+                ),
+                write_file_call(memory_dir, "random.txt", "scratch\n"),
                 "<final>Dream candidate ready with scratch file.</final>",
             ]
         if not self._dream_outputs:
