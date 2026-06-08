@@ -104,6 +104,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         sandbox_config=None,
         ask_user_callback=None,
         allowed_tools=None,
+        final_readiness_mode="warn",
     ):
         self.model_client = model_client
         self.model_client_factory = model_client_factory
@@ -145,6 +146,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.dream_interval_hours = float(dream_interval_hours)
         self.dream_min_sessions = int(dream_min_sessions)
         self.allowed_tools = self._normalize_allowed_tools(allowed_tools)
+        self.final_readiness_mode = str(final_readiness_mode or "warn")
         self.run_store = run_store or RunStore(
             Path(workspace.repo_root) / ".pico" / "runs"
         )
@@ -883,6 +885,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
             "runtime_reminders": list(task_state.runtime_reminders),
             "todos": self.todo_ledger.to_dict(),
             "todo_changes": list(task_state.todo_changes),
+            "evidence_summaries": dict(task_state.evidence_summaries),
             "workers": self.worker_manager.to_dict(),
         }
 

@@ -2,11 +2,11 @@
 
 import re
 
+from .governance import record_governance_decision
 from .tool_policy import ToolPolicyChecker
+from .tool_result_artifacts import render_tool_result
 from .tool_repetition import repeated_tool_call_metadata
-from .workspace import clip
 
-INLINE_TOOL_OUTPUT_LIMIT = 1000
 
 
 def run_tool(agent, name, args):
@@ -22,6 +22,7 @@ def run_tool(agent, name, args):
             "workspace_changed": False,
             "diff_summary": [],
         }
+        record_governance_decision(agent, name, args, decision="deny", reason_code="unknown_tool", decision_type="tool_lookup")
         return f"error: unknown tool '{name}'"
     try:
         agent.validate_tool(name, args)
@@ -41,12 +42,16 @@ def run_tool(agent, name, args):
             "workspace_changed": False,
             "diff_summary": [],
         }
+        record_governance_decision(agent, name, args, decision="deny", reason_code="invalid_arguments", decision_type="tool_validation")
         return message
     if agent.repeated_tool_call(name, args):
         agent._last_tool_result_metadata = repeated_tool_call_metadata(tool)
+        record_governance_decision(agent, name, args, decision="deny", reason_code="repeated_identical_call", decision_type="tool_repetition")
         return f"error: repeated identical tool call for {name}; choose a different tool or return a final answer"
     decision = agent.permission_checker.check(tool, args)
     _emit_permission_decision(agent, tool, args, decision)
+    permission_reason = "read_only_violation" if not decision.allowed and getattr(agent, "read_only", False) else decision.reason
+    record_governance_decision(agent, name, args, decision=decision.decision, reason_code=permission_reason, decision_type="permission")
     if not decision.allowed:
         agent._last_tool_result_metadata = {
             "tool_status": "rejected",
@@ -61,6 +66,7 @@ def run_tool(agent, name, args):
         return _permission_error(agent, tool, decision)
     policy = ToolPolicyChecker(agent).check(tool, args)
     _emit_tool_policy_decision(agent, tool, args, policy)
+    record_governance_decision(agent, name, args, decision=policy.decision, reason_code=policy.reason, decision_type="tool_policy")
     if not policy.allowed:
         agent._last_tool_result_metadata = {
             "tool_status": "rejected",
@@ -78,7 +84,7 @@ def run_tool(agent, name, args):
     after_snapshot = before_snapshot
     try:
         full_result = tool.execute(args).content
-        result, full_output_artifact = _render_tool_result(agent, name, full_result)
+        result, artifact_metadata = render_tool_result(agent, name, full_result)
         after_snapshot = agent.capture_workspace_snapshot() if tool.risky else before_snapshot
         affected_paths, diff_summary = agent.diff_workspace_snapshots(before_snapshot, after_snapshot)
         workspace_changed = bool(affected_paths)
@@ -104,7 +110,7 @@ def run_tool(agent, name, args):
             "workspace_changed": workspace_changed,
             "workspace_fingerprint": agent.workspace.fingerprint(),
             "diff_summary": diff_summary,
-            "full_output_artifact": full_output_artifact,
+            **artifact_metadata,
         }
         agent.record_process_note_for_tool(name, agent._last_tool_result_metadata)
         return result
@@ -113,6 +119,8 @@ def run_tool(agent, name, args):
         affected_paths, diff_summary = agent.diff_workspace_snapshots(before_snapshot, after_snapshot)
         workspace_changed = bool(affected_paths)
         security_event_type = "path_escape" if "path escapes workspace" in str(exc) else ""
+        if name == "run_shell" and "sandbox required but unavailable" in str(exc):
+            record_governance_decision(agent, name, args, decision="deny", reason_code="sandbox_rejected_command", decision_type="sandbox")
         agent._last_tool_result_metadata = {
             "tool_status": "partial_success" if workspace_changed else "error",
             "tool_error_code": "tool_partial_success" if workspace_changed else "tool_failed",
@@ -126,17 +134,6 @@ def run_tool(agent, name, args):
         }
         agent.record_process_note_for_tool(name, agent._last_tool_result_metadata)
         return f"error: tool {name} failed: {exc}"
-
-
-def _render_tool_result(agent, name, full_result):
-    full_result = str(full_result)
-    if name != "run_shell" or len(full_result) <= INLINE_TOOL_OUTPUT_LIMIT:
-        return clip(full_result), ""
-    if not getattr(agent, "current_task_state", None):
-        return clip(full_result, INLINE_TOOL_OUTPUT_LIMIT), ""
-    path = agent.run_store.write_text_artifact(agent.current_task_state, f"{name}-output", full_result)
-    relative = path.relative_to(agent.root).as_posix()
-    return f"full output saved: {relative}\n" + clip(full_result, INLINE_TOOL_OUTPUT_LIMIT), relative
 
 
 def _emit_permission_decision(agent, tool, args, decision):

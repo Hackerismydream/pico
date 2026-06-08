@@ -1,4 +1,6 @@
 import json
+import shlex
+import sys
 
 from pico.testing import ScriptedModelClient
 from pico import Pico, SessionStore, WorkspaceContext
@@ -65,6 +67,68 @@ def test_engine_streams_a_real_session_with_tool_artifacts(tmp_path):
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["status"] == "completed"
     assert report["final_answer"] == "Wrote it."
+
+
+def test_engine_records_loop_transitions_without_changing_stream(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool name="write_file" path="notes/result.txt"><content>ok\n</content></tool>',
+            "<final>Wrote it.</final>",
+        ],
+    )
+
+    events = list(agent.engine.run_turn("create the result file"))
+
+    assert [event["type"] for event in events] == [
+        "turn_started",
+        "model_requested",
+        "model_parsed",
+        "tool_call",
+        "tool_result",
+        "model_requested",
+        "model_parsed",
+        "final",
+        "turn_finished",
+    ]
+    trace_events = read_jsonl(agent.current_run_dir / "trace.jsonl")
+    transitions = [event for event in trace_events if event["event"] == "loop_transition"]
+    assert [event["reason"] for event in transitions] == [
+        "tool_batch_executed",
+        "final_answer_returned",
+    ]
+
+    report = json.loads(
+        (agent.current_run_dir / "report.json").read_text(encoding="utf-8")
+    )
+    assert report["evidence_summaries"]["transition_summary"] == {
+        "continue_count": 1,
+        "terminal_count": 1,
+        "terminal_reason": "final_answer_returned",
+        "reasons": {
+            "tool_batch_executed": 1,
+            "final_answer_returned": 1,
+        },
+        "max_attempt_index": 2,
+    }
+
+
+def test_engine_reports_context_budget_summary_from_prompt_metadata(tmp_path):
+    agent = build_agent(tmp_path, ["<final>Done.</final>"])
+
+    list(agent.engine.run_turn("summarize context usage"))
+
+    report = json.loads(
+        (agent.current_run_dir / "report.json").read_text(encoding="utf-8")
+    )
+    summary = report["evidence_summaries"]["context_budget_summary"]
+    usage = report["prompt_metadata"]["context_usage"]
+    assert summary["estimated_tokens"] == usage["total_estimated_tokens"]
+    assert summary["effective_window"] == (
+        usage["context_window"] - usage["reserved_output_tokens"]
+    )
+    assert summary["prompt_changed_by_phase_3"] is False
+    assert summary["reductions"] == []
 
 
 def test_engine_records_provider_error_as_failed_run(tmp_path):
@@ -221,3 +285,92 @@ def test_step_limit_falls_back_to_cold_message_when_summary_fails(tmp_path):
 
     stop_event = next(e for e in events if e["type"] == "stop")
     assert "Stopped after reaching the step limit" in stop_event["content"]
+
+
+def test_soft_final_readiness_reminds_once_then_allows_unchanged_final(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool name="write_file" path="notes/result.txt"><content>ok\n</content></tool>',
+            "<final>Done without verification.</final>",
+            "<final>Done without verification.</final>",
+        ],
+        final_readiness_mode="soft",
+        max_steps=3,
+    )
+
+    events = list(agent.engine.run_turn("write the result"))
+
+    assert [event["type"] for event in events if event["type"] == "runtime_notice"] == [
+        "runtime_notice"
+    ]
+    assert events[-2]["type"] == "final"
+    assert events[-2]["content"] == "Done without verification."
+
+    trace = read_jsonl(agent.current_run_dir / "trace.jsonl")
+    readiness = [event for event in trace if event["event"] == "final_readiness_decision"]
+    assert [(event["decision"], event["reminder_already_sent"]) for event in readiness] == [
+        ("remind", False),
+        ("warn", True),
+    ]
+    report = json.loads(
+        (agent.current_run_dir / "report.json").read_text(encoding="utf-8")
+    )
+    assert report["evidence_summaries"]["final_readiness_summary"]["remind_count"] == 1
+    assert report["evidence_summaries"]["final_readiness_summary"]["warn_count"] == 1
+
+
+def test_strict_final_readiness_blocks_unverified_workspace_changes(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool name="write_file" path="notes/result.txt"><content>ok\n</content></tool>',
+            "<final>Done without verification.</final>",
+        ],
+        final_readiness_mode="strict",
+        max_steps=2,
+    )
+
+    events = list(agent.engine.run_turn("write the result"))
+
+    stop_event = next(event for event in events if event["type"] == "stop")
+    assert "changed_paths_without_verification" in stop_event["content"]
+    assert events[-1]["stop_reason"] == "final_gate_blocked"
+
+    trace = read_jsonl(agent.current_run_dir / "trace.jsonl")
+    readiness = [event for event in trace if event["event"] == "final_readiness_decision"]
+    assert [(event["decision"], event["action"]) for event in readiness] == [
+        ("block", "block")
+    ]
+
+    report = json.loads(
+        (agent.current_run_dir / "report.json").read_text(encoding="utf-8")
+    )
+    assert report["status"] == "stopped"
+    assert report["stop_reason"] == "final_gate_blocked"
+    assert report["evidence_summaries"]["final_readiness_summary"]["block_count"] == 1
+
+
+def test_verification_signal_passes_after_workspace_verification(tmp_path):
+    command = f"{shlex.quote(sys.executable)} -m compileall notes"
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool name="write_file" path="notes/result.py"><content>VALUE = 1\n</content></tool>',
+            f'<tool>{{"name":"run_shell","args":{{"command":{json.dumps(command)},"timeout":20}}}}</tool>',
+            "<final>Verified.</final>",
+        ],
+        max_steps=3,
+    )
+
+    events = list(agent.engine.run_turn("write and verify python code"))
+
+    assert events[-2]["content"] == "Verified."
+    report = json.loads(
+        (agent.current_run_dir / "report.json").read_text(encoding="utf-8")
+    )
+    signal = report["evidence_summaries"]["verification_signal"]
+    assert signal["state"] == "passed"
+    assert signal["command"] == command
+    assert signal["covers_changed_paths"] is True
+    assert "notes/result.py" in signal["changed_paths"]

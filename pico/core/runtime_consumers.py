@@ -1,6 +1,7 @@
 """Derived runtime state consumers."""
 
 from .artifacts import build_artifact_graph, build_verifier_suggestions
+from .evidence_summaries import update_evidence_summaries
 from .workspace import clip
 
 
@@ -40,5 +41,17 @@ class ReminderConsumer:
         task_state.runtime_reminders.append(reminder)
 
 
+class EvidenceSummaryConsumer:
+    def handle(self, runtime, task_state, event):
+        task_state.evidence_summaries = update_evidence_summaries(
+            task_state.evidence_summaries, event, changed_paths=task_state.changed_paths
+        )
+
+
 def default_runtime_consumers():
-    return [ArtifactGraphConsumer(), VerifierSuggestionConsumer(), ReminderConsumer()]
+    return [
+        ArtifactGraphConsumer(),
+        VerifierSuggestionConsumer(),
+        ReminderConsumer(),
+        EvidenceSummaryConsumer(),
+    ]

@@ -1,6 +1,7 @@
 """Model error finishing path for turn execution."""
 
 from ..providers.errors import ProviderError
+from .turn_transitions import emit_transition
 from .workspace import clip, now
 
 
@@ -42,6 +43,10 @@ def finish_model_error(engine, task_state, user_message, prompt_metadata, exc, d
     )
     checkpoint = agent.create_checkpoint(task_state, user_message, trigger="model_error")
     agent.run_store.write_task_state(task_state)
+    emit_transition(
+        agent, task_state, kind="terminal", reason=task_state.stop_reason,
+        stop_reason=task_state.stop_reason,
+    )
     agent.emit_trace(
         task_state,
         "checkpoint_created",

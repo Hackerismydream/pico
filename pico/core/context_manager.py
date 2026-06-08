@@ -374,6 +374,8 @@ class ContextManager:
                 "reused_file_summary_count": int(rendered["history"].details.get("reused_file_summary_count", 0)),
                 "summarized_tool_count": int(rendered["history"].details.get("summarized_tool_count", 0)),
                 "rendered_turns": int(rendered["history"].details.get("rendered_turns", 0)),
+                "microcompact_artifact_refs": list(rendered["history"].details.get("microcompact_artifact_refs", [])),
+                "microcompact_saved_chars": int(rendered["history"].details.get("microcompact_saved_chars", 0)),
             },
             "skills": self._skills_metadata(),
             "current_request": {

@@ -4,6 +4,8 @@ import sys
 
 from pico.testing import ScriptedModelClient
 from pico import Pico, SessionStore, WorkspaceContext
+from pico.core.context_manager import ContextManager
+from pico.features.sandbox.config import SandboxConfig
 
 
 def build_agent(tmp_path, outputs=None, **kwargs):
@@ -134,6 +136,112 @@ def test_shell_search_like_commands_are_rejected_by_policy(tmp_path):
     )
 
 
+def test_tool_governance_decisions_are_run_trace_evidence(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"missing_tool","args":{}}</tool>',
+            '<tool>{"name":"run_shell","args":{"command":"grep -R hello .","timeout":20}}</tool>',
+            "<final>done</final>",
+        ],
+        max_steps=3,
+    )
+
+    assert agent.ask("exercise tool governance") == "done"
+
+    trace = read_jsonl(agent.current_run_dir / "trace.jsonl")
+    decisions = [event for event in trace if event["event"] == "governance_decision"]
+    assert [(event["decision"], event["reason_code"]) for event in decisions] == [
+        ("deny", "unknown_tool"),
+        ("allow", "approval_auto"),
+        ("deny", "shell_search_should_use_tool"),
+    ]
+
+    report = json.loads(
+        (agent.current_run_dir / "report.json").read_text(encoding="utf-8")
+    )
+    assert report["evidence_summaries"]["governance_summary"] == {
+        "allow_count": 1,
+        "deny_count": 2,
+        "warn_count": 0,
+        "reasons": {
+            "unknown_tool": 1,
+            "approval_auto": 1,
+            "shell_search_should_use_tool": 1,
+        },
+        "last_denied_reason": "shell_search_should_use_tool",
+    }
+
+
+def test_tool_governance_covers_validation_repetition_and_permission_denials(tmp_path):
+    repeated_agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"read_file","args":{}}</tool>',
+            '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":1}}</tool>',
+            '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":1}}</tool>',
+            '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":1}}</tool>',
+            "<final>done</final>",
+        ],
+        max_steps=5,
+    )
+
+    assert repeated_agent.ask("exercise early governance denials") == "done"
+
+    trace = read_jsonl(repeated_agent.current_run_dir / "trace.jsonl")
+    denied_reasons = [
+        event["reason_code"]
+        for event in trace
+        if event["event"] == "governance_decision" and event["decision"] == "deny"
+    ]
+    assert "invalid_arguments" in denied_reasons
+    assert "repeated_identical_call" in denied_reasons
+
+    readonly_agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"run_shell","args":{"command":"echo hi","timeout":20}}</tool>',
+            "<final>done</final>",
+        ],
+        read_only=True,
+        max_steps=2,
+    )
+
+    assert readonly_agent.ask("exercise read only denial") == "done"
+
+    trace = read_jsonl(readonly_agent.current_run_dir / "trace.jsonl")
+    permission_denial = next(
+        event
+        for event in trace
+        if event["event"] == "governance_decision" and event["decision"] == "deny"
+    )
+    assert permission_denial["decision_type"] == "permission"
+    assert permission_denial["reason_code"] == "read_only_violation"
+
+
+def test_tool_governance_records_required_sandbox_unavailable(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"run_shell","args":{"command":"echo hi","timeout":20}}</tool>',
+            "<final>done</final>",
+        ],
+        sandbox_config=SandboxConfig(mode="required", backend="bubblewrap"),
+        max_steps=2,
+    )
+    agent.sandbox_runner.which = lambda name: None
+
+    assert agent.ask("exercise sandbox denial") == "done"
+
+    trace = read_jsonl(agent.current_run_dir / "trace.jsonl")
+    assert any(
+        event["event"] == "governance_decision"
+        and event["decision"] == "deny"
+        and event["reason_code"] == "sandbox_rejected_command"
+        for event in trace
+    )
+
+
 def test_shell_policy_allows_head_tail_grep_after_pipe(tmp_path):
     """`pip install ... 2>&1 | tail -5` 和 `git log | head -10` 是合法的输出管理，
     policy 不应该把它们当作 workspace search 拒绝。"""
@@ -180,3 +288,94 @@ def test_long_shell_output_is_clipped_and_full_output_is_saved_as_run_artifact(t
     trace_events = read_jsonl(agent.current_run_dir / "trace.jsonl")
     tool_event = next(event for event in trace_events if event["event"] == "tool_executed")
     assert tool_event["full_output_artifact"] == artifact_path
+
+
+def test_long_read_file_result_is_artifact_backed_when_history_is_microcompacted(tmp_path):
+    large_text = "\n".join(f"line-{index} " + ("x" * 40) for index in range(120))
+    (tmp_path / "large.txt").write_text(large_text, encoding="utf-8")
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"read_file","args":{"path":"large.txt","start":1,"end":120}}</tool>',
+            "<final>read</final>",
+        ],
+    )
+
+    assert agent.ask("read the large file") == "read"
+    tool_item = next(item for item in agent.session["history"] if item["role"] == "tool")
+    original_history_content = tool_item["content"]
+    artifact_ref = tool_item["artifact_ref"]
+
+    assert artifact_ref.endswith(".txt")
+    assert tool_item["original_chars"] > len(original_history_content)
+    assert "line-119" in (tmp_path / artifact_ref).read_text(encoding="utf-8")
+
+    for index in range(4):
+        agent.record({"role": "user", "content": f"later user {index}"})
+        agent.record({"role": "assistant", "content": f"later answer {index}"})
+
+    before_history = json.dumps(agent.session["history"], sort_keys=True)
+    prompt, metadata = ContextManager(agent).build("continue")
+
+    persisted_tool_item = next(
+        item for item in agent.session["history"] if item.get("artifact_ref") == artifact_ref
+    )
+    assert json.dumps(agent.session["history"], sort_keys=True) == before_history
+    assert persisted_tool_item["content"] == original_history_content
+    assert artifact_ref in prompt
+    assert "line-119" not in prompt
+    assert metadata["history"]["microcompact_artifact_refs"] == [artifact_ref]
+    assert metadata["history"]["microcompact_saved_chars"] > 0
+
+
+def test_microcompact_keeps_latest_failed_tool_result_visible(tmp_path):
+    script = "for i in range(140): print(f'FAIL-{i}')\nraise SystemExit(1)"
+    command = f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}"
+    agent = build_agent(
+        tmp_path,
+        [
+            f'<tool>{{"name":"run_shell","args":{{"command":{json.dumps(command)},"timeout":20}}}}</tool>',
+            "<final>captured failure</final>",
+        ],
+    )
+
+    assert agent.ask("capture a long failure") == "captured failure"
+    for index in range(4):
+        agent.record({"role": "user", "content": f"later-{index}"})
+        agent.record({"role": "assistant", "content": f"done-{index}"})
+
+    prompt, metadata = ContextManager(agent).build("continue")
+
+    assert "FAIL-0" in prompt
+    assert "run_shell output saved:" not in prompt
+    assert metadata["history"]["microcompact_artifact_refs"] == []
+
+
+def test_microcompact_keeps_latest_workspace_changing_tool_result_visible(tmp_path):
+    script = "\n".join(
+        [
+            "from pathlib import Path",
+            "Path('notes').mkdir(exist_ok=True)",
+            "Path('notes/out.txt').write_text('ok\\n')",
+            "for i in range(140): print(f'CHANGED-{i}')",
+        ]
+    )
+    command = f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}"
+    agent = build_agent(
+        tmp_path,
+        [
+            f'<tool>{{"name":"run_shell","args":{{"command":{json.dumps(command)},"timeout":20}}}}</tool>',
+            "<final>captured change</final>",
+        ],
+    )
+
+    assert agent.ask("capture a long workspace change") == "captured change"
+    for index in range(4):
+        agent.record({"role": "user", "content": f"later-{index}"})
+        agent.record({"role": "assistant", "content": f"done-{index}"})
+
+    prompt, metadata = ContextManager(agent).build("continue")
+
+    assert "CHANGED-0" in prompt
+    assert "run_shell output saved:" not in prompt
+    assert metadata["history"]["microcompact_artifact_refs"] == []

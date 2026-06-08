@@ -4,6 +4,8 @@ import time
 
 from ..providers.base import complete_model
 from ..providers.errors import ProviderError
+from .final_readiness import evaluate_final_readiness, readiness_notice
+from .turn_transitions import emit_transition
 from .workspace import clip, now
 
 
@@ -33,15 +35,26 @@ def execute_tool_payload(engine, task_state, user_message, payload):
             "duration_ms": tool_duration_ms,
         },
     )
-    agent.record(
-        {
-            "role": "tool",
-            "name": name,
-            "args": args,
-            "content": tool_result,
-            "created_at": now(),
-        }
-    )
+    history_item = {
+        "role": "tool",
+        "name": name,
+        "args": args,
+        "content": tool_result,
+        "created_at": now(),
+        "tool_status": str(tool_metadata.get("tool_status", "")),
+        "tool_error_code": str(tool_metadata.get("tool_error_code", "")),
+        "workspace_changed": bool(tool_metadata.get("workspace_changed", False)),
+        "affected_paths": list(tool_metadata.get("affected_paths", []) or []),
+    }
+    if tool_metadata.get("full_output_artifact"):
+        history_item.update(
+            {
+                "artifact_ref": tool_metadata["full_output_artifact"],
+                "original_chars": int(tool_metadata.get("original_chars", 0) or 0),
+                "content_sha256": str(tool_metadata.get("content_sha256", "")),
+            }
+        )
+    agent.record(history_item)
     for notification in engine.drain_worker_notifications():
         yield {
             "type": "worker_notification",
@@ -78,6 +91,101 @@ def execute_tool_payload(engine, task_state, user_message, payload):
     }
 
 
+def final_readiness_action(engine, task_state):
+    agent = engine.runtime
+    decision = evaluate_final_readiness(
+        task_state, getattr(agent, "final_readiness_mode", "warn")
+    )
+    if decision["mode"] == "off":
+        return "allow", ""
+    agent.emit_trace(task_state, "final_readiness_decision", decision)
+    action = str(decision.get("action", "none"))
+    if action == "runtime_notice":
+        notice = readiness_notice(decision)
+        agent.record({"role": "assistant", "content": notice, "created_at": now()})
+        agent.session_event_bus.emit(
+            "assistant_message",
+            {
+                "run_id": task_state.run_id,
+                "kind": "runtime_notice",
+                "content": notice,
+            },
+        )
+        agent.run_store.write_task_state(task_state)
+        return action, notice
+    if action == "block":
+        return action, readiness_notice(decision)
+    return "allow", ""
+
+
+def finish_successful_run(engine, task_state, user_message, final, run_started_at):
+    agent = engine.runtime
+    agent.record({"role": "assistant", "content": final, "created_at": now()})
+    if agent.runtime_mode == "plan":
+        agent.exit_plan_mode()
+    agent.session_event_bus.emit(
+        "assistant_message",
+        {"run_id": task_state.run_id, "kind": "final", "content": clip(final, 500)},
+    )
+    task_state.finish_success(final)
+    emit_transition(
+        agent,
+        task_state,
+        kind="terminal",
+        reason=task_state.stop_reason,
+        stop_reason=task_state.stop_reason,
+    )
+    agent.promote_durable_memory(user_message, final)
+    maintain_memory_safely(agent, task_state, final)
+    checkpoint = agent.create_checkpoint(
+        task_state, user_message, trigger="run_finished"
+    )
+    agent.run_store.write_task_state(task_state)
+    agent.emit_trace(
+        task_state,
+        "checkpoint_created",
+        {"checkpoint_id": checkpoint["checkpoint_id"], "trigger": "run_finished"},
+    )
+    duration_ms = int((time.monotonic() - run_started_at) * 1000)
+    agent.emit_trace(
+        task_state,
+        "run_finished",
+        {
+            "status": task_state.status,
+            "stop_reason": task_state.stop_reason,
+            "final_answer": final,
+            "run_duration_ms": duration_ms,
+        },
+    )
+    agent.session_event_bus.emit(
+        "turn_finished",
+        {
+            "run_id": task_state.run_id,
+            "status": task_state.status,
+            "stop_reason": task_state.stop_reason,
+            "duration_ms": duration_ms,
+        },
+    )
+    agent.run_store.write_report(
+        task_state, agent.redact_artifact(agent.build_report(task_state))
+    )
+    for notification in engine.drain_worker_notifications():
+        yield {
+            "type": "worker_notification",
+            "run_id": getattr(agent, "current_run_id", ""),
+            "content": notification,
+        }
+    agent.current_turn_id = ""
+    agent.current_run_id = ""
+    yield {"type": "final", "run_id": task_state.run_id, "content": final}
+    yield {
+        "type": "turn_finished",
+        "run_id": task_state.run_id,
+        "status": task_state.status,
+        "stop_reason": task_state.stop_reason,
+    }
+
+
 def finish_stopped_run(
     engine, task_state, user_message, final, stop_reason, run_started_at
 ):
@@ -91,6 +199,13 @@ def finish_stopped_run(
     )
     agent.run_store.write_task_state(task_state)
     checkpoint = agent.create_checkpoint(task_state, user_message, trigger=stop_reason)
+    emit_transition(
+        agent,
+        task_state,
+        kind="terminal",
+        reason=task_state.stop_reason,
+        stop_reason=task_state.stop_reason,
+    )
     agent.emit_trace(
         task_state,
         "checkpoint_created",
@@ -141,6 +256,13 @@ def finish_limited_run(engine, task_state, user_message, final, run_started_at):
     agent.run_store.write_task_state(task_state)
     checkpoint = agent.create_checkpoint(
         task_state, user_message, trigger=task_state.stop_reason or "run_stopped"
+    )
+    emit_transition(
+        agent,
+        task_state,
+        kind="terminal",
+        reason=task_state.stop_reason,
+        stop_reason=task_state.stop_reason,
     )
     agent.emit_trace(
         task_state,
