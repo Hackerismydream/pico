@@ -4,6 +4,7 @@ from pathlib import Path
 
 from pico import Pico, SessionStore, WorkspaceContext
 from pico.cli import handle_repl_command
+from pico.commands.dream import handle_dream_command
 from pico.features.memory import (
     DREAM_SESSION_CAP,
     apply_dream_task,
@@ -121,6 +122,22 @@ def build_agent(tmp_path, model_client=None):
         session_store=SessionStore(tmp_path / ".pico" / "sessions"),
         approval_policy="auto",
     )
+
+
+def test_dream_command_handler_requires_task_id_for_review(tmp_path):
+    agent = build_agent(tmp_path)
+
+    output = handle_dream_command(agent, "review")
+
+    assert output == "Usage: /dream review <task_id>"
+
+
+def test_dream_command_handler_rejects_unknown_action(tmp_path):
+    agent = build_agent(tmp_path)
+
+    output = handle_dream_command(agent, "unknown")
+
+    assert output == "Usage: /dream [status|review <task_id>|apply <task_id>|discard <task_id>]"
 
 
 def test_manual_dream_creates_candidate_and_apply_updates_official_memory(tmp_path):
