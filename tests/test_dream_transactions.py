@@ -5,6 +5,7 @@ from pathlib import Path
 from pico import Pico, SessionStore, WorkspaceContext
 from pico.cli import handle_repl_command
 from pico.commands.dream import handle_dream_command
+from pico.features.dream import run_dream as run_dream_direct
 from pico.features.dream_lint import lint_memory_candidate as lint_candidate_direct
 from pico.features.dream_report import redact_sensitive_text
 from pico.features.dream_store import DreamLock, collect_non_runtime_files, is_official_memory_payload
@@ -401,6 +402,16 @@ def test_dream_lock_context_manager_releases_lock(tmp_path):
 
     assert try_acquire_dream_lock(agent.memory_dir) is True
     release_dream_lock(agent.memory_dir)
+
+
+def test_dream_orchestration_module_run_dream(tmp_path):
+    agent = build_agent(tmp_path, DreamPathModelClient())
+
+    output = run_dream_direct(agent)
+
+    assert "Dream task" in output
+    assert "status: completed_candidate" in output
+    assert agent.last_dream_task_id
 
 
 def test_em_dash_index_and_non_notes_topic_are_retrievable(tmp_path):
