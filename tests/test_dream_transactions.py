@@ -6,6 +6,7 @@ from pico import Pico, SessionStore, WorkspaceContext
 from pico.cli import handle_repl_command
 from pico.commands.dream import handle_dream_command
 from pico.features.dream_lint import lint_memory_candidate as lint_candidate_direct
+from pico.features.dream_report import redact_sensitive_text
 from pico.features.memory import (
     DREAM_SESSION_CAP,
     apply_dream_task,
@@ -356,6 +357,16 @@ def test_secret_diff_is_redacted_in_review(tmp_path):
     assert should_exit is False
     assert "sk-test-token" not in review
     assert "<redacted>" in review
+
+
+def test_dream_report_redacts_secret_values():
+    text = "token: sk-test-token and normal text"
+
+    redacted = redact_sensitive_text(text)
+
+    assert "sk-test-token" not in redacted
+    assert "<redacted>" in redacted
+    assert "normal text" in redacted
 
 
 def test_em_dash_index_and_non_notes_topic_are_retrievable(tmp_path):
