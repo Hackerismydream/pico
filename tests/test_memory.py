@@ -1,6 +1,7 @@
 from datetime import date
 
 from pico.features.memory import (
+    DREAM_SESSION_CAP,
     LayeredMemory,
     append_to_daily_log,
     build_dream_prompt,
@@ -189,6 +190,18 @@ def test_dream_prompt_targets_repo_local_memory_assets(tmp_path):
     assert "MEMORY.md" in prompt
     assert "logs/YYYY/MM/YYYY-MM-DD.md" in prompt
     assert "s1" in prompt and "s2" in prompt
+
+
+def test_dream_prompt_does_not_truncate_session_ids(tmp_path):
+    memory_root = tmp_path / ".pico" / "memory"
+    session_ids = [f"session-{index:02d}" for index in range(DREAM_SESSION_CAP + 2)]
+
+    prompt = build_dream_prompt(memory_root, session_ids=session_ids)
+
+    assert "showing the most recent" not in prompt
+    assert "next dream will pick up the rest" not in prompt
+    assert "session-00" in prompt
+    assert f"session-{DREAM_SESSION_CAP + 1:02d}" in prompt
 
 
 def test_dream_prompt_uses_four_phase_filesystem_maintenance_flow(tmp_path):

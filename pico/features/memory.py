@@ -437,22 +437,11 @@ Then add a pointer to that file in `{Path(memory_dir)}/{ENTRYPOINT_NAME}`. MEMOR
 
 def build_dream_prompt(memory_dir, transcript_dir="", session_ids=None):
     session_ids = list(session_ids or [])
-    total = len(session_ids)
-    truncated = False
-    if total > DREAM_SESSION_CAP:
-        session_ids = session_ids[-DREAM_SESSION_CAP:]
-        truncated = True
     extra_parts = [
         "Tool constraints for this run: shell execution is not required. Writes must stay inside the memory directory. Read/search/list tools may be used to inspect existing memories and transcripts."
     ]
     if session_ids:
-        header = (
-            f"Sessions since last consolidation (showing the most recent {len(session_ids)} of {total}; "
-            "consolidate these and the next dream will pick up the rest):"
-            if truncated
-            else "Sessions since last consolidation:"
-        )
-        extra_parts.append(header + "\n" + "\n".join(f"- {session_id}" for session_id in session_ids))
+        extra_parts.append("Sessions since last consolidation:\n" + "\n".join(f"- {session_id}" for session_id in session_ids))
     extra_section = "\n\n## Additional context\n\n" + "\n\n".join(extra_parts)
     transcript_line = ""
     if transcript_dir:
