@@ -126,20 +126,14 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.depth = depth
         self.max_depth = max_depth
         self.read_only = read_only
-        self.shell_env_allowlist = tuple(
-            shell_env_allowlist or DEFAULT_SHELL_ENV_ALLOWLIST
-        )
+        self.shell_env_allowlist = tuple(shell_env_allowlist or DEFAULT_SHELL_ENV_ALLOWLIST)
         self.secret_env_names = {str(name).upper() for name in (secret_env_names or ())}
         if isinstance(write_scope, str):
             write_scope = [write_scope]
-        self.write_scope = tuple(
-            str(path) for path in (write_scope or ()) if str(path).strip()
-        )
+        self.write_scope = tuple(str(path) for path in (write_scope or ()) if str(path).strip())
         self.feature_flags = dict(DEFAULT_FEATURE_FLAGS)
         if feature_flags:
-            self.feature_flags.update(
-                {str(key): bool(value) for key, value in feature_flags.items()}
-            )
+            self.feature_flags.update({str(key): bool(value) for key, value in feature_flags.items()})
         self.memory_dir = self._resolve_memory_dir(memory_dir)
         memorylib.ensure_memory_dir(self.memory_dir)
         self.auto_dream = bool(auto_dream)
@@ -147,9 +141,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.dream_min_sessions = int(dream_min_sessions)
         self.allowed_tools = self._normalize_allowed_tools(allowed_tools)
         self.final_readiness_mode = str(final_readiness_mode or "warn")
-        self.run_store = run_store or RunStore(
-            Path(workspace.repo_root) / ".pico" / "runs"
-        )
+        self.run_store = run_store or RunStore(Path(workspace.repo_root) / ".pico" / "runs")
         self.session = session or {
             "id": datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6],
             "created_at": now(),
@@ -210,9 +202,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.last_durable_promotions = []
         self.last_durable_rejections = []
         self.last_durable_superseded = []
-        self.last_memory_maintenance = memorylib.default_memory_maintenance_audit(
-            auto_dream=self.auto_dream
-        )
+        self.last_memory_maintenance = memorylib.default_memory_maintenance_audit(auto_dream=self.auto_dream)
         self.last_dream_changed_files = []
         self._memory_maintenance_thread = None
         self._last_tool_result_metadata = {}
@@ -673,9 +663,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         return prompt, metadata
 
     def compact_history(self, trigger="manual", keep_recent_turns=2):
-        return self.compact_manager.compact(
-            trigger=trigger, keep_recent_turns=keep_recent_turns
-        )
+        return self.compact_manager.compact(trigger=trigger, keep_recent_turns=keep_recent_turns)
 
     def durable_memory_index_text(self):
         return memorylib.load_memory_index_text(self.memory_dir)
