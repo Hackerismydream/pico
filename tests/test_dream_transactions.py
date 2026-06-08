@@ -5,6 +5,7 @@ from pathlib import Path
 from pico import Pico, SessionStore, WorkspaceContext
 from pico.cli import handle_repl_command
 from pico.commands.dream import handle_dream_command
+from pico.features.dream_lint import lint_memory_candidate as lint_candidate_direct
 from pico.features.memory import (
     DREAM_SESSION_CAP,
     apply_dream_task,
@@ -196,6 +197,25 @@ def test_lint_failed_dream_cannot_be_applied(tmp_path):
     assert should_exit is False
     assert "error:" in applied
     assert "sk-test-token" not in (tmp_path / ".pico" / "memory" / "MEMORY.md").read_text(encoding="utf-8")
+
+
+def test_dream_lint_module_reports_secret_value(tmp_path):
+    candidate = tmp_path / "candidate"
+    (candidate / "topics").mkdir(parents=True)
+    (candidate / "MEMORY.md").write_text(
+        "# Durable Memory Index\n\n- [Secret](topics/secret.md): Secret\n",
+        encoding="utf-8",
+    )
+    (candidate / "topics" / "secret.md").write_text(
+        "---\nname: Secret\ndescription: Secret\ntype: user\n---\n\n"
+        "# Secret\n\n## Notes\n- token: sk-test-token\n",
+        encoding="utf-8",
+    )
+
+    result = lint_candidate_direct(candidate)
+
+    assert result["status"] == "failed"
+    assert result["errors"][0]["code"] == "secret_shaped"
 
 
 def test_manual_dream_uses_shared_lock(tmp_path):
