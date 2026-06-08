@@ -1,4 +1,9 @@
-"""Loop transition contracts and summary reduction."""
+"""Loop transition contracts and summary reduction.
+
+Engine records real control-flow transitions here as trace events, then report
+consumers reduce them into a compact summary. These contracts describe the loop;
+they do not drive it.
+"""
 
 CONTINUE_PROVIDER_RETRY = "provider_retry"
 CONTINUE_PARSE_RETRY = "parse_retry"

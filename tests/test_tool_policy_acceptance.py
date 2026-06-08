@@ -1,3 +1,5 @@
+"""Acceptance tests for tool policy decisions and governance evidence."""
+
 import json
 
 from pico.testing import ScriptedModelClient

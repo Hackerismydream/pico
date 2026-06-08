@@ -1,3 +1,5 @@
+"""Acceptance tests for final-readiness behavior inside real engine turns."""
+
 import json
 import shlex
 import sys

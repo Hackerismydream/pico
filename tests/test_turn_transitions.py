@@ -1,3 +1,5 @@
+"""Unit tests for loop transition payloads and summary reduction."""
+
 import pytest
 
 from pico.core.turn_transitions import (

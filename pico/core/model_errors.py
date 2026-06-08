@@ -1,4 +1,4 @@
-"""Model error finishing path for turn execution."""
+"""Model-error cleanup, trace, checkpoint, and user messaging path."""
 
 from ..providers.errors import ProviderError
 from .turn_transitions import emit_terminal_transition

@@ -1,4 +1,9 @@
-"""Turn-aware transcript rendering."""
+"""Turn-aware transcript rendering.
+
+TurnHistoryBuilder renders persisted conversation history into a prompt-ready
+transcript. It can project old large tool results as artifact-backed stubs, but
+it must not rewrite the stored session history.
+"""
 
 import json
 from collections import OrderedDict

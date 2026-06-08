@@ -1,7 +1,8 @@
-"""运行工件落盘。
+"""Per-run artifact persistence.
 
-session.json 负责保存“可恢复的会话状态”；RunStore 负责保存“单次运行的审计工件”，
-例如 task_state、trace 和 report。两者分开后，恢复现场和复盘证据不会混在一起。
+Session JSON stores resumable conversation state. RunStore stores audit
+artifacts for one run, such as task_state, trace, report, and large tool-output
+files, so recovery state and review evidence stay separate.
 """
 
 import json

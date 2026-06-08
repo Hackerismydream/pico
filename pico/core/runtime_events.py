@@ -1,4 +1,9 @@
-"""Structured trace event helpers."""
+"""Structured trace event helpers.
+
+Runtime events are normalized here before they enter the run trace. The helper
+sets stable trace, turn, phase, and span fields but leaves event-specific
+semantics to the caller.
+"""
 
 from .workspace import now
 

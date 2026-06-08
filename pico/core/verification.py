@@ -1,4 +1,4 @@
-"""Verification evidence extracted from tool execution trace events."""
+"""Verification evidence reducer for shell-command tool traces."""
 
 import shlex
 

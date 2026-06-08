@@ -1,7 +1,8 @@
-"""Prompt 组装与上下文预算控制。
+"""Prompt assembly and context budget control.
 
-这个模块负责决定：每一轮到底把多少 prefix、memory、相关笔记、历史
-以及当前用户请求送进模型。
+ContextManager decides how much prefix, memory, relevant notes, transcript
+history, and current user input reach the model for one turn. It reports
+budget evidence but does not mutate session history or compact the conversation.
 """
 
 from __future__ import annotations

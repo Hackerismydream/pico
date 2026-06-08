@@ -1,3 +1,5 @@
+"""Tests for artifact-backed retention of long tool results."""
+
 import hashlib
 import json
 import shlex

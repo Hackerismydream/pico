@@ -1,4 +1,9 @@
-"""Artifact-backed rendering for long tool results."""
+"""Artifact-backed rendering for long tool results.
+
+Large tool outputs are written to run artifacts while the prompt receives a
+bounded observation with an artifact reference. This protects prompt budget
+without mutating the original session history.
+"""
 
 import hashlib
 

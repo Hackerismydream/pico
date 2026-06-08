@@ -1,3 +1,5 @@
+"""Unit tests for verification signal extraction from tool traces."""
+
 from pico.core.verification import reduce_verification_signal
 
 

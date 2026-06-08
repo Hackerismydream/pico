@@ -1,3 +1,5 @@
+"""Architecture budget tests for runtime module boundaries."""
+
 from pathlib import Path
 
 

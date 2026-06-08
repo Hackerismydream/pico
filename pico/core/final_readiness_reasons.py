@@ -1,4 +1,9 @@
-"""Final readiness reason catalog."""
+"""Final-readiness reason catalog.
+
+Reason codes live here so user-facing messages, severities, and tests stay in
+one place. The catalog is intentionally data-only; gate behavior belongs in
+final_readiness.py.
+"""
 
 FINAL_READINESS_SUMMARY_SCHEMA = "pico.final_readiness_summary.v1"
 

@@ -1,4 +1,9 @@
-"""Reduce raw trace events into compact task-state summaries."""
+"""Reduce trace events into TaskState evidence summaries.
+
+This module is the bridge from append-only trace facts to compact report-ready
+state. It does not re-read trace files; runtime consumers call it as events are
+emitted during a run.
+"""
 
 from .final_readiness import reduce_final_readiness_summary
 from .governance import reduce_governance_summary

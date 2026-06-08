@@ -1,3 +1,5 @@
+"""End-to-end engine acceptance tests for user-visible turn behavior."""
+
 import json
 import shlex
 import sys

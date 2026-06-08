@@ -1,3 +1,5 @@
+"""Unit tests for final-readiness gate decisions and notices."""
+
 from pico.core.final_readiness import evaluate_final_readiness, readiness_notice
 from pico.core.task_state import TaskState
 

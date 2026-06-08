@@ -1,4 +1,9 @@
-"""Per-run governance evidence for tool decisions."""
+"""Per-run governance evidence for tool decisions.
+
+Tool execution records allow, warn, and deny decisions here so reports can
+explain what the runtime permitted or blocked. This module summarizes decisions
+but does not enforce policy itself.
+"""
 
 GOVERNANCE_SUMMARY_SCHEMA = "pico.governance_summary.v1"
 

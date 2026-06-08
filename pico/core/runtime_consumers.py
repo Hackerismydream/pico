@@ -1,4 +1,9 @@
-"""Derived runtime state consumers."""
+"""Runtime consumers that derive state from trace events.
+
+Consumers update TaskState views such as artifact graphs, verifier suggestions,
+reminders, and evidence summaries as events arrive. They should remain
+side-effect-light and avoid becoming a second control loop.
+"""
 
 from .artifacts import build_artifact_graph, build_verifier_suggestions
 from .evidence_summaries import update_evidence_summaries

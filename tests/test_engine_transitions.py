@@ -1,3 +1,5 @@
+"""Engine acceptance tests for loop transition trace evidence."""
+
 import json
 
 from pico import Pico, SessionStore, WorkspaceContext

@@ -1,4 +1,9 @@
-"""Helper routines for Engine control-loop side effects."""
+"""Control-loop side effects shared by Engine.
+
+These helpers finish runs, execute tool payloads, and apply final-readiness
+actions while Engine keeps the turn loop shape visible. They should not own
+long-lived runtime state; that remains on Pico and TaskState.
+"""
 
 import time
 

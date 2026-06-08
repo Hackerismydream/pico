@@ -1,4 +1,4 @@
-"""Tool execution guardrail used by Pico runtime."""
+"""Tool-call validation, authorization, execution, and evidence recording."""
 
 import re
 

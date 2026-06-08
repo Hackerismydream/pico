@@ -1,4 +1,4 @@
-"""Final-answer readiness gate."""
+"""Final-answer readiness gate over TaskState evidence."""
 
 import hashlib
 
