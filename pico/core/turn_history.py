@@ -1,7 +1,21 @@
-"""Turn-aware transcript rendering."""
+"""Turn-aware transcript rendering.
+
+TurnHistoryBuilder renders persisted conversation history into a prompt-ready
+transcript. It can project old large tool results as artifact-backed stubs, but
+it must not rewrite the stored session history.
+"""
 
 import json
 from collections import OrderedDict
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class HistoryRetentionContext:
+    recent_turns: set
+    last_failed_tool_event_id: str
+    last_changed_tool_event_id: str
+    changed_paths: set
 
 
 def tail_clip(text, limit):
@@ -87,12 +101,25 @@ class TurnHistoryBuilder:
     def _compressed_turn_entries(self, turns, recent_turns):
         entries = []
         seen_older_reads = set()
+        history_items = [item for items in turns.values() for item in items]
+        last_failed_tool = self._last_matching_tool(history_items, self._is_failed_tool)
+        last_changed_tool = self._last_matching_tool(
+            history_items, lambda item: bool(item.get("workspace_changed"))
+        )
+        retention = HistoryRetentionContext(
+            recent_turns=recent_turns,
+            last_failed_tool_event_id=str((last_failed_tool or {}).get("event_id", "")),
+            last_changed_tool_event_id=str((last_changed_tool or {}).get("event_id", "")),
+            changed_paths=self._current_changed_paths(),
+        )
         details = {
             "recent_window": len(recent_turns),
             "older_entries_count": 0,
             "collapsed_duplicate_reads": 0,
             "reused_file_summary_count": 0,
             "summarized_tool_count": 0,
+            "microcompact_artifact_refs": [],
+            "microcompact_saved_chars": 0,
         }
         for turn_id, items in turns.items():
             recent = turn_id in recent_turns and any(item.get("role") != "tool" for item in items)
@@ -101,7 +128,20 @@ class TurnHistoryBuilder:
                 if item.get("kind") == "compact_summary":
                     lines.extend(str(item.get("content", "")).splitlines())
                     continue
+                if not recent and item.get("role") == "tool" and should_render_tool_inline(item, retention):
+                    lines.extend(self._render_item(item, 900))
+                    continue
                 if not recent and item.get("role") == "tool" and item.get("name") == "read_file":
+                    artifact_ref = str(item.get("artifact_ref", "")).strip()
+                    if artifact_ref:
+                        summary = self._summarize_old_tool_item(item)
+                        lines.append(summary)
+                        details["summarized_tool_count"] += 1
+                        details["microcompact_artifact_refs"].append(artifact_ref)
+                        details["microcompact_saved_chars"] += max(
+                            0, len(str(item.get("content", ""))) - len(summary)
+                        )
+                        continue
                     path = str(item.get("args", {}).get("path", "")).strip()
                     if path in seen_older_reads:
                         details["collapsed_duplicate_reads"] += 1
@@ -113,8 +153,15 @@ class TurnHistoryBuilder:
                         details["reused_file_summary_count"] += 1
                         continue
                 if not recent and item.get("role") == "tool":
-                    lines.append(self._summarize_old_tool_item(item))
+                    summary = self._summarize_old_tool_item(item)
+                    lines.append(summary)
                     details["summarized_tool_count"] += 1
+                    artifact_ref = str(item.get("artifact_ref", "")).strip()
+                    if artifact_ref:
+                        details["microcompact_artifact_refs"].append(artifact_ref)
+                        details["microcompact_saved_chars"] += max(
+                            0, len(str(item.get("content", ""))) - len(summary)
+                        )
                     continue
                 lines.extend(self._render_item(item, 900 if recent else 80))
             if not recent:
@@ -147,8 +194,43 @@ class TurnHistoryBuilder:
         return str(summary.get("summary", "")).strip()
 
     def _summarize_old_tool_item(self, item):
+        artifact_ref = str(item.get("artifact_ref", "")).strip()
+        if artifact_ref:
+            original_chars = int(item.get("original_chars", 0) or 0)
+            return (
+                f"{item.get('name', 'tool')} output saved: {artifact_ref}"
+                f" ({original_chars} chars)"
+            )
         if item.get("name") == "run_shell":
             command = str(item.get("args", {}).get("command", "")).strip() or "shell"
             lines = [line.strip() for line in str(item.get("content", "")).splitlines() if line.strip()]
             return f"{command} -> {' | '.join(lines[:3]) if lines else '(empty)'}"
         return self._render_item(item, 80)[0]
+
+    def _current_changed_paths(self):
+        task_state = getattr(self.agent, "current_task_state", None)
+        return {str(path) for path in getattr(task_state, "changed_paths", []) if str(path).strip()}
+
+    @staticmethod
+    def _last_matching_tool(history, predicate):
+        for item in reversed(history):
+            if item.get("role") == "tool" and predicate(item):
+                return item
+        return None
+
+    @staticmethod
+    def _is_failed_tool(item):
+        status = str(item.get("tool_status", ""))
+        return bool(status and status != "ok") or bool(item.get("tool_error_code"))
+
+
+def should_render_tool_inline(item, context):
+    if item.get("turn_id") in context.recent_turns:
+        return True
+    if item.get("event_id") in {context.last_failed_tool_event_id, context.last_changed_tool_event_id}:
+        return True
+    paths = set(str(path) for path in item.get("affected_paths", []) if str(path).strip())
+    path_arg = str(item.get("args", {}).get("path", "")).strip()
+    if path_arg:
+        paths.add(path_arg)
+    return bool(paths & context.changed_paths)

@@ -1,3 +1,5 @@
+"""Architecture budget tests for runtime module boundaries."""
+
 from pathlib import Path
 
 
@@ -5,6 +7,10 @@ def test_core_modules_stay_below_entropy_budget():
     root = Path(__file__).resolve().parents[1]
     budgets = {
         "pico/core/runtime.py": 950,
+        "pico/core/evidence_summaries.py": 90,
+        "pico/core/final_readiness.py": 120,
+        "pico/core/final_readiness_reasons.py": 60,
+        "pico/core/governance.py": 80,
         "pico/core/runtime_events.py": 90,
         "pico/core/runtime_consumers.py": 90,
         "pico/core/artifacts.py": 130,
@@ -21,6 +27,9 @@ def test_core_modules_stay_below_entropy_budget():
         "pico/core/plan_mode.py": 140,
         "pico/core/tool_executor.py": 181,
         "pico/core/tool_profiles.py": 80,
+        "pico/core/tool_result_artifacts.py": 60,
+        "pico/core/turn_transitions.py": 90,
+        "pico/core/verification.py": 80,
         "pico/core/turn_history.py": 250,
         "pico/features/skills.py": 220,
         "pico/features/skills_bundled.py": 120,

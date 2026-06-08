@@ -1,7 +1,8 @@
-"""一次 ask() 运行过程中的状态机快照。
+"""TaskState snapshot for one ask() run.
 
-它回答的是：这次用户请求当前进行到哪了、调了多少次工具、最后为什么停下。
-这个对象会被不断写入 task_state.json，供运行中观察和运行后复盘。
+TaskState tracks where a user request is in the runtime, how much work it has
+done, what evidence was collected, and why it stopped. It is persisted during
+the run for live inspection and post-run review.
 """
 
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ STOP_REASON_TOOL_TIMEOUT = "tool_timeout"
 STOP_REASON_APPROVAL_DENIED = "approval_denied"
 STOP_REASON_PERSISTENCE_ERROR = "persistence_error"
 STOP_REASON_RESUME_LOAD_ERROR = "resume_load_error"
+STOP_REASON_FINAL_GATE_BLOCKED = "final_gate_blocked"
 
 
 @dataclass
@@ -41,6 +43,7 @@ class TaskState:
     verifier_suggestions: list = field(default_factory=list)
     runtime_reminders: list = field(default_factory=list)
     todo_changes: list = field(default_factory=list)
+    evidence_summaries: dict = field(default_factory=dict)
 
     @classmethod
     def create(cls, task_id, user_request, run_id=""):
@@ -67,6 +70,7 @@ class TaskState:
             verifier_suggestions=list(data.get("verifier_suggestions", [])),
             runtime_reminders=list(data.get("runtime_reminders", [])),
             todo_changes=list(data.get("todo_changes", [])),
+            evidence_summaries=dict(data.get("evidence_summaries", {}) or {}),
         )
 
     def record_attempt(self):
@@ -121,4 +125,5 @@ class TaskState:
             "verifier_suggestions": list(self.verifier_suggestions),
             "runtime_reminders": list(self.runtime_reminders),
             "todo_changes": list(self.todo_changes),
+            "evidence_summaries": dict(self.evidence_summaries),
         }

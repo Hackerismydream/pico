@@ -104,6 +104,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         sandbox_config=None,
         ask_user_callback=None,
         allowed_tools=None,
+        final_readiness_mode="warn",
     ):
         self.model_client = model_client
         self.model_client_factory = model_client_factory
@@ -145,6 +146,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.dream_interval_hours = float(dream_interval_hours)
         self.dream_min_sessions = int(dream_min_sessions)
         self.allowed_tools = self._normalize_allowed_tools(allowed_tools)
+        self.final_readiness_mode = str(final_readiness_mode or "warn")
         self.run_store = run_store or RunStore(
             Path(workspace.repo_root) / ".pico" / "runs"
         )
@@ -732,11 +734,19 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         for consumer in self.runtime_consumers:
             try:
                 consumer.handle(self, task_state, payload)
-            except Exception:
-                continue
+            except Exception as exc:
+                error = {
+                    "consumer": consumer.__class__.__name__,
+                    "event": str(event),
+                    "span_id": str(payload.get("span_id", "")),
+                    "message": clip(str(exc), 200),
+                    "critical": bool(getattr(consumer, "critical", False)),
+                }
+                task_state.evidence_summaries.setdefault("runtime_consumer_errors", []).append(error)
+                if error["critical"]:
+                    task_state.evidence_summaries.setdefault("consumer_errors", []).append(error)
         self.run_store.write_task_state(task_state)
         return payload
-
     def infer_next_step(self, task_state):
         if task_state.status == "completed":
             return "No next step recorded."
@@ -895,6 +905,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
             "runtime_reminders": list(task_state.runtime_reminders),
             "todos": self.todo_ledger.to_dict(),
             "todo_changes": list(task_state.todo_changes),
+            "evidence_summaries": dict(task_state.evidence_summaries),
             "workers": self.worker_manager.to_dict(),
         }
 

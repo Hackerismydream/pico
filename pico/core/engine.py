@@ -10,13 +10,22 @@ from ..providers.base import complete_model
 from .model_errors import finish_model_error
 from .engine_helpers import (
     execute_tool_payload,
+    final_readiness_action,
     finish_limited_run,
     finish_stopped_run,
-    maintain_memory_safely,
+    finish_successful_run,
     request_step_limit_summary,
     should_retry_model_error,
 )
-from .task_state import TaskState
+from .task_state import STOP_REASON_FINAL_GATE_BLOCKED, TaskState
+from .turn_transitions import (
+    CONTINUE_FINAL_READINESS_NOTICE,
+    CONTINUE_PARSE_RETRY,
+    CONTINUE_PLAN_NOTICE,
+    CONTINUE_PROVIDER_RETRY,
+    CONTINUE_TOOL_BATCH_EXECUTED,
+    emit_continue_transition,
+)
 from .workspace import clip, now
 
 CHECKPOINT_NONE_STATUS = "no-checkpoint"
@@ -256,6 +265,7 @@ class Engine:
                             "retry_count": provider_retries[code],
                         },
                     )
+                    emit_continue_transition(agent, task_state, CONTINUE_PROVIDER_RETRY)
                     continue
                 yield from finish_model_error(
                     self,
@@ -311,6 +321,7 @@ class Engine:
 
             if kind in {"tool", "tools"}:
                 tools = [payload] if kind == "tool" else list(payload)
+                executed_tools = 0
                 for tool_payload in tools:
                     if tool_steps >= agent.max_steps:
                         break
@@ -318,6 +329,7 @@ class Engine:
                         self, task_state, user_message, tool_payload
                     )
                     tool_steps += 1
+                    executed_tools += 1
                     if agent.abort_requested:
                         break
                 if agent.abort_requested:
@@ -330,6 +342,12 @@ class Engine:
                         run_started_at,
                     )
                     return
+                emit_continue_transition(
+                    agent, task_state, CONTINUE_TOOL_BATCH_EXECUTED,
+                    tool_call_count=executed_tools,
+                    tool_requested_count=len(tools),
+                    tool_executed_count=executed_tools,
+                )
                 continue
 
             if kind == "retry":
@@ -346,6 +364,7 @@ class Engine:
                 )
                 agent.run_store.write_task_state(task_state)
                 yield {"type": "retry", "run_id": task_state.run_id, "content": payload}
+                emit_continue_transition(agent, task_state, CONTINUE_PARSE_RETRY)
                 continue
 
             final = (payload or raw).strip()
@@ -369,66 +388,36 @@ class Engine:
                     "run_id": task_state.run_id,
                     "content": notice,
                 }
+                emit_continue_transition(agent, task_state, CONTINUE_PLAN_NOTICE)
                 continue
 
-            agent.record({"role": "assistant", "content": final, "created_at": now()})
-            if agent.runtime_mode == "plan":
-                agent.exit_plan_mode()
-            agent.session_event_bus.emit(
-                "assistant_message",
-                {
+            readiness_action, notice = final_readiness_action(self, task_state)
+            if readiness_action == "runtime_notice":
+                yield {
+                    "type": "runtime_notice",
                     "run_id": task_state.run_id,
-                    "kind": "final",
-                    "content": clip(final, 500),
-                },
+                    "content": notice,
+                }
+                emit_continue_transition(
+                    agent,
+                    task_state,
+                    CONTINUE_FINAL_READINESS_NOTICE,
+                )
+                continue
+            if readiness_action == "block":
+                yield from finish_stopped_run(
+                    self,
+                    task_state,
+                    user_message,
+                    notice,
+                    STOP_REASON_FINAL_GATE_BLOCKED,
+                    run_started_at,
+                )
+                return
+
+            yield from finish_successful_run(
+                self, task_state, user_message, final, run_started_at
             )
-            task_state.finish_success(final)
-            agent.promote_durable_memory(user_message, final)
-            maintain_memory_safely(agent, task_state, final)
-            checkpoint = agent.create_checkpoint(
-                task_state, user_message, trigger="run_finished"
-            )
-            agent.run_store.write_task_state(task_state)
-            agent.emit_trace(
-                task_state,
-                "checkpoint_created",
-                {
-                    "checkpoint_id": checkpoint["checkpoint_id"],
-                    "trigger": "run_finished",
-                },
-            )
-            agent.emit_trace(
-                task_state,
-                "run_finished",
-                {
-                    "status": task_state.status,
-                    "stop_reason": task_state.stop_reason,
-                    "final_answer": final,
-                    "run_duration_ms": int((time.monotonic() - run_started_at) * 1000),
-                },
-            )
-            agent.session_event_bus.emit(
-                "turn_finished",
-                {
-                    "run_id": task_state.run_id,
-                    "status": task_state.status,
-                    "stop_reason": task_state.stop_reason,
-                    "duration_ms": int((time.monotonic() - run_started_at) * 1000),
-                },
-            )
-            agent.run_store.write_report(
-                task_state, agent.redact_artifact(agent.build_report(task_state))
-            )
-            yield from self._drain_worker_notification_events()
-            agent.current_turn_id = ""
-            agent.current_run_id = ""
-            yield {"type": "final", "run_id": task_state.run_id, "content": final}
-            yield {
-                "type": "turn_finished",
-                "run_id": task_state.run_id,
-                "status": task_state.status,
-                "stop_reason": task_state.stop_reason,
-            }
             return
 
         if attempts >= max_attempts and tool_steps < agent.max_steps:

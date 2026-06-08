@@ -1,7 +1,8 @@
-"""运行工件落盘。
+"""Per-run artifact persistence.
 
-session.json 负责保存“可恢复的会话状态”；RunStore 负责保存“单次运行的审计工件”，
-例如 task_state、trace 和 report。两者分开后，恢复现场和复盘证据不会混在一起。
+Session JSON stores resumable conversation state. RunStore stores audit
+artifacts for one run, such as task_state, trace, report, and large tool-output
+files, so recovery state and review evidence stay separate.
 """
 
 import json
@@ -66,6 +67,10 @@ class RunStore:
         path = directory / f"{stem}-{index:03d}.txt"
         path.write_text(str(content), encoding="utf-8")
         return path
+
+    def artifact_ref(self, task_state, path):
+        base = self.root.parent.parent if self.root.parent.name == ".pico" else self.root.parent
+        return path.relative_to(base).as_posix()
 
     def write_report(self, task_state, report):
         path = self.report_path(task_state)
