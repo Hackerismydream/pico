@@ -1,0 +1,131 @@
+{
+  "task_id": "06-access-bilibili",
+  "model_id": "pico-v3-local",
+  "mode": "live",
+  "sandbox": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-06-access-bilibili-btkwpb_i",
+  "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-06-access-bilibili-btkwpb_i/workspace",
+  "session_id": "clawbenchv2-pico-v3-harness28-clean-06-access-bilibili-6acdcb68",
+  "prompt_file": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-06-access-bilibili-btkwpb_i/prompt-round1.txt",
+  "adapter_result": {
+    "ok": true,
+    "command": [
+      "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+      "--workspace",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-06-access-bilibili-btkwpb_i/workspace",
+      "--prompt-file",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-06-access-bilibili-btkwpb_i/prompt-round1.txt",
+      "--session-id",
+      "clawbenchv2-pico-v3-harness28-clean-06-access-bilibili-6acdcb68",
+      "--task-id",
+      "06-access-bilibili",
+      "--model-id",
+      "pico-v3-local",
+      "--max-steps",
+      "16"
+    ],
+    "stdout": "{\n  \"proxy_dir\": \"/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-06-access-bilibili-btkwpb_i/usage-proxy\",\n  \"rounds\": [],\n  \"totals\": {},\n  \"error\": \"missing responses/\"\n}",
+    "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+    "metadata": {
+      "returncode": 0
+    }
+  },
+  "adapter_results": [
+    {
+      "ok": true,
+      "command": [
+        "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+        "--workspace",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-06-access-bilibili-btkwpb_i/workspace",
+        "--prompt-file",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-06-access-bilibili-btkwpb_i/prompt-round1.txt",
+        "--session-id",
+        "clawbenchv2-pico-v3-harness28-clean-06-access-bilibili-6acdcb68",
+        "--task-id",
+        "06-access-bilibili",
+        "--model-id",
+        "pico-v3-local",
+        "--max-steps",
+        "16"
+      ],
+      "stdout": "+==============================================================================+\n|                                       /\\___/\\\\                               |\n|                                      (  o o  )                               |\n|                                     /   ^   \\\\                               |\n|                                    /|       |\\\\                              |\n|                                     pico                                     |\n|                              local coding agent                              |\n|                          calm shell, ready for work                          |\n+------------------------------------------------------------------------------+\n|                                                                              |\n| WORKSPACE  /Users/martinlos/code/harness-b...ess-bilibili-btkwpb_i/workspace |\n| MODEL     deepseek-v4-pro              BRANCH    main                        |\n| APPROVAL  auto                         SESSION   clawben...bilibili-6acdcb68 |\n|                                                                              |\n+==============================================================================+\n\n任务已完成。所有 4 个目标均已达成：\n\n1. ✅ **创建目录**：`mkdir -p out/`\n2. ✅ **访问页面**：使用 `curl` 获取 `http://127.0.0.1:33971/`，页脚确认含 `BENCHMARK_PAGE_MOCK_BILI`\n3. ✅ **提取标题**：按播放量从高到低写入 `out/titles.txt`（UTF-8，一行一个标题）：\n   - 【练习】访问 bilibili 导航条与分区入口导览（188.0万）\n   - Mock 分区：离线 HTML 中的动态列表渲染（64.0万）\n   - 小贴士：如何把本地端口当成「空间首页」（9.5万）\n4. ✅ **写入 URL**：`out/source_url.txt` 含单行 `http://127.0.0.1:33971/`\n",
+      "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+      "metadata": {
+        "returncode": 0
+      }
+    }
+  ],
+  "usage_summary": {
+    "available": false,
+    "reason": "adapter metadata has no usage root",
+    "session_id": "clawbenchv2-pico-v3-harness28-clean-06-access-bilibili-6acdcb68"
+  },
+  "oracle_result": {
+    "task": "06-access-bilibili",
+    "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-06-access-bilibili-btkwpb_i/workspace",
+    "checks": [
+      {
+        "id": "titles_min_lines",
+        "label": "out/titles.txt exists with >= 3 non-empty lines",
+        "pass": true,
+        "weight": 0.15,
+        "detail": null
+      },
+      {
+        "id": "expected_top_by_views",
+        "label": "first N lines match expected_ordered_titles (play-count desc snapshot)",
+        "pass": true,
+        "weight": 0.5,
+        "detail": null
+      },
+      {
+        "id": "title_line_shape",
+        "label": "each title line length in [2,240]",
+        "pass": true,
+        "weight": 0.2,
+        "detail": null
+      },
+      {
+        "id": "source_url",
+        "label": "out/source_url.txt non-empty and looks like a URL/page ref",
+        "pass": true,
+        "weight": 0.15,
+        "detail": null
+      }
+    ],
+    "outcome_score": 1.0
+  },
+  "scoring": {
+    "blend": "multiply",
+    "extract_mode": null,
+    "source_response_file": null,
+    "proxy_trace_error": "missing responses/",
+    "rubric_prompt_source": null,
+    "rubric": {
+      "skipped": true,
+      "reason": "no proxy trace: missing responses/"
+    },
+    "process_score": null,
+    "process_effective": 1.0,
+    "outcome_score": 1.0,
+    "oracle_outcome_score": 1.0,
+    "combined_score": 1.0,
+    "notes": "no usage-proxy; process_effective = default"
+  },
+  "process_result": {
+    "available": false,
+    "skipped": true,
+    "reason": "missing transcript/session file"
+  },
+  "combined_result": {
+    "available": true,
+    "blend": "outcome_only",
+    "outcome_score": 1.0,
+    "process_score": null,
+    "combined_score": 1.0
+  },
+  "runtime_state": {
+    "HTTP_PORT": "33971",
+    "MOCK_PAGE": "http://127.0.0.1:33971/",
+    "server_pid": 99561
+  }
+}

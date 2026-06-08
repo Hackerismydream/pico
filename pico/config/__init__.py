@@ -346,9 +346,7 @@ def _merge_config_values(target: dict[str, Any], incoming: dict[str, Any]) -> No
 def _profile_values(
     providers: dict[str, dict[str, Any]], provider_name: str
 ) -> dict[str, Any]:
-    values = dict(PROVIDER_DEFAULTS.get(provider_name, {}))
-    values.update(providers.get(provider_name, {}))
-    return values
+    return dict(providers.get(provider_name, {}))
 
 
 def _load_legacy_env_values(start: str | Path) -> dict[str, str]:
@@ -385,7 +383,7 @@ def _legacy_values(
         sources.append(LEGACY_ENV_NAMES.get(protocol, {}))
     for source in sources:
         for key, names in source.items():
-            value = _first_mapping_value(env_values, names)
+            value = _first_env(names) or _first_mapping_value(env_values, names)
             if value and key not in values:
                 values[key] = value
     return values

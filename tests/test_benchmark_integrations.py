@@ -169,6 +169,32 @@ def test_harness_summarizer_reads_nested_scores_and_usage(tmp_path):
     assert summary["average_combined_score"] == 0.8
 
 
+def test_harness_summarizer_prefers_oracle_score_over_harness_combined_fallback(tmp_path):
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "23-supply-chain-alert.json").write_text(
+        json.dumps(
+            {
+                "task_id": "23-supply-chain-alert",
+                "model_id": "pico-v3-local",
+                "oracle_result": {"score": 0.25, "grade": "fail"},
+                "scoring": {"combined_score": 1.0},
+                "combined_result": {"combined_score": None},
+            }
+        ),
+        encoding="utf-8",
+    )
+    module = load_script("scripts/summarize-harness-bench.py")
+
+    summary = module.summarize_path(results)
+
+    assert summary["attempted_tasks"] == 1
+    assert summary["oracle_passed_tasks"] == 0
+    assert summary["oracle_pass_rate"] == 0.0
+    assert summary["average_outcome_score"] == 0.25
+    assert summary["average_combined_score"] == 0.25
+
+
 def test_swe_image_resolution_uses_official_fallback():
     assert resolve_image({"docker_image": "custom:latest"}) == "custom:latest"
     assert (

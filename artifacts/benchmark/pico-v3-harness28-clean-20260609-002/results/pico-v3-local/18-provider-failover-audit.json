@@ -1,0 +1,137 @@
+{
+  "task_id": "18-provider-failover-audit",
+  "model_id": "pico-v3-local",
+  "mode": "live",
+  "sandbox": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-18-provider-failover-audit-e0cr6na2",
+  "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-18-provider-failover-audit-e0cr6na2/workspace",
+  "session_id": "clawbenchv2-pico-v3-harness28-clean-18-provider-failover-audit-c98885bb",
+  "prompt_file": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-18-provider-failover-audit-e0cr6na2/prompt-round1.txt",
+  "adapter_result": {
+    "ok": true,
+    "command": [
+      "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+      "--workspace",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-18-provider-failover-audit-e0cr6na2/workspace",
+      "--prompt-file",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-18-provider-failover-audit-e0cr6na2/prompt-round1.txt",
+      "--session-id",
+      "clawbenchv2-pico-v3-harness28-clean-18-provider-failover-audit-c98885bb",
+      "--task-id",
+      "18-provider-failover-audit",
+      "--model-id",
+      "pico-v3-local",
+      "--max-steps",
+      "16"
+    ],
+    "stdout": "{\n  \"proxy_dir\": \"/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-18-provider-failover-audit-e0cr6na2/usage-proxy\",\n  \"rounds\": [],\n  \"totals\": {},\n  \"error\": \"missing responses/\"\n}",
+    "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+    "metadata": {
+      "returncode": 0
+    }
+  },
+  "adapter_results": [
+    {
+      "ok": true,
+      "command": [
+        "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+        "--workspace",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-18-provider-failover-audit-e0cr6na2/workspace",
+        "--prompt-file",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-18-provider-failover-audit-e0cr6na2/prompt-round1.txt",
+        "--session-id",
+        "clawbenchv2-pico-v3-harness28-clean-18-provider-failover-audit-c98885bb",
+        "--task-id",
+        "18-provider-failover-audit",
+        "--model-id",
+        "pico-v3-local",
+        "--max-steps",
+        "16"
+      ],
+      "stdout": "+==============================================================================+\n|                                       /\\___/\\\\                               |\n|                                      (  o o  )                               |\n|                                     /   ^   \\\\                               |\n|                                    /|       |\\\\                              |\n|                                     pico                                     |\n|                              local coding agent                              |\n|                          calm shell, ready for work                          |\n+------------------------------------------------------------------------------+\n|                                                                              |\n| WORKSPACE  /Users/martinlos/code/harness-b...ilover-audit-e0cr6na2/workspace |\n| MODEL     deepseek-v4-pro              BRANCH    main                        |\n| APPROVAL  auto                         SESSION   clawben...er-audit-c98885bb |\n|                                                                              |\n+==============================================================================+\n\n<final>## 当前进度\n\n### 已完成\n- 已列出所有输入文件：`provider_capabilities.json`、`workload_catalog.json`、`gateway_config.json`、`incident_notes.md` 以及 `traces/` 下 3 个 `.jsonl` 文件。\n- 已完整读取 `gateway_config.json`（当前路由配置）。\n- 已部分读取 `provider_capabilities.json` 和 `workload_catalog.json`（被行数截断，内容未读全）。\n- 已启动子代理 `agent_1` 全量读取所有文件，目前正在运行中。\n\n### 待完成\n- 获取所有输入文件的**完整内容**（尤其是 `provider_capabilities.json` 的 gemini 段、`workload_catalog.json` 全部 6 个 workload、`incident_notes.md`、3 个 trace `.jsonl` 文件）。\n- 基于分析，依次写入 4 个产物到 `out/` 目录：\n  1. `provider_scorecard.json`\n  2. `openclaw_config_patch.json`\n  3. `failover_playbook.md`\n  4. `audit_notes.md`\n\n### 建议下一步\n输入 `/resume` 恢复会话后，输入 **\"继续\"** 或 **\"继续分析并生成产物\"**，我会先检查 `agent_1` 的返回结果，补读所有未读全的文件，然后依次生成四个输出文件。\n\n— 已达本轮 step 预算上限（max_steps）。以上是当前进展总结。继续工作：在 REPL 输入 /resume 续接本会话，或直接说「继续」让我接着干。\n",
+      "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+      "metadata": {
+        "returncode": 0
+      }
+    }
+  ],
+  "usage_summary": {
+    "available": false,
+    "reason": "adapter metadata has no usage root",
+    "session_id": "clawbenchv2-pico-v3-harness28-clean-18-provider-failover-audit-c98885bb"
+  },
+  "oracle_result": {
+    "task": "18-provider-failover-audit",
+    "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-18-provider-failover-audit-e0cr6na2/workspace",
+    "outcome_score": 0.0,
+    "level": "fail",
+    "checks": [
+      {
+        "id": "scorecard_missing",
+        "label": "provider_scorecard.json exists",
+        "pass": false,
+        "weight": 0.45,
+        "detail": "missing"
+      },
+      {
+        "id": "config_patch_missing",
+        "label": "openclaw_config_patch.json exists",
+        "pass": false,
+        "weight": 0.25,
+        "detail": "missing"
+      },
+      {
+        "id": "playbook_missing",
+        "label": "failover_playbook.md exists",
+        "pass": false,
+        "weight": 0.2,
+        "detail": "missing"
+      },
+      {
+        "id": "audit_notes_missing",
+        "label": "audit_notes.md exists",
+        "pass": false,
+        "weight": 0.1,
+        "detail": "missing"
+      }
+    ],
+    "summary": {
+      "scorecard": 0.0,
+      "config_patch": 0.0,
+      "playbook": 0.0,
+      "audit_notes": 0.0
+    }
+  },
+  "scoring": {
+    "blend": "multiply",
+    "extract_mode": null,
+    "source_response_file": null,
+    "proxy_trace_error": "missing responses/",
+    "rubric_prompt_source": null,
+    "rubric": {
+      "skipped": true,
+      "reason": "no proxy trace: missing responses/"
+    },
+    "process_score": null,
+    "process_effective": 1.0,
+    "outcome_score": 0.0,
+    "oracle_outcome_score": 0.0,
+    "combined_score": 0.0,
+    "notes": "no usage-proxy; process_effective = default"
+  },
+  "process_result": {
+    "available": false,
+    "skipped": true,
+    "reason": "missing transcript/session file"
+  },
+  "combined_result": {
+    "available": true,
+    "blend": "outcome_only",
+    "outcome_score": 0.0,
+    "process_score": null,
+    "combined_score": 0.0
+  },
+  "runtime_state": {
+    "WORKLOAD_COUNT": "6",
+    "TRACE_DIR": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-18-provider-failover-audit-e0cr6na2/workspace/in/traces"
+  }
+}

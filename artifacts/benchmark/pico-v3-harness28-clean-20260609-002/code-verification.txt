@@ -1,0 +1,2 @@
+ruff: pass (uv run ruff check pico tests scripts)
+pytest: pass (uv run pytest tests/test_pico.py tests/test_benchmark_integrations.py -q; 91 passed)

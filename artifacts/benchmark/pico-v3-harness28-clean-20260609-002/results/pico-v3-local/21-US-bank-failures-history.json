@@ -1,0 +1,127 @@
+{
+  "task_id": "21-US-bank-failures-history",
+  "model_id": "pico-v3-local",
+  "mode": "live",
+  "sandbox": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-21-US-bank-failures-history-wneaz_gp",
+  "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-21-US-bank-failures-history-wneaz_gp/workspace",
+  "session_id": "clawbenchv2-pico-v3-harness28-clean-21-US-bank-failures-history-aa7ff3a7",
+  "prompt_file": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-21-US-bank-failures-history-wneaz_gp/prompt-round1.txt",
+  "adapter_result": {
+    "ok": true,
+    "command": [
+      "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+      "--workspace",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-21-US-bank-failures-history-wneaz_gp/workspace",
+      "--prompt-file",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-21-US-bank-failures-history-wneaz_gp/prompt-round1.txt",
+      "--session-id",
+      "clawbenchv2-pico-v3-harness28-clean-21-US-bank-failures-history-aa7ff3a7",
+      "--task-id",
+      "21-US-bank-failures-history",
+      "--model-id",
+      "pico-v3-local",
+      "--max-steps",
+      "16"
+    ],
+    "stdout": "{\n  \"proxy_dir\": \"/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-21-US-bank-failures-history-wneaz_gp/usage-proxy\",\n  \"rounds\": [],\n  \"totals\": {},\n  \"error\": \"missing responses/\"\n}",
+    "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+    "metadata": {
+      "returncode": 0
+    }
+  },
+  "adapter_results": [
+    {
+      "ok": true,
+      "command": [
+        "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+        "--workspace",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-21-US-bank-failures-history-wneaz_gp/workspace",
+        "--prompt-file",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-21-US-bank-failures-history-wneaz_gp/prompt-round1.txt",
+        "--session-id",
+        "clawbenchv2-pico-v3-harness28-clean-21-US-bank-failures-history-aa7ff3a7",
+        "--task-id",
+        "21-US-bank-failures-history",
+        "--model-id",
+        "pico-v3-local",
+        "--max-steps",
+        "16"
+      ],
+      "stdout": "+==============================================================================+\n|                                       /\\___/\\\\                               |\n|                                      (  o o  )                               |\n|                                     /   ^   \\\\                               |\n|                                    /|       |\\\\                              |\n|                                     pico                                     |\n|                              local coding agent                              |\n|                          calm shell, ready for work                          |\n+------------------------------------------------------------------------------+\n|                                                                              |\n| WORKSPACE  /Users/martinlos/code/harness-b...ures-history-wneaz_gp/workspace |\n| MODEL     deepseek-v4-pro              BRANCH    main                        |\n| APPROVAL  auto                         SESSION   clawben...-history-aa7ff3a7 |\n|                                                                              |\n+==============================================================================+\n\nStopped after too many malformed model responses without a valid tool call or final answer.\n",
+      "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+      "metadata": {
+        "returncode": 0
+      }
+    }
+  ],
+  "usage_summary": {
+    "available": false,
+    "reason": "adapter metadata has no usage root",
+    "session_id": "clawbenchv2-pico-v3-harness28-clean-21-US-bank-failures-history-aa7ff3a7"
+  },
+  "oracle_result": {
+    "grade": "fail",
+    "score": 0.0,
+    "max_score": 1.0,
+    "checks": [
+      {
+        "id": "result_json_missing",
+        "label": "缺少result.json文件",
+        "pass": false,
+        "weight": 0.4,
+        "detail": "必需的输出文件不存在"
+      }
+    ],
+    "weights": {
+      "vision_chart_reading": 0.4,
+      "historical_retrieval": 0.4,
+      "format_compliance": 0.2
+    },
+    "thresholds": {
+      "excellent": 0.9,
+      "good": 0.75,
+      "pass": 0.6
+    },
+    "metadata": {
+      "task_id": "21-us-bank-failures-history",
+      "expected_crisis_count": 3,
+      "wave_1_keywords": [],
+      "wave_2_keywords": [],
+      "wave_3_keywords": []
+    }
+  },
+  "scoring": {
+    "blend": "multiply",
+    "extract_mode": null,
+    "source_response_file": null,
+    "proxy_trace_error": "missing responses/",
+    "rubric_prompt_source": null,
+    "rubric": {
+      "skipped": true,
+      "reason": "no proxy trace: missing responses/"
+    },
+    "process_score": null,
+    "process_effective": 1.0,
+    "outcome_score": null,
+    "oracle_outcome_score": null,
+    "combined_score": 1.0,
+    "notes": "no usage-proxy; process_effective = default"
+  },
+  "process_result": {
+    "available": false,
+    "skipped": true,
+    "reason": "missing transcript/session file"
+  },
+  "combined_result": {
+    "available": false,
+    "combined_score": null
+  },
+  "runtime_state": {
+    "TASK_ID": "21-us-bank-failures-history",
+    "TASK_NAME": "美国历史银行倒闭潮图表分析与背景检索",
+    "INPUT_IMAGE_DIR": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-21-US-bank-failures-history-wneaz_gp/workspace/fixtures/in",
+    "OUTPUT_DIR": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-21-US-bank-failures-history-wneaz_gp/workspace/out",
+    "PROGRESS_FILE": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-21-US-bank-failures-history-wneaz_gp/workspace/progress.md",
+    "EXPECTED_CRISIS_COUNT": 3
+  }
+}

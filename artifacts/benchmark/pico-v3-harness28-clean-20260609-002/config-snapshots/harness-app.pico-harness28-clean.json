@@ -1,0 +1,8 @@
+{
+  "data_dir": "data/pico-v3-harness28-clean-20260609-002",
+  "tasks_dir": "tasks",
+  "default_timeout_sec": 900,
+  "default_rounds": 1,
+  "results_dir": "data/pico-v3-harness28-clean-20260609-002/results",
+  "work_root": "data/pico-v3-harness28-clean-20260609-002/sandbox"
+}

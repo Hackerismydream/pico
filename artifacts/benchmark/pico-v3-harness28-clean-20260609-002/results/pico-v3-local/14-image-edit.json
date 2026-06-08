@@ -1,0 +1,148 @@
+{
+  "task_id": "14-image-edit",
+  "model_id": "pico-v3-local",
+  "mode": "live",
+  "sandbox": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-14-image-edit-78jhpl4i",
+  "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-14-image-edit-78jhpl4i/workspace",
+  "session_id": "clawbenchv2-pico-v3-harness28-clean-14-image-edit-aec4a064",
+  "prompt_file": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-14-image-edit-78jhpl4i/prompt-round1.txt",
+  "adapter_result": {
+    "ok": true,
+    "command": [
+      "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+      "--workspace",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-14-image-edit-78jhpl4i/workspace",
+      "--prompt-file",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-14-image-edit-78jhpl4i/prompt-round1.txt",
+      "--session-id",
+      "clawbenchv2-pico-v3-harness28-clean-14-image-edit-aec4a064",
+      "--task-id",
+      "14-image-edit",
+      "--model-id",
+      "pico-v3-local",
+      "--max-steps",
+      "16"
+    ],
+    "stdout": "{\n  \"proxy_dir\": \"/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-14-image-edit-78jhpl4i/usage-proxy\",\n  \"rounds\": [],\n  \"totals\": {},\n  \"error\": \"missing responses/\"\n}",
+    "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+    "metadata": {
+      "returncode": 0
+    }
+  },
+  "adapter_results": [
+    {
+      "ok": true,
+      "command": [
+        "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+        "--workspace",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-14-image-edit-78jhpl4i/workspace",
+        "--prompt-file",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-14-image-edit-78jhpl4i/prompt-round1.txt",
+        "--session-id",
+        "clawbenchv2-pico-v3-harness28-clean-14-image-edit-aec4a064",
+        "--task-id",
+        "14-image-edit",
+        "--model-id",
+        "pico-v3-local",
+        "--max-steps",
+        "16"
+      ],
+      "stdout": "+==============================================================================+\n|                                       /\\___/\\\\                               |\n|                                      (  o o  )                               |\n|                                     /   ^   \\\\                               |\n|                                    /|       |\\\\                              |\n|                                     pico                                     |\n|                              local coding agent                              |\n|                          calm shell, ready for work                          |\n+------------------------------------------------------------------------------+\n|                                                                              |\n| WORKSPACE  /Users/martinlos/code/harness-b...4-image-edit-78jhpl4i/workspace |\n| MODEL     deepseek-v4-pro              BRANCH    main                        |\n| APPROVAL  auto                         SESSION   clawben...age-edit-aec4a064 |\n|                                                                              |\n+==============================================================================+\n\n任务已完成！所有三个输出文件都已生成：\n\n1. **`out/cat_styled.png`** — 风格迁移图：水彩画风格（通过 PIL 高斯模糊、边缘提取、色彩增强、噪点纹理等效果实现）\n\n2. **`out/cat_scene.png`** — 场景扩展图：猫在太空场景中（程序生成星星、月球/行星，使用边缘检测蒙版将猫从原背景中提取并合成到太空背景）\n\n3. **`out/description.txt`** — 描述文件，详细说明了每张图片使用的风格/场景、工具（Python Pillow）和技术方法\n\n所有图片均与原图明显不同，风格变化和场景变化均可辨认。由于环境中没有外部 AI 图像生成工具，所有效果均通过 Pillow 库编程实现。\n",
+      "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+      "metadata": {
+        "returncode": 0
+      }
+    }
+  ],
+  "usage_summary": {
+    "available": false,
+    "reason": "adapter metadata has no usage root",
+    "session_id": "clawbenchv2-pico-v3-harness28-clean-14-image-edit-aec4a064"
+  },
+  "oracle_result": {
+    "task": "14-image-edit",
+    "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-14-image-edit-78jhpl4i/workspace",
+    "outcome_score": 1.0,
+    "level": "excellent",
+    "checks": [
+      {
+        "id": "file_cat_styled.png",
+        "label": "cat_styled.png 存在且大小≥5000B",
+        "pass": true,
+        "weight": 0.2,
+        "detail": {
+          "size": 1324238
+        }
+      },
+      {
+        "id": "file_cat_scene.png",
+        "label": "cat_scene.png 存在且大小≥5000B",
+        "pass": true,
+        "weight": 0.2,
+        "detail": {
+          "size": 107202
+        }
+      },
+      {
+        "id": "image_modification",
+        "label": "图片与原图差异检测: 2/2 不同",
+        "pass": true,
+        "weight": 0.4,
+        "detail": {
+          "different": 2,
+          "total": 2
+        }
+      },
+      {
+        "id": "description",
+        "label": "description.txt 包含风格和场景说明",
+        "pass": true,
+        "weight": 0.2,
+        "detail": {
+          "has_style": true,
+          "has_scene": true
+        }
+      }
+    ],
+    "summary": {
+      "files_exist": 1.0,
+      "images_modified": 1.0,
+      "description_quality": 1.0
+    },
+    "needs_human_review": false,
+    "auto_grade_only": true
+  },
+  "scoring": {
+    "blend": "multiply",
+    "extract_mode": null,
+    "source_response_file": null,
+    "proxy_trace_error": "missing responses/",
+    "rubric_prompt_source": null,
+    "rubric": {
+      "skipped": true,
+      "reason": "no proxy trace: missing responses/"
+    },
+    "process_score": null,
+    "process_effective": 1.0,
+    "outcome_score": 1.0,
+    "oracle_outcome_score": 1.0,
+    "combined_score": 1.0,
+    "notes": "no usage-proxy; process_effective = default"
+  },
+  "process_result": {
+    "available": false,
+    "skipped": true,
+    "reason": "missing transcript/session file"
+  },
+  "combined_result": {
+    "available": true,
+    "blend": "outcome_only",
+    "outcome_score": 1.0,
+    "process_score": null,
+    "combined_score": 1.0
+  },
+  "runtime_state": {
+    "IMAGE_GEN_AVAILABLE": "true",
+    "EXAMPLE_STYLE": "cartoon"
+  }
+}

@@ -1,0 +1,73 @@
+diff --git a/tasks/09-git-pr-merge/hooks.py b/tasks/09-git-pr-merge/hooks.py
+index 743678a..c187224 100644
+--- a/tasks/09-git-pr-merge/hooks.py
++++ b/tasks/09-git-pr-merge/hooks.py
+@@ -38,6 +38,13 @@ def prepare_runtime(runtime: dict[str, Any]) -> dict[str, Any]:
+     _run(["git", "commit", "-m", "docs: add contributing guidelines"], cwd=init_repo)
+     _run(["git", "push", "-u", "origin", "feature/pr-add-doc"], cwd=init_repo)
+ 
++    # The runner creates standard empty in/out directories before task hooks run.
++    # This task needs to clone the git repository directly into workspace.
++    for placeholder in ("in", "out"):
++        path = workspace / placeholder
++        if path.is_dir() and not any(path.iterdir()):
++            path.rmdir()
++
+     _run(["git", "clone", str(remote.resolve()), str(workspace)])
+     _run(["git", "config", "user.name", git_name], cwd=workspace)
+     _run(["git", "config", "user.email", git_email], cwd=workspace)
+diff --git a/tasks/23-supply-chain-alert/fixtures/data/consumer_trends.csv b/tasks/23-supply-chain-alert/fixtures/data/consumer_trends.csv
+new file mode 100644
+index 0000000..ad6c156
+--- /dev/null
++++ b/tasks/23-supply-chain-alert/fixtures/data/consumer_trends.csv
+@@ -0,0 +1,9 @@
++Product_ID,Search_Volume,Daily_Sales_Velocity
++P-101,7800,120
++P-102,4300,95
++P-103,9200,50
++P-104,6500,30
++P-105,5400,80
++P-106,5100,25
++P-107,2600,70
++P-108,8800,110
+diff --git a/tasks/23-supply-chain-alert/fixtures/data/warehouse_stock.json b/tasks/23-supply-chain-alert/fixtures/data/warehouse_stock.json
+new file mode 100644
+index 0000000..3157ec8
+--- /dev/null
++++ b/tasks/23-supply-chain-alert/fixtures/data/warehouse_stock.json
+@@ -0,0 +1,34 @@
++[
++  {
++    "Product_ID": "P-101",
++    "Current_Stock": 600
++  },
++  {
++    "Product_ID": "P-102",
++    "Current_Stock": 300
++  },
++  {
++    "Product_ID": "P-103",
++    "Current_Stock": 200
++  },
++  {
++    "Product_ID": "P-104",
++    "Current_Stock": 450
++  },
++  {
++    "Product_ID": "P-105",
++    "Current_Stock": 480
++  },
++  {
++    "Product_ID": "P-106",
++    "Current_Stock": 220
++  },
++  {
++    "Product_ID": "P-107",
++    "Current_Stock": 140
++  },
++  {
++    "Product_ID": "P-108",
++    "Current_Stock": 950
++  }
++]

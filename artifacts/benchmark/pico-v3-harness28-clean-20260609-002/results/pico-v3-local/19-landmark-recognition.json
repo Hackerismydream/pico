@@ -1,0 +1,132 @@
+{
+  "task_id": "19-landmark-recognition",
+  "model_id": "pico-v3-local",
+  "mode": "live",
+  "sandbox": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-19-landmark-recognition-ahxn7uz2",
+  "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-19-landmark-recognition-ahxn7uz2/workspace",
+  "session_id": "clawbenchv2-pico-v3-harness28-clean-19-landmark-recognition-2991f1f0",
+  "prompt_file": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-19-landmark-recognition-ahxn7uz2/prompt-round1.txt",
+  "adapter_result": {
+    "ok": true,
+    "command": [
+      "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+      "--workspace",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-19-landmark-recognition-ahxn7uz2/workspace",
+      "--prompt-file",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-19-landmark-recognition-ahxn7uz2/prompt-round1.txt",
+      "--session-id",
+      "clawbenchv2-pico-v3-harness28-clean-19-landmark-recognition-2991f1f0",
+      "--task-id",
+      "19-landmark-recognition",
+      "--model-id",
+      "pico-v3-local",
+      "--max-steps",
+      "16"
+    ],
+    "stdout": "{\n  \"proxy_dir\": \"/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-19-landmark-recognition-ahxn7uz2/usage-proxy\",\n  \"rounds\": [],\n  \"totals\": {},\n  \"error\": \"missing responses/\"\n}",
+    "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+    "metadata": {
+      "returncode": 0
+    }
+  },
+  "adapter_results": [
+    {
+      "ok": true,
+      "command": [
+        "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+        "--workspace",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-19-landmark-recognition-ahxn7uz2/workspace",
+        "--prompt-file",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-19-landmark-recognition-ahxn7uz2/prompt-round1.txt",
+        "--session-id",
+        "clawbenchv2-pico-v3-harness28-clean-19-landmark-recognition-2991f1f0",
+        "--task-id",
+        "19-landmark-recognition",
+        "--model-id",
+        "pico-v3-local",
+        "--max-steps",
+        "16"
+      ],
+      "stdout": "+==============================================================================+\n|                                       /\\___/\\\\                               |\n|                                      (  o o  )                               |\n|                                     /   ^   \\\\                               |\n|                                    /|       |\\\\                              |\n|                                     pico                                     |\n|                              local coding agent                              |\n|                          calm shell, ready for work                          |\n+------------------------------------------------------------------------------+\n|                                                                              |\n| WORKSPACE  /Users/martinlos/code/harness-b...-recognition-ahxn7uz2/workspace |\n| MODEL     deepseek-v4-pro              BRANCH    main                        |\n| APPROVAL  auto                         SESSION   clawben...ognition-2991f1f0 |\n|                                                                              |\n+==============================================================================+\n\n## 本轮完成情况\n\n本轮仅读取了 `progress.md` 确认任务待办清单（图像分析、知识检索、文本生成三项均未开始），但由于工具调用限制，未能对 `image.png` 进行图像分析或执行任何识别工作。\n\n## 剩余工作\n\n1. **图像特征提取**：分析 `image.png` 中的建筑特征（穹顶、立面、周边环境），识别具体地标名称。\n2. **知识检索**：基于识别结果，查证建筑的地理位置、历史背景和用途。\n3. **生成产出文件**：\n   - `result.json`：包含 `building_name_en`（英文全名）和 `introduction`（不少于 50 字的中文介绍）\n   - 更新 `progress.md`：记录各阶段执行过程和依据\n\n## 如何继续\n\n输入 `/resume` 然后说 **\"继续\"** 即可恢复任务。建议下一步先尝试用命令或工具查看 `image.png` 的视觉内容，或调用能进行图像分析的子代理来识别该地标建筑。\n\n— 已达本轮 step 预算上限（max_steps）。以上是当前进展总结。继续工作：在 REPL 输入 /resume 续接本会话，或直接说「继续」让我接着干。\n",
+      "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+      "metadata": {
+        "returncode": 0
+      }
+    }
+  ],
+  "usage_summary": {
+    "available": false,
+    "reason": "adapter metadata has no usage root",
+    "session_id": "clawbenchv2-pico-v3-harness28-clean-19-landmark-recognition-2991f1f0"
+  },
+  "oracle_result": {
+    "grade": "fail",
+    "score": 0.09,
+    "max_score": 1.0,
+    "checks": [
+      {
+        "id": "result_json_missing",
+        "label": "缺少result.json文件",
+        "pass": false,
+        "weight": 0.4,
+        "detail": "必需的输出文件不存在"
+      },
+      {
+        "id": "progress_tracking",
+        "label": "进度追踪完整性",
+        "pass": true,
+        "weight": 0.3,
+        "detail": "图像分析: True, 知识检索: True, 内容生成: True"
+      }
+    ],
+    "weights": {
+      "vision_recognition": 0.4,
+      "knowledge_retrieval": 0.3,
+      "content_generation": 0.2,
+      "format_compliance": 0.1
+    },
+    "thresholds": {
+      "excellent": 0.9,
+      "good": 0.75,
+      "pass": 0.6
+    },
+    "metadata": {
+      "task_id": "19-landmark-recognition",
+      "expected_building_name_en": "Royal Albert Hall"
+    }
+  },
+  "scoring": {
+    "blend": "multiply",
+    "extract_mode": null,
+    "source_response_file": null,
+    "proxy_trace_error": "missing responses/",
+    "rubric_prompt_source": null,
+    "rubric": {
+      "skipped": true,
+      "reason": "no proxy trace: missing responses/"
+    },
+    "process_score": null,
+    "process_effective": 1.0,
+    "outcome_score": null,
+    "oracle_outcome_score": null,
+    "combined_score": 1.0,
+    "notes": "no usage-proxy; process_effective = default"
+  },
+  "process_result": {
+    "available": false,
+    "skipped": true,
+    "reason": "missing transcript/session file"
+  },
+  "combined_result": {
+    "available": false,
+    "combined_score": null
+  },
+  "runtime_state": {
+    "TASK_ID": "19-landmark-recognition",
+    "TASK_NAME": "著名地标建筑识别与介绍",
+    "INPUT_IMAGE_DIR": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-19-landmark-recognition-ahxn7uz2/workspace/fixtures/in",
+    "OUTPUT_DIR": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-19-landmark-recognition-ahxn7uz2/workspace/out",
+    "PROGRESS_FILE": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-19-landmark-recognition-ahxn7uz2/workspace/progress.md",
+    "EXPECTED_BUILDING_NAME_EN": "Royal Albert Hall"
+  }
+}

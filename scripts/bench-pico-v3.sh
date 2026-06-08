@@ -47,7 +47,9 @@ if [[ -n "${PICO_BENCH_ENV:-}" ]]; then
     exit 2
   fi
   # shellcheck source=/dev/null
+  set -a
   source "$PICO_BENCH_ENV"
+  set +a
 fi
 
 provider="${PICO_BENCH_PROVIDER:-deepseek}"

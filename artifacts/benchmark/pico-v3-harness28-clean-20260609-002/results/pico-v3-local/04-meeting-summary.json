@@ -1,0 +1,127 @@
+{
+  "task_id": "04-meeting-summary",
+  "model_id": "pico-v3-local",
+  "mode": "live",
+  "sandbox": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-04-meeting-summary-84ybz778",
+  "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-04-meeting-summary-84ybz778/workspace",
+  "session_id": "clawbenchv2-pico-v3-harness28-clean-04-meeting-summary-890645c5",
+  "prompt_file": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-04-meeting-summary-84ybz778/prompt-round1.txt",
+  "adapter_result": {
+    "ok": true,
+    "command": [
+      "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+      "--workspace",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-04-meeting-summary-84ybz778/workspace",
+      "--prompt-file",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-04-meeting-summary-84ybz778/prompt-round1.txt",
+      "--session-id",
+      "clawbenchv2-pico-v3-harness28-clean-04-meeting-summary-890645c5",
+      "--task-id",
+      "04-meeting-summary",
+      "--model-id",
+      "pico-v3-local",
+      "--max-steps",
+      "16"
+    ],
+    "stdout": "{\n  \"proxy_dir\": \"/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-04-meeting-summary-84ybz778/usage-proxy\",\n  \"rounds\": [],\n  \"totals\": {},\n  \"error\": \"missing responses/\"\n}",
+    "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+    "metadata": {
+      "returncode": 0
+    }
+  },
+  "adapter_results": [
+    {
+      "ok": true,
+      "command": [
+        "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+        "--workspace",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-04-meeting-summary-84ybz778/workspace",
+        "--prompt-file",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-04-meeting-summary-84ybz778/prompt-round1.txt",
+        "--session-id",
+        "clawbenchv2-pico-v3-harness28-clean-04-meeting-summary-890645c5",
+        "--task-id",
+        "04-meeting-summary",
+        "--model-id",
+        "pico-v3-local",
+        "--max-steps",
+        "16"
+      ],
+      "stdout": "+==============================================================================+\n|                                       /\\___/\\\\                               |\n|                                      (  o o  )                               |\n|                                     /   ^   \\\\                               |\n|                                    /|       |\\\\                              |\n|                                     pico                                     |\n|                              local coding agent                              |\n|                          calm shell, ready for work                          |\n+------------------------------------------------------------------------------+\n|                                                                              |\n| WORKSPACE  /Users/martinlos/code/harness-b...ting-summary-84ybz778/workspace |\n| MODEL     deepseek-v4-pro              BRANCH    main                        |\n| APPROVAL  auto                         SESSION   clawben...-summary-890645c5 |\n|                                                                              |\n+==============================================================================+\n\n任务已完成。文件已保存至 `out/meeting_summary.txt`，内容如下：\n\n> 本次会议对齐了OpenClaw产品线Q2目标与资源。Q2主攻工作区规则及handoff流程体验优化与评测流水线稳定性，设两个里程碑：4月30日前P0缺陷清零，5月15日前发布可对外演示的M1版本；若进度落后则优先保障核心路径。研发预算已锁定、与Q1持平，市场费用单列、不得占用研发预算科目，差旅默认冻结。主要风险包括网关与本地embedded模式差异导致回归，以及招聘冻结若延续至Q2末将迫使M1砍掉多模态可选插件子项。待办：本周五前更新路线图，下周三前输出风险清单，4月18日前交付20条脱敏样例任务数据。\n\n**满足所有要求：**\n- ✅ 一段话概括会议主题、关键结论、风险与待办，全部基于原文\n- ✅ 字符数 255，在 180–480 范围内\n- ✅ 自然包含「Q2」「预算」「里程碑」\n- ✅ UTF-8 文本，路径 `out/meeting_summary.txt`\n",
+      "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+      "metadata": {
+        "returncode": 0
+      }
+    }
+  ],
+  "usage_summary": {
+    "available": false,
+    "reason": "adapter metadata has no usage root",
+    "session_id": "clawbenchv2-pico-v3-harness28-clean-04-meeting-summary-890645c5"
+  },
+  "oracle_result": {
+    "task": "04-meeting-summary",
+    "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-04-meeting-summary-84ybz778/workspace",
+    "checks": [
+      {
+        "id": "summary_length",
+        "label": "meeting_summary.txt char count in [180, 480]",
+        "pass": true,
+        "weight": 0.25,
+        "detail": null
+      },
+      {
+        "id": "phrase_Q2",
+        "label": "summary contains 'Q2'",
+        "pass": true,
+        "weight": 0.25,
+        "detail": null
+      },
+      {
+        "id": "phrase_预算",
+        "label": "summary contains '预算'",
+        "pass": true,
+        "weight": 0.25,
+        "detail": null
+      },
+      {
+        "id": "phrase_里程碑",
+        "label": "summary contains '里程碑'",
+        "pass": true,
+        "weight": 0.25,
+        "detail": null
+      }
+    ],
+    "outcome_score": 1.0
+  },
+  "scoring": {
+    "blend": "multiply",
+    "extract_mode": null,
+    "source_response_file": null,
+    "proxy_trace_error": "missing responses/",
+    "rubric_prompt_source": null,
+    "rubric": {
+      "skipped": true,
+      "reason": "no proxy trace: missing responses/"
+    },
+    "process_score": null,
+    "process_effective": 1.0,
+    "outcome_score": 1.0,
+    "oracle_outcome_score": 1.0,
+    "combined_score": 1.0,
+    "notes": "no usage-proxy; process_effective = default"
+  },
+  "process_result": {
+    "available": false,
+    "skipped": true,
+    "reason": "missing transcript/session file"
+  },
+  "combined_result": {
+    "available": true,
+    "blend": "outcome_only",
+    "outcome_score": 1.0,
+    "process_score": null,
+    "combined_score": 1.0
+  },
+  "runtime_state": {}
+}

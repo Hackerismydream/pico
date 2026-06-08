@@ -1,0 +1,171 @@
+{
+  "task_id": "23-supply-chain-alert",
+  "model_id": "pico-v3-local",
+  "mode": "live",
+  "sandbox": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-23-supply-chain-alert-g3xf4usw",
+  "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-23-supply-chain-alert-g3xf4usw/workspace",
+  "session_id": "clawbenchv2-pico-v3-harness28-clean-23-supply-chain-alert-d57a9389",
+  "prompt_file": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-23-supply-chain-alert-g3xf4usw/prompt-round1.txt",
+  "adapter_result": {
+    "ok": true,
+    "command": [
+      "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+      "--workspace",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-23-supply-chain-alert-g3xf4usw/workspace",
+      "--prompt-file",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-23-supply-chain-alert-g3xf4usw/prompt-round1.txt",
+      "--session-id",
+      "clawbenchv2-pico-v3-harness28-clean-23-supply-chain-alert-d57a9389",
+      "--task-id",
+      "23-supply-chain-alert",
+      "--model-id",
+      "pico-v3-local",
+      "--max-steps",
+      "16"
+    ],
+    "stdout": "{\n  \"proxy_dir\": \"/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-23-supply-chain-alert-g3xf4usw/usage-proxy\",\n  \"rounds\": [],\n  \"totals\": {},\n  \"error\": \"missing responses/\"\n}",
+    "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+    "metadata": {
+      "returncode": 0
+    }
+  },
+  "adapter_results": [
+    {
+      "ok": true,
+      "command": [
+        "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+        "--workspace",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-23-supply-chain-alert-g3xf4usw/workspace",
+        "--prompt-file",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-23-supply-chain-alert-g3xf4usw/prompt-round1.txt",
+        "--session-id",
+        "clawbenchv2-pico-v3-harness28-clean-23-supply-chain-alert-d57a9389",
+        "--task-id",
+        "23-supply-chain-alert",
+        "--model-id",
+        "pico-v3-local",
+        "--max-steps",
+        "16"
+      ],
+      "stdout": "+==============================================================================+\n|                                       /\\___/\\\\                               |\n|                                      (  o o  )                               |\n|                                     /   ^   \\\\                               |\n|                                    /|       |\\\\                              |\n|                                     pico                                     |\n|                              local coding agent                              |\n|                          calm shell, ready for work                          |\n+------------------------------------------------------------------------------+\n|                                                                              |\n| WORKSPACE  /Users/martinlos/code/harness-b...-chain-alert-g3xf4usw/workspace |\n| MODEL     deepseek-v4-pro              BRANCH    main                        |\n| APPROVAL  auto                         SESSION   clawben...in-alert-d57a9389 |\n|                                                                              |\n+==============================================================================+\n\n任务已完成。三个产出物均已生成并验证：\n\n**`analysis.py`** — 完整的 Python 分析脚本，支持 `data/` 和 `fixtures/data/` 两种路径，具备 CSV/JSON 解析鲁棒性。\n\n**`alert.txt`** — 3 个高危断货商品：\n```\nP-101: 5.0\nP-103: 4.0\nP-105: 6.0\n```\n\n**`progress.md`** — 所有子任务已标记完成，含详细执行记录。\n\n**计算验证：**\n\n| 商品 | 搜索指数 | 日均销量 | 库存 | 可用天数 | 触发? |\n|------|---------|---------|------|---------|------|\n| P-101 | 7800 | 120 | 600 | 5.0 | ✓ |\n| P-102 | 4300 | 95 | 300 | 3.2 | ✗ (搜索不达标) |\n| P-103 | 9200 | 50 | 200 | 4.0 | ✓ |\n| P-104 | 6500 | 30 | 450 | 15.0 | ✗ (天数过高) |\n| P-105 | 5400 | 80 | 480 | 6.0 | ✓ |\n| P-106 | 5100 | 25 | 220 | 8.8 | ✗ (天数过高) |\n| P-107 | 2600 | 70 | 140 | 2.0 | ✗ (搜索不达标) |\n| P-108 | 8800 | 110 | 950 | 8.6 | ✗ (天数过高) |\n",
+      "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+      "metadata": {
+        "returncode": 0
+      }
+    }
+  ],
+  "usage_summary": {
+    "available": false,
+    "reason": "adapter metadata has no usage root",
+    "session_id": "clawbenchv2-pico-v3-harness28-clean-23-supply-chain-alert-d57a9389"
+  },
+  "oracle_result": {
+    "grade": "fail",
+    "score": 0.25,
+    "max_score": 1.0,
+    "checks": [
+      {
+        "id": "analysis_exists",
+        "label": "analysis.py 是否存在",
+        "pass": true,
+        "weight": 0.1,
+        "detail": "存在: True"
+      },
+      {
+        "id": "analysis_quality",
+        "label": "analysis.py 逻辑检查",
+        "pass": false,
+        "weight": 0.2,
+        "detail": "语法: True, 内容: False"
+      },
+      {
+        "id": "alert_correct_targets",
+        "label": "alert.txt 是否包含正确预警目标",
+        "pass": true,
+        "weight": 0.25,
+        "detail": "匹配目标: True, 额外行: 0"
+      },
+      {
+        "id": "days_remaining_calculation",
+        "label": "alert.txt 可用天数计算是否正确",
+        "pass": true,
+        "weight": 0.15,
+        "detail": "计算正确: True"
+      },
+      {
+        "id": "progress_exists",
+        "label": "progress.md 是否存在并记录分析过程",
+        "pass": true,
+        "weight": 0.1,
+        "detail": "存在: True"
+      },
+      {
+        "id": "alert_format",
+        "label": "alert.txt 输出格式是否严格符合要求",
+        "pass": true,
+        "weight": 0.1,
+        "detail": "格式有效: True"
+      },
+      {
+        "id": "analysis_script_presence",
+        "label": "analysis.py 是否存在且语法正确",
+        "pass": true,
+        "weight": 0.1,
+        "detail": "存在: True, 语法: True"
+      }
+    ],
+    "weights": {
+      "data_join_accuracy": 0.3,
+      "logic_calculation": 0.4,
+      "output_formatting": 0.3
+    },
+    "thresholds": {
+      "excellent": 0.9,
+      "good": 0.75,
+      "pass": 0.6
+    },
+    "metadata": {
+      "task_id": "23-supply-chain-alert",
+      "expected_alerts": {
+        "P-101": 5.0,
+        "P-103": 4.0,
+        "P-105": 6.0
+      }
+    }
+  },
+  "scoring": {
+    "blend": "multiply",
+    "extract_mode": null,
+    "source_response_file": null,
+    "proxy_trace_error": "missing responses/",
+    "rubric_prompt_source": null,
+    "rubric": {
+      "skipped": true,
+      "reason": "no proxy trace: missing responses/"
+    },
+    "process_score": null,
+    "process_effective": 1.0,
+    "outcome_score": null,
+    "oracle_outcome_score": null,
+    "combined_score": 1.0,
+    "notes": "no usage-proxy; process_effective = default"
+  },
+  "process_result": {
+    "available": false,
+    "skipped": true,
+    "reason": "missing transcript/session file"
+  },
+  "combined_result": {
+    "available": false,
+    "combined_score": null
+  },
+  "runtime_state": {
+    "TASK_ID": "23-supply-chain-alert",
+    "TASK_NAME": "跨表数据关联与库存预警分析",
+    "INPUT_DATA_DIR": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-23-supply-chain-alert-g3xf4usw/workspace/fixtures/data",
+    "OUTPUT_DIR": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-23-supply-chain-alert-g3xf4usw/workspace/out",
+    "PROGRESS_FILE": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-23-supply-chain-alert-g3xf4usw/workspace/progress.md",
+    "ALERT_FILE": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-23-supply-chain-alert-g3xf4usw/workspace/alert.txt",
+    "ANALYSIS_SCRIPT": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-23-supply-chain-alert-g3xf4usw/workspace/analysis.py"
+  }
+}

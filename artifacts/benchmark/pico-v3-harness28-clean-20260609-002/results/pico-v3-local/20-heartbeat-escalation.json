@@ -1,0 +1,163 @@
+{
+  "task_id": "20-heartbeat-escalation",
+  "model_id": "pico-v3-local",
+  "mode": "live",
+  "sandbox": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-20-heartbeat-escalation-lr9wotxs",
+  "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-20-heartbeat-escalation-lr9wotxs/workspace",
+  "session_id": "clawbenchv2-pico-v3-harness28-clean-20-heartbeat-escalation-b1b86022",
+  "prompt_file": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-20-heartbeat-escalation-lr9wotxs/prompt-round1.txt",
+  "adapter_result": {
+    "ok": true,
+    "command": [
+      "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+      "--workspace",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-20-heartbeat-escalation-lr9wotxs/workspace",
+      "--prompt-file",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-20-heartbeat-escalation-lr9wotxs/prompt-round1.txt",
+      "--session-id",
+      "clawbenchv2-pico-v3-harness28-clean-20-heartbeat-escalation-b1b86022",
+      "--task-id",
+      "20-heartbeat-escalation",
+      "--model-id",
+      "pico-v3-local",
+      "--max-steps",
+      "16"
+    ],
+    "stdout": "{\n  \"proxy_dir\": \"/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-20-heartbeat-escalation-lr9wotxs/usage-proxy\",\n  \"rounds\": [],\n  \"totals\": {},\n  \"error\": \"missing responses/\"\n}",
+    "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+    "metadata": {
+      "returncode": 0
+    }
+  },
+  "adapter_results": [
+    {
+      "ok": true,
+      "command": [
+        "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+        "--workspace",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-20-heartbeat-escalation-lr9wotxs/workspace",
+        "--prompt-file",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-20-heartbeat-escalation-lr9wotxs/prompt-round1.txt",
+        "--session-id",
+        "clawbenchv2-pico-v3-harness28-clean-20-heartbeat-escalation-b1b86022",
+        "--task-id",
+        "20-heartbeat-escalation",
+        "--model-id",
+        "pico-v3-local",
+        "--max-steps",
+        "16"
+      ],
+      "stdout": "+==============================================================================+\n|                                       /\\___/\\\\                               |\n|                                      (  o o  )                               |\n|                                     /   ^   \\\\                               |\n|                                    /|       |\\\\                              |\n|                                     pico                                     |\n|                              local coding agent                              |\n|                          calm shell, ready for work                          |\n+------------------------------------------------------------------------------+\n|                                                                              |\n| WORKSPACE  /Users/martinlos/code/harness-b...t-escalation-lr9wotxs/workspace |\n| MODEL     deepseek-v4-pro              BRANCH    main                        |\n| APPROVAL  auto                         SESSION   clawben...calation-b1b86022 |\n|                                                                              |\n+==============================================================================+\n\n## 本轮完成\n\n1. **HEARTBEAT.md** — 已创建，详细说明了每次 heartbeat 扫描 `in/` 目录、识别 `priority = \"high\"` 邮件、基于 `id` 去重、同一 `thread_id` 出现 2 封 high 邮件时触发 `[升级]` 通知，以及 5 秒轮询间隔避免忙等的完整策略。\n\n2. **heartbeat.py** — 已编写并运行完毕（40 秒，5 秒轮询间隔），处理了 5 封邮件，识别出 2 封 high 邮件，触发 1 次升级。\n\n3. **out/notifications.txt** — 已正确生成：\n   - `[紧急]` 来自 security@company.com 的邮件：高危漏洞确认\n   - `[紧急]` 来自 security@company.com 的邮件：补充：漏洞已被外部扫描\n   - `[升级]` 线程 sec-777 已出现多封紧急邮件\n   - normal/low 邮件（m_init_001、m_init_002、m_async_noise）未被通知\n\n4. **out/heartbeat_state.json** — 已生成，包含 `seen_ids`、`thread_counts`、`last_scan_at`、`poll_interval_seconds` 全部必需字段。\n\n5. **out/escalation_summary.md** — 脚本已自动生成，说明了发现的紧急邮件、去重情况和升级触发原因。\n\n## 待完成\n\n所有五项任务要求均已完成，无遗留事项。如果需要验证 `out/escalation_summary.md` 的内容，可以用 `/resume` 然后 `继续` 来检查输出文件。\n\n— 已达本轮 step 预算上限（max_steps）。以上是当前进展总结。继续工作：在 REPL 输入 /resume 续接本会话，或直接说「继续」让我接着干。\n",
+      "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+      "metadata": {
+        "returncode": 0
+      }
+    }
+  ],
+  "usage_summary": {
+    "available": false,
+    "reason": "adapter metadata has no usage root",
+    "session_id": "clawbenchv2-pico-v3-harness28-clean-20-heartbeat-escalation-b1b86022"
+  },
+  "oracle_result": {
+    "task": "20-heartbeat-escalation",
+    "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-20-heartbeat-escalation-lr9wotxs/workspace",
+    "outcome_score": 0.975,
+    "level": "excellent",
+    "checks": [
+      {
+        "id": "heartbeat_config",
+        "label": "HEARTBEAT.md describes scan, dedupe, escalation, and sleep",
+        "pass": true,
+        "weight": 0.25,
+        "detail": {
+          "score": 0.9,
+          "phrase_hits": 5
+        }
+      },
+      {
+        "id": "notifications",
+        "label": "notifications.txt includes urgent and escalation messages without noise",
+        "pass": true,
+        "weight": 0.35,
+        "detail": {
+          "score": 1.0,
+          "required_hits": 3,
+          "forbidden_hits": 0,
+          "duplicate_penalty": 0
+        }
+      },
+      {
+        "id": "state_file",
+        "label": "heartbeat_state.json records seen ids, thread counts, scan time, poll interval",
+        "pass": true,
+        "weight": 0.2,
+        "detail": {
+          "score": 1.0,
+          "expected_seen_hits": 2,
+          "thread_ok": true
+        }
+      },
+      {
+        "id": "summary",
+        "label": "escalation_summary.md explains urgent detection, dedupe, and escalation",
+        "pass": true,
+        "weight": 0.1,
+        "detail": {
+          "score": 1.0,
+          "hits": 5
+        }
+      },
+      {
+        "id": "timing",
+        "label": "notifications were produced after asynchronous injection window",
+        "pass": true,
+        "weight": 0.1,
+        "detail": {
+          "elapsed_seconds": 44.18,
+          "score": 1.0
+        }
+      }
+    ],
+    "summary": {
+      "heartbeat_config": 0.9,
+      "notifications": 1.0,
+      "state_file": 1.0,
+      "summary": 1.0,
+      "timing": 1.0
+    }
+  },
+  "scoring": {
+    "blend": "multiply",
+    "extract_mode": null,
+    "source_response_file": null,
+    "proxy_trace_error": "missing responses/",
+    "rubric_prompt_source": null,
+    "rubric": {
+      "skipped": true,
+      "reason": "no proxy trace: missing responses/"
+    },
+    "process_score": null,
+    "process_effective": 1.0,
+    "outcome_score": 0.975,
+    "oracle_outcome_score": 0.975,
+    "combined_score": 0.975,
+    "notes": "no usage-proxy; process_effective = default"
+  },
+  "process_result": {
+    "available": false,
+    "skipped": true,
+    "reason": "missing transcript/session file"
+  },
+  "combined_result": {
+    "available": true,
+    "blend": "outcome_only",
+    "outcome_score": 0.975,
+    "process_score": null,
+    "combined_score": 0.975
+  },
+  "runtime_state": {
+    "HEARTBEAT_TEST_START": "1780940722.7536168",
+    "ASYNC_INJECTION_SECONDS": "6,12,18"
+  }
+}

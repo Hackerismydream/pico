@@ -1,0 +1,120 @@
+{
+  "task_id": "02-exec",
+  "model_id": "pico-v3-local",
+  "mode": "live",
+  "sandbox": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-02-exec-idi1ixwd",
+  "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-02-exec-idi1ixwd/workspace",
+  "session_id": "clawbenchv2-pico-v3-harness28-clean-02-exec-b644ddd4",
+  "prompt_file": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-02-exec-idi1ixwd/prompt-round1.txt",
+  "adapter_result": {
+    "ok": true,
+    "command": [
+      "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+      "--workspace",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-02-exec-idi1ixwd/workspace",
+      "--prompt-file",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-02-exec-idi1ixwd/prompt-round1.txt",
+      "--session-id",
+      "clawbenchv2-pico-v3-harness28-clean-02-exec-b644ddd4",
+      "--task-id",
+      "02-exec",
+      "--model-id",
+      "pico-v3-local",
+      "--max-steps",
+      "16"
+    ],
+    "stdout": "{\n  \"proxy_dir\": \"/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-02-exec-idi1ixwd/usage-proxy\",\n  \"rounds\": [],\n  \"totals\": {},\n  \"error\": \"missing responses/\"\n}",
+    "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+    "metadata": {
+      "returncode": 0
+    }
+  },
+  "adapter_results": [
+    {
+      "ok": true,
+      "command": [
+        "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+        "--workspace",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-02-exec-idi1ixwd/workspace",
+        "--prompt-file",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-02-exec-idi1ixwd/prompt-round1.txt",
+        "--session-id",
+        "clawbenchv2-pico-v3-harness28-clean-02-exec-b644ddd4",
+        "--task-id",
+        "02-exec",
+        "--model-id",
+        "pico-v3-local",
+        "--max-steps",
+        "16"
+      ],
+      "stdout": "+==============================================================================+\n|                                       /\\___/\\\\                               |\n|                                      (  o o  )                               |\n|                                     /   ^   \\\\                               |\n|                                    /|       |\\\\                              |\n|                                     pico                                     |\n|                              local coding agent                              |\n|                          calm shell, ready for work                          |\n+------------------------------------------------------------------------------+\n|                                                                              |\n| WORKSPACE  /Users/martinlos/code/harness-b...h-v2-02-exec-idi1ixwd/workspace |\n| MODEL     deepseek-v4-pro              BRANCH    main                        |\n| APPROVAL  auto                         SESSION   clawben...-02-exec-b644ddd4 |\n|                                                                              |\n+==============================================================================+\n\nAll three steps are complete and verified:\n\n1. **step1.txt**: `42` (computed via `echo $((6*7))`)\n2. **step2.txt**: `c.txt` (extracted via `basename out/a/b/c.txt`)\n3. **step3.txt**: `hello` (converted via `printf 'HELLO\\n' | tr '[:upper:]' '[:lower:]'`)\n\nAll outputs are single-line with no extra whitespace, exactly as required.\n",
+      "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+      "metadata": {
+        "returncode": 0
+      }
+    }
+  ],
+  "usage_summary": {
+    "available": false,
+    "reason": "adapter metadata has no usage root",
+    "session_id": "clawbenchv2-pico-v3-harness28-clean-02-exec-b644ddd4"
+  },
+  "oracle_result": {
+    "task": "02-exec",
+    "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-02-exec-idi1ixwd/workspace",
+    "checks": [
+      {
+        "id": "out_step1.txt",
+        "label": "out/step1.txt == '42'",
+        "pass": true,
+        "weight": 0.3333,
+        "detail": null
+      },
+      {
+        "id": "out_step2.txt",
+        "label": "out/step2.txt == 'c.txt'",
+        "pass": true,
+        "weight": 0.3333,
+        "detail": null
+      },
+      {
+        "id": "out_step3.txt",
+        "label": "out/step3.txt == 'hello'",
+        "pass": true,
+        "weight": 0.3333,
+        "detail": null
+      }
+    ],
+    "outcome_score": 1.0
+  },
+  "scoring": {
+    "blend": "multiply",
+    "extract_mode": null,
+    "source_response_file": null,
+    "proxy_trace_error": "missing responses/",
+    "rubric_prompt_source": null,
+    "rubric": {
+      "skipped": true,
+      "reason": "no proxy trace: missing responses/"
+    },
+    "process_score": null,
+    "process_effective": 1.0,
+    "outcome_score": 1.0,
+    "oracle_outcome_score": 1.0,
+    "combined_score": 1.0,
+    "notes": "no usage-proxy; process_effective = default"
+  },
+  "process_result": {
+    "available": false,
+    "skipped": true,
+    "reason": "missing transcript/session file"
+  },
+  "combined_result": {
+    "available": true,
+    "blend": "outcome_only",
+    "outcome_score": 1.0,
+    "process_score": null,
+    "combined_score": 1.0
+  },
+  "runtime_state": {}
+}

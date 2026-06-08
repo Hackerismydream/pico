@@ -71,6 +71,7 @@ def _row_from_payload(payload: dict[str, Any], source: str) -> dict[str, Any]:
 
     outcome_score = _first_number(
         oracle.get("outcome_score"),
+        oracle.get("score"),
         scoring.get("outcome_score"),
         combined.get("outcome_score"),
     )
@@ -81,8 +82,8 @@ def _row_from_payload(payload: dict[str, Any], source: str) -> dict[str, Any]:
     )
     combined_score = _first_number(
         combined.get("combined_score"),
-        scoring.get("combined_score"),
         outcome_score,
+        scoring.get("combined_score"),
     )
     total_tokens = _first_number(
         usage_summary.get("total_tokens"),

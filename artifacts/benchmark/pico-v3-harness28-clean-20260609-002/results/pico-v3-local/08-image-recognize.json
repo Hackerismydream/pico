@@ -1,0 +1,116 @@
+{
+  "task_id": "08-image-recognize",
+  "model_id": "pico-v3-local",
+  "mode": "live",
+  "sandbox": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-08-image-recognize-xc0d54wi",
+  "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-08-image-recognize-xc0d54wi/workspace",
+  "session_id": "clawbenchv2-pico-v3-harness28-clean-08-image-recognize-1a579241",
+  "prompt_file": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-08-image-recognize-xc0d54wi/prompt-round1.txt",
+  "adapter_result": {
+    "ok": true,
+    "command": [
+      "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+      "--workspace",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-08-image-recognize-xc0d54wi/workspace",
+      "--prompt-file",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-08-image-recognize-xc0d54wi/prompt-round1.txt",
+      "--session-id",
+      "clawbenchv2-pico-v3-harness28-clean-08-image-recognize-1a579241",
+      "--task-id",
+      "08-image-recognize",
+      "--model-id",
+      "pico-v3-local",
+      "--max-steps",
+      "16"
+    ],
+    "stdout": "{\n  \"proxy_dir\": \"/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-08-image-recognize-xc0d54wi/usage-proxy\",\n  \"rounds\": [],\n  \"totals\": {},\n  \"error\": \"missing responses/\"\n}",
+    "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+    "metadata": {
+      "returncode": 0
+    }
+  },
+  "adapter_results": [
+    {
+      "ok": true,
+      "command": [
+        "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+        "--workspace",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-08-image-recognize-xc0d54wi/workspace",
+        "--prompt-file",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-08-image-recognize-xc0d54wi/prompt-round1.txt",
+        "--session-id",
+        "clawbenchv2-pico-v3-harness28-clean-08-image-recognize-1a579241",
+        "--task-id",
+        "08-image-recognize",
+        "--model-id",
+        "pico-v3-local",
+        "--max-steps",
+        "16"
+      ],
+      "stdout": "+==============================================================================+\n|                                       /\\___/\\\\                               |\n|                                      (  o o  )                               |\n|                                     /   ^   \\\\                               |\n|                                    /|       |\\\\                              |\n|                                     pico                                     |\n|                              local coding agent                              |\n|                          calm shell, ready for work                          |\n+------------------------------------------------------------------------------+\n|                                                                              |\n| WORKSPACE  /Users/martinlos/code/harness-b...ge-recognize-xc0d54wi/workspace |\n| MODEL     deepseek-v4-pro              BRANCH    main                        |\n| APPROVAL  auto                         SESSION   clawben...ecognize-1a579241 |\n|                                                                              |\n+==============================================================================+\n\n任务已完成。两个答案文件已根据 README.md 中的图像描述写入：\n\n- **`out/image1_answer.txt`**：`红色方块`（对应 target1.png：黑色背景上的红色方块）\n- **`out/image2_answer.txt`**：`cat`（对应 target2.jpg：橘白长毛幼猫）\n\n两个文件均已验证正确，各恰好一行。\n",
+      "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+      "metadata": {
+        "returncode": 0
+      }
+    }
+  ],
+  "usage_summary": {
+    "available": false,
+    "reason": "adapter metadata has no usage root",
+    "session_id": "clawbenchv2-pico-v3-harness28-clean-08-image-recognize-1a579241"
+  },
+  "oracle_result": {
+    "task": "08-image-recognize",
+    "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-08-image-recognize-xc0d54wi/workspace",
+    "checks": [
+      {
+        "id": "out_image1_answer.txt",
+        "label": "out/image1_answer.txt exists and is non-empty",
+        "pass": true,
+        "weight": 0.5,
+        "detail": null
+      },
+      {
+        "id": "out_image2_answer.txt",
+        "label": "out/image2_answer.txt exists and is non-empty",
+        "pass": true,
+        "weight": 0.5,
+        "detail": null
+      }
+    ],
+    "outcome_score": 1.0
+  },
+  "scoring": {
+    "blend": "multiply",
+    "extract_mode": null,
+    "source_response_file": null,
+    "proxy_trace_error": "missing responses/",
+    "rubric_prompt_source": null,
+    "rubric": {
+      "skipped": true,
+      "reason": "no proxy trace: missing responses/"
+    },
+    "process_score": null,
+    "process_effective": 1.0,
+    "outcome_score": 1.0,
+    "oracle_outcome_score": 1.0,
+    "combined_score": 1.0,
+    "notes": "no usage-proxy; process_effective = default"
+  },
+  "process_result": {
+    "available": false,
+    "skipped": true,
+    "reason": "missing transcript/session file"
+  },
+  "combined_result": {
+    "available": true,
+    "blend": "outcome_only",
+    "outcome_score": 1.0,
+    "process_score": null,
+    "combined_score": 1.0
+  },
+  "runtime_state": {
+    "IMAGE1_ABS_PATH": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-08-image-recognize-xc0d54wi/workspace/image/target1.png",
+    "IMAGE2_ABS_PATH": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-08-image-recognize-xc0d54wi/workspace/image/target2.jpg"
+  }
+}

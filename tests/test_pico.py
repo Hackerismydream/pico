@@ -900,6 +900,26 @@ def test_build_agent_uses_deepseek_default_model_when_env_is_missing(tmp_path):
     assert mock_anthropic.call_args.kwargs["base_url"] == "https://api.deepseek.com/anthropic"
 
 
+def test_build_agent_uses_legacy_deepseek_process_env(tmp_path):
+    args = pico_pkg.build_arg_parser().parse_args(["--cwd", str(tmp_path), "--provider", "deepseek"])
+
+    with patch.dict(
+        os.environ,
+        {
+            "PICO_DEEPSEEK_API_KEY": "sk-legacy-process-deepseek",
+            "PICO_DEEPSEEK_API_BASE": "https://legacy.deepseek.example/anthropic",
+            "PICO_DEEPSEEK_MODEL": "legacy-deepseek-model",
+        },
+        clear=True,
+    ):
+        with patch("pico.cli.AnthropicCompatibleModelClient") as mock_anthropic:
+            pico_pkg.build_agent(args)
+
+    assert mock_anthropic.call_args.kwargs["api_key"] == "sk-legacy-process-deepseek"
+    assert mock_anthropic.call_args.kwargs["base_url"] == "https://legacy.deepseek.example/anthropic"
+    assert mock_anthropic.call_args.kwargs["model"] == "legacy-deepseek-model"
+
+
 def test_build_agent_uses_openai_provider_by_default(tmp_path):
     args = pico_pkg.build_arg_parser().parse_args(["--cwd", str(tmp_path)])
 

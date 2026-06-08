@@ -1,0 +1,162 @@
+{
+  "task_id": "10-office-docs",
+  "model_id": "pico-v3-local",
+  "mode": "live",
+  "sandbox": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-10-office-docs-rub9d5ga",
+  "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-10-office-docs-rub9d5ga/workspace",
+  "session_id": "clawbenchv2-pico-v3-harness28-clean-10-office-docs-fff4e4e9",
+  "prompt_file": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-10-office-docs-rub9d5ga/prompt-round1.txt",
+  "adapter_result": {
+    "ok": true,
+    "command": [
+      "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+      "--workspace",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-10-office-docs-rub9d5ga/workspace",
+      "--prompt-file",
+      "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-10-office-docs-rub9d5ga/prompt-round1.txt",
+      "--session-id",
+      "clawbenchv2-pico-v3-harness28-clean-10-office-docs-fff4e4e9",
+      "--task-id",
+      "10-office-docs",
+      "--model-id",
+      "pico-v3-local",
+      "--max-steps",
+      "16"
+    ],
+    "stdout": "{\n  \"proxy_dir\": \"/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-10-office-docs-rub9d5ga/usage-proxy\",\n  \"rounds\": [],\n  \"totals\": {},\n  \"error\": \"missing responses/\"\n}",
+    "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+    "metadata": {
+      "returncode": 0
+    }
+  },
+  "adapter_results": [
+    {
+      "ok": true,
+      "command": [
+        "/Users/martinlos/code/pico-v3-benchmark-integrations-clean/scripts/bench-pico-v3.sh",
+        "--workspace",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-10-office-docs-rub9d5ga/workspace",
+        "--prompt-file",
+        "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-10-office-docs-rub9d5ga/prompt-round1.txt",
+        "--session-id",
+        "clawbenchv2-pico-v3-harness28-clean-10-office-docs-fff4e4e9",
+        "--task-id",
+        "10-office-docs",
+        "--model-id",
+        "pico-v3-local",
+        "--max-steps",
+        "16"
+      ],
+      "stdout": "+==============================================================================+\n|                                       /\\___/\\\\                               |\n|                                      (  o o  )                               |\n|                                     /   ^   \\\\                               |\n|                                    /|       |\\\\                              |\n|                                     pico                                     |\n|                              local coding agent                              |\n|                          calm shell, ready for work                          |\n+------------------------------------------------------------------------------+\n|                                                                              |\n| WORKSPACE  /Users/martinlos/code/harness-b...-office-docs-rub9d5ga/workspace |\n| MODEL     deepseek-v4-pro              BRANCH    main                        |\n| APPROVAL  auto                         SESSION   clawben...ice-docs-fff4e4e9 |\n|                                                                              |\n+==============================================================================+\n\n任务已全部完成。以下是产出物摘要：\n\n### ✅ 已完成项\n\n1. **阅读 policy.pdf** — 提取了 **POLICY-2024-Q3** 规则：排除 `status=\"return\"` 的行，对其余行按 region 汇总 amount。\n\n2. **创建 out/ 目录** — 已存在。\n\n3. **out/summary.json** — 已写入，内容正确：\n```json\n{\n  \"policy_id\": \"POLICY-2024-Q3\",\n  \"exclude_status\": \"return\",\n  \"totals_by_region\": {\n    \"North\": 1300,\n    \"South\": 500,\n    \"East\": 400\n  },\n  \"grand_total\": 2200\n}\n```\n\n4. **out/report.docx** — 正式备忘录，包含：\n   - 标题 MEMORANDUM\n   - 引用策略编号 **POLICY-2024-Q3**\n   - 各区域小计：North $1,300 / South $500 / East $400\n   - 全公司合计：**$2,200**\n   - 数字与 summary.json 完全一致\n\n### 数据验证\n| Region | 计入行 | 排除 (return) | 小计 |\n|--------|--------|---------------|------|\n| North  | 1000 + 300 | 250 | **1,300** |\n| South  | 500 | 200 | **500** |\n| East   | 400 | — | **400** |\n| **合计** | | | **2,200** |\n",
+      "stderr": "warning: `VIRTUAL_ENV=/Users/martinlos/code/harness-bench/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\n",
+      "metadata": {
+        "returncode": 0
+      }
+    }
+  ],
+  "usage_summary": {
+    "available": false,
+    "reason": "adapter metadata has no usage root",
+    "session_id": "clawbenchv2-pico-v3-harness28-clean-10-office-docs-fff4e4e9"
+  },
+  "oracle_result": {
+    "task": "10-office-docs",
+    "workspace": "/Users/martinlos/code/harness-bench/data/pico-v3-harness28-clean-20260609-002/sandbox/oc-bench-v2-10-office-docs-rub9d5ga/workspace",
+    "checks": [
+      {
+        "id": "policy_id",
+        "label": "summary.policy_id",
+        "pass": true,
+        "weight": 0.111111,
+        "detail": null
+      },
+      {
+        "id": "exclude_status",
+        "label": "summary.exclude_status",
+        "pass": true,
+        "weight": 0.111111,
+        "detail": null
+      },
+      {
+        "id": "totals_by_region",
+        "label": "summary.totals_by_region",
+        "pass": true,
+        "weight": 0.111111,
+        "detail": null
+      },
+      {
+        "id": "grand_total",
+        "label": "summary.grand_total",
+        "pass": true,
+        "weight": 0.111111,
+        "detail": null
+      },
+      {
+        "id": "docx_contains_POLICY_2024_Q3",
+        "label": "report.docx contains 'POLICY-2024-Q3'",
+        "pass": true,
+        "weight": 0.111111,
+        "detail": null
+      },
+      {
+        "id": "docx_contains_1300",
+        "label": "report.docx contains '1300'",
+        "pass": false,
+        "weight": 0.111111,
+        "detail": "substring not found"
+      },
+      {
+        "id": "docx_contains_500",
+        "label": "report.docx contains '500'",
+        "pass": true,
+        "weight": 0.111111,
+        "detail": null
+      },
+      {
+        "id": "docx_contains_400",
+        "label": "report.docx contains '400'",
+        "pass": true,
+        "weight": 0.111111,
+        "detail": null
+      },
+      {
+        "id": "docx_contains_2200",
+        "label": "report.docx contains '2200'",
+        "pass": false,
+        "weight": 0.111111,
+        "detail": "substring not found"
+      }
+    ],
+    "outcome_score": 0.7778
+  },
+  "scoring": {
+    "blend": "multiply",
+    "extract_mode": null,
+    "source_response_file": null,
+    "proxy_trace_error": "missing responses/",
+    "rubric_prompt_source": null,
+    "rubric": {
+      "skipped": true,
+      "reason": "no proxy trace: missing responses/"
+    },
+    "process_score": null,
+    "process_effective": 1.0,
+    "outcome_score": 0.7778,
+    "oracle_outcome_score": 0.7778,
+    "combined_score": 0.7778,
+    "notes": "no usage-proxy; process_effective = default"
+  },
+  "process_result": {
+    "available": false,
+    "skipped": true,
+    "reason": "missing transcript/session file"
+  },
+  "combined_result": {
+    "available": true,
+    "blend": "outcome_only",
+    "outcome_score": 0.7778,
+    "process_score": null,
+    "combined_score": 0.7778
+  },
+  "runtime_state": {}
+}
