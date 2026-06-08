@@ -1,3 +1,4 @@
+import hashlib
 import json
 import shlex
 import sys
@@ -5,7 +6,9 @@ import sys
 from pico.testing import ScriptedModelClient
 from pico import Pico, SessionStore, WorkspaceContext
 from pico.core.context_manager import ContextManager
+from pico.core.run_store import RunStore
 from pico.features.sandbox.config import SandboxConfig
+from pico.tools.base import RegisteredTool
 
 
 def build_agent(tmp_path, outputs=None, **kwargs):
@@ -284,10 +287,68 @@ def test_long_shell_output_is_clipped_and_full_output_is_saved_as_run_artifact(t
     artifact_path = report["runtime_reminders"][0]["artifact_path"] if report["runtime_reminders"] else agent._last_tool_result_metadata["full_output_artifact"]
     full_output = (tmp_path / artifact_path).read_text(encoding="utf-8")
     assert "x" * 6000 in full_output
+    assert tool_item["content_sha256"] == hashlib.sha256(full_output.encode("utf-8")).hexdigest()
 
     trace_events = read_jsonl(agent.current_run_dir / "trace.jsonl")
     tool_event = next(event for event in trace_events if event["event"] == "tool_executed")
     assert tool_event["full_output_artifact"] == artifact_path
+    assert tool_event["content_sha256"] == tool_item["content_sha256"]
+
+
+def test_run_shell_status_is_parsed_from_full_result_before_artifact_rendering(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"run_shell","args":{"command":"synthetic long failure","timeout":20}}</tool>',
+            "<final>captured</final>",
+        ],
+    )
+    long_stdout = "x" * 3000
+    agent.tools["run_shell"] = RegisteredTool(
+        name="run_shell",
+        schema={"command": "str", "timeout": "int=20"},
+        description="Synthetic shell command.",
+        risky=True,
+        runner=lambda args: f"stdout:\n{long_stdout}\nexit_code: 1\nstderr:\nboom",
+    )
+
+    assert agent.ask("run synthetic shell") == "captured"
+
+    trace_events = read_jsonl(agent.current_run_dir / "trace.jsonl")
+    tool_event = next(event for event in trace_events if event["event"] == "tool_executed")
+    assert tool_event["status"] == "error"
+    assert tool_event["tool_error_code"] == "tool_failed"
+    assert tool_event["full_output_artifact"]
+
+
+def test_long_tool_output_artifact_ref_survives_external_run_store(tmp_path):
+    external_runs = tmp_path.parent / f"{tmp_path.name}-external-runs"
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"run_shell","args":{"command":"synthetic long output","timeout":20}}</tool>',
+            "<final>captured</final>",
+        ],
+        run_store=RunStore(external_runs),
+    )
+    agent.tools["run_shell"] = RegisteredTool(
+        name="run_shell",
+        schema={"command": "str", "timeout": "int=20"},
+        description="Synthetic shell command.",
+        risky=True,
+        runner=lambda args: "exit_code: 0\nstdout:\n" + ("x" * 3000),
+    )
+
+    assert agent.ask("run synthetic shell") == "captured"
+
+    tool_item = next(
+        item
+        for item in agent.session["history"]
+        if item["role"] == "tool" and item["name"] == "run_shell"
+    )
+    artifact_ref = tool_item["artifact_ref"]
+    assert artifact_ref
+    assert (external_runs.parent / artifact_ref).exists()
 
 
 def test_long_read_file_result_is_artifact_backed_when_history_is_microcompacted(tmp_path):
@@ -326,6 +387,49 @@ def test_long_read_file_result_is_artifact_backed_when_history_is_microcompacted
     assert "line-119" not in prompt
     assert metadata["history"]["microcompact_artifact_refs"] == [artifact_ref]
     assert metadata["history"]["microcompact_saved_chars"] > 0
+
+
+def test_recent_long_tool_result_is_not_microcompact_stubbed(tmp_path):
+    large_text = "\n".join(f"line-{index} " + ("x" * 40) for index in range(120))
+    (tmp_path / "large.txt").write_text(large_text, encoding="utf-8")
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"read_file","args":{"path":"large.txt","start":1,"end":120}}</tool>',
+            "<final>read</final>",
+        ],
+    )
+
+    assert agent.ask("read the large file") == "read"
+    prompt, metadata = ContextManager(agent).build("continue")
+
+    assert "read_file output saved:" not in prompt
+    assert "full output saved:" in prompt
+    assert metadata["history"]["microcompact_artifact_refs"] == []
+
+
+def test_microcompact_keeps_old_tool_result_tied_to_current_changed_path(tmp_path):
+    large_text = "\n".join(f"line-{index} " + ("x" * 40) for index in range(120))
+    (tmp_path / "large.txt").write_text(large_text, encoding="utf-8")
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"read_file","args":{"path":"large.txt","start":1,"end":120}}</tool>',
+            "<final>read</final>",
+        ],
+    )
+
+    assert agent.ask("read the large file") == "read"
+    for index in range(4):
+        agent.record({"role": "user", "content": f"later user {index}"})
+        agent.record({"role": "assistant", "content": f"later answer {index}"})
+    agent.current_task_state.changed_paths = ["large.txt"]
+
+    prompt, metadata = ContextManager(agent).build("continue")
+
+    assert "read_file output saved:" not in prompt
+    assert "full output saved:" in prompt
+    assert metadata["history"]["microcompact_artifact_refs"] == []
 
 
 def test_microcompact_keeps_latest_failed_tool_result_visible(tmp_path):

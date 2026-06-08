@@ -36,6 +36,9 @@ class ReminderConsumer:
             "status": status,
             "error_type": str(event.get("error_type", "")),
             "message": clip(str(event.get("result", "")), 240),
+            "workspace_changed": bool(event.get("workspace_changed", False)),
+            "affected_paths": list(event.get("affected_paths", []) or []),
+            "source_span_id": event.get("span_id", ""),
             "created_at": event.get("created_at", ""),
         }
         task_state.runtime_reminders.append(reminder)

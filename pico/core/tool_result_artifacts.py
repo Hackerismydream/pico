@@ -20,7 +20,10 @@ def render_tool_result(agent, name, full_result):
     if task_state is None:
         return clip(full_result, INLINE_TOOL_OUTPUT_LIMIT), metadata
     path = agent.run_store.write_text_artifact(task_state, f"{name}-output", full_result)
-    relative = path.relative_to(agent.root).as_posix()
+    try:
+        relative = path.relative_to(agent.root).as_posix()
+    except ValueError:
+        relative = path.relative_to(agent.run_store.root.parent).as_posix()
     metadata["full_output_artifact"] = relative
     return (
         f"full output saved: {relative}\n"

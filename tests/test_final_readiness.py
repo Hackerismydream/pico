@@ -21,7 +21,8 @@ def test_final_readiness_detects_unresolved_current_run_high_priority_todo():
 
     decision = evaluate_final_readiness(state, "strict")
 
-    assert decision["decision"] == "block"
+    assert decision["decision"] == "warn"
+    assert decision["action"] == "none"
     assert decision["reasons"] == ["unresolved_high_priority_todo"]
 
 
@@ -55,7 +56,8 @@ def test_final_readiness_detects_unreduced_context_pressure():
 
     decision = evaluate_final_readiness(state, "strict")
 
-    assert decision["decision"] == "block"
+    assert decision["decision"] == "warn"
+    assert decision["action"] == "none"
     assert decision["reasons"] == ["context_pressure_without_reduction"]
 
 
@@ -72,3 +74,22 @@ def test_final_readiness_allows_context_pressure_after_successful_reduction():
 
     assert decision["decision"] == "allow"
     assert decision["reasons"] == []
+
+
+def test_final_readiness_blocks_partial_success_workspace_change():
+    state = task_state()
+    state.runtime_reminders = [
+        {
+            "event": "tool_executed",
+            "tool": "run_shell",
+            "status": "partial_success",
+            "workspace_changed": True,
+            "affected_paths": ["notes/result.txt"],
+        }
+    ]
+
+    decision = evaluate_final_readiness(state, "strict")
+
+    assert decision["decision"] == "block"
+    assert decision["action"] == "block"
+    assert decision["reasons"] == ["partial_success_workspace_changed"]

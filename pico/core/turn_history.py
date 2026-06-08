@@ -92,6 +92,7 @@ class TurnHistoryBuilder:
         last_changed_tool = self._last_matching_tool(
             history_items, lambda item: bool(item.get("workspace_changed"))
         )
+        changed_paths = self._current_changed_paths()
         details = {
             "recent_window": len(recent_turns),
             "older_entries_count": 0,
@@ -108,8 +109,8 @@ class TurnHistoryBuilder:
                 if item.get("kind") == "compact_summary":
                     lines.extend(str(item.get("content", "")).splitlines())
                     continue
-                if not recent and item.get("role") == "tool" and (
-                    item is last_failed_tool or item is last_changed_tool
+                if not recent and item.get("role") == "tool" and self._must_preserve_tool(
+                    item, last_failed_tool, last_changed_tool, changed_paths
                 ):
                     lines.extend(self._render_item(item, 900))
                     continue
@@ -188,6 +189,19 @@ class TurnHistoryBuilder:
             lines = [line.strip() for line in str(item.get("content", "")).splitlines() if line.strip()]
             return f"{command} -> {' | '.join(lines[:3]) if lines else '(empty)'}"
         return self._render_item(item, 80)[0]
+
+    def _current_changed_paths(self):
+        task_state = getattr(self.agent, "current_task_state", None)
+        return {str(path) for path in getattr(task_state, "changed_paths", []) if str(path).strip()}
+
+    def _must_preserve_tool(self, item, last_failed_tool, last_changed_tool, changed_paths):
+        if item is last_failed_tool or item is last_changed_tool:
+            return True
+        paths = set(str(path) for path in item.get("affected_paths", []) if str(path).strip())
+        path_arg = str(item.get("args", {}).get("path", "")).strip()
+        if path_arg:
+            paths.add(path_arg)
+        return bool(paths & changed_paths)
 
     @staticmethod
     def _last_matching_tool(history, predicate):

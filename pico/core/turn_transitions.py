@@ -1,7 +1,5 @@
 """Loop transition contracts and summary reduction."""
 
-from enum import Enum
-
 
 CONTINUE_PROVIDER_RETRY = "provider_retry"
 CONTINUE_PARSE_RETRY = "parse_retry"
@@ -14,11 +12,8 @@ TERMINAL_MODEL_ERROR = "model_error"
 TERMINAL_STEP_LIMIT_REACHED = "step_limit_reached"
 TERMINAL_RETRY_LIMIT_REACHED = "retry_limit_reached"
 TERMINAL_FINAL_GATE_BLOCKED = "final_gate_blocked"
-
-
-class TransitionKind(str, Enum):
-    CONTINUE = "continue"
-    TERMINAL = "terminal"
+CONTINUE_KIND = "continue"
+TERMINAL_KIND = "terminal"
 
 
 def build_transition(
@@ -28,16 +23,22 @@ def build_transition(
     turn_index,
     attempt_index,
     tool_call_count=0,
+    tool_requested_count=0,
+    tool_executed_count=0,
     stop_reason="",
 ):
     payload = {
-        "kind": TransitionKind(kind).value,
+        "kind": str(kind),
         "reason": str(reason),
         "turn_index": int(turn_index),
         "attempt_index": int(attempt_index),
     }
     if tool_call_count:
         payload["tool_call_count"] = int(tool_call_count)
+    if tool_requested_count:
+        payload["tool_requested_count"] = int(tool_requested_count)
+    if tool_executed_count:
+        payload["tool_executed_count"] = int(tool_executed_count)
     if stop_reason:
         payload["stop_reason"] = str(stop_reason)
     return payload
@@ -54,11 +55,13 @@ def reduce_transition_summary(summary, transition):
         int(summary.get("max_attempt_index", 0) or 0),
         int(transition.get("attempt_index", 0) or 0),
     )
-    if kind == TransitionKind.CONTINUE.value:
+    if kind == CONTINUE_KIND:
         summary["continue_count"] = int(summary.get("continue_count", 0) or 0) + 1
         summary.setdefault("terminal_count", 0)
+        summary["tool_requested_count"] = int(summary.get("tool_requested_count", 0) or 0) + int(transition.get("tool_requested_count", 0) or 0)
+        summary["tool_executed_count"] = int(summary.get("tool_executed_count", 0) or 0) + int(transition.get("tool_executed_count", 0) or 0)
         return summary
-    if kind == TransitionKind.TERMINAL.value:
+    if kind == TERMINAL_KIND:
         if int(summary.get("terminal_count", 0) or 0) >= 1:
             raise ValueError("run already has a terminal transition")
         summary["terminal_count"] = 1
@@ -71,7 +74,8 @@ def reduce_transition_summary(summary, transition):
 
 
 def emit_transition(
-    agent, task_state, *, kind, reason, tool_call_count=0, stop_reason=""
+    agent, task_state, *, kind, reason, tool_call_count=0, tool_requested_count=0,
+    tool_executed_count=0, stop_reason=""
 ):
     payload = build_transition(
         kind=kind,
@@ -79,6 +83,8 @@ def emit_transition(
         turn_index=task_state.attempts,
         attempt_index=task_state.attempts,
         tool_call_count=tool_call_count,
+        tool_requested_count=tool_requested_count,
+        tool_executed_count=tool_executed_count,
         stop_reason=stop_reason,
     )
     return agent.emit_trace(task_state, "loop_transition", payload)

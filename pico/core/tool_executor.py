@@ -84,6 +84,7 @@ def run_tool(agent, name, args):
     after_snapshot = before_snapshot
     try:
         full_result = tool.execute(args).content
+        exit_code = _run_shell_exit_code(full_result) if name == "run_shell" else 0
         result, artifact_metadata = render_tool_result(agent, name, full_result)
         after_snapshot = agent.capture_workspace_snapshot() if tool.risky else before_snapshot
         affected_paths, diff_summary = agent.diff_workspace_snapshots(before_snapshot, after_snapshot)
@@ -91,8 +92,6 @@ def run_tool(agent, name, args):
         tool_status = "ok"
         tool_error_code = ""
         if name == "run_shell":
-            match = re.search(r"exit_code:\s*(-?\d+)", result)
-            exit_code = int(match.group(1)) if match else 0
             if exit_code != 0 and workspace_changed:
                 tool_status = "partial_success"
                 tool_error_code = "tool_partial_success"
@@ -134,6 +133,11 @@ def run_tool(agent, name, args):
         }
         agent.record_process_note_for_tool(name, agent._last_tool_result_metadata)
         return f"error: tool {name} failed: {exc}"
+
+
+def _run_shell_exit_code(result):
+    match = re.search(r"exit_code:\s*(-?\d+)", str(result))
+    return int(match.group(1)) if match else 0
 
 
 def _emit_permission_decision(agent, tool, args, decision):

@@ -314,6 +314,7 @@ class Engine:
 
             if kind in {"tool", "tools"}:
                 tools = [payload] if kind == "tool" else list(payload)
+                executed_tools = 0
                 for tool_payload in tools:
                     if tool_steps >= agent.max_steps:
                         break
@@ -321,6 +322,7 @@ class Engine:
                         self, task_state, user_message, tool_payload
                     )
                     tool_steps += 1
+                    executed_tools += 1
                     if agent.abort_requested:
                         break
                 if agent.abort_requested:
@@ -335,7 +337,9 @@ class Engine:
                     return
                 emit_transition(
                     agent, task_state, kind="continue", reason="tool_batch_executed",
-                    tool_call_count=len(tools),
+                    tool_call_count=executed_tools,
+                    tool_requested_count=len(tools),
+                    tool_executed_count=executed_tools,
                 )
                 continue
 

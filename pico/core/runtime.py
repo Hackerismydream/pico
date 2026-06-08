@@ -722,8 +722,15 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         for consumer in self.runtime_consumers:
             try:
                 consumer.handle(self, task_state, payload)
-            except Exception:
-                continue
+            except Exception as exc:
+                task_state.evidence_summaries.setdefault("consumer_errors", []).append(
+                    {
+                        "consumer": consumer.__class__.__name__,
+                        "event": str(event),
+                        "span_id": str(payload.get("span_id", "")),
+                        "message": clip(str(exc), 200),
+                    }
+                )
         self.run_store.write_task_state(task_state)
         return payload
 
