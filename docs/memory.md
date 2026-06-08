@@ -72,6 +72,8 @@ Saved to daily log.
 
 Dream 完成后会生成 `task.json`、`diff.patch`、`lint.json` 和 `report.md`。auto-dream 默认只产出 candidate，不自动 apply。`diff.patch`、`report.md` 和 `/dream review` 输出会 redaction 明显 secret-shaped 内容。
 
+实现上 Dream 被拆成几层：`pico/commands/dream.py` 只处理 `/dream` 子命令分发；`pico/features/dream.py` 负责任务编排和 apply/discard/status；`dream_store.py` 管 `.dream` 路径、lock、state/task JSON 和 candidate payload；`dream_lint.py` 管确定性检查；`dream_report.py` 管 diff、report 和 review 文本。
+
 ### `/dream` — 手动触发
 
 不想等后台：

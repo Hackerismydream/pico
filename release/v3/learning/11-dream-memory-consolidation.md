@@ -256,7 +256,7 @@ CLI 里 `/remember` 会调用 `agent.remember_durable_note(note)`，后者调用
 
 `DREAM_SESSION_CAP = 30`。如果待整理 session 超过 30 个，Dream 先处理最老的 30 个 pending session，apply 成功后才把它们移入 processed。这样持续高频 session 下也不会让旧 pending starvation。
 
-这个 cap 是一个实际运行经验驱动的保护。
+这个 cap 是一个实际运行经验驱动的保护。分批策略在 Dream orchestration 层完成，`build_dream_prompt()` 只展示调用方传入的当前批次，不再自己截断 session 列表。
 
 session id 列表本身就会占上下文，transcript 检索也可能诱导模型读取过多历史。过去出现过 Dream prompt 因为 75+ session id 撑爆上下文导致 provider 返回 empty response 的风险，所以当前实现选择小批量处理。
 
@@ -727,6 +727,18 @@ lock 逻辑已经下沉到 Dream 执行入口和 apply 入口，`/dream`、auto 
 - 手动 `/dream` 跑完后更新 `.dream/state.json`。
 - 测试覆盖 lock held、manual run 和 apply lock 三种情况。
 
+### 已完成：拆分 Dream 事务代码边界
+
+Dream 事务代码已经从 `pico/features/memory.py` 的大模块里拆出：
+
+- `pico/commands/dream.py`：`/dream status|review|apply|discard` 命令分发。
+- `pico/features/dream.py`：Dream task 编排、candidate 生成、apply/discard/status。
+- `pico/features/dream_store.py`：`.dream` 路径、原子 lock、state/task JSON、snapshot 和 candidate payload。
+- `pico/features/dream_lint.py`：确定性 lint。
+- `pico/features/dream_report.py`：redaction、diff、report 和 review 文本。
+
+`pico/features/memory.py` 保留 facade 和非 Dream 的 working/durable memory 逻辑，现有 runtime 调用路径不需要改。
+
 ### 已完成：增加 memory lint
 
 Dream 写完后跑一个确定性检查：
@@ -841,7 +853,7 @@ Dream 写完后跑一个确定性检查：
 3. `<memory>` 标签能被 final 后处理提取。
 4. `reject_durable_reason()` 能挡住 secret-shaped 文本、临时状态和长日志。
 5. `evaluate_auto_dream_gate()` 对 interval gate、session gate、should_run 三种分支返回正确。
-6. `build_dream_prompt()` 在 session_ids 超过 30 时截断，并在 prompt 里说明。
+6. Dream orchestration 在进入 prompt 前按 `DREAM_SESSION_CAP` 分批；`build_dream_prompt()` 不再自己截断 session_ids。
 7. Dream 子 runtime 的 tool profile 不允许 run_shell、agent、ask_user。
 8. write_scope 指向 candidate，能挡住 candidate 目录外写入。
 9. 手动 `/dream` 和 auto-dream 共享 `.dream/lock`。
