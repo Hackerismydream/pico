@@ -57,12 +57,11 @@ def detect_image_mime(filename, data):
     suffix = "." + str(filename).rsplit(".", 1)[-1].lower() if "." in str(filename) else ""
     expected = IMAGE_MIME_BY_SUFFIX.get(suffix)
     actual = _mime_from_magic(data)
-    mime_type = actual or expected
-    if not mime_type or mime_type not in set(IMAGE_MIME_BY_SUFFIX.values()):
+    if not actual or actual not in set(IMAGE_MIME_BY_SUFFIX.values()):
         raise ValueError("unsupported image type")
-    if expected and actual and expected != actual:
+    if expected and expected != actual:
         raise ValueError("image extension does not match file content")
-    return mime_type
+    return actual
 
 
 def maybe_downsample_image(data, mime_type):

@@ -212,6 +212,16 @@ def test_load_workspace_image_rejects_path_escape_and_records_safe_metadata(tmp_
         load_workspace_image(agent, "../outside.png")
 
 
+def test_load_workspace_image_rejects_fake_image_extension(tmp_path):
+    from pico.core.media import load_workspace_image
+
+    (tmp_path / "fake.png").write_text("not really a png\n", encoding="utf-8")
+    agent = build_agent(tmp_path)
+
+    with pytest.raises(ValueError, match="unsupported image type"):
+        load_workspace_image(agent, "fake.png")
+
+
 def test_run_store_writes_binary_artifact(tmp_path):
     from pico.core.task_state import TaskState
 
