@@ -271,7 +271,7 @@ def _provider_failure(provider, model, base_url, code, message, request_metadata
         model=model,
         base_url=base_url,
         code=code,
-        retryable=False,
+        retryable=code in {"empty_response"},
         attempts=request_metadata.get("provider_attempts", 1),
         retry_count=request_metadata.get("provider_retry_count", 0),
         cause_type=type(cause).__name__ if cause else "",

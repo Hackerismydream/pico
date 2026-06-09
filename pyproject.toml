@@ -16,6 +16,13 @@ dependencies = [
 [project.scripts]
 pico = "pico.cli:main"
 pico-tui = "pico.tui.main:main"
+pico-swebench = "pico.benchmarks.swebench:main"
+
+[project.optional-dependencies]
+swebench = [
+  "datasets>=2.19.0",
+  "swebench>=4.0.0",
+]
 
 [dependency-groups]
 dev = [
