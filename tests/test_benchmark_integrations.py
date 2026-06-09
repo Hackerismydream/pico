@@ -3,7 +3,16 @@ import json
 from pathlib import Path
 
 from pico.benchmarks import swebench
-from pico.benchmarks.swebench_agent import FINAL_DIFF_COMMAND, SWEBenchAgent, _format_command_result, initial_prompt
+from pico.benchmarks.swebench_agent import (
+    FINAL_DIFF_COMMAND,
+    SUBMISSION_COMMAND,
+    SUBMISSION_SENTINEL,
+    SWEBenchAgent,
+    _format_command_result,
+    extract_submission,
+    initial_prompt,
+    inspect_model_patch,
+)
 from pico.benchmarks.swebench_docker import CommandResult, resolve_image
 from pico.providers.errors import ProviderError
 from pico.testing import ScriptedModelClient
@@ -44,6 +53,8 @@ def test_swe_initial_prompt_does_not_leak_test_or_gold_fields():
     assert "SECRET_PASS_TO_PASS" not in prompt
     assert "SECRET_HINT" not in prompt
     assert "make the smallest plausible source patch" in prompt
+    assert SUBMISSION_COMMAND in prompt
+    assert "A natural-language final answer is ignored" in prompt
 
 
 def test_swe_resume_preserves_existing_prediction(tmp_path, monkeypatch):
@@ -173,6 +184,7 @@ def test_swe_summary_ignores_predictions_outside_selected_scope(tmp_path, monkey
     assert summary["non_empty_predictions"] == 0
     assert summary["total_predictions_in_file"] == 1
     assert summary["failed_instance_ids"] == ["new__case-1"]
+    assert summary["exit_status_counts"] == {"setup_error": 1}
 
 
 def test_swe_redo_existing_clears_stale_patch_before_failed_rerun(tmp_path, monkeypatch):
@@ -302,6 +314,36 @@ def test_swe_summarizer_counts_empty_predictions_from_preds(tmp_path):
     assert summary["empty_patch_count"] == 2
 
 
+def test_swe_summarizer_includes_contract_and_patch_warning_counts(tmp_path):
+    output = tmp_path / "out"
+    output.mkdir()
+    (output / "summary.json").write_text(
+        json.dumps(
+            {
+                "selected_instances": 1,
+                "attempted_instances": 1,
+                "experiment_label": "slice20-b",
+                "submission_contract": "sentinel",
+                "non_empty_predictions": 0,
+                "exit_status_counts": {"rejected_patch": 1},
+                "patch_warning_counts": {"test_file_in_patch": 1},
+                "patch_pollution_count": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (output / "preds.json").write_text(json.dumps({"demo__demo-1": {"model_patch": ""}}), encoding="utf-8")
+    module = load_script("scripts/summarize-swebench.py")
+
+    summary = module.summarize(output)
+
+    assert summary["experiment_label"] == "slice20-b"
+    assert summary["submission_contract"] == "sentinel"
+    assert summary["exit_status_counts"] == {"rejected_patch": 1}
+    assert summary["patch_warning_counts"] == {"test_file_in_patch": 1}
+    assert summary["patch_pollution_count"] == 1
+
+
 def test_swe_summarizer_uses_submitted_instances_for_eval_rate(tmp_path):
     output = tmp_path / "out"
     eval_report = tmp_path / "eval"
@@ -335,6 +377,34 @@ def test_swe_summarizer_uses_submitted_instances_for_eval_rate(tmp_path):
     assert summary["resolved_rate"] == 1.0
 
 
+def test_swe_ab_slice_selector_builds_stratified_filter(tmp_path):
+    report = tmp_path / "official.json"
+    report.write_text(
+        json.dumps(
+            {
+                "empty_patch_ids": [f"empty__case-{index}" for index in range(12, 0, -1)],
+                "resolved_ids": [f"resolved__case-{index}" for index in range(8, 0, -1)],
+                "unresolved_ids": [f"unresolved__case-{index}" for index in range(7, 0, -1)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    module = load_script("scripts/select-swebench-ab-slice.py")
+
+    selection = module.select_slice(report, empty_count=2, resolved_count=1, unresolved_count=1)
+
+    assert selection["counts"] == {
+        "empty_patch": 2,
+        "resolved": 1,
+        "unresolved": 1,
+        "total": 4,
+    }
+    assert selection["groups"]["empty_patch"] == ["empty__case-1", "empty__case-10"]
+    assert selection["groups"]["resolved"] == ["resolved__case-1"]
+    assert selection["groups"]["unresolved"] == ["unresolved__case-1"]
+    assert selection["filter_regex"].startswith("^(?:")
+
+
 def test_swe_summarizer_prefers_official_report_when_directory_has_summaries(tmp_path):
     output = tmp_path / "out"
     eval_report = tmp_path / "eval"
@@ -361,7 +431,7 @@ def test_swe_summarizer_prefers_official_report_when_directory_has_summaries(tmp
     assert summary["resolved_rate"] == 1.0
 
 
-def test_swe_agent_collects_final_diff():
+def test_swe_agent_collects_final_diff_in_legacy_contract():
     commands = []
 
     def run_shell(command):
@@ -380,6 +450,7 @@ def test_swe_agent_collects_final_diff():
         model="deepseek-v4-pro",
         max_steps=4,
         max_new_tokens=1024,
+        submission_contract="legacy-final-diff",
     )
 
     trajectory = agent.run({"instance_id": "demo__demo-1", "problem_statement": "Fix bug."}, run_shell)
@@ -388,21 +459,124 @@ def test_swe_agent_collects_final_diff():
     assert trajectory.model_patch == "diff --git a/demo.py b/demo.py\n"
 
 
-def test_swe_agent_emits_progress_after_each_step():
-    snapshots = []
+def test_swe_agent_submits_patch_only_via_sentinel():
+    commands = []
+    patch = "diff --git a/demo.py b/demo.py\n--- a/demo.py\n+++ b/demo.py\n"
 
     def run_shell(command):
-        if command == FINAL_DIFF_COMMAND:
-            return CommandResult(command, 0, "diff --git a/demo.py b/demo.py\n", "")
+        commands.append(command)
+        if command == SUBMISSION_COMMAND:
+            return CommandResult(command, 0, f"{SUBMISSION_SENTINEL}\n{patch}", "")
         return CommandResult(command, 0, "passed\n", "")
 
     agent = SWEBenchAgent(
         ScriptedModelClient(
             [
                 '<tool name="run_shell"><command>pytest -q</command></tool>',
-                "<final>done</final>",
+                f'<tool name="run_shell"><command>{SUBMISSION_COMMAND}</command></tool>',
             ]
         ),
+        model="deepseek-v4-pro",
+        max_steps=4,
+        max_new_tokens=1024,
+    )
+
+    trajectory = agent.run({"instance_id": "demo__demo-1", "problem_statement": "Fix bug."}, run_shell)
+
+    assert commands == ["pytest -q", SUBMISSION_COMMAND]
+    assert trajectory.exit_status == "submitted"
+    assert trajectory.model_patch == patch
+
+
+def test_swe_agent_rejects_natural_language_final_without_sentinel():
+    commands = []
+
+    def run_shell(command):
+        commands.append(command)
+        if command == FINAL_DIFF_COMMAND:
+            return CommandResult(command, 0, "diff --git a/demo.py b/demo.py\n", "")
+        return CommandResult(command, 0, "passed\n", "")
+
+    agent = SWEBenchAgent(
+        ScriptedModelClient(["<final>done</final>"]),
+        model="deepseek-v4-pro",
+        max_steps=1,
+        max_new_tokens=1024,
+    )
+
+    trajectory = agent.run({"instance_id": "demo__demo-1", "problem_statement": "Fix bug."}, run_shell)
+
+    assert commands == [FINAL_DIFF_COMMAND]
+    assert trajectory.model_patch == ""
+    assert trajectory.exit_status == "missing_submission_sentinel"
+    assert "requires submitting a patch" in trajectory.steps[0]["parse_error"]
+
+
+def test_swe_agent_rejects_polluted_submitted_patch():
+    patch = "diff --git a/tests/test_demo.py b/tests/test_demo.py\n--- a/tests/test_demo.py\n+++ b/tests/test_demo.py\n"
+
+    def run_shell(command):
+        return CommandResult(command, 0, f"{SUBMISSION_SENTINEL}\n{patch}", "")
+
+    agent = SWEBenchAgent(
+        ScriptedModelClient([f'<tool name="run_shell"><command>{SUBMISSION_COMMAND}</command></tool>']),
+        model="deepseek-v4-pro",
+        max_steps=2,
+        max_new_tokens=1024,
+    )
+
+    trajectory = agent.run({"instance_id": "demo__demo-1", "problem_statement": "Fix bug."}, run_shell)
+
+    assert trajectory.model_patch == ""
+    assert trajectory.rejected_model_patch_chars == len(patch)
+    assert trajectory.exit_status == "rejected_patch"
+    assert "test_file_in_patch" in trajectory.patch_warnings
+
+
+def test_swe_submission_extraction_requires_first_stdout_line_and_zero_exit():
+    assert (
+        extract_submission(CommandResult(SUBMISSION_COMMAND, 0, f"{SUBMISSION_SENTINEL}\npatch", ""))
+        == "patch"
+    )
+    assert extract_submission(CommandResult(SUBMISSION_COMMAND, 1, f"{SUBMISSION_SENTINEL}\npatch", "")) is None
+    assert extract_submission(CommandResult(SUBMISSION_COMMAND, 0, f"noise\n{SUBMISSION_SENTINEL}\npatch", "")) is None
+
+
+def test_swe_patch_inspection_flags_tests_and_patch_txt():
+    patch = "\n".join(
+        [
+            "diff --git a/pkg/source.py b/pkg/source.py",
+            "diff --git a/tests/test_source.py b/tests/test_source.py",
+            "diff --git a/patch.txt b/patch.txt",
+        ]
+    )
+
+    warnings = inspect_model_patch(patch)
+
+    assert "test_file_in_patch" in warnings
+    assert "patch_txt_in_patch" in warnings
+
+
+def test_swe_agent_emits_progress_after_each_step():
+    snapshots = []
+
+    def run_shell(command):
+        if command == SUBMISSION_COMMAND:
+            return CommandResult(
+                command,
+                0,
+                f"{SUBMISSION_SENTINEL}\ndiff --git a/demo.py b/demo.py\n--- a/demo.py\n+++ b/demo.py\n",
+                "",
+            )
+        return CommandResult(command, 0, "passed\n", "")
+
+    agent = SWEBenchAgent(
+        ScriptedModelClient(
+                [
+                    '<tool name="run_shell"><command>pytest -q</command></tool>',
+                    f'<tool name="run_shell"><command>{SUBMISSION_COMMAND}</command></tool>',
+                ]
+            ),
         model="deepseek-v4-pro",
         max_steps=4,
         max_new_tokens=1024,
@@ -457,13 +631,20 @@ def test_swe_agent_retries_retryable_provider_errors():
             self.calls += 1
             if self.calls == 1:
                 raise ProviderError("empty", provider="anthropic", code="empty_response", retryable=True)
-            return ScriptedModelClient(["<final>done</final>"]).complete_result("", 1)
+            return ScriptedModelClient(
+                [f'<tool name="run_shell"><command>{SUBMISSION_COMMAND}</command></tool>']
+            ).complete_result("", 1)
 
     commands = []
 
     def run_shell(command):
         commands.append(command)
-        return CommandResult(command, 0, "diff --git a/demo.py b/demo.py\n", "")
+        return CommandResult(
+            command,
+            0,
+            f"{SUBMISSION_SENTINEL}\ndiff --git a/demo.py b/demo.py\n--- a/demo.py\n+++ b/demo.py\n",
+            "",
+        )
 
     client = FlakyClient()
     agent = SWEBenchAgent(client, model="deepseek-v4-pro", max_steps=2, max_new_tokens=1024)
@@ -471,7 +652,7 @@ def test_swe_agent_retries_retryable_provider_errors():
     trajectory = agent.run({"instance_id": "demo__demo-1", "problem_statement": "Fix bug."}, run_shell)
 
     assert client.calls == 2
-    assert trajectory.model_patch == "diff --git a/demo.py b/demo.py\n"
+    assert trajectory.model_patch.startswith("diff --git a/demo.py b/demo.py")
 
 
 def test_swe_tool_feedback_nudges_after_too_much_inspection():

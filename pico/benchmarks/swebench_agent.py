@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Callable
 
 from ..providers.base import complete_model
@@ -13,6 +14,9 @@ from .swebench_docker import CommandResult
 
 RunShell = Callable[[str], CommandResult]
 FINAL_DIFF_COMMAND = "git -c core.fileMode=false diff -- ."
+SUBMISSION_SENTINEL = "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
+SUBMISSION_COMMAND = f"echo {SUBMISSION_SENTINEL} && cat patch.txt"
+SUBMISSION_CONTRACTS = {"sentinel", "legacy-final-diff"}
 
 
 @dataclass
@@ -25,6 +29,9 @@ class Trajectory:
     exit_status: str = "submitted"
     model_patch_chars: int = 0
     model_patch: str = ""
+    rejected_model_patch_chars: int = 0
+    patch_warnings: list[str] = field(default_factory=list)
+    submission_contract: str = "sentinel"
     steps: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -37,11 +44,22 @@ StepCallback = Callable[[Trajectory], None]
 
 
 class SWEBenchAgent:
-    def __init__(self, model_client, *, model: str, max_steps: int, max_new_tokens: int):
+    def __init__(
+        self,
+        model_client,
+        *,
+        model: str,
+        max_steps: int,
+        max_new_tokens: int,
+        submission_contract: str = "sentinel",
+    ):
         self.model_client = model_client
         self.model = model
         self.max_steps = int(max_steps)
         self.max_new_tokens = int(max_new_tokens)
+        if submission_contract not in SUBMISSION_CONTRACTS:
+            raise ValueError(f"unknown submission contract: {submission_contract}")
+        self.submission_contract = submission_contract
 
     def run(
         self,
@@ -55,8 +73,17 @@ class SWEBenchAgent:
             instance_id=str(instance.get("instance_id", "")),
             model=self.model,
             image=image,
+            submission_contract=self.submission_contract,
         )
-        transcript = [{"role": "user", "content": initial_prompt(instance)}]
+        transcript = [
+            {
+                "role": "user",
+                "content": initial_prompt(
+                    instance, submission_contract=self.submission_contract
+                ),
+            }
+        ]
+        natural_final_ignored = False
         for _ in range(self.max_steps):
             prompt = _render_transcript(transcript)
             try:
@@ -75,19 +102,39 @@ class SWEBenchAgent:
                 "tool_result": {},
             }
             final = _extract_tag(text, "final")
-            if final is not None:
+            if final is not None and self.submission_contract == "legacy-final-diff":
                 diff = run_shell(FINAL_DIFF_COMMAND)
                 step["tool_call"] = {"name": "run_shell", "command": FINAL_DIFF_COMMAND}
                 step["tool_result"] = _command_result_dict(diff)
                 trajectory.steps.append(step)
                 _emit_step(on_step, trajectory)
                 if diff.returncode == 0 and diff.stdout:
-                    trajectory.exit_status = "final"
-                    trajectory.model_patch = diff.stdout
-                    trajectory.model_patch_chars = len(trajectory.model_patch)
+                    patch = diff.stdout
+                    warnings = inspect_model_patch(patch)
+                    if warnings:
+                        trajectory.exit_status = "rejected_patch"
+                        trajectory.rejected_model_patch_chars = len(patch)
+                        trajectory.patch_warnings = warnings
+                    else:
+                        trajectory.exit_status = "final"
+                        trajectory.model_patch = patch
+                        trajectory.model_patch_chars = len(trajectory.model_patch)
                     break
                 correction = "Final answer ignored because git diff is empty. Modify the repository, then finish."
                 step["parse_error"] = correction
+                transcript.append({"role": "assistant", "content": "<final>" + final + "</final>"})
+                transcript.append({"role": "user", "content": correction})
+                continue
+            if final is not None:
+                natural_final_ignored = True
+                correction = (
+                    "Final answer ignored. SWE-bench requires submitting a patch with the exact "
+                    f"command `{SUBMISSION_COMMAND}` after creating and inspecting patch.txt. "
+                    "Continue with run_shell commands until you can submit the patch."
+                )
+                step["parse_error"] = correction
+                trajectory.steps.append(step)
+                _emit_step(on_step, trajectory)
                 transcript.append({"role": "assistant", "content": "<final>" + final + "</final>"})
                 transcript.append({"role": "user", "content": correction})
                 continue
@@ -104,11 +151,30 @@ class SWEBenchAgent:
                 transcript.append({"role": "assistant", "content": text})
                 transcript.append({"role": "user", "content": correction})
                 continue
-            tool_result = _guard_command(command) or run_shell(command)
+            tool_result = (
+                run_shell(command)
+                if command.strip() == SUBMISSION_COMMAND
+                else _guard_command(command) or run_shell(command)
+            )
             step["tool_call"] = {"name": "run_shell", "command": command}
             step["tool_result"] = _command_result_dict(tool_result)
             trajectory.steps.append(step)
             _emit_step(on_step, trajectory)
+            submission = extract_submission(tool_result)
+            if submission is not None:
+                patch = submission
+                warnings = inspect_model_patch(patch)
+                if not patch.strip():
+                    trajectory.exit_status = "empty_submission"
+                elif warnings:
+                    trajectory.exit_status = "rejected_patch"
+                    trajectory.rejected_model_patch_chars = len(patch)
+                    trajectory.patch_warnings = warnings
+                else:
+                    trajectory.exit_status = "submitted"
+                    trajectory.model_patch = patch
+                    trajectory.model_patch_chars = len(patch)
+                break
             transcript.append({"role": "assistant", "content": _format_tool_call(command)})
             transcript.append(
                 {
@@ -125,18 +191,35 @@ class SWEBenchAgent:
 
         if not trajectory.model_patch:
             diff = run_shell(FINAL_DIFF_COMMAND)
+            final_audit = _command_result_dict(diff)
+            final_audit["stdout_chars"] = len(diff.stdout)
             trajectory.steps.append(
                 {
                     "model_output": "",
                     "metadata": {},
                     "parse_error": "",
                     "tool_call": {"name": "run_shell", "command": FINAL_DIFF_COMMAND},
-                    "tool_result": _command_result_dict(diff),
+                    "tool_result": final_audit,
                 }
             )
             _emit_step(on_step, trajectory)
-            trajectory.model_patch = diff.stdout if diff.returncode == 0 else ""
-            trajectory.model_patch_chars = len(trajectory.model_patch)
+            if (
+                self.submission_contract == "legacy-final-diff"
+                and diff.returncode == 0
+                and diff.stdout
+            ):
+                warnings = inspect_model_patch(diff.stdout)
+                if warnings:
+                    trajectory.exit_status = "rejected_patch"
+                    trajectory.rejected_model_patch_chars = len(diff.stdout)
+                    trajectory.patch_warnings = warnings
+                else:
+                    trajectory.model_patch = diff.stdout
+                    trajectory.model_patch_chars = len(trajectory.model_patch)
+            elif trajectory.exit_status == "submitted" or (
+                trajectory.exit_status == "step_limit" and natural_final_ignored
+            ):
+                trajectory.exit_status = "missing_submission_sentinel"
         if trajectory.model_patch and trajectory.exit_status in {"submitted", "final", "step_limit"}:
             trajectory.exit_status = "submitted"
         return trajectory
@@ -154,17 +237,29 @@ class SWEBenchAgent:
         raise last_exc
 
 
-def initial_prompt(instance: dict) -> str:
+def initial_prompt(instance: dict, *, submission_contract: str = "sentinel") -> str:
+    if submission_contract == "legacy-final-diff":
+        submission_lines = [
+            "When done, respond with:",
+            "<final>brief summary</final>",
+            "Leave the final patch in git diff.",
+        ]
+    else:
+        submission_lines = [
+            "When your source fix is ready, submit a git patch with this exact workflow:",
+            "1. Create patch.txt with only source files you modified: git -c core.fileMode=false diff -- path/to/file1 path/to/file2 > patch.txt",
+            "2. Inspect patch.txt and confirm it excludes tests, reproduction scripts, patch.txt, generated files, and unrelated config.",
+            f"3. Submit with this exact command: {SUBMISSION_COMMAND}",
+            "Do not use <final> for submission. A natural-language final answer is ignored in this benchmark profile.",
+        ]
     return "\n".join(
         [
             "You are solving a SWE-bench task inside Docker.",
             "The repository is checked out at /testbed.",
             "Use exactly one tool call per step:",
             '<tool name="run_shell"><command>...</command></tool>',
-            "When done, respond with:",
-            "<final>brief summary</final>",
+            *submission_lines,
             "Do not modify tests.",
-            "Leave the final patch in git diff.",
             "Avoid broad cat commands on source files; use grep -n, sed -n, or small Python scripts to inspect focused regions.",
             "Do not spend the whole run inspecting. After a few focused reads, make the smallest plausible source patch and run a focused check.",
             "If you are unsure, patch the most likely source file anyway; an imperfect non-empty patch is better than no patch.",
@@ -201,6 +296,103 @@ def _extract_tag(text: str, tag: str) -> str | None:
     if not match:
         return None
     return match.group(1).strip()
+
+
+def extract_submission(result: CommandResult) -> str | None:
+    if result.returncode != 0:
+        return None
+    lines = str(result.stdout or "").lstrip().splitlines(keepends=True)
+    if not lines or lines[0].strip() != SUBMISSION_SENTINEL:
+        return None
+    return "".join(lines[1:])
+
+
+def inspect_model_patch(patch: str) -> list[str]:
+    warnings = []
+    paths = _diff_paths(patch)
+    if not patch.strip():
+        warnings.append("empty_patch")
+    if not paths:
+        warnings.append("missing_diff_header")
+    if paths and not any(_looks_like_source_path(path) for path in paths):
+        warnings.append("no_source_files")
+    if any(_looks_like_test_path(path) for path in paths):
+        warnings.append("test_file_in_patch")
+    if any(Path(path).name == "patch.txt" for path in paths):
+        warnings.append("patch_txt_in_patch")
+    if any(_looks_like_repro_path(path) for path in paths):
+        warnings.append("reproduction_file_in_patch")
+    if any(_looks_like_generated_path(path) for path in paths):
+        warnings.append("generated_file_in_patch")
+    return sorted(set(warnings))
+
+
+def _diff_paths(patch: str) -> list[str]:
+    paths = []
+    for match in re.finditer(r"^diff --git a/(.*?) b/(.*?)$", patch, flags=re.MULTILINE):
+        for value in match.groups():
+            if value != "/dev/null" and value not in paths:
+                paths.append(value)
+    return paths
+
+
+def _looks_like_source_path(path: str) -> bool:
+    suffix = Path(path).suffix.lower()
+    return suffix in {
+        ".py",
+        ".pyi",
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".java",
+        ".go",
+        ".rs",
+        ".c",
+        ".cc",
+        ".cpp",
+        ".h",
+        ".hpp",
+        ".rb",
+        ".php",
+        ".scala",
+        ".kt",
+        ".swift",
+        ".sh",
+        ".rst",
+        ".md",
+    }
+
+
+def _looks_like_test_path(path: str) -> bool:
+    parts = Path(path).parts
+    name = Path(path).name.lower()
+    return (
+        any(part.lower() in {"test", "tests", "testing"} for part in parts)
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+        or name.endswith(".test.js")
+        or name.endswith(".spec.js")
+        or name.endswith(".test.ts")
+        or name.endswith(".spec.ts")
+    )
+
+
+def _looks_like_repro_path(path: str) -> bool:
+    name = Path(path).name.lower()
+    return "repro" in name or "reproduce" in name
+
+
+def _looks_like_generated_path(path: str) -> bool:
+    lowered = path.lower()
+    return (
+        lowered.endswith((".pyc", ".pyo", ".class", ".o", ".so"))
+        or "/__pycache__/" in lowered
+        or lowered.startswith("__pycache__/")
+        or lowered.endswith(".egg-info")
+        or "/dist/" in lowered
+        or "/build/" in lowered
+    )
 
 
 def _format_command_result(

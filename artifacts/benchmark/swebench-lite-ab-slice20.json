@@ -1,0 +1,60 @@
+{
+  "counts": {
+    "empty_patch": 10,
+    "resolved": 5,
+    "total": 20,
+    "unresolved": 5
+  },
+  "filter_regex": "^(?:astropy__astropy\\-14182|astropy__astropy\\-7746|django__django\\-11019|django__django\\-11422|django__django\\-11583|django__django\\-11742|django__django\\-11797|django__django\\-12113|django__django\\-12125|django__django\\-12184|astropy__astropy\\-12907|astropy__astropy\\-14995|django__django\\-10914|django__django\\-10924|django__django\\-11001|astropy__astropy\\-14365|astropy__astropy\\-6938|django__django\\-11133|django__django\\-11283|django__django\\-11564)$",
+  "groups": {
+    "empty_patch": [
+      "astropy__astropy-14182",
+      "astropy__astropy-7746",
+      "django__django-11019",
+      "django__django-11422",
+      "django__django-11583",
+      "django__django-11742",
+      "django__django-11797",
+      "django__django-12113",
+      "django__django-12125",
+      "django__django-12184"
+    ],
+    "resolved": [
+      "astropy__astropy-12907",
+      "astropy__astropy-14995",
+      "django__django-10914",
+      "django__django-10924",
+      "django__django-11001"
+    ],
+    "unresolved": [
+      "astropy__astropy-14365",
+      "astropy__astropy-6938",
+      "django__django-11133",
+      "django__django-11283",
+      "django__django-11564"
+    ]
+  },
+  "ids": [
+    "astropy__astropy-14182",
+    "astropy__astropy-7746",
+    "django__django-11019",
+    "django__django-11422",
+    "django__django-11583",
+    "django__django-11742",
+    "django__django-11797",
+    "django__django-12113",
+    "django__django-12125",
+    "django__django-12184",
+    "astropy__astropy-12907",
+    "astropy__astropy-14995",
+    "django__django-10914",
+    "django__django-10924",
+    "django__django-11001",
+    "astropy__astropy-14365",
+    "astropy__astropy-6938",
+    "django__django-11133",
+    "django__django-11283",
+    "django__django-11564"
+  ],
+  "source_eval_report": "artifacts/benchmark/swebench-lite-deepseek-full-20260609-141010/official-eval/pico-v3__deepseek-v4-pro.pico-v3-lite-deepseek-full-20260609-141010.json"
+}

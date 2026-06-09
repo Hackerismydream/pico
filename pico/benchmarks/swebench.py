@@ -13,7 +13,7 @@ from typing import Any
 
 from ..cli import _build_model_client
 from ..config import resolve_provider_config
-from .swebench_agent import SWEBenchAgent, Trajectory
+from .swebench_agent import SUBMISSION_CONTRACTS, SWEBenchAgent, Trajectory
 from .swebench_docker import resolve_image, run_shell, start_container, stop_container
 
 DATASETS = {
@@ -101,6 +101,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--top-p", type=float, default=None)
     parser.add_argument("--max-steps", type=int, default=80)
     parser.add_argument("--max-new-tokens", type=int, default=4096)
+    parser.add_argument(
+        "--submission-contract",
+        choices=sorted(SUBMISSION_CONTRACTS),
+        default="sentinel",
+        help="Patch submission contract. Use legacy-final-diff only as an A/B baseline.",
+    )
+    parser.add_argument(
+        "--experiment-label",
+        default="",
+        help="Optional label recorded in summary.json for A/B smoke runs.",
+    )
     parser.add_argument("--command-timeout", type=int, default=120)
     parser.add_argument("--openai-timeout", type=int, default=300)
     parser.add_argument("--ollama-timeout", type=int, default=300)
@@ -195,6 +206,7 @@ def run_instance(instance: dict[str, Any], args) -> Trajectory:
         model=actual_model,
         max_steps=args.max_steps,
         max_new_tokens=args.max_new_tokens,
+        submission_contract=args.submission_contract,
     )
     output = Path(args.output)
     container = None
@@ -259,6 +271,13 @@ def build_summary(
     empty_patch_count = sum(1 for item in trajectories if not item.model_patch)
     setup_error_count = sum(1 for item in trajectories if item.exit_status == "setup_error")
     model_error_count = sum(1 for item in trajectories if item.exit_status == "model_error")
+    exit_status_counts: dict[str, int] = {}
+    patch_warning_counts: dict[str, int] = {}
+    for item in trajectories:
+        exit_status_counts[item.exit_status] = exit_status_counts.get(item.exit_status, 0) + 1
+        for warning in item.patch_warnings:
+            patch_warning_counts[warning] = patch_warning_counts.get(warning, 0) + 1
+    patch_pollution_count = sum(1 for item in trajectories if item.patch_warnings)
     timeout_count = sum(
         1
         for item in trajectories
@@ -273,6 +292,8 @@ def build_summary(
     return {
         "subset": args.subset,
         "split": args.split,
+        "experiment_label": args.experiment_label,
+        "submission_contract": args.submission_contract,
         "selected_instances": len(selected_ids),
         "attempted_instances": attempted_count,
         "skipped_instances": skipped_count,
@@ -281,6 +302,9 @@ def build_summary(
         "empty_patch_count": empty_patch_count,
         "setup_error_count": setup_error_count,
         "model_error_count": model_error_count,
+        "exit_status_counts": dict(sorted(exit_status_counts.items())),
+        "patch_warning_counts": dict(sorted(patch_warning_counts.items())),
+        "patch_pollution_count": patch_pollution_count,
         "timeout_count": timeout_count,
         "predictions_path": str(output / "preds.json"),
         "trajectory_root": str(output),
