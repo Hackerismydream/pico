@@ -25,6 +25,7 @@ from .config import (
 from .features import skills as skillslib
 from .features.skills_runtime import invoke_skill
 from .providers import AnthropicCompatibleModelClient, OpenAICompatibleModelClient
+from .core.model_router import ModelClientRouter
 from .core.runtime import Pico, SessionStore
 from .core.workspace import WorkspaceContext, middle
 
@@ -117,6 +118,23 @@ def _model_client_from_config(config, args):
     raise ValueError(f"unknown provider protocol: {config.protocol}")
 
 
+def _build_model_client_router(args, provider_config, model_client):
+    if provider_config.supports_vision:
+        return ModelClientRouter(main_client=model_client, vision_client=model_client)
+    if not provider_config.vision_provider:
+        return ModelClientRouter(main_client=model_client)
+
+    def vision_client_factory():
+        return _build_model_client(
+            args, provider=provider_config.vision_provider, use_cli_overrides=False
+        )
+
+    return ModelClientRouter(
+        main_client=model_client,
+        vision_client_factory=vision_client_factory,
+    )
+
+
 def build_welcome(agent, model, host):
     width = max(68, min(shutil.get_terminal_size((80, 20)).columns, 84))
     inner = width - 4
@@ -192,14 +210,10 @@ def build_agent(args):
         vision_provider=getattr(args, "vision_provider", None),
     )
     model = _build_model_client(args)
+    model_client_router = _build_model_client_router(args, provider_config, model)
 
     def model_client_factory():
         return _build_model_client(args)
-
-    def vision_model_client_factory():
-        return _build_model_client(
-            args, provider=provider_config.vision_provider, use_cli_overrides=False
-        )
 
     if args.max_new_tokens is None:
         args.max_new_tokens = default_max_tokens_for_provider(provider_config.name)
@@ -235,13 +249,10 @@ def build_agent(args):
             dream_interval_hours=dream_interval,
             dream_min_sessions=dream_min_sessions,
             model_client_factory=model_client_factory,
+            model_client_router=model_client_router,
             sandbox_config=sandbox_config,
             ask_user_callback=ask_user_callback,
         )
-        if provider_config.supports_vision:
-            agent.vision_model_client = model
-        elif provider_config.vision_provider:
-            agent.vision_model_client_factory = vision_model_client_factory
         return agent
     agent = Pico(
         model_client=model,
@@ -256,13 +267,10 @@ def build_agent(args):
         dream_interval_hours=dream_interval,
         dream_min_sessions=dream_min_sessions,
         model_client_factory=model_client_factory,
+        model_client_router=model_client_router,
         sandbox_config=sandbox_config,
         ask_user_callback=ask_user_callback,
     )
-    if provider_config.supports_vision:
-        agent.vision_model_client = model
-    elif provider_config.vision_provider:
-        agent.vision_model_client_factory = vision_model_client_factory
     return agent
 
 

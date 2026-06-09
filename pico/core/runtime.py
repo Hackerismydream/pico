@@ -20,6 +20,7 @@ from .compact import CompactManager
 from .context_manager import ContextManager
 from .engine import Engine
 from . import model_output, tool_executor
+from .model_router import ModelClientRouter
 from .plan_mode import PlanModeController
 from .permissions import PermissionChecker
 from .run_store import RunStore
@@ -53,12 +54,9 @@ DEFAULT_SHELL_ENV_ALLOWLIST = (
     "TEMP",
     "USER",
 )
-DEFAULT_FEATURE_FLAGS = {
-    "memory": True,
-    "relevant_memory": True,
-    "context_reduction": True,
-    "prompt_cache": True,
-}
+DEFAULT_FEATURE_FLAGS = dict(
+    memory=True, relevant_memory=True, context_reduction=True, prompt_cache=True
+)
 CHECKPOINT_SCHEMA_VERSION = "phase1-v1"
 CHECKPOINT_NONE_STATUS = "no-checkpoint"
 CHECKPOINT_FULL_VALID_STATUS = "full-valid"
@@ -100,6 +98,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         dream_interval_hours=24.0,
         dream_min_sessions=5,
         model_client_factory=None,
+        model_client_router=None,
         sandbox_config=None,
         ask_user_callback=None,
         allowed_tools=None,
@@ -107,6 +106,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
     ):
         self.model_client = model_client
         self.model_client_factory = model_client_factory
+        self.model_client_router = model_client_router or ModelClientRouter(model_client)
         self.abort_requested = False
         self.ask_user_callback = ask_user_callback
         self.sandbox_config = sandbox_config or SandboxConfig()

@@ -5,6 +5,7 @@ import pytest
 
 import pico.cli as pico_cli
 from pico.core.runtime import Pico
+from pico.core.model_router import ModelClientRouter
 from pico.core.session_store import SessionStore
 from pico.core.workspace import WorkspaceContext
 from pico.providers.clients import AnthropicCompatibleModelClient, OpenAICompatibleModelClient
@@ -40,7 +41,7 @@ class RecordingVisionClient(ScriptedModelClient):
         super().__init__(outputs)
 
 
-def build_agent(tmp_path, model_client=None):
+def build_agent(tmp_path, model_client=None, model_client_router=None):
     (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
     workspace = WorkspaceContext.build(tmp_path)
     store = SessionStore(tmp_path / ".pico" / "sessions")
@@ -50,6 +51,7 @@ def build_agent(tmp_path, model_client=None):
         session_store=store,
         approval_policy="auto",
         max_steps=4,
+        model_client_router=model_client_router,
     )
 
 
@@ -160,7 +162,7 @@ def test_build_agent_uses_separate_vision_provider_for_deepseek(tmp_path, monkey
         patcher.setattr(pico_cli, "AnthropicCompatibleModelClient", lambda **kwargs: ("anthropic", kwargs))
         patcher.setattr(pico_cli, "OpenAICompatibleModelClient", lambda **kwargs: ("openai", kwargs))
         agent = pico_cli.build_agent(args)
-        vision_client = agent.vision_model_client_factory()
+        vision_client = agent.model_client_router.vision_client()
 
     assert agent.model_client[0] == "anthropic"
     assert agent.model_client[1]["model"] == "deepseek-v4-pro"
@@ -177,8 +179,8 @@ def test_inspect_image_uses_separate_vision_model_when_configured(tmp_path):
     write_png(tmp_path)
     main_client = RecordingVisionClient(["unused main model output"])
     vision_client = RecordingVisionClient(["vision provider summary"])
-    agent = build_agent(tmp_path, model_client=main_client)
-    agent.vision_model_client = vision_client
+    router = ModelClientRouter(main_client=main_client, vision_client=vision_client)
+    agent = build_agent(tmp_path, model_client=main_client, model_client_router=router)
     task_state = TaskState.create(run_id="run_direct", task_id="task_direct", user_request="inspect")
     agent.current_task_state = task_state
     agent.current_run_dir = agent.run_store.start_run(task_state)
