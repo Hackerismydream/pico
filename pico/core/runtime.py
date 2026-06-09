@@ -66,7 +66,6 @@ CHECKPOINT_PARTIAL_STALE_STATUS = "partial-stale"
 CHECKPOINT_WORKSPACE_MISMATCH_STATUS = "workspace-mismatch"
 CHECKPOINT_SCHEMA_MISMATCH_STATUS = "schema-mismatch"
 
-
 @dataclass
 class PromptPrefix:
     # prefix 除了文本本身，还带一小份元数据，
@@ -216,6 +215,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.last_dream_changed_files = []
         self._memory_maintenance_thread = None
         self._last_tool_result_metadata = {}
+        self._pending_tool_result_metadata = {}
         self._last_prefix_refresh = {
             "workspace_changed": False,
             "prefix_changed": False,

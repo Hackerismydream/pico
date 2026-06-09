@@ -48,6 +48,27 @@ class SearchArgs(BaseModel):
         return v
 
 
+class InspectImageArgs(BaseModel):
+    path: str
+    question: str
+    profile: str = "general"
+    output_schema: str = ""
+
+    @field_validator("path")
+    @classmethod
+    def path_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("path must not be empty")
+        return v
+
+    @field_validator("question")
+    @classmethod
+    def question_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("question must not be empty")
+        return v
+
+
 class RunShellArgs(BaseModel):
     command: str
     timeout: int = 20

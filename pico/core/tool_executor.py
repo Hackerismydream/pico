@@ -8,7 +8,6 @@ from .tool_result_artifacts import prepare_tool_result_observation
 from .tool_repetition import repeated_tool_call_metadata
 
 
-
 def run_tool(agent, name, args):
     tool = agent.tools.get(name)
     if tool is None:
@@ -71,9 +70,10 @@ def run_tool(agent, name, args):
         agent.record_process_note_for_tool(name, agent._last_tool_result_metadata)
         return policy.message
     before_snapshot = agent.capture_workspace_snapshot() if tool.risky else {}
-    after_snapshot = before_snapshot
     try:
         full_result = tool.execute(args).content
+        pending_metadata = dict(getattr(agent, "_pending_tool_result_metadata", {}) or {})
+        agent._pending_tool_result_metadata = {}
         exit_code = _run_shell_exit_code(full_result) if name == "run_shell" else 0
         result, artifact_metadata = prepare_tool_result_observation(agent, name, full_result)
         after_snapshot = agent.capture_workspace_snapshot() if tool.risky else before_snapshot
@@ -93,7 +93,7 @@ def run_tool(agent, name, args):
             tool, status=tool_status, error_code=tool_error_code,
             affected_paths=affected_paths, workspace_changed=workspace_changed,
             workspace_fingerprint=agent.workspace.fingerprint(),
-            diff_summary=diff_summary, **artifact_metadata,
+            diff_summary=diff_summary, **artifact_metadata, **pending_metadata,
         )
         agent.record_process_note_for_tool(name, agent._last_tool_result_metadata)
         return result

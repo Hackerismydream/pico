@@ -68,6 +68,17 @@ class RunStore:
         path.write_text(str(content), encoding="utf-8")
         return path
 
+    def write_binary_artifact(self, task_state, stem, content, suffix):
+        directory = self.artifacts_dir(task_state)
+        directory.mkdir(parents=True, exist_ok=True)
+        suffix = str(suffix or "").strip()
+        if not suffix.startswith("."):
+            suffix = "." + suffix
+        index = len(list(directory.glob(f"{stem}-*{suffix}"))) + 1
+        path = directory / f"{stem}-{index:03d}{suffix}"
+        path.write_bytes(bytes(content))
+        return path
+
     def artifact_ref(self, task_state, path):
         base = self.root.parent.parent if self.root.parent.name == ".pico" else self.root.parent
         return path.relative_to(base).as_posix()

@@ -9,6 +9,8 @@ import json
 from collections import OrderedDict
 from dataclasses import dataclass
 
+from .media_history import render_media_refs
+
 
 @dataclass(frozen=True)
 class HistoryRetentionContext:
@@ -182,6 +184,9 @@ class TurnHistoryBuilder:
             return str(item.get("content", "")).splitlines()
         if item.get("role") == "tool":
             prefix = f"[tool:{item.get('name', '')}] {json.dumps(item.get('args', {}), sort_keys=True)}"
+            if item.get("media_refs"):
+                content = tail_clip(item.get("content", ""), max(20, line_limit))
+                return [prefix, *render_media_refs(item), content]
             content = tail_clip(item.get("content", ""), max(20, line_limit))
             return [prefix, content]
         return [f"[{item.get('role', '')}] {tail_clip(item.get('content', ''), line_limit)}"]
@@ -195,6 +200,9 @@ class TurnHistoryBuilder:
 
     def _summarize_old_tool_item(self, item):
         artifact_ref = str(item.get("artifact_ref", "")).strip()
+        if item.get("media_refs"):
+            refs = render_media_refs(item)
+            return " | ".join(refs) if refs else f"{item.get('name', 'tool')} media output"
         if artifact_ref:
             original_chars = int(item.get("original_chars", 0) or 0)
             return (

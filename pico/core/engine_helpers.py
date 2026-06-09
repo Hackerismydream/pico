@@ -59,6 +59,8 @@ def execute_tool_payload(engine, task_state, user_message, payload):
                 "content_sha256": str(tool_metadata.get("content_sha256", "")),
             }
         )
+    if tool_metadata.get("media_refs"):
+        history_item["media_refs"] = list(tool_metadata.get("media_refs", []) or [])
     agent.record(history_item)
     for notification in engine.drain_worker_notifications():
         yield {
