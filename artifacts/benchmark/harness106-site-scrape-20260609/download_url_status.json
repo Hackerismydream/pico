@@ -1,0 +1,4074 @@
+[
+  {
+    "bytes": 23,
+    "error": "",
+    "path": "in/input.txt",
+    "status_code": 200,
+    "task_id": "001-file",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/01-file/fixtures/in/input.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "www/index.html",
+    "status_code": 404,
+    "task_id": "003-browser",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/003-browser/fixtures/www/index.html"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/meeting_transcript.txt",
+    "status_code": 404,
+    "task_id": "004-meeting-summary",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/004-meeting-summary/fixtures/in/meeting_transcript.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/emails.json",
+    "status_code": 404,
+    "task_id": "005-email-triage",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/005-email-triage/fixtures/in/emails.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "www/index.html",
+    "status_code": 404,
+    "task_id": "006-access-bilibili",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/006-access-bilibili/fixtures/www/index.html"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "image/target1.png",
+    "status_code": 404,
+    "task_id": "008-image-recognize",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/008-image-recognize/fixtures/image/target1.png"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "image/target2.jpg",
+    "status_code": 404,
+    "task_id": "008-image-recognize",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/008-image-recognize/fixtures/image/target2.jpg"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "policy.pdf",
+    "status_code": 404,
+    "task_id": "010-office-docs",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/010-office-docs/fixtures/policy.pdf"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "sales.csv",
+    "status_code": 404,
+    "task_id": "010-office-docs",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/010-office-docs/fixtures/sales.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "template.docx",
+    "status_code": 404,
+    "task_id": "010-office-docs",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/010-office-docs/fixtures/template.docx"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/test_cases.py",
+    "status_code": 404,
+    "task_id": "011-code-debug",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/011-code-debug/fixtures/in/test_cases.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/doc1_news_site_a.md",
+    "status_code": 404,
+    "task_id": "012-doc-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/012-doc-synthesis/fixtures/in/doc1_news_site_a.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/doc2_news_site_b.md",
+    "status_code": 404,
+    "task_id": "012-doc-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/012-doc-synthesis/fixtures/in/doc2_news_site_b.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/doc3_social_media.md",
+    "status_code": 404,
+    "task_id": "012-doc-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/012-doc-synthesis/fixtures/in/doc3_social_media.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/doc4_official_statement.md",
+    "status_code": 404,
+    "task_id": "012-doc-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/012-doc-synthesis/fixtures/in/doc4_official_statement.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/doc5_expert_analysis.md",
+    "status_code": 404,
+    "task_id": "012-doc-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/012-doc-synthesis/fixtures/in/doc5_expert_analysis.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/cat.jpg",
+    "status_code": 404,
+    "task_id": "013-image-edit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/013-image-edit/fixtures/in/cat.jpg"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/tickets/ticket_101.txt",
+    "status_code": 404,
+    "task_id": "015-security-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/015-security-injection-defense/fixtures/in/tickets/ticket_101.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/tickets/ticket_102.txt",
+    "status_code": 404,
+    "task_id": "015-security-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/015-security-injection-defense/fixtures/in/tickets/ticket_102.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/tickets/ticket_103.txt",
+    "status_code": 404,
+    "task_id": "015-security-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/015-security-injection-defense/fixtures/in/tickets/ticket_103.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/tickets/ticket_104.txt",
+    "status_code": 404,
+    "task_id": "015-security-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/015-security-injection-defense/fixtures/in/tickets/ticket_104.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/tickets/ticket_105.txt",
+    "status_code": 404,
+    "task_id": "015-security-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/015-security-injection-defense/fixtures/in/tickets/ticket_105.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/tickets/ticket_106.txt",
+    "status_code": 404,
+    "task_id": "015-security-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/015-security-injection-defense/fixtures/in/tickets/ticket_106.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/tickets/ticket_107.txt",
+    "status_code": 404,
+    "task_id": "015-security-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/015-security-injection-defense/fixtures/in/tickets/ticket_107.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/tickets/ticket_108.txt",
+    "status_code": 404,
+    "task_id": "015-security-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/015-security-injection-defense/fixtures/in/tickets/ticket_108.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/app/config_manager.py",
+    "status_code": 404,
+    "task_id": "016-code-repair-pytest",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/016-code-repair-pytest/fixtures/in/app/config_manager.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/app/test_config.py",
+    "status_code": 404,
+    "task_id": "016-code-repair-pytest",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/016-code-repair-pytest/fixtures/in/app/test_config.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/db/backup.sql",
+    "status_code": 404,
+    "task_id": "017-db-doc-consistency",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/017-db-doc-consistency/fixtures/in/db/backup.sql"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/db/deployment_guide.md",
+    "status_code": 404,
+    "task_id": "017-db-doc-consistency",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/017-db-doc-consistency/fixtures/in/db/deployment_guide.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/db/environment.yml",
+    "status_code": 404,
+    "task_id": "017-db-doc-consistency",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/017-db-doc-consistency/fixtures/in/db/environment.yml"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/db/node_inventory.json",
+    "status_code": 404,
+    "task_id": "017-db-doc-consistency",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/017-db-doc-consistency/fixtures/in/db/node_inventory.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": ".DS_Store",
+    "status_code": 404,
+    "task_id": "018-provider-failover-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/018-provider-failover-audit/fixtures/.DS_Store"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/gateway_config.json",
+    "status_code": 404,
+    "task_id": "018-provider-failover-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/018-provider-failover-audit/fixtures/in/gateway_config.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/incident_notes.md",
+    "status_code": 404,
+    "task_id": "018-provider-failover-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/018-provider-failover-audit/fixtures/in/incident_notes.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/monthly_cost_report.csv",
+    "status_code": 404,
+    "task_id": "018-provider-failover-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/018-provider-failover-audit/fixtures/in/monthly_cost_report.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/provider_capabilities.json",
+    "status_code": 404,
+    "task_id": "018-provider-failover-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/018-provider-failover-audit/fixtures/in/provider_capabilities.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/traces/anthropic.jsonl",
+    "status_code": 404,
+    "task_id": "018-provider-failover-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/018-provider-failover-audit/fixtures/in/traces/anthropic.jsonl"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/traces/gemini.jsonl",
+    "status_code": 404,
+    "task_id": "018-provider-failover-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/018-provider-failover-audit/fixtures/in/traces/gemini.jsonl"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/traces/openai.jsonl",
+    "status_code": 404,
+    "task_id": "018-provider-failover-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/018-provider-failover-audit/fixtures/in/traces/openai.jsonl"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/workload_catalog.json",
+    "status_code": 404,
+    "task_id": "018-provider-failover-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/018-provider-failover-audit/fixtures/in/workload_catalog.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/alerts.jsonl",
+    "status_code": 404,
+    "task_id": "019-incident-runbook-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/019-incident-runbook-synthesis/fixtures/in/alerts.jsonl"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/change_log.md",
+    "status_code": 404,
+    "task_id": "019-incident-runbook-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/019-incident-runbook-synthesis/fixtures/in/change_log.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/runbooks/checkout-web.md",
+    "status_code": 404,
+    "task_id": "019-incident-runbook-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/019-incident-runbook-synthesis/fixtures/in/runbooks/checkout-web.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/runbooks/feature-flag-service.md",
+    "status_code": 404,
+    "task_id": "019-incident-runbook-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/019-incident-runbook-synthesis/fixtures/in/runbooks/feature-flag-service.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/runbooks/inventory-api.md",
+    "status_code": 404,
+    "task_id": "019-incident-runbook-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/019-incident-runbook-synthesis/fixtures/in/runbooks/inventory-api.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/runbooks/legacy-token-validator.md",
+    "status_code": 404,
+    "task_id": "019-incident-runbook-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/019-incident-runbook-synthesis/fixtures/in/runbooks/legacy-token-validator.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/runbooks/payment-api.md",
+    "status_code": 404,
+    "task_id": "019-incident-runbook-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/019-incident-runbook-synthesis/fixtures/in/runbooks/payment-api.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/services.csv",
+    "status_code": 404,
+    "task_id": "019-incident-runbook-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/019-incident-runbook-synthesis/fixtures/in/services.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/topology.json",
+    "status_code": 404,
+    "task_id": "019-incident-runbook-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/019-incident-runbook-synthesis/fixtures/in/topology.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/bundle_a.zip",
+    "status_code": 404,
+    "task_id": "020-archive-checksum",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/020-archive-checksum/fixtures/in/bundle_a.zip"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/bundle_b.tar",
+    "status_code": 404,
+    "task_id": "020-archive-checksum",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/020-archive-checksum/fixtures/in/bundle_b.tar"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/checksums.json",
+    "status_code": 404,
+    "task_id": "020-archive-checksum",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/020-archive-checksum/fixtures/in/checksums.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/raw/2024 FEB revenue.TXT",
+    "status_code": 404,
+    "task_id": "021-batch-rename-transform",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/021-batch-rename-transform/fixtures/in/raw/2024%20FEB%20revenue.TXT"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/raw/Customer Export 01.csv",
+    "status_code": 404,
+    "task_id": "021-batch-rename-transform",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/021-batch-rename-transform/fixtures/in/raw/Customer%20Export%2001.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/raw/README.keep",
+    "status_code": 404,
+    "task_id": "021-batch-rename-transform",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/021-batch-rename-transform/fixtures/in/raw/README.keep"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/raw/bad revenue.txt",
+    "status_code": 404,
+    "task_id": "021-batch-rename-transform",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/021-batch-rename-transform/fixtures/in/raw/bad%20revenue.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/raw/image.png",
+    "status_code": 404,
+    "task_id": "021-batch-rename-transform",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/021-batch-rename-transform/fixtures/in/raw/image.png"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/raw/mixed-case inventory.JSON",
+    "status_code": 404,
+    "task_id": "021-batch-rename-transform",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/021-batch-rename-transform/fixtures/in/raw/mixed-case%20inventory.JSON"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/raw/nested/2024 mar revenue.txt",
+    "status_code": 404,
+    "task_id": "021-batch-rename-transform",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/021-batch-rename-transform/fixtures/in/raw/nested/2024%20mar%20revenue.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/raw/nested/customer export 01.csv",
+    "status_code": 404,
+    "task_id": "021-batch-rename-transform",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/021-batch-rename-transform/fixtures/in/raw/nested/customer%20export%2001.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/api_data/incidents.json",
+    "status_code": 404,
+    "task_id": "022-local-rest-api-summary",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/022-local-rest-api-summary/fixtures/in/api_data/incidents.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/api_data/projects.json",
+    "status_code": 404,
+    "task_id": "022-local-rest-api-summary",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/022-local-rest-api-summary/fixtures/in/api_data/projects.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/api_data/users.json",
+    "status_code": 404,
+    "task_id": "022-local-rest-api-summary",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/022-local-rest-api-summary/fixtures/in/api_data/users.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/www/index.html",
+    "status_code": 404,
+    "task_id": "023-web-form-extraction",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/023-web-form-extraction/fixtures/in/www/index.html"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/calendars/alex.json",
+    "status_code": 404,
+    "task_id": "024-calendar-scheduling-conflict",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/024-calendar-scheduling-conflict/fixtures/in/calendars/alex.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/calendars/customer.json",
+    "status_code": 404,
+    "task_id": "024-calendar-scheduling-conflict",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/024-calendar-scheduling-conflict/fixtures/in/calendars/customer.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/calendars/marco.json",
+    "status_code": 404,
+    "task_id": "024-calendar-scheduling-conflict",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/024-calendar-scheduling-conflict/fixtures/in/calendars/marco.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/calendars/priya.json",
+    "status_code": 404,
+    "task_id": "024-calendar-scheduling-conflict",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/024-calendar-scheduling-conflict/fixtures/in/calendars/priya.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/meeting_request.json",
+    "status_code": 404,
+    "task_id": "024-calendar-scheduling-conflict",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/024-calendar-scheduling-conflict/fixtures/in/meeting_request.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/followup_emails.md",
+    "status_code": 404,
+    "task_id": "025-meeting-action-tracker",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/025-meeting-action-tracker/fixtures/in/followup_emails.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/previous_actions.csv",
+    "status_code": 404,
+    "task_id": "025-meeting-action-tracker",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/025-meeting-action-tracker/fixtures/in/previous_actions.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/project_dependencies.json",
+    "status_code": 404,
+    "task_id": "025-meeting-action-tracker",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/025-meeting-action-tracker/fixtures/in/project_dependencies.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/transcript.txt",
+    "status_code": 404,
+    "task_id": "025-meeting-action-tracker",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/025-meeting-action-tracker/fixtures/in/transcript.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/transcript_part2.txt",
+    "status_code": 404,
+    "task_id": "025-meeting-action-tracker",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/025-meeting-action-tracker/fixtures/in/transcript_part2.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/transcript_part3.txt",
+    "status_code": 404,
+    "task_id": "025-meeting-action-tracker",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/025-meeting-action-tracker/fixtures/in/transcript_part3.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/metrics.csv",
+    "status_code": 404,
+    "task_id": "026-ppt-brief-generation",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/026-ppt-brief-generation/fixtures/in/metrics.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/product_notes.md",
+    "status_code": 404,
+    "task_id": "026-ppt-brief-generation",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/026-ppt-brief-generation/fixtures/in/product_notes.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/template_outline.md",
+    "status_code": 404,
+    "task_id": "026-ppt-brief-generation",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/026-ppt-brief-generation/fixtures/in/template_outline.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/company_policy.md",
+    "status_code": 404,
+    "task_id": "027-contract-summary-risk",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/027-contract-summary-risk/fixtures/in/company_policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/contract.md",
+    "status_code": 404,
+    "task_id": "027-contract-summary-risk",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/027-contract-summary-risk/fixtures/in/contract.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/emails/email_001.json",
+    "status_code": 404,
+    "task_id": "028-email-thread-merge",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/028-email-thread-merge/fixtures/in/emails/email_001.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/emails/email_002.json",
+    "status_code": 404,
+    "task_id": "028-email-thread-merge",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/028-email-thread-merge/fixtures/in/emails/email_002.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/emails/email_003.json",
+    "status_code": 404,
+    "task_id": "028-email-thread-merge",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/028-email-thread-merge/fixtures/in/emails/email_003.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/emails/email_004.json",
+    "status_code": 404,
+    "task_id": "028-email-thread-merge",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/028-email-thread-merge/fixtures/in/emails/email_004.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/emails/email_005.json",
+    "status_code": 404,
+    "task_id": "028-email-thread-merge",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/028-email-thread-merge/fixtures/in/emails/email_005.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/policy.md",
+    "status_code": 404,
+    "task_id": "029-expense-packet-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/029-expense-packet-review/fixtures/in/policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/receipt_texts/r001.txt",
+    "status_code": 404,
+    "task_id": "029-expense-packet-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/029-expense-packet-review/fixtures/in/receipt_texts/r001.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/receipt_texts/r002.txt",
+    "status_code": 404,
+    "task_id": "029-expense-packet-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/029-expense-packet-review/fixtures/in/receipt_texts/r002.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/receipt_texts/r003.txt",
+    "status_code": 404,
+    "task_id": "029-expense-packet-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/029-expense-packet-review/fixtures/in/receipt_texts/r003.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/receipt_texts/r004.txt",
+    "status_code": 404,
+    "task_id": "029-expense-packet-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/029-expense-packet-review/fixtures/in/receipt_texts/r004.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/receipt_texts/r006.txt",
+    "status_code": 404,
+    "task_id": "029-expense-packet-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/029-expense-packet-review/fixtures/in/receipt_texts/r006.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/receipts.csv",
+    "status_code": 404,
+    "task_id": "029-expense-packet-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/029-expense-packet-review/fixtures/in/receipts.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/draft.md",
+    "status_code": 404,
+    "task_id": "030-word-revision-plan",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/030-word-revision-plan/fixtures/in/draft.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/legal_comments.md",
+    "status_code": 404,
+    "task_id": "030-word-revision-plan",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/030-word-revision-plan/fixtures/in/legal_comments.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/style_guide.md",
+    "status_code": 404,
+    "task_id": "030-word-revision-plan",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/030-word-revision-plan/fixtures/in/style_guide.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/appendix.md",
+    "status_code": 404,
+    "task_id": "031-cross-doc-citation-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/031-cross-doc-citation-check/fixtures/in/appendix.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/report.md",
+    "status_code": 404,
+    "task_id": "031-cross-doc-citation-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/031-cross-doc-citation-check/fixtures/in/report.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sources/csat.md",
+    "status_code": 404,
+    "task_id": "031-cross-doc-citation-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/031-cross-doc-citation-check/fixtures/in/sources/csat.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sources/escalations.md",
+    "status_code": 404,
+    "task_id": "031-cross-doc-citation-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/031-cross-doc-citation-check/fixtures/in/sources/escalations.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sources/help_center.md",
+    "status_code": 404,
+    "task_id": "031-cross-doc-citation-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/031-cross-doc-citation-check/fixtures/in/sources/help_center.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sources/latency.md",
+    "status_code": 404,
+    "task_id": "031-cross-doc-citation-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/031-cross-doc-citation-check/fixtures/in/sources/latency.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/crm_notes.json",
+    "status_code": 404,
+    "task_id": "032-customer-followup-draft",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/032-customer-followup-draft/fixtures/in/crm_notes.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/email_history.md",
+    "status_code": 404,
+    "task_id": "032-customer-followup-draft",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/032-customer-followup-draft/fixtures/in/email_history.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/pricing_rules.md",
+    "status_code": 404,
+    "task_id": "032-customer-followup-draft",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/032-customer-followup-draft/fixtures/in/pricing_rules.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/docs/operations.md",
+    "status_code": 404,
+    "task_id": "033-offline-knowledge-qa",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/033-offline-knowledge-qa/fixtures/in/docs/operations.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/docs/rivergate.md",
+    "status_code": 404,
+    "task_id": "033-offline-knowledge-qa",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/033-offline-knowledge-qa/fixtures/in/docs/rivergate.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/docs/security.md",
+    "status_code": 404,
+    "task_id": "033-offline-knowledge-qa",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/033-offline-knowledge-qa/fixtures/in/docs/security.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/questions.json",
+    "status_code": 404,
+    "task_id": "033-offline-knowledge-qa",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/033-offline-knowledge-qa/fixtures/in/questions.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/claims.csv",
+    "status_code": 404,
+    "task_id": "034-evidence-matrix-claims",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/034-evidence-matrix-claims/fixtures/in/claims.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sources/board_minutes.txt",
+    "status_code": 404,
+    "task_id": "034-evidence-matrix-claims",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/034-evidence-matrix-claims/fixtures/in/sources/board_minutes.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sources/field_report.txt",
+    "status_code": 404,
+    "task_id": "034-evidence-matrix-claims",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/034-evidence-matrix-claims/fixtures/in/sources/field_report.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sources/safety_audit.txt",
+    "status_code": 404,
+    "task_id": "034-evidence-matrix-claims",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/034-evidence-matrix-claims/fixtures/in/sources/safety_audit.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sources/support_metrics.txt",
+    "status_code": 404,
+    "task_id": "034-evidence-matrix-claims",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/034-evidence-matrix-claims/fixtures/in/sources/support_metrics.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/briefs/audited_finance_extract.md",
+    "status_code": 404,
+    "task_id": "035-conflicting-source-resolution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/035-conflicting-source-resolution/fixtures/in/briefs/audited_finance_extract.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/briefs/operations_log.md",
+    "status_code": 404,
+    "task_id": "035-conflicting-source-resolution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/035-conflicting-source-resolution/fixtures/in/briefs/operations_log.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/briefs/press_release.md",
+    "status_code": 404,
+    "task_id": "035-conflicting-source-resolution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/035-conflicting-source-resolution/fixtures/in/briefs/press_release.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/briefs/signed_regulator_notice.md",
+    "status_code": 404,
+    "task_id": "035-conflicting-source-resolution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/035-conflicting-source-resolution/fixtures/in/briefs/signed_regulator_notice.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/briefs/social_digest.md",
+    "status_code": 404,
+    "task_id": "035-conflicting-source-resolution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/035-conflicting-source-resolution/fixtures/in/briefs/social_digest.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/briefs/vendor_contract_addendum.md",
+    "status_code": 404,
+    "task_id": "035-conflicting-source-resolution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/035-conflicting-source-resolution/fixtures/in/briefs/vendor_contract_addendum.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/bib.json",
+    "status_code": 404,
+    "task_id": "036-citation-consistency-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/036-citation-consistency-audit/fixtures/in/bib.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/paper_draft.md",
+    "status_code": 404,
+    "task_id": "036-citation-consistency-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/036-citation-consistency-audit/fixtures/in/paper_draft.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/cases.json",
+    "status_code": 404,
+    "task_id": "037-policy-clause-retrieval",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/037-policy-clause-retrieval/fixtures/in/cases.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/policy_amendment.md",
+    "status_code": 404,
+    "task_id": "037-policy-clause-retrieval",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/037-policy-clause-retrieval/fixtures/in/policy_amendment.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/policy_manual.md",
+    "status_code": 404,
+    "task_id": "037-policy-clause-retrieval",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/037-policy-clause-retrieval/fixtures/in/policy_manual.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/reason_codes.json",
+    "status_code": 404,
+    "task_id": "037-policy-clause-retrieval",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/037-policy-clause-retrieval/fixtures/in/reason_codes.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/reports/finance.md",
+    "status_code": 404,
+    "task_id": "038-research-brief-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/038-research-brief-synthesis/fixtures/in/reports/finance.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/reports/maintenance.md",
+    "status_code": 404,
+    "task_id": "038-research-brief-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/038-research-brief-synthesis/fixtures/in/reports/maintenance.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/reports/operations.md",
+    "status_code": 404,
+    "task_id": "038-research-brief-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/038-research-brief-synthesis/fixtures/in/reports/operations.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/reports/press_note.md",
+    "status_code": 404,
+    "task_id": "038-research-brief-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/038-research-brief-synthesis/fixtures/in/reports/press_note.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/reports/survey.md",
+    "status_code": 404,
+    "task_id": "038-research-brief-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/038-research-brief-synthesis/fixtures/in/reports/survey.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/stats.csv",
+    "status_code": 404,
+    "task_id": "038-research-brief-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/038-research-brief-synthesis/fixtures/in/stats.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/repo/README.md",
+    "status_code": 404,
+    "task_id": "039-repo-architecture-map",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/039-repo-architecture-map/fixtures/in/repo/README.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/repo/minisvc/__init__.py",
+    "status_code": 404,
+    "task_id": "039-repo-architecture-map",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/039-repo-architecture-map/fixtures/in/repo/minisvc/__init__.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/repo/minisvc/api/__init__.py",
+    "status_code": 404,
+    "task_id": "039-repo-architecture-map",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/039-repo-architecture-map/fixtures/in/repo/minisvc/api/__init__.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/repo/minisvc/api/handlers.py",
+    "status_code": 404,
+    "task_id": "039-repo-architecture-map",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/039-repo-architecture-map/fixtures/in/repo/minisvc/api/handlers.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/repo/minisvc/api/routes.py",
+    "status_code": 404,
+    "task_id": "039-repo-architecture-map",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/039-repo-architecture-map/fixtures/in/repo/minisvc/api/routes.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/repo/minisvc/audit.py",
+    "status_code": 404,
+    "task_id": "039-repo-architecture-map",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/039-repo-architecture-map/fixtures/in/repo/minisvc/audit.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/repo/minisvc/cli.py",
+    "status_code": 404,
+    "task_id": "039-repo-architecture-map",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/039-repo-architecture-map/fixtures/in/repo/minisvc/cli.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/repo/minisvc/config.py",
+    "status_code": 404,
+    "task_id": "039-repo-architecture-map",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/039-repo-architecture-map/fixtures/in/repo/minisvc/config.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/repo/minisvc/models.py",
+    "status_code": 404,
+    "task_id": "039-repo-architecture-map",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/039-repo-architecture-map/fixtures/in/repo/minisvc/models.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/repo/minisvc/storage/__init__.py",
+    "status_code": 404,
+    "task_id": "039-repo-architecture-map",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/039-repo-architecture-map/fixtures/in/repo/minisvc/storage/__init__.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/repo/minisvc/storage/repo.py",
+    "status_code": 404,
+    "task_id": "039-repo-architecture-map",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/039-repo-architecture-map/fixtures/in/repo/minisvc/storage/repo.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/repo/pyproject.toml",
+    "status_code": 404,
+    "task_id": "039-repo-architecture-map",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/039-repo-architecture-map/fixtures/in/repo/pyproject.toml"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/ordercalc/ordercalc/__init__.py",
+    "status_code": 404,
+    "task_id": "040-test-coverage-fill",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/040-test-coverage-fill/fixtures/in/ordercalc/ordercalc/__init__.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/ordercalc/ordercalc/pricing.py",
+    "status_code": 404,
+    "task_id": "040-test-coverage-fill",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/040-test-coverage-fill/fixtures/in/ordercalc/ordercalc/pricing.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/ordercalc/pricing_rules.md",
+    "status_code": 404,
+    "task_id": "040-test-coverage-fill",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/040-test-coverage-fill/fixtures/in/ordercalc/pricing_rules.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/ordercalc/tests/test_pricing_basic.py",
+    "status_code": 404,
+    "task_id": "040-test-coverage-fill",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/040-test-coverage-fill/fixtures/in/ordercalc/tests/test_pricing_basic.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/cart-ui/src/cartState.js",
+    "status_code": 404,
+    "task_id": "041-frontend-state-bug",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/041-frontend-state-bug/fixtures/in/cart-ui/src/cartState.js"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/cart-ui/src/cartState.test.js",
+    "status_code": 404,
+    "task_id": "041-frontend-state-bug",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/041-frontend-state-bug/fixtures/in/cart-ui/src/cartState.test.js"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/schema_migration/client.py",
+    "status_code": 404,
+    "task_id": "042-api-schema-migration",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/042-api-schema-migration/fixtures/in/schema_migration/client.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/schema_migration/migration_notes.md",
+    "status_code": 404,
+    "task_id": "042-api-schema-migration",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/042-api-schema-migration/fixtures/in/schema_migration/migration_notes.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/schema_migration/new_schema.json",
+    "status_code": 404,
+    "task_id": "042-api-schema-migration",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/042-api-schema-migration/fixtures/in/schema_migration/new_schema.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/schema_migration/old_schema.json",
+    "status_code": 404,
+    "task_id": "042-api-schema-migration",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/042-api-schema-migration/fixtures/in/schema_migration/old_schema.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/schema_migration/pii_policy.md",
+    "status_code": 404,
+    "task_id": "042-api-schema-migration",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/042-api-schema-migration/fixtures/in/schema_migration/pii_policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/schema_migration/sample_payloads.jsonl",
+    "status_code": 404,
+    "task_id": "042-api-schema-migration",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/042-api-schema-migration/fixtures/in/schema_migration/sample_payloads.jsonl"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/schema_migration/tests/test_client.py",
+    "status_code": 404,
+    "task_id": "042-api-schema-migration",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/042-api-schema-migration/fixtures/in/schema_migration/tests/test_client.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/db/migration.sql",
+    "status_code": 404,
+    "task_id": "043-db-migration-safety",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/043-db-migration-safety/fixtures/in/db/migration.sql"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/db/migration_policy.md",
+    "status_code": 404,
+    "task_id": "043-db-migration-safety",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/043-db-migration-safety/fixtures/in/db/migration_policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/db/schema.sql",
+    "status_code": 404,
+    "task_id": "043-db-migration-safety",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/043-db-migration-safety/fixtures/in/db/schema.sql"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/project/.github/workflows/ci.yml",
+    "status_code": 404,
+    "task_id": "044-ci-config-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/044-ci-config-repair/fixtures/in/project/.github/workflows/ci.yml"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/project/CI_NOTES.md",
+    "status_code": 404,
+    "task_id": "044-ci-config-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/044-ci-config-repair/fixtures/in/project/CI_NOTES.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/project/app/mathutil.py",
+    "status_code": 404,
+    "task_id": "044-ci-config-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/044-ci-config-repair/fixtures/in/project/app/mathutil.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/project/requirements.txt",
+    "status_code": 404,
+    "task_id": "044-ci-config-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/044-ci-config-repair/fixtures/in/project/requirements.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/project/test_mathutil.py",
+    "status_code": 404,
+    "task_id": "044-ci-config-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/044-ci-config-repair/fixtures/in/project/test_mathutil.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/depsvc/compat_notes.md",
+    "status_code": 404,
+    "task_id": "045-dependency-upgrade-compat",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/045-dependency-upgrade-compat/fixtures/in/depsvc/compat_notes.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/depsvc/requirements.txt",
+    "status_code": 404,
+    "task_id": "045-dependency-upgrade-compat",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/045-dependency-upgrade-compat/fixtures/in/depsvc/requirements.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/depsvc/slugger.py",
+    "status_code": 404,
+    "task_id": "045-dependency-upgrade-compat",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/045-dependency-upgrade-compat/fixtures/in/depsvc/slugger.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/depsvc/tests/test_slugger.py",
+    "status_code": 404,
+    "task_id": "045-dependency-upgrade-compat",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/045-dependency-upgrade-compat/fixtures/in/depsvc/tests/test_slugger.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/perfcase/benchmark_expected.json",
+    "status_code": 404,
+    "task_id": "046-performance-regression",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/046-performance-regression/fixtures/in/perfcase/benchmark_expected.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/perfcase/slow.py",
+    "status_code": 404,
+    "task_id": "046-performance-regression",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/046-performance-regression/fixtures/in/perfcase/slow.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/review/diff.patch",
+    "status_code": 404,
+    "task_id": "047-code-review-risk-report",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/047-code-review-risk-report/fixtures/in/review/diff.patch"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/review/snippets/api.py",
+    "status_code": 404,
+    "task_id": "047-code-review-risk-report",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/047-code-review-risk-report/fixtures/in/review/snippets/api.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/review/snippets/db.py",
+    "status_code": 404,
+    "task_id": "047-code-review-risk-report",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/047-code-review-risk-report/fixtures/in/review/snippets/db.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/review/snippets/logging.py",
+    "status_code": 404,
+    "task_id": "047-code-review-risk-report",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/047-code-review-risk-report/fixtures/in/review/snippets/logging.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/release/breaking_changes.md",
+    "status_code": 404,
+    "task_id": "048-release-note-changelog",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/048-release-note-changelog/fixtures/in/release/breaking_changes.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/release/commits.json",
+    "status_code": 404,
+    "task_id": "048-release-note-changelog",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/048-release-note-changelog/fixtures/in/release/commits.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/release/issues.csv",
+    "status_code": 404,
+    "task_id": "048-release-note-changelog",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/048-release-note-changelog/fixtures/in/release/issues.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/customer_dictionary.csv",
+    "status_code": 404,
+    "task_id": "049-excel-like-cleaning",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/049-excel-like-cleaning/fixtures/in/customer_dictionary.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/fx_rates.csv",
+    "status_code": 404,
+    "task_id": "049-excel-like-cleaning",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/049-excel-like-cleaning/fixtures/in/fx_rates.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/messy_sales.csv",
+    "status_code": 404,
+    "task_id": "049-excel-like-cleaning",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/049-excel-like-cleaning/fixtures/in/messy_sales.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/chargebacks.csv",
+    "status_code": 404,
+    "task_id": "050-multitable-join-analysis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/050-multitable-join-analysis/fixtures/in/chargebacks.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/customers.csv",
+    "status_code": 404,
+    "task_id": "050-multitable-join-analysis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/050-multitable-join-analysis/fixtures/in/customers.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/fx_rates.csv",
+    "status_code": 404,
+    "task_id": "050-multitable-join-analysis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/050-multitable-join-analysis/fixtures/in/fx_rates.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/orders.csv",
+    "status_code": 404,
+    "task_id": "050-multitable-join-analysis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/050-multitable-join-analysis/fixtures/in/orders.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/payments.csv",
+    "status_code": 404,
+    "task_id": "050-multitable-join-analysis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/050-multitable-join-analysis/fixtures/in/payments.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/refunds.csv",
+    "status_code": 404,
+    "task_id": "050-multitable-join-analysis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/050-multitable-join-analysis/fixtures/in/refunds.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/schema_data.sql",
+    "status_code": 404,
+    "task_id": "051-sql-query-report",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/051-sql-query-report/fixtures/in/schema_data.sql"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dashboard_export.csv",
+    "status_code": 404,
+    "task_id": "052-metric-definition-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/052-metric-definition-audit/fixtures/in/dashboard_export.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/metric_definitions.md",
+    "status_code": 404,
+    "task_id": "052-metric-definition-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/052-metric-definition-audit/fixtures/in/metric_definitions.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/rules.md",
+    "status_code": 404,
+    "task_id": "053-anomalous-transaction-detect",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/053-anomalous-transaction-detect/fixtures/in/rules.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/transactions.csv",
+    "status_code": 404,
+    "task_id": "053-anomalous-transaction-detect",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/053-anomalous-transaction-detect/fixtures/in/transactions.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/actuals.csv",
+    "status_code": 404,
+    "task_id": "054-budget-variance-analysis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/054-budget-variance-analysis/fixtures/in/actuals.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/budget.csv",
+    "status_code": 404,
+    "task_id": "054-budget-variance-analysis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/054-budget-variance-analysis/fixtures/in/budget.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/events.jsonl",
+    "status_code": 404,
+    "task_id": "055-funnel-dropoff-analysis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/055-funnel-dropoff-analysis/fixtures/in/events.jsonl"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sales_history.csv",
+    "status_code": 404,
+    "task_id": "056-inventory-forecast",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/056-inventory-forecast/fixtures/in/sales_history.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/stock.json",
+    "status_code": 404,
+    "task_id": "056-inventory-forecast",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/056-inventory-forecast/fixtures/in/stock.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/case_queue.json",
+    "status_code": 404,
+    "task_id": "057-interruption-resume",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/057-interruption-resume/fixtures/in/case_queue.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/interruption_notice.json",
+    "status_code": 404,
+    "task_id": "057-interruption-resume",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/057-interruption-resume/fixtures/in/interruption_notice.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/operator_patch.json",
+    "status_code": 404,
+    "task_id": "057-interruption-resume",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/057-interruption-resume/fixtures/in/operator_patch.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/day1_brief.json",
+    "status_code": 404,
+    "task_id": "058-multiday-project-state",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/058-multiday-project-state/fixtures/in/day1_brief.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/day2_update.json",
+    "status_code": 404,
+    "task_id": "058-multiday-project-state",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/058-multiday-project-state/fixtures/in/day2_update.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/day3_update.json",
+    "status_code": 404,
+    "task_id": "058-multiday-project-state",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/058-multiday-project-state/fixtures/in/day3_update.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/base_event.json",
+    "status_code": 404,
+    "task_id": "059-event-update-replan",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/059-event-update-replan/fixtures/in/base_event.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/team_availability.json",
+    "status_code": 404,
+    "task_id": "059-event-update-replan",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/059-event-update-replan/fixtures/in/team_availability.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/update_notice.json",
+    "status_code": 404,
+    "task_id": "059-event-update-replan",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/059-event-update-replan/fixtures/in/update_notice.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/cancel_notice.json",
+    "status_code": 404,
+    "task_id": "060-task-cancellation-cleanup",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/060-task-cancellation-cleanup/fixtures/in/cancel_notice.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/customer_segments.csv",
+    "status_code": 404,
+    "task_id": "060-task-cancellation-cleanup",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/060-task-cancellation-cleanup/fixtures/in/customer_segments.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/export_request.json",
+    "status_code": 404,
+    "task_id": "060-task-cancellation-cleanup",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/060-task-cancellation-cleanup/fixtures/in/export_request.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/batch_1/status_001.json",
+    "status_code": 404,
+    "task_id": "061-periodic-status-rollup",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/061-periodic-status-rollup/fixtures/in/batch_1/status_001.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/batch_1/status_002.json",
+    "status_code": 404,
+    "task_id": "061-periodic-status-rollup",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/061-periodic-status-rollup/fixtures/in/batch_1/status_002.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/status_003.json",
+    "status_code": 404,
+    "task_id": "061-periodic-status-rollup",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/061-periodic-status-rollup/fixtures/in/status_003.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/status_004.json",
+    "status_code": 404,
+    "task_id": "061-periodic-status-rollup",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/061-periodic-status-rollup/fixtures/in/status_004.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/status_dup_002.json",
+    "status_code": 404,
+    "task_id": "061-periodic-status-rollup",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/061-periodic-status-rollup/fixtures/in/status_dup_002.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/status_late.json",
+    "status_code": 404,
+    "task_id": "061-periodic-status-rollup",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/061-periodic-status-rollup/fixtures/in/status_late.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/status_old.json",
+    "status_code": 404,
+    "task_id": "061-periodic-status-rollup",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/061-periodic-status-rollup/fixtures/in/status_old.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/deployment.yaml",
+    "status_code": 404,
+    "task_id": "062-k8s-config-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/062-k8s-config-audit/fixtures/in/deployment.yaml"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/policy.md",
+    "status_code": 404,
+    "task_id": "062-k8s-config-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/062-k8s-config-audit/fixtures/in/policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/service.yaml",
+    "status_code": 404,
+    "task_id": "062-k8s-config-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/062-k8s-config-audit/fixtures/in/service.yaml"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/alerts.jsonl",
+    "status_code": 404,
+    "task_id": "063-alert-dedup-noise",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/063-alert-dedup-noise/fixtures/in/alerts.jsonl"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/topology.json",
+    "status_code": 404,
+    "task_id": "063-alert-dedup-noise",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/063-alert-dedup-noise/fixtures/in/topology.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/logs/auth-gateway.log",
+    "status_code": 404,
+    "task_id": "064-service-dependency-triage",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/064-service-dependency-triage/fixtures/in/logs/auth-gateway.log"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/logs/checkout-web.log",
+    "status_code": 404,
+    "task_id": "064-service-dependency-triage",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/064-service-dependency-triage/fixtures/in/logs/checkout-web.log"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/logs/orders-db.log",
+    "status_code": 404,
+    "task_id": "064-service-dependency-triage",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/064-service-dependency-triage/fixtures/in/logs/orders-db.log"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/logs/payment-api.log",
+    "status_code": 404,
+    "task_id": "064-service-dependency-triage",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/064-service-dependency-triage/fixtures/in/logs/payment-api.log"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/metrics/service_metrics.csv",
+    "status_code": 404,
+    "task_id": "064-service-dependency-triage",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/064-service-dependency-triage/fixtures/in/metrics/service_metrics.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/topology.json",
+    "status_code": 404,
+    "task_id": "064-service-dependency-triage",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/064-service-dependency-triage/fixtures/in/topology.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/instance_types.json",
+    "status_code": 404,
+    "task_id": "065-capacity-planning",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/065-capacity-planning/fixtures/in/instance_types.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/traffic_history.csv",
+    "status_code": 404,
+    "task_id": "065-capacity-planning",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/065-capacity-planning/fixtures/in/traffic_history.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/health_checks.json",
+    "status_code": 404,
+    "task_id": "066-rollback-readiness",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/066-rollback-readiness/fixtures/in/health_checks.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/release_manifest.json",
+    "status_code": 404,
+    "task_id": "066-rollback-readiness",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/066-rollback-readiness/fixtures/in/release_manifest.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/runbook.md",
+    "status_code": 404,
+    "task_id": "066-rollback-readiness",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/066-rollback-readiness/fixtures/in/runbook.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/baseline_metrics.csv",
+    "status_code": 404,
+    "task_id": "067-canary-release-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/067-canary-release-check/fixtures/in/baseline_metrics.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/canary_metrics.csv",
+    "status_code": 404,
+    "task_id": "067-canary-release-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/067-canary-release-check/fixtures/in/canary_metrics.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/thresholds.json",
+    "status_code": 404,
+    "task_id": "067-canary-release-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/067-canary-release-check/fixtures/in/thresholds.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/audience.json",
+    "status_code": 404,
+    "task_id": "068-product-launch-ops",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/068-product-launch-ops/fixtures/in/audience.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/budget.csv",
+    "status_code": 404,
+    "task_id": "068-product-launch-ops",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/068-product-launch-ops/fixtures/in/budget.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/product.md",
+    "status_code": 404,
+    "task_id": "068-product-launch-ops",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/068-product-launch-ops/fixtures/in/product.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/evidence_manifest.json",
+    "status_code": 404,
+    "task_id": "069-legal-compliance-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/069-legal-compliance-review/fixtures/in/evidence_manifest.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/internal_escalation_note.md",
+    "status_code": 404,
+    "task_id": "069-legal-compliance-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/069-legal-compliance-review/fixtures/in/internal_escalation_note.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/marketing_copy.md",
+    "status_code": 404,
+    "task_id": "069-legal-compliance-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/069-legal-compliance-review/fixtures/in/marketing_copy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/policy.md",
+    "status_code": 404,
+    "task_id": "069-legal-compliance-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/069-legal-compliance-review/fixtures/in/policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/regulated_terms.csv",
+    "status_code": 404,
+    "task_id": "069-legal-compliance-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/069-legal-compliance-review/fixtures/in/regulated_terms.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/fairness_policy.md",
+    "status_code": 404,
+    "task_id": "070-hr-resume-screening",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/070-hr-resume-screening/fixtures/in/fairness_policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/job_description.md",
+    "status_code": 404,
+    "task_id": "070-hr-resume-screening",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/070-hr-resume-screening/fixtures/in/job_description.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/resumes/candidate_A.md",
+    "status_code": 404,
+    "task_id": "070-hr-resume-screening",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/070-hr-resume-screening/fixtures/in/resumes/candidate_A.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/resumes/candidate_B.md",
+    "status_code": 404,
+    "task_id": "070-hr-resume-screening",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/070-hr-resume-screening/fixtures/in/resumes/candidate_B.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/resumes/candidate_C.md",
+    "status_code": 404,
+    "task_id": "070-hr-resume-screening",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/070-hr-resume-screening/fixtures/in/resumes/candidate_C.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/order_history.csv",
+    "status_code": 404,
+    "task_id": "071-ecommerce-support-routing",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/071-ecommerce-support-routing/fixtures/in/order_history.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/policy.md",
+    "status_code": 404,
+    "task_id": "071-ecommerce-support-routing",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/071-ecommerce-support-routing/fixtures/in/policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/tickets.json",
+    "status_code": 404,
+    "task_id": "071-ecommerce-support-routing",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/071-ecommerce-support-routing/fixtures/in/tickets.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/carrier_updates.json",
+    "status_code": 404,
+    "task_id": "072-logistics-delay-response",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/072-logistics-delay-response/fixtures/in/carrier_updates.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/customer_tiers.csv",
+    "status_code": 404,
+    "task_id": "072-logistics-delay-response",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/072-logistics-delay-response/fixtures/in/customer_tiers.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/shipments.csv",
+    "status_code": 404,
+    "task_id": "072-logistics-delay-response",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/072-logistics-delay-response/fixtures/in/shipments.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/README.md",
+    "status_code": 404,
+    "task_id": "073-research-repro-package",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/073-research-repro-package/fixtures/in/README.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/paper_claims.md",
+    "status_code": 404,
+    "task_id": "073-research-repro-package",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/073-research-repro-package/fixtures/in/paper_claims.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/results.csv",
+    "status_code": 404,
+    "task_id": "073-research-repro-package",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/073-research-repro-package/fixtures/in/results.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/rubric.md",
+    "status_code": 404,
+    "task_id": "074-education-grading-feedback",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/074-education-grading-feedback/fixtures/in/rubric.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submissions/submission_1.txt",
+    "status_code": 404,
+    "task_id": "074-education-grading-feedback",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/074-education-grading-feedback/fixtures/in/submissions/submission_1.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submissions/submission_2.txt",
+    "status_code": 404,
+    "task_id": "074-education-grading-feedback",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/074-education-grading-feedback/fixtures/in/submissions/submission_2.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submissions/submission_3.txt",
+    "status_code": 404,
+    "task_id": "074-education-grading-feedback",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/074-education-grading-feedback/fixtures/in/submissions/submission_3.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/case_files/case_1.json",
+    "status_code": 404,
+    "task_id": "075-platform-appeal-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/075-platform-appeal-review/fixtures/in/case_files/case_1.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/case_files/case_2.json",
+    "status_code": 404,
+    "task_id": "075-platform-appeal-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/075-platform-appeal-review/fixtures/in/case_files/case_2.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/case_files/case_3.json",
+    "status_code": 404,
+    "task_id": "075-platform-appeal-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/075-platform-appeal-review/fixtures/in/case_files/case_3.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/case_files/case_4.json",
+    "status_code": 404,
+    "task_id": "075-platform-appeal-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/075-platform-appeal-review/fixtures/in/case_files/case_4.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/case_files/case_5.json",
+    "status_code": 404,
+    "task_id": "075-platform-appeal-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/075-platform-appeal-review/fixtures/in/case_files/case_5.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/case_files/case_6.json",
+    "status_code": 404,
+    "task_id": "075-platform-appeal-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/075-platform-appeal-review/fixtures/in/case_files/case_6.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/case_files/case_7.json",
+    "status_code": 404,
+    "task_id": "075-platform-appeal-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/075-platform-appeal-review/fixtures/in/case_files/case_7.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/moderation_policy.md",
+    "status_code": 404,
+    "task_id": "075-platform-appeal-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/075-platform-appeal-review/fixtures/in/moderation_policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/policy_amendments.md",
+    "status_code": 404,
+    "task_id": "075-platform-appeal-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/075-platform-appeal-review/fixtures/in/policy_amendments.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/deidentified_claim.json",
+    "status_code": 404,
+    "task_id": "076-medical-admin-claim-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/076-medical-admin-claim-check/fixtures/in/deidentified_claim.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/required_docs_policy.md",
+    "status_code": 404,
+    "task_id": "076-medical-admin-claim-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/076-medical-admin-claim-check/fixtures/in/required_docs_policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/claim_form.txt",
+    "status_code": 404,
+    "task_id": "076-medical-admin-claim-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/076-medical-admin-claim-check/fixtures/in/submitted_docs/claim_form.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/deidentification_attestation.txt",
+    "status_code": 404,
+    "task_id": "076-medical-admin-claim-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/076-medical-admin-claim-check/fixtures/in/submitted_docs/deidentification_attestation.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/internal_escalation_memo.txt",
+    "status_code": 404,
+    "task_id": "076-medical-admin-claim-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/076-medical-admin-claim-check/fixtures/in/submitted_docs/internal_escalation_memo.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/itemized_invoice.txt",
+    "status_code": 404,
+    "task_id": "076-medical-admin-claim-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/076-medical-admin-claim-check/fixtures/in/submitted_docs/itemized_invoice.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/member_message.txt",
+    "status_code": 404,
+    "task_id": "076-medical-admin-claim-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/076-medical-admin-claim-check/fixtures/in/submitted_docs/member_message.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/proof_of_payment.txt",
+    "status_code": 404,
+    "task_id": "076-medical-admin-claim-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/076-medical-admin-claim-check/fixtures/in/submitted_docs/proof_of_payment.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/provider_order_wrong_claim.txt",
+    "status_code": 404,
+    "task_id": "076-medical-admin-claim-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/076-medical-admin-claim-check/fixtures/in/submitted_docs/provider_order_wrong_claim.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/checksums_hint.csv",
+    "status_code": 404,
+    "task_id": "077-archive-manifest-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/077-archive-manifest-defense/fixtures/in/checksums_hint.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/expected_manifest_rules.json",
+    "status_code": 404,
+    "task_id": "077-archive-manifest-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/077-archive-manifest-defense/fixtures/in/expected_manifest_rules.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/incoming_a.zip",
+    "status_code": 404,
+    "task_id": "077-archive-manifest-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/077-archive-manifest-defense/fixtures/in/incoming_a.zip"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/incoming_b.tar",
+    "status_code": 404,
+    "task_id": "077-archive-manifest-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/077-archive-manifest-defense/fixtures/in/incoming_b.tar"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/api_contract.md",
+    "status_code": 404,
+    "task_id": "078-local-api-cursor-retry-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/078-local-api-cursor-retry-ledger/fixtures/in/api_contract.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/api_seed/artifacts.json",
+    "status_code": 404,
+    "task_id": "078-local-api-cursor-retry-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/078-local-api-cursor-retry-ledger/fixtures/in/api_seed/artifacts.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/api_seed/datasets.json",
+    "status_code": 404,
+    "task_id": "078-local-api-cursor-retry-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/078-local-api-cursor-retry-ledger/fixtures/in/api_seed/datasets.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/api_seed/jobs.json",
+    "status_code": 404,
+    "task_id": "078-local-api-cursor-retry-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/078-local-api-cursor-retry-ledger/fixtures/in/api_seed/jobs.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_01.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_01.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_02.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_02.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_03.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_03.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_04.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_04.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_05.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_05.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_06.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_06.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_07.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_07.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_08.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_08.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_09.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_09.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_10.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_10.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_11.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_11.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_12.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_12.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_13.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_13.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_14.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_14.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_15.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_15.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_16.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_16.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_17.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_17.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_18.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_18.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_19.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_19.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_20.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_20.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_21.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_21.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_22.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_22.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_23.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_23.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_24.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_24.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_25.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_25.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_26.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_26.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_27.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_27.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_28.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_28.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_29.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_29.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/bulk_unsupported/legacy_30.bak",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/bulk_unsupported/legacy_30.bak"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/customers/customers_01.csv",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/customers/customers_01.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/customers/customers_bad.csv",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/customers/customers_bad.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/customers/customers_extra.csv",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/customers/customers_extra.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/misc/empty.md",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/misc/empty.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/misc/image.png",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/misc/image.png"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/notes/case_500.txt",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/notes/case_500.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/notes/case_501.txt",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/notes/case_501.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/notes/case_502.txt",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/notes/case_502.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/notes/case_bad.txt",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/notes/case_bad.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/orders/2026/order_100.json",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/orders/2026/order_100.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/orders/2026/order_101.JSON",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/orders/2026/order_101.JSON"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/orders/2026/order_102.json",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/orders/2026/order_102.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/orders/2026/order_bad.json",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/orders/2026/order_bad.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/orders/2026/order_dup.json",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/orders/2026/order_dup.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dropbox/orders/2026/order_missing_currency.json",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/dropbox/orders/2026/order_missing_currency.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/normalization_rules.yaml",
+    "status_code": 404,
+    "task_id": "079-smallfile-batch-reject-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/079-smallfile-batch-reject-ledger/fixtures/in/normalization_rules.yaml"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/records.csv",
+    "status_code": 404,
+    "task_id": "080-schema-roundtrip-conversion",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/080-schema-roundtrip-conversion/fixtures/in/records.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/records.json",
+    "status_code": 404,
+    "task_id": "080-schema-roundtrip-conversion",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/080-schema-roundtrip-conversion/fixtures/in/records.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/records.md",
+    "status_code": 404,
+    "task_id": "080-schema-roundtrip-conversion",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/080-schema-roundtrip-conversion/fixtures/in/records.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/records.yaml",
+    "status_code": 404,
+    "task_id": "080-schema-roundtrip-conversion",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/080-schema-roundtrip-conversion/fixtures/in/records.yaml"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/schema.json",
+    "status_code": 404,
+    "task_id": "080-schema-roundtrip-conversion",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/080-schema-roundtrip-conversion/fixtures/in/schema.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/site_data.json",
+    "status_code": 404,
+    "task_id": "081-local-html-dom-form-extract",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/081-local-html-dom-form-extract/fixtures/in/site_data.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/www/index.html",
+    "status_code": 404,
+    "task_id": "081-local-html-dom-form-extract",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/081-local-html-dom-form-extract/fixtures/in/www/index.html"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/composeapp/.env.example",
+    "status_code": 404,
+    "task_id": "082-compose-config-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/082-compose-config-repair/fixtures/in/composeapp/.env.example"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/composeapp/README.md",
+    "status_code": 404,
+    "task_id": "082-compose-config-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/082-compose-config-repair/fixtures/in/composeapp/README.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/composeapp/compose.yaml",
+    "status_code": 404,
+    "task_id": "082-compose-config-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/082-compose-config-repair/fixtures/in/composeapp/compose.yaml"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/composeapp/config/service-policy.yml",
+    "status_code": 404,
+    "task_id": "082-compose-config-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/082-compose-config-repair/fixtures/in/composeapp/config/service-policy.yml"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/composeapp/tools/validate_compose.py",
+    "status_code": 404,
+    "task_id": "082-compose-config-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/082-compose-config-repair/fixtures/in/composeapp/tools/validate_compose.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/shopmono/docs/interface_change.md",
+    "status_code": 404,
+    "task_id": "083-monorepo-interface-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/083-monorepo-interface-repair/fixtures/in/shopmono/docs/interface_change.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/shopmono/packages/catalog/catalog/__init__.py",
+    "status_code": 404,
+    "task_id": "083-monorepo-interface-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/083-monorepo-interface-repair/fixtures/in/shopmono/packages/catalog/catalog/__init__.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/shopmono/packages/catalog/catalog/models.py",
+    "status_code": 404,
+    "task_id": "083-monorepo-interface-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/083-monorepo-interface-repair/fixtures/in/shopmono/packages/catalog/catalog/models.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/shopmono/packages/catalog/catalog/pricing.py",
+    "status_code": 404,
+    "task_id": "083-monorepo-interface-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/083-monorepo-interface-repair/fixtures/in/shopmono/packages/catalog/catalog/pricing.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/shopmono/packages/orders/orders/__init__.py",
+    "status_code": 404,
+    "task_id": "083-monorepo-interface-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/083-monorepo-interface-repair/fixtures/in/shopmono/packages/orders/orders/__init__.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/shopmono/packages/orders/orders/adapter.py",
+    "status_code": 404,
+    "task_id": "083-monorepo-interface-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/083-monorepo-interface-repair/fixtures/in/shopmono/packages/orders/orders/adapter.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/shopmono/packages/orders/orders/service.py",
+    "status_code": 404,
+    "task_id": "083-monorepo-interface-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/083-monorepo-interface-repair/fixtures/in/shopmono/packages/orders/orders/service.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/shopmono/packages/reports/reports/__init__.py",
+    "status_code": 404,
+    "task_id": "083-monorepo-interface-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/083-monorepo-interface-repair/fixtures/in/shopmono/packages/reports/reports/__init__.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/shopmono/packages/reports/reports/monthly.py",
+    "status_code": 404,
+    "task_id": "083-monorepo-interface-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/083-monorepo-interface-repair/fixtures/in/shopmono/packages/reports/reports/monthly.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/shopmono/pyproject.toml",
+    "status_code": 404,
+    "task_id": "083-monorepo-interface-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/083-monorepo-interface-repair/fixtures/in/shopmono/pyproject.toml"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/shopmono/tests/test_catalog_contract.py",
+    "status_code": 404,
+    "task_id": "083-monorepo-interface-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/083-monorepo-interface-repair/fixtures/in/shopmono/tests/test_catalog_contract.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/shopmono/tests/test_orders_report_integration.py",
+    "status_code": 404,
+    "task_id": "083-monorepo-interface-repair",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/083-monorepo-interface-repair/fixtures/in/shopmono/tests/test_orders_report_integration.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/session-ui/package.json",
+    "status_code": 404,
+    "task_id": "084-js-state-type-bug",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/084-js-state-type-bug/fixtures/in/session-ui/package.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/session-ui/src/contracts.js",
+    "status_code": 404,
+    "task_id": "084-js-state-type-bug",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/084-js-state-type-bug/fixtures/in/session-ui/src/contracts.js"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/session-ui/src/sessionStore.js",
+    "status_code": 404,
+    "task_id": "084-js-state-type-bug",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/084-js-state-type-bug/fixtures/in/session-ui/src/sessionStore.js"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/session-ui/src/sessionStore.test.js",
+    "status_code": 404,
+    "task_id": "084-js-state-type-bug",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/084-js-state-type-bug/fixtures/in/session-ui/src/sessionStore.test.js"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/flakyqueue/README.md",
+    "status_code": 404,
+    "task_id": "085-flaky-test-root-cause",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/085-flaky-test-root-cause/fixtures/in/flakyqueue/README.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/flakyqueue/flakyqueue/__init__.py",
+    "status_code": 404,
+    "task_id": "085-flaky-test-root-cause",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/085-flaky-test-root-cause/fixtures/in/flakyqueue/flakyqueue/__init__.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/flakyqueue/flakyqueue/clock.py",
+    "status_code": 404,
+    "task_id": "085-flaky-test-root-cause",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/085-flaky-test-root-cause/fixtures/in/flakyqueue/flakyqueue/clock.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/flakyqueue/flakyqueue/scheduler.py",
+    "status_code": 404,
+    "task_id": "085-flaky-test-root-cause",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/085-flaky-test-root-cause/fixtures/in/flakyqueue/flakyqueue/scheduler.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/flakyqueue/flakyqueue/store.py",
+    "status_code": 404,
+    "task_id": "085-flaky-test-root-cause",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/085-flaky-test-root-cause/fixtures/in/flakyqueue/flakyqueue/store.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/flakyqueue/pyproject.toml",
+    "status_code": 404,
+    "task_id": "085-flaky-test-root-cause",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/085-flaky-test-root-cause/fixtures/in/flakyqueue/pyproject.toml"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/flakyqueue/tests/test_retry_order.py",
+    "status_code": 404,
+    "task_id": "085-flaky-test-root-cause",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/085-flaky-test-root-cause/fixtures/in/flakyqueue/tests/test_retry_order.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/flakyqueue/tests/test_scheduler.py",
+    "status_code": 404,
+    "task_id": "085-flaky-test-root-cause",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/085-flaky-test-root-cause/fixtures/in/flakyqueue/tests/test_scheduler.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/billingdb/migration.sql",
+    "status_code": 404,
+    "task_id": "086-sql-migration-preflight-rollback",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/086-sql-migration-preflight-rollback/fixtures/in/billingdb/migration.sql"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/billingdb/migration_policy.md",
+    "status_code": 404,
+    "task_id": "086-sql-migration-preflight-rollback",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/086-sql-migration-preflight-rollback/fixtures/in/billingdb/migration_policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/billingdb/schema.sql",
+    "status_code": 404,
+    "task_id": "086-sql-migration-preflight-rollback",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/086-sql-migration-preflight-rollback/fixtures/in/billingdb/schema.sql"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/billingdb/seed_notes.md",
+    "status_code": 404,
+    "task_id": "086-sql-migration-preflight-rollback",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/086-sql-migration-preflight-rollback/fixtures/in/billingdb/seed_notes.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/csvtool/README.md",
+    "status_code": 404,
+    "task_id": "087-cli-parser-bug-tests",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/087-cli-parser-bug-tests/fixtures/in/csvtool/README.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/csvtool/csvtool/__init__.py",
+    "status_code": 404,
+    "task_id": "087-cli-parser-bug-tests",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/087-cli-parser-bug-tests/fixtures/in/csvtool/csvtool/__init__.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/csvtool/csvtool/cli.py",
+    "status_code": 404,
+    "task_id": "087-cli-parser-bug-tests",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/087-cli-parser-bug-tests/fixtures/in/csvtool/csvtool/cli.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/csvtool/csvtool/filtering.py",
+    "status_code": 404,
+    "task_id": "087-cli-parser-bug-tests",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/087-cli-parser-bug-tests/fixtures/in/csvtool/csvtool/filtering.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/csvtool/samples/orders.csv",
+    "status_code": 404,
+    "task_id": "087-cli-parser-bug-tests",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/087-cli-parser-bug-tests/fixtures/in/csvtool/samples/orders.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/csvtool/tests/test_cli_existing.py",
+    "status_code": 404,
+    "task_id": "087-cli-parser-bug-tests",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/087-cli-parser-bug-tests/fixtures/in/csvtool/tests/test_cli_existing.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/apiclient/client.py",
+    "status_code": 404,
+    "task_id": "088-api-contract-mock-client-compat",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/088-api-contract-mock-client-compat/fixtures/in/apiclient/client.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/apiclient/contract.md",
+    "status_code": 404,
+    "task_id": "088-api-contract-mock-client-compat",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/088-api-contract-mock-client-compat/fixtures/in/apiclient/contract.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/apiclient/sample_requests.json",
+    "status_code": 404,
+    "task_id": "088-api-contract-mock-client-compat",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/088-api-contract-mock-client-compat/fixtures/in/apiclient/sample_requests.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/apiclient/tests/test_client_unit.py",
+    "status_code": 404,
+    "task_id": "088-api-contract-mock-client-compat",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/088-api-contract-mock-client-compat/fixtures/in/apiclient/tests/test_client_unit.py"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/mock_api/users_v1_page1.json",
+    "status_code": 404,
+    "task_id": "088-api-contract-mock-client-compat",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/088-api-contract-mock-client-compat/fixtures/in/mock_api/users_v1_page1.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/mock_api/users_v1_page2.json",
+    "status_code": 404,
+    "task_id": "088-api-contract-mock-client-compat",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/088-api-contract-mock-client-compat/fixtures/in/mock_api/users_v1_page2.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/mock_api/users_v2_c2.json",
+    "status_code": 404,
+    "task_id": "088-api-contract-mock-client-compat",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/088-api-contract-mock-client-compat/fixtures/in/mock_api/users_v2_c2.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/mock_api/users_v2_start.json",
+    "status_code": 404,
+    "task_id": "088-api-contract-mock-client-compat",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/088-api-contract-mock-client-compat/fixtures/in/mock_api/users_v2_start.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/analysis_plan.md",
+    "status_code": 404,
+    "task_id": "089-ab-test-caveat-analysis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/089-ab-test-caveat-analysis/fixtures/in/analysis_plan.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/exclusions.csv",
+    "status_code": 404,
+    "task_id": "089-ab-test-caveat-analysis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/089-ab-test-caveat-analysis/fixtures/in/exclusions.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/experiment_cells.csv",
+    "status_code": 404,
+    "task_id": "089-ab-test-caveat-analysis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/089-ab-test-caveat-analysis/fixtures/in/experiment_cells.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/deployments.csv",
+    "status_code": 404,
+    "task_id": "090-timeseries-anomaly-attribution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/090-timeseries-anomaly-attribution/fixtures/in/deployments.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/detection_rules.md",
+    "status_code": 404,
+    "task_id": "090-timeseries-anomaly-attribution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/090-timeseries-anomaly-attribution/fixtures/in/detection_rules.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/hourly_metrics.csv",
+    "status_code": 404,
+    "task_id": "090-timeseries-anomaly-attribution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/090-timeseries-anomaly-attribution/fixtures/in/hourly_metrics.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/incident_calendar.csv",
+    "status_code": 404,
+    "task_id": "090-timeseries-anomaly-attribution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/090-timeseries-anomaly-attribution/fixtures/in/incident_calendar.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/bank_statement.csv",
+    "status_code": 404,
+    "task_id": "091-financial-close-reconciliation",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/091-financial-close-reconciliation/fixtures/in/bank_statement.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/close_policy.md",
+    "status_code": 404,
+    "task_id": "091-financial-close-reconciliation",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/091-financial-close-reconciliation/fixtures/in/close_policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/fx_rates.csv",
+    "status_code": 404,
+    "task_id": "091-financial-close-reconciliation",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/091-financial-close-reconciliation/fixtures/in/fx_rates.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/invoices.csv",
+    "status_code": 404,
+    "task_id": "091-financial-close-reconciliation",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/091-financial-close-reconciliation/fixtures/in/invoices.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/payments.csv",
+    "status_code": 404,
+    "task_id": "091-financial-close-reconciliation",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/091-financial-close-reconciliation/fixtures/in/payments.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/refunds.csv",
+    "status_code": 404,
+    "task_id": "091-financial-close-reconciliation",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/091-financial-close-reconciliation/fixtures/in/refunds.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/contracts/customer_events_schema.json",
+    "status_code": 404,
+    "task_id": "092-schema-drift-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/092-schema-drift-audit/fixtures/in/contracts/customer_events_schema.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/extracts/2026-04-27/events.csv",
+    "status_code": 404,
+    "task_id": "092-schema-drift-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/092-schema-drift-audit/fixtures/in/extracts/2026-04-27/events.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/extracts/2026-04-28/events.csv",
+    "status_code": 404,
+    "task_id": "092-schema-drift-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/092-schema-drift-audit/fixtures/in/extracts/2026-04-28/events.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/extracts/2026-04-29/events.csv",
+    "status_code": 404,
+    "task_id": "092-schema-drift-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/092-schema-drift-audit/fixtures/in/extracts/2026-04-29/events.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/extracts/2026-04-30/events.csv",
+    "status_code": 404,
+    "task_id": "092-schema-drift-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/092-schema-drift-audit/fixtures/in/extracts/2026-04-30/events.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/source_change_log.md",
+    "status_code": 404,
+    "task_id": "092-schema-drift-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/092-schema-drift-audit/fixtures/in/source_change_log.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/campaign_map.csv",
+    "status_code": 404,
+    "task_id": "093-jsonl-sessionization-analysis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/093-jsonl-sessionization-analysis/fixtures/in/campaign_map.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/clickstream.jsonl",
+    "status_code": 404,
+    "task_id": "093-jsonl-sessionization-analysis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/093-jsonl-sessionization-analysis/fixtures/in/clickstream.jsonl"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/session_rules.md",
+    "status_code": 404,
+    "task_id": "093-jsonl-sessionization-analysis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/093-jsonl-sessionization-analysis/fixtures/in/session_rules.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dashboard_after.csv",
+    "status_code": 404,
+    "task_id": "094-metric-definition-migration-diff",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/094-metric-definition-migration-diff/fixtures/in/dashboard_after.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dashboard_before.csv",
+    "status_code": 404,
+    "task_id": "094-metric-definition-migration-diff",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/094-metric-definition-migration-diff/fixtures/in/dashboard_before.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/migration_policy.md",
+    "status_code": 404,
+    "task_id": "094-metric-definition-migration-diff",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/094-metric-definition-migration-diff/fixtures/in/migration_policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/new_metric_definitions.md",
+    "status_code": 404,
+    "task_id": "094-metric-definition-migration-diff",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/094-metric-definition-migration-diff/fixtures/in/new_metric_definitions.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/old_metric_definitions.md",
+    "status_code": 404,
+    "task_id": "094-metric-definition-migration-diff",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/094-metric-definition-migration-diff/fixtures/in/old_metric_definitions.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/query_exports/new_results.csv",
+    "status_code": 404,
+    "task_id": "094-metric-definition-migration-diff",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/094-metric-definition-migration-diff/fixtures/in/query_exports/new_results.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/query_exports/old_results.csv",
+    "status_code": 404,
+    "task_id": "094-metric-definition-migration-diff",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/094-metric-definition-migration-diff/fixtures/in/query_exports/old_results.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/cases/policy_questions.json",
+    "status_code": 404,
+    "task_id": "095-policy-version-conflict-resolution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/095-policy-version-conflict-resolution/fixtures/in/cases/policy_questions.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/policy_versions/emergency_addendum_2025-03.md",
+    "status_code": 404,
+    "task_id": "095-policy-version-conflict-resolution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/095-policy-version-conflict-resolution/fixtures/in/policy_versions/emergency_addendum_2025-03.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/policy_versions/expense_policy_2024-01.md",
+    "status_code": 404,
+    "task_id": "095-policy-version-conflict-resolution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/095-policy-version-conflict-resolution/fixtures/in/policy_versions/expense_policy_2024-01.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/policy_versions/expense_policy_2024-09.md",
+    "status_code": 404,
+    "task_id": "095-policy-version-conflict-resolution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/095-policy-version-conflict-resolution/fixtures/in/policy_versions/expense_policy_2024-09.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/policy_versions/expense_policy_2025-02.md",
+    "status_code": 404,
+    "task_id": "095-policy-version-conflict-resolution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/095-policy-version-conflict-resolution/fixtures/in/policy_versions/expense_policy_2025-02.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/policy_versions/hr_exception_memo_2025-01.md",
+    "status_code": 404,
+    "task_id": "095-policy-version-conflict-resolution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/095-policy-version-conflict-resolution/fixtures/in/policy_versions/hr_exception_memo_2025-01.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/policy_versions/regional_addendum_france_2025-02.md",
+    "status_code": 404,
+    "task_id": "095-policy-version-conflict-resolution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/095-policy-version-conflict-resolution/fixtures/in/policy_versions/regional_addendum_france_2025-02.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/version_rules.json",
+    "status_code": 404,
+    "task_id": "095-policy-version-conflict-resolution",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/095-policy-version-conflict-resolution/fixtures/in/version_rules.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/kb/archived_migration_note.md",
+    "status_code": 404,
+    "task_id": "096-offline-knowledge-qa-insufficient-evidence",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/096-offline-knowledge-qa-insufficient-evidence/fixtures/in/kb/archived_migration_note.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/kb/internal_glossary.md",
+    "status_code": 404,
+    "task_id": "096-offline-knowledge-qa-insufficient-evidence",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/096-offline-knowledge-qa-insufficient-evidence/fixtures/in/kb/internal_glossary.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/kb/product_manual.md",
+    "status_code": 404,
+    "task_id": "096-offline-knowledge-qa-insufficient-evidence",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/096-offline-knowledge-qa-insufficient-evidence/fixtures/in/kb/product_manual.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/kb/release_notes.md",
+    "status_code": 404,
+    "task_id": "096-offline-knowledge-qa-insufficient-evidence",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/096-offline-knowledge-qa-insufficient-evidence/fixtures/in/kb/release_notes.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/kb/security_bulletin.md",
+    "status_code": 404,
+    "task_id": "096-offline-knowledge-qa-insufficient-evidence",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/096-offline-knowledge-qa-insufficient-evidence/fixtures/in/kb/security_bulletin.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/kb/support_faq.md",
+    "status_code": 404,
+    "task_id": "096-offline-knowledge-qa-insufficient-evidence",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/096-offline-knowledge-qa-insufficient-evidence/fixtures/in/kb/support_faq.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/questions.json",
+    "status_code": 404,
+    "task_id": "096-offline-knowledge-qa-insufficient-evidence",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/096-offline-knowledge-qa-insufficient-evidence/fixtures/in/questions.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/claims/claims.csv",
+    "status_code": 404,
+    "task_id": "097-research-claims-batch-evidence-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/097-research-claims-batch-evidence-audit/fixtures/in/claims/claims.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sources/errata.md",
+    "status_code": 404,
+    "task_id": "097-research-claims-batch-evidence-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/097-research-claims-batch-evidence-audit/fixtures/in/sources/errata.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sources/methods_appendix.md",
+    "status_code": 404,
+    "task_id": "097-research-claims-batch-evidence-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/097-research-claims-batch-evidence-audit/fixtures/in/sources/methods_appendix.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sources/peer_review_notes.md",
+    "status_code": 404,
+    "task_id": "097-research-claims-batch-evidence-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/097-research-claims-batch-evidence-audit/fixtures/in/sources/peer_review_notes.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sources/repro_readme.md",
+    "status_code": 404,
+    "task_id": "097-research-claims-batch-evidence-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/097-research-claims-batch-evidence-audit/fixtures/in/sources/repro_readme.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sources/results_table.csv",
+    "status_code": 404,
+    "task_id": "097-research-claims-batch-evidence-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/097-research-claims-batch-evidence-audit/fixtures/in/sources/results_table.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sources/study_summary.md",
+    "status_code": 404,
+    "task_id": "097-research-claims-batch-evidence-audit",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/097-research-claims-batch-evidence-audit/fixtures/in/sources/study_summary.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/docs/finance_constraints.md",
+    "status_code": 404,
+    "task_id": "098-three-source-decision-record-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/098-three-source-decision-record-synthesis/fixtures/in/docs/finance_constraints.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/docs/legal_notes.md",
+    "status_code": 404,
+    "task_id": "098-three-source-decision-record-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/098-three-source-decision-record-synthesis/fixtures/in/docs/legal_notes.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/docs/product_requirements.md",
+    "status_code": 404,
+    "task_id": "098-three-source-decision-record-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/098-three-source-decision-record-synthesis/fixtures/in/docs/product_requirements.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/docs/security_review.md",
+    "status_code": 404,
+    "task_id": "098-three-source-decision-record-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/098-three-source-decision-record-synthesis/fixtures/in/docs/security_review.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/email/thread.json",
+    "status_code": 404,
+    "task_id": "098-three-source-decision-record-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/098-three-source-decision-record-synthesis/fixtures/in/email/thread.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/meeting/meeting_transcript.md",
+    "status_code": 404,
+    "task_id": "098-three-source-decision-record-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/098-three-source-decision-record-synthesis/fixtures/in/meeting/meeting_transcript.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/source_priority.md",
+    "status_code": 404,
+    "task_id": "098-three-source-decision-record-synthesis",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/098-three-source-decision-record-synthesis/fixtures/in/source_priority.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/account_records/acct_1001.json",
+    "status_code": 404,
+    "task_id": "099-privacy-dsar-intake-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/099-privacy-dsar-intake-review/fixtures/in/account_records/acct_1001.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/account_records/acct_1002.json",
+    "status_code": 404,
+    "task_id": "099-privacy-dsar-intake-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/099-privacy-dsar-intake-review/fixtures/in/account_records/acct_1002.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/account_records/acct_1003.json",
+    "status_code": 404,
+    "task_id": "099-privacy-dsar-intake-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/099-privacy-dsar-intake-review/fixtures/in/account_records/acct_1003.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/account_records/acct_1004.json",
+    "status_code": 404,
+    "task_id": "099-privacy-dsar-intake-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/099-privacy-dsar-intake-review/fixtures/in/account_records/acct_1004.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/account_records/acct_1005.json",
+    "status_code": 404,
+    "task_id": "099-privacy-dsar-intake-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/099-privacy-dsar-intake-review/fixtures/in/account_records/acct_1005.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/data_map.md",
+    "status_code": 404,
+    "task_id": "099-privacy-dsar-intake-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/099-privacy-dsar-intake-review/fixtures/in/data_map.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/dsar_policy.md",
+    "status_code": 404,
+    "task_id": "099-privacy-dsar-intake-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/099-privacy-dsar-intake-review/fixtures/in/dsar_policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/redaction_rules.md",
+    "status_code": 404,
+    "task_id": "099-privacy-dsar-intake-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/099-privacy-dsar-intake-review/fixtures/in/redaction_rules.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/request_packet.json",
+    "status_code": 404,
+    "task_id": "099-privacy-dsar-intake-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/099-privacy-dsar-intake-review/fixtures/in/request_packet.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/support_notes/note_001.txt",
+    "status_code": 404,
+    "task_id": "099-privacy-dsar-intake-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/099-privacy-dsar-intake-review/fixtures/in/support_notes/note_001.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/support_notes/note_002.txt",
+    "status_code": 404,
+    "task_id": "099-privacy-dsar-intake-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/099-privacy-dsar-intake-review/fixtures/in/support_notes/note_002.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/support_notes/note_003.txt",
+    "status_code": 404,
+    "task_id": "099-privacy-dsar-intake-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/099-privacy-dsar-intake-review/fixtures/in/support_notes/note_003.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/support_notes/note_004.txt",
+    "status_code": 404,
+    "task_id": "099-privacy-dsar-intake-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/099-privacy-dsar-intake-review/fixtures/in/support_notes/note_004.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/support_notes/note_005.txt",
+    "status_code": 404,
+    "task_id": "099-privacy-dsar-intake-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/099-privacy-dsar-intake-review/fixtures/in/support_notes/note_005.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/customers.json",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/customers.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/document_validity_rules.md",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/document_validity_rules.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/kyc_requirements.md",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/kyc_requirements.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/prohibited_judgments.md",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/prohibited_judgments.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/C-100_government_id.txt",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/submitted_docs/C-100_government_id.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/C-100_proof_of_address.txt",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/submitted_docs/C-100_proof_of_address.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/C-100_tax_form.txt",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/submitted_docs/C-100_tax_form.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/C-200_beneficial_owner_attestation.txt",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/submitted_docs/C-200_beneficial_owner_attestation.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/C-200_business_registration.txt",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/submitted_docs/C-200_business_registration.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/C-200_proof_of_address.txt",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/submitted_docs/C-200_proof_of_address.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/C-200_tax_form.txt",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/submitted_docs/C-200_tax_form.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/C-300_beneficial_owner_attestation.txt",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/submitted_docs/C-300_beneficial_owner_attestation.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/C-300_nonprofit_registration.txt",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/submitted_docs/C-300_nonprofit_registration.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/C-300_proof_of_address.txt",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/submitted_docs/C-300_proof_of_address.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/C-400_government_id.txt",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/submitted_docs/C-400_government_id.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/submitted_docs/C-400_proof_of_address.txt",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/submitted_docs/C-400_proof_of_address.txt"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/watchlist_stub.csv",
+    "status_code": 404,
+    "task_id": "100-financial-kyc-admin-check",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/100-financial-kyc-admin-check/fixtures/in/watchlist_stub.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/claims_policy.md",
+    "status_code": 404,
+    "task_id": "101-marketing-sensitive-commitment-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/101-marketing-sensitive-commitment-review/fixtures/in/claims_policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/draft_campaign.md",
+    "status_code": 404,
+    "task_id": "101-marketing-sensitive-commitment-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/101-marketing-sensitive-commitment-review/fixtures/in/draft_campaign.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/evidence_manifest.json",
+    "status_code": 404,
+    "task_id": "101-marketing-sensitive-commitment-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/101-marketing-sensitive-commitment-review/fixtures/in/evidence_manifest.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/internal_pressure_note.md",
+    "status_code": 404,
+    "task_id": "101-marketing-sensitive-commitment-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/101-marketing-sensitive-commitment-review/fixtures/in/internal_pressure_note.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/sensitive_terms.csv",
+    "status_code": 404,
+    "task_id": "101-marketing-sensitive-commitment-review",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/101-marketing-sensitive-commitment-review/fixtures/in/sensitive_terms.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/allowed_sources_manifest.json",
+    "status_code": 404,
+    "task_id": "102-internal-doc-retrieval-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/102-internal-doc-retrieval-injection-defense/fixtures/in/allowed_sources_manifest.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/docs/access_policy.md",
+    "status_code": 404,
+    "task_id": "102-internal-doc-retrieval-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/102-internal-doc-retrieval-injection-defense/fixtures/in/docs/access_policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/docs/exception_process.md",
+    "status_code": 404,
+    "task_id": "102-internal-doc-retrieval-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/102-internal-doc-retrieval-injection-defense/fixtures/in/docs/exception_process.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/docs/legacy_notes.md",
+    "status_code": 404,
+    "task_id": "102-internal-doc-retrieval-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/102-internal-doc-retrieval-injection-defense/fixtures/in/docs/legacy_notes.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/docs/offboarding_checklist.md",
+    "status_code": 404,
+    "task_id": "102-internal-doc-retrieval-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/102-internal-doc-retrieval-injection-defense/fixtures/in/docs/offboarding_checklist.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/docs/vendor_faq.md",
+    "status_code": 404,
+    "task_id": "102-internal-doc-retrieval-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/102-internal-doc-retrieval-injection-defense/fixtures/in/docs/vendor_faq.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/question_set.json",
+    "status_code": 404,
+    "task_id": "102-internal-doc-retrieval-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/102-internal-doc-retrieval-injection-defense/fixtures/in/question_set.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/retrieval_policy.md",
+    "status_code": 404,
+    "task_id": "102-internal-doc-retrieval-injection-defense",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/102-internal-doc-retrieval-injection-defense/fixtures/in/retrieval_policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/communications_matrix.csv",
+    "status_code": 404,
+    "task_id": "103-policy-update-replan-diff",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/103-policy-update-replan-diff/fixtures/in/communications_matrix.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/policy_change_request.json",
+    "status_code": 404,
+    "task_id": "103-policy-update-replan-diff",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/103-policy-update-replan-diff/fixtures/in/policy_change_request.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/regional_constraints.csv",
+    "status_code": 404,
+    "task_id": "103-policy-update-replan-diff",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/103-policy-update-replan-diff/fixtures/in/regional_constraints.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/round2_update_notice.json",
+    "status_code": 404,
+    "task_id": "103-policy-update-replan-diff",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/103-policy-update-replan-diff/fixtures/in/round2_update_notice.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/team_capacity.json",
+    "status_code": 404,
+    "task_id": "103-policy-update-replan-diff",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/103-policy-update-replan-diff/fixtures/in/team_capacity.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/batch_initial/update_001.json",
+    "status_code": 404,
+    "task_id": "104-async-ops-window-rollup",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/104-async-ops-window-rollup/fixtures/in/batch_initial/update_001.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/batch_initial/update_002.json",
+    "status_code": 404,
+    "task_id": "104-async-ops-window-rollup",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/104-async-ops-window-rollup/fixtures/in/batch_initial/update_002.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/service_topology.json",
+    "status_code": 404,
+    "task_id": "104-async-ops-window-rollup",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/104-async-ops-window-rollup/fixtures/in/service_topology.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/window.json",
+    "status_code": 404,
+    "task_id": "104-async-ops-window-rollup",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/104-async-ops-window-rollup/fixtures/in/window.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/batch_items.json",
+    "status_code": 404,
+    "task_id": "105-partial-batch-resume-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/105-partial-batch-resume-ledger/fixtures/in/batch_items.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/expected_failure_marker.json",
+    "status_code": 404,
+    "task_id": "105-partial-batch-resume-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/105-partial-batch-resume-ledger/fixtures/in/expected_failure_marker.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/idempotency_policy.md",
+    "status_code": 404,
+    "task_id": "105-partial-batch-resume-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/105-partial-batch-resume-ledger/fixtures/in/idempotency_policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/processing_rules.md",
+    "status_code": 404,
+    "task_id": "105-partial-batch-resume-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/105-partial-batch-resume-ledger/fixtures/in/processing_rules.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/retry_instructions.json",
+    "status_code": 404,
+    "task_id": "105-partial-batch-resume-ledger",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/105-partial-batch-resume-ledger/fixtures/in/retry_instructions.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/approval_policy.md",
+    "status_code": 404,
+    "task_id": "106-release-approval-gate-plan",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/106-release-approval-gate-plan/fixtures/in/approval_policy.md"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/change_calendar.csv",
+    "status_code": 404,
+    "task_id": "106-release-approval-gate-plan",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/106-release-approval-gate-plan/fixtures/in/change_calendar.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/incident_history.json",
+    "status_code": 404,
+    "task_id": "106-release-approval-gate-plan",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/106-release-approval-gate-plan/fixtures/in/incident_history.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/preflight_checks.json",
+    "status_code": 404,
+    "task_id": "106-release-approval-gate-plan",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/106-release-approval-gate-plan/fixtures/in/preflight_checks.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/release_manifest.json",
+    "status_code": 404,
+    "task_id": "106-release-approval-gate-plan",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/106-release-approval-gate-plan/fixtures/in/release_manifest.json"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/risk_register.csv",
+    "status_code": 404,
+    "task_id": "106-release-approval-gate-plan",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/106-release-approval-gate-plan/fixtures/in/risk_register.csv"
+  },
+  {
+    "bytes": 0,
+    "error": "HTTP Error 404: Not Found",
+    "path": "in/rollback_runbook.md",
+    "status_code": 404,
+    "task_id": "106-release-approval-gate-plan",
+    "url": "https://raw.githubusercontent.com/Qihoo360/harness-bench/refs/heads/main/tasks/106-release-approval-gate-plan/fixtures/in/rollback_runbook.md"
+  }
+]

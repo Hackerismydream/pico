@@ -1,0 +1,58 @@
+[
+  {
+    "path": "workspace_operations.html",
+    "slug": "workspace_operations",
+    "task_count": 15,
+    "title": "Workspace, Tool Use & Multimodal Operations",
+    "url": "https://www.harness-bench.ai/workspace_operations.html"
+  },
+  {
+    "path": "office_business.html",
+    "slug": "office_business",
+    "task_count": 12,
+    "title": "Office & Business Communication",
+    "url": "https://www.harness-bench.ai/office_business.html"
+  },
+  {
+    "path": "long_running_autonomy.html",
+    "slug": "long_running_autonomy",
+    "task_count": 11,
+    "title": "Long-running Autonomy & State Adaptation",
+    "url": "https://www.harness-bench.ai/long_running_autonomy.html"
+  },
+  {
+    "path": "software_engineering.html",
+    "slug": "software_engineering",
+    "task_count": 22,
+    "title": "Software Engineering & Codebase Maintenance",
+    "url": "https://www.harness-bench.ai/software_engineering.html"
+  },
+  {
+    "path": "knowledge_retrieval.html",
+    "slug": "knowledge_retrieval",
+    "task_count": 13,
+    "title": "Knowledge, Evidence & Retrieval",
+    "url": "https://www.harness-bench.ai/knowledge_retrieval.html"
+  },
+  {
+    "path": "sre_devops.html",
+    "slug": "sre_devops",
+    "task_count": 7,
+    "title": "SRE, DevOps & Release Ops",
+    "url": "https://www.harness-bench.ai/sre_devops.html"
+  },
+  {
+    "path": "data_analytics.html",
+    "slug": "data_analytics",
+    "task_count": 14,
+    "title": "Data, BI & Finance Analytics",
+    "url": "https://www.harness-bench.ai/data_analytics.html"
+  },
+  {
+    "path": "vertical_workflows.html",
+    "slug": "vertical_workflows",
+    "task_count": 12,
+    "title": "Vertical Professional Workflows",
+    "url": "https://www.harness-bench.ai/vertical_workflows.html"
+  }
+]
