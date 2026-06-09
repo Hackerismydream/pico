@@ -81,15 +81,20 @@ def _configured_secret_names(args):
     return sorted(configured_secret_names)
 
 
-def _build_model_client(args):
+def _build_model_client(args, provider=None, use_cli_overrides=True):
     config = resolve_provider_config(
-        getattr(args, "provider", None),
+        provider if provider is not None else getattr(args, "provider", None),
         start=getattr(args, "cwd", "."),
         config_path=getattr(args, "config", None),
-        model=getattr(args, "model", None),
-        base_url=getattr(args, "base_url", None),
-        api_key=getattr(args, "api_key", None),
+        model=getattr(args, "model", None) if use_cli_overrides else None,
+        base_url=getattr(args, "base_url", None) if use_cli_overrides else None,
+        api_key=getattr(args, "api_key", None) if use_cli_overrides else None,
+        vision_provider=getattr(args, "vision_provider", None) if use_cli_overrides else None,
     )
+    return _model_client_from_config(config, args)
+
+
+def _model_client_from_config(config, args):
     # CLI 只负责把 provider profile 翻译成具体协议 client。
     # 例如 deepseek 是 profile，protocol=anthropic 才决定走 Messages API。
     if config.protocol == "openai":
@@ -184,11 +189,17 @@ def build_agent(args):
         model=getattr(args, "model", None),
         base_url=getattr(args, "base_url", None),
         api_key=getattr(args, "api_key", None),
+        vision_provider=getattr(args, "vision_provider", None),
     )
     model = _build_model_client(args)
 
     def model_client_factory():
         return _build_model_client(args)
+
+    def vision_model_client_factory():
+        return _build_model_client(
+            args, provider=provider_config.vision_provider, use_cli_overrides=False
+        )
 
     if args.max_new_tokens is None:
         args.max_new_tokens = default_max_tokens_for_provider(provider_config.name)
@@ -210,7 +221,7 @@ def build_agent(args):
     dream_min_sessions = getattr(args, "dream_min_sessions", 5)
     ask_user_callback = None if getattr(args, "prompt", None) else _cli_ask_user
     if session_id:
-        return Pico.from_session(
+        agent = Pico.from_session(
             model_client=model,
             workspace=workspace,
             session_store=store,
@@ -227,7 +238,12 @@ def build_agent(args):
             sandbox_config=sandbox_config,
             ask_user_callback=ask_user_callback,
         )
-    return Pico(
+        if provider_config.supports_vision:
+            agent.vision_model_client = model
+        elif provider_config.vision_provider:
+            agent.vision_model_client_factory = vision_model_client_factory
+        return agent
+    agent = Pico(
         model_client=model,
         workspace=workspace,
         session_store=store,
@@ -243,6 +259,11 @@ def build_agent(args):
         sandbox_config=sandbox_config,
         ask_user_callback=ask_user_callback,
     )
+    if provider_config.supports_vision:
+        agent.vision_model_client = model
+    elif provider_config.vision_provider:
+        agent.vision_model_client_factory = vision_model_client_factory
+    return agent
 
 
 def build_arg_parser():
@@ -274,6 +295,11 @@ def build_arg_parser():
         "--base-url",
         default=None,
         help="API base URL override for the selected provider profile.",
+    )
+    parser.add_argument(
+        "--vision-provider",
+        default=None,
+        help="Provider profile used by image inspection when the main provider lacks vision.",
     )
     parser.add_argument(
         "--openai-timeout",

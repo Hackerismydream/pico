@@ -3,6 +3,7 @@ import urllib.request
 
 import pytest
 
+import pico.cli as pico_cli
 from pico.core.runtime import Pico
 from pico.core.session_store import SessionStore
 from pico.core.workspace import WorkspaceContext
@@ -130,6 +131,67 @@ def test_anthropic_client_sends_image_blocks_in_messages_payload(monkeypatch):
     assert content[0]["source"]["data"]
     assert content[1] == {"type": "text", "text": "Describe it."}
     assert client.last_completion_metadata["image_input_count"] == 1
+
+
+def test_deepseek_profile_defaults_to_openai_vision_provider(tmp_path, monkeypatch):
+    from pico.config import resolve_provider_config
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
+
+    config = resolve_provider_config("deepseek", start=tmp_path)
+
+    assert config.name == "deepseek"
+    assert config.model == "deepseek-v4-pro"
+    assert config.supports_vision is False
+    assert config.vision_provider == "openai"
+
+
+def test_build_agent_uses_separate_vision_provider_for_deepseek(tmp_path, monkeypatch):
+    args = pico_cli.build_arg_parser().parse_args(
+        ["--cwd", str(tmp_path), "--provider", "deepseek"]
+    )
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
+    monkeypatch.setenv("OPENAI_MODEL", "vision-model")
+    monkeypatch.setenv("OPENAI_API_BASE", "https://vision.example/v1")
+
+    with pytest.MonkeyPatch.context() as patcher:
+        patcher.setattr(pico_cli, "AnthropicCompatibleModelClient", lambda **kwargs: ("anthropic", kwargs))
+        patcher.setattr(pico_cli, "OpenAICompatibleModelClient", lambda **kwargs: ("openai", kwargs))
+        agent = pico_cli.build_agent(args)
+        vision_client = agent.vision_model_client_factory()
+
+    assert agent.model_client[0] == "anthropic"
+    assert agent.model_client[1]["model"] == "deepseek-v4-pro"
+    assert not hasattr(agent, "vision_model_client")
+    assert vision_client[0] == "openai"
+    assert vision_client[1]["model"] == "vision-model"
+    assert vision_client[1]["base_url"] == "https://vision.example/v1"
+
+
+def test_inspect_image_uses_separate_vision_model_when_configured(tmp_path):
+    from pico.core.content_blocks import ModelInput
+    from pico.core.task_state import TaskState
+
+    write_png(tmp_path)
+    main_client = RecordingVisionClient(["unused main model output"])
+    vision_client = RecordingVisionClient(["vision provider summary"])
+    agent = build_agent(tmp_path, model_client=main_client)
+    agent.vision_model_client = vision_client
+    task_state = TaskState.create(run_id="run_direct", task_id="task_direct", user_request="inspect")
+    agent.current_task_state = task_state
+    agent.current_run_dir = agent.run_store.start_run(task_state)
+
+    result = agent.run_tool(
+        "inspect_image",
+        {"path": "chart.png", "question": "What is shown?", "profile": "general"},
+    )
+
+    assert "vision provider summary" in result
+    assert main_client.prompts == []
+    assert isinstance(vision_client.prompts[0], ModelInput)
+    assert vision_client.prompts[0].images[0].path == "chart.png"
 
 
 def test_load_workspace_image_rejects_path_escape_and_records_safe_metadata(tmp_path):

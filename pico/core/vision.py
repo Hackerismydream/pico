@@ -12,8 +12,9 @@ def inspect_image_with_model(agent, path, question, profile="general", output_sc
     prompt = image_inspection_prompt(
         loaded.metadata["path"], question, profile, output_schema
     )
+    model_client = resolve_vision_model_client(agent)
     result = complete_model(
-        agent.model_client,
+        model_client,
         ModelInput(text=prompt, images=[loaded.block]),
         agent.max_new_tokens,
     )
@@ -52,6 +53,18 @@ def image_inspection_prompt(path, question, profile, output_schema):
         lines.append(f"Return shape: {schema}")
     lines.append("Return concise, task-useful observations. Do not mention base64.")
     return "\n".join(lines)
+
+
+def resolve_vision_model_client(agent):
+    model_client = getattr(agent, "vision_model_client", None)
+    if model_client is not None:
+        return model_client
+    factory = getattr(agent, "vision_model_client_factory", None)
+    if factory is not None:
+        model_client = factory()
+        agent.vision_model_client = model_client
+        return model_client
+    return agent.model_client
 
 
 def image_suffix(mime_type):

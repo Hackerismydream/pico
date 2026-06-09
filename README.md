@@ -102,23 +102,32 @@ protocol = "anthropic"
 api_key = "sk-..."
 base_url = "https://api.deepseek.com/anthropic"
 model = "deepseek-v4-pro"
+supports_vision = false
+vision_provider = "openai"
 
 [providers.openai]
 protocol = "openai"
 api_key = "sk-..."
 base_url = "https://www.right.codes/codex/v1"
 model = "gpt-5.4"
+supports_vision = true
 
 [providers.anthropic]
 protocol = "anthropic"
 api_key = "sk-ant-..."
 base_url = "https://www.right.codes/claude/v1"
 model = "claude-sonnet-4-6"
+supports_vision = true
 ```
 
 注意：`provider = "deepseek"` 只是选择 profile 名字，真正决定请求格式的是
 `protocol`。例如 DeepSeek 可以通过 Anthropic-compatible endpoint 使用，所以这里写
 `protocol = "anthropic"`。
+
+如果主 provider 不支持图片输入，例如 DeepSeek V4 Pro，可以用
+`vision_provider` 指向另一个支持图片的 profile。普通代码任务仍然走
+`provider = "deepseek"`，只有 `inspect_image` 这类图片工具会懒加载
+`vision_provider`。
 
 ### 方式二：环境变量
 
@@ -129,6 +138,9 @@ export PICO_PROVIDER=deepseek
 export DEEPSEEK_API_KEY=sk-...
 export DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
 export DEEPSEEK_MODEL=deepseek-v4-pro
+export PICO_VISION_PROVIDER=openai
+export OPENAI_API_KEY=sk-...
+export OPENAI_MODEL=gpt-5.4
 
 pico
 ```
@@ -140,6 +152,7 @@ pico
 | DeepSeek | `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL` |
 | OpenAI-compatible | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` |
 | Anthropic-compatible | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL` |
+| Vision fallback | `PICO_VISION_PROVIDER` |
 
 也可以用通用覆盖变量：
 
@@ -156,6 +169,7 @@ export PICO_MODEL=gpt-5.4
 ```bash
 pico --provider openai --model gpt-5.4 --base-url https://api.openai.com/v1
 pico --provider deepseek --approval ask --max-steps 80
+pico --provider deepseek --vision-provider anthropic
 pico --config /path/to/custom.toml --cwd /path/to/repo
 ```
 

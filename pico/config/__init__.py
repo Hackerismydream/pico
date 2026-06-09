@@ -28,23 +28,29 @@ class ProviderConfig:
     api_key: str
     base_url: str
     model: str
+    supports_vision: bool = False
+    vision_provider: str = ""
 
 
-PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
+PROVIDER_DEFAULTS: dict[str, dict[str, Any]] = {
     "openai": {
         "protocol": "openai",
         "base_url": "https://www.right.codes/codex/v1",
         "model": "gpt-5.4",
+        "supports_vision": True,
     },
     "anthropic": {
         "protocol": "anthropic",
         "base_url": "https://www.right.codes/claude/v1",
         "model": "claude-sonnet-4-6",
+        "supports_vision": True,
     },
     "deepseek": {
         "protocol": "anthropic",
         "base_url": "https://api.deepseek.com/anthropic",
         "model": "deepseek-v4-pro",
+        "supports_vision": False,
+        "vision_provider": "openai",
     },
 }
 
@@ -73,6 +79,7 @@ ENV_PROVIDER = "PICO_PROVIDER"
 ENV_API_KEY = "PICO_API_KEY"
 ENV_BASE_URL = "PICO_BASE_URL"
 ENV_MODEL = "PICO_MODEL"
+ENV_VISION_PROVIDER = "PICO_VISION_PROVIDER"
 
 PROVIDER_ENV_NAMES = {
     "openai": {
@@ -207,6 +214,7 @@ def resolve_provider_config(
     model: str | None = None,
     base_url: str | None = None,
     api_key: str | None = None,
+    vision_provider: str | None = None,
 ) -> ProviderConfig:
     file_values = _load_config_values(start=start, explicit_path=config_path)
     legacy_env = _load_legacy_env_values(start)
@@ -261,6 +269,20 @@ def resolve_provider_config(
         legacy_values.get("api_key"),
         "",
     )
+    supports_vision = _bool_value(
+        _first_present(
+            profile_values.get("supports_vision"),
+            default_values.get("supports_vision"),
+            False,
+        )
+    )
+    resolved_vision_provider = _first_value(
+        vision_provider,
+        os.environ.get(ENV_VISION_PROVIDER),
+        profile_values.get("vision_provider"),
+        default_values.get("vision_provider"),
+        "",
+    )
 
     return ProviderConfig(
         name=provider_name,
@@ -268,6 +290,8 @@ def resolve_provider_config(
         api_key=str(resolved_api_key or ""),
         base_url=str(resolved_base_url or ""),
         model=str(resolved_model or ""),
+        supports_vision=supports_vision,
+        vision_provider=normalize_provider_name(resolved_vision_provider) if resolved_vision_provider else "",
     )
 
 
@@ -412,6 +436,19 @@ def _first_value(*values):
         if value:
             return value
     return ""
+
+
+def _first_present(*values):
+    for value in values:
+        if value is not None and value != "":
+            return value
+    return ""
+
+
+def _bool_value(value):
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _validate_protocol(protocol: Any, provider_name: str) -> str:
