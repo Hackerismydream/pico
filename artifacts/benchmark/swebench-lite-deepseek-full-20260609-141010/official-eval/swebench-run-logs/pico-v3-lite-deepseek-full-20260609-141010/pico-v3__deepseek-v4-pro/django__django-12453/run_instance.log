@@ -1,0 +1,65 @@
+2026-06-09 20:25:22,256 - INFO - Creating container for django__django-12453...
+2026-06-09 20:25:22,289 - INFO - Container for django__django-12453 created: 8d6177ad6d1fe5abb322e2983150d0b824ffced4c49098bfe14d3a4f143a1c45
+2026-06-09 20:25:22,415 - INFO - Container for django__django-12453 started: 8d6177ad6d1fe5abb322e2983150d0b824ffced4c49098bfe14d3a4f143a1c45
+2026-06-09 20:25:22,415 - INFO - Intermediate patch for django__django-12453 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/django__django-12453/patch.diff, now applying to container...
+2026-06-09 20:25:22,610 - INFO - >>>>> Applied Patch:
+Checking patch django/db/backends/base/creation.py...
+Applied patch django/db/backends/base/creation.py cleanly.
+
+2026-06-09 20:25:27,782 - INFO - Git diff before:
+diff --git a/django/db/backends/base/creation.py b/django/db/backends/base/creation.py
+index c50fc90171..4d8e553cab 100644
+--- a/django/db/backends/base/creation.py
++++ b/django/db/backends/base/creation.py
+@@ -5,7 +5,7 @@ from io import StringIO
+ from django.apps import apps
+ from django.conf import settings
+ from django.core import serializers
+-from django.db import router
++from django.db import router, transaction
+ 
+ # The prefix to put on the default database name when creating
+ # the test database.
+@@ -126,7 +126,8 @@ class BaseDatabaseCreation:
+         the serialize_db_to_string() method.
+         """
+         data = StringIO(data)
+-        for obj in serializers.deserialize("json", data, using=self.connection.alias):
++        with transaction.atomic(using=self.connection.alias):
++            for obj in serializers.deserialize("json", data, using=self.connection.alias):
+             obj.save()
+ 
+     def _get_database_display_str(self, verbosity, database_name):
+2026-06-09 20:25:27,782 - INFO - Eval script for django__django-12453 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/django__django-12453/eval.sh; copying to container...
+2026-06-09 20:26:18,927 - INFO - Test runtime: 51.08 seconds
+2026-06-09 20:26:18,927 - INFO - Test output for django__django-12453 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/django__django-12453/test_output.txt
+2026-06-09 20:26:19,165 - INFO - Git diff after:
+diff --git a/django/db/backends/base/creation.py b/django/db/backends/base/creation.py
+index c50fc90171..4d8e553cab 100644
+--- a/django/db/backends/base/creation.py
++++ b/django/db/backends/base/creation.py
+@@ -5,7 +5,7 @@ from io import StringIO
+ from django.apps import apps
+ from django.conf import settings
+ from django.core import serializers
+-from django.db import router
++from django.db import router, transaction
+ 
+ # The prefix to put on the default database name when creating
+ # the test database.
+@@ -126,7 +126,8 @@ class BaseDatabaseCreation:
+         the serialize_db_to_string() method.
+         """
+         data = StringIO(data)
+-        for obj in serializers.deserialize("json", data, using=self.connection.alias):
++        with transaction.atomic(using=self.connection.alias):
++            for obj in serializers.deserialize("json", data, using=self.connection.alias):
+             obj.save()
+ 
+     def _get_database_display_str(self, verbosity, database_name):
+2026-06-09 20:26:19,165 - INFO - Grading answer for django__django-12453...
+2026-06-09 20:26:19,167 - INFO - report: {'django__django-12453': {'patch_is_None': False, 'patch_exists': True, 'patch_successfully_applied': True, 'resolved': False, 'tests_status': {'FAIL_TO_PASS': {'success': [], 'failure': ['test_circular_reference (backends.base.test_creation.TestDeserializeDbFromString)']}, 'PASS_TO_PASS': {'success': [], 'failure': ['test_custom_test_name (backends.base.test_creation.TestDbSignatureTests)', 'test_custom_test_name_with_test_prefix (backends.base.test_creation.TestDbSignatureTests)', 'test_default_name (backends.base.test_creation.TestDbSignatureTests)', 'test_migrate_test_setting_false (backends.base.test_creation.TestDbCreationTests)', 'test_migrate_test_setting_true (backends.base.test_creation.TestDbCreationTests)']}, 'FAIL_TO_FAIL': {'success': [], 'failure': []}, 'PASS_TO_FAIL': {'success': [], 'failure': []}}}}
+Result for django__django-12453: resolved: False
+2026-06-09 20:26:19,167 - INFO - Attempting to stop container sweb.eval.django__django-12453.pico-v3-lite-deepseek-full-20260609-141010...
+2026-06-09 20:26:34,276 - INFO - Attempting to remove container sweb.eval.django__django-12453.pico-v3-lite-deepseek-full-20260609-141010...
+2026-06-09 20:26:34,326 - INFO - Container sweb.eval.django__django-12453.pico-v3-lite-deepseek-full-20260609-141010 removed.

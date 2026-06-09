@@ -1,0 +1,1 @@
+DOCKER_HOST=unix:///Users/martinlos/.colima/pico/docker.sock uv run --extra swebench pico-swebench --subset lite --split test --workers 8 --provider deepseek --max-steps 10 --max-new-tokens 4096 --openai-timeout 60 --command-timeout 600 --include-empty-predictions --skip-existing-empty-predictions --output outputs/swebench-lite-deepseek-full-20260609-141010

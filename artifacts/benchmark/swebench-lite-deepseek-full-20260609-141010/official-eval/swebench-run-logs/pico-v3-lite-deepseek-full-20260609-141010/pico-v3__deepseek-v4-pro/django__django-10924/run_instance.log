@@ -1,0 +1,63 @@
+2026-06-09 20:20:23,920 - INFO - Creating container for django__django-10924...
+2026-06-09 20:20:23,999 - INFO - Container for django__django-10924 created: 27e78605ca49120da06ffe763096797c1ada09851a3559142cfa4c868d0efa73
+2026-06-09 20:20:24,150 - INFO - Container for django__django-10924 started: 27e78605ca49120da06ffe763096797c1ada09851a3559142cfa4c868d0efa73
+2026-06-09 20:20:24,150 - INFO - Intermediate patch for django__django-10924 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/django__django-10924/patch.diff, now applying to container...
+2026-06-09 20:20:24,340 - INFO - >>>>> Applied Patch:
+Checking patch django/db/models/fields/__init__.py...
+Applied patch django/db/models/fields/__init__.py cleanly.
+
+2026-06-09 20:20:32,856 - INFO - Git diff before:
+diff --git a/django/db/models/fields/__init__.py b/django/db/models/fields/__init__.py
+index 0c64748ccd..b01f2beec3 100644
+--- a/django/db/models/fields/__init__.py
++++ b/django/db/models/fields/__init__.py
+@@ -1687,7 +1687,7 @@ class FilePathField(Field):
+ 
+     def deconstruct(self):
+         name, path, args, kwargs = super().deconstruct()
+-        if self.path != '':
++        if callable(self.path) or self.path != '':
+             kwargs['path'] = self.path
+         if self.match is not None:
+             kwargs['match'] = self.match
+@@ -1709,7 +1709,7 @@ class FilePathField(Field):
+ 
+     def formfield(self, **kwargs):
+         return super().formfield(**{
+-            'path': self.path,
++            'path': self.path() if callable(self.path) else self.path,
+             'match': self.match,
+             'recursive': self.recursive,
+             'form_class': forms.FilePathField,
+2026-06-09 20:20:32,856 - INFO - Eval script for django__django-10924 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/django__django-10924/eval.sh; copying to container...
+2026-06-09 20:21:32,424 - INFO - Test runtime: 59.46 seconds
+2026-06-09 20:21:32,425 - INFO - Test output for django__django-10924 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/django__django-10924/test_output.txt
+2026-06-09 20:21:32,668 - INFO - Git diff after:
+diff --git a/django/db/models/fields/__init__.py b/django/db/models/fields/__init__.py
+index 0c64748ccd..b01f2beec3 100644
+--- a/django/db/models/fields/__init__.py
++++ b/django/db/models/fields/__init__.py
+@@ -1687,7 +1687,7 @@ class FilePathField(Field):
+ 
+     def deconstruct(self):
+         name, path, args, kwargs = super().deconstruct()
+-        if self.path != '':
++        if callable(self.path) or self.path != '':
+             kwargs['path'] = self.path
+         if self.match is not None:
+             kwargs['match'] = self.match
+@@ -1709,7 +1709,7 @@ class FilePathField(Field):
+ 
+     def formfield(self, **kwargs):
+         return super().formfield(**{
+-            'path': self.path,
++            'path': self.path() if callable(self.path) else self.path,
+             'match': self.match,
+             'recursive': self.recursive,
+             'form_class': forms.FilePathField,
+2026-06-09 20:21:32,669 - INFO - Grading answer for django__django-10924...
+2026-06-09 20:21:32,669 - INFO - report: {'django__django-10924': {'patch_is_None': False, 'patch_exists': True, 'patch_successfully_applied': True, 'resolved': True, 'tests_status': {'FAIL_TO_PASS': {'success': ['test_callable_path (model_fields.test_filepathfield.FilePathFieldTests)'], 'failure': []}, 'PASS_TO_PASS': {'success': ['test_path (model_fields.test_filepathfield.FilePathFieldTests)'], 'failure': []}, 'FAIL_TO_FAIL': {'success': [], 'failure': []}, 'PASS_TO_FAIL': {'success': [], 'failure': []}}}}
+Result for django__django-10924: resolved: True
+2026-06-09 20:21:32,670 - INFO - Attempting to stop container sweb.eval.django__django-10924.pico-v3-lite-deepseek-full-20260609-141010...
+2026-06-09 20:21:47,814 - INFO - Attempting to remove container sweb.eval.django__django-10924.pico-v3-lite-deepseek-full-20260609-141010...
+2026-06-09 20:21:48,023 - INFO - Container sweb.eval.django__django-10924.pico-v3-lite-deepseek-full-20260609-141010 removed.

@@ -1,0 +1,12 @@
+diff --git a/django/db/migrations/autodetector.py b/django/db/migrations/autodetector.py
+index 89e2dceeaf..23ee592bec 100644
+--- a/django/db/migrations/autodetector.py
++++ b/django/db/migrations/autodetector.py
+@@ -184,6 +184,7 @@ class MigrationAutodetector:
+         self.generate_altered_fields()
+         self.generate_altered_unique_together()
+         self.generate_altered_index_together()
++        self.generate_altered_order_with_respect_to()
+         self.generate_added_indexes()
+         self.generate_added_constraints()
+         self.generate_altered_db_table()

@@ -1,0 +1,12 @@
+diff --git a/django/contrib/admin/options.py b/django/contrib/admin/options.py
+index dadd4acfa1..c403de455e 100644
+--- a/django/contrib/admin/options.py
++++ b/django/contrib/admin/options.py
+@@ -28,6 +28,7 @@ from django.core.exceptions import (
+ )
+ from django.core.paginator import Paginator
+ from django.db import models, router, transaction
++from django.utils.functional import format_lazy
+ from django.db.models.constants import LOOKUP_SEP
+ from django.forms.formsets import DELETION_FIELD_NAME, all_valid
+ from django.forms.models import (

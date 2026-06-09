@@ -1,0 +1,14 @@
+diff --git a/django/db/models/query.py b/django/db/models/query.py
+index 07d6ffd4ca..99ba62bcc5 100644
+--- a/django/db/models/query.py
++++ b/django/db/models/query.py
+@@ -921,6 +921,9 @@ class QuerySet:
+         clone = self._chain()
+         clone.query.set_empty()
+         return clone
++        if clone.query.combinator:
++            clone.query.combinator = None
++            clone.query.combined_queries = ()
+ 
+     ##################################################################
+     # PUBLIC METHODS THAT ALTER ATTRIBUTES AND RETURN A NEW QUERYSET #

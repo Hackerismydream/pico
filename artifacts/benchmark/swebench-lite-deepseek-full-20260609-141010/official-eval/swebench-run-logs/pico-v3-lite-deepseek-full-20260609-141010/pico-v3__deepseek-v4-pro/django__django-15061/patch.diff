@@ -1,0 +1,15 @@
+diff --git a/django/forms/widgets.py b/django/forms/widgets.py
+index 00c19e2c55..8705318a26 100644
+--- a/django/forms/widgets.py
++++ b/django/forms/widgets.py
+@@ -846,10 +846,6 @@ class MultiWidget(Widget):
+                 widget_attrs = final_attrs
+             subwidgets.append(widget.get_context(widget_name, widget_value, widget_attrs)['widget'])
+         context['widget']['subwidgets'] = subwidgets
+-        return context
+-
+-    def id_for_label(self, id_):
+-        if id_:
+             id_ += '_0'
+         return id_
+ 

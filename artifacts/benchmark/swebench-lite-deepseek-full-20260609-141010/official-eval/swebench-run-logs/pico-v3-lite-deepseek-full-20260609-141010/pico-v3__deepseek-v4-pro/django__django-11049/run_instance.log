@@ -1,0 +1,58 @@
+2026-06-09 20:21:48,065 - INFO - Creating container for django__django-11049...
+2026-06-09 20:21:48,104 - INFO - Container for django__django-11049 created: 948ad7ec1eb7128d067fab4be85c67b1ab19e86c5a8d2428139e5272d6ef04e1
+2026-06-09 20:21:48,180 - INFO - Container for django__django-11049 started: 948ad7ec1eb7128d067fab4be85c67b1ab19e86c5a8d2428139e5272d6ef04e1
+2026-06-09 20:21:48,181 - INFO - Intermediate patch for django__django-11049 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/django__django-11049/patch.diff, now applying to container...
+2026-06-09 20:21:48,274 - INFO - >>>>> Applied Patch:
+Checking patch django/db/models/fields/__init__.py...
+Checking patch tests/model_fields/test_durationfield.py...
+Applied patch django/db/models/fields/__init__.py cleanly.
+Applied patch tests/model_fields/test_durationfield.py cleanly.
+
+2026-06-09 20:21:51,847 - INFO - Git diff before:
+diff --git a/django/db/models/fields/__init__.py b/django/db/models/fields/__init__.py
+index f32ce64629..71005490f3 100644
+--- a/django/db/models/fields/__init__.py
++++ b/django/db/models/fields/__init__.py
+@@ -1587,7 +1587,7 @@ class DurationField(Field):
+     empty_strings_allowed = False
+     default_error_messages = {
+         'invalid': _("'%(value)s' value has an invalid format. It must be in "
+-                     "[DD] [HH:[MM:]]ss[.uuuuuu] format.")
++                     "[DD] [[HH:]MM:]ss[.uuuuuu] format.")
+     }
+     description = _("Duration")
+ 
+diff --git a/tests/model_fields/test_durationfield.py b/tests/model_fields/test_durationfield.py
+index b73994f86a..f1c82ab8bd 100644
+--- a/tests/model_fields/test_durationfield.py
++++ b/tests/model_fields/test_durationfield.py
+@@ -75,7 +75,7 @@ class TestValidation(SimpleTestCase):
+         self.assertEqual(
+             cm.exception.message % cm.exception.params,
+             "'not a datetime' value has an invalid format. "
+-            "It must be in [DD] [HH:[MM:]]ss[.uuuuuu] format."
++            "It must be in [DD] [[HH:]MM:]ss[.uuuuuu] format."
+         )
+2026-06-09 20:21:51,847 - INFO - Eval script for django__django-11049 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/django__django-11049/eval.sh; copying to container...
+2026-06-09 20:23:01,858 - INFO - Test runtime: 69.91 seconds
+2026-06-09 20:23:01,858 - INFO - Test output for django__django-11049 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/django__django-11049/test_output.txt
+2026-06-09 20:23:02,123 - INFO - Git diff after:
+diff --git a/django/db/models/fields/__init__.py b/django/db/models/fields/__init__.py
+index f32ce64629..71005490f3 100644
+--- a/django/db/models/fields/__init__.py
++++ b/django/db/models/fields/__init__.py
+@@ -1587,7 +1587,7 @@ class DurationField(Field):
+     empty_strings_allowed = False
+     default_error_messages = {
+         'invalid': _("'%(value)s' value has an invalid format. It must be in "
+-                     "[DD] [HH:[MM:]]ss[.uuuuuu] format.")
++                     "[DD] [[HH:]MM:]ss[.uuuuuu] format.")
+     }
+     description = _("Duration")
+2026-06-09 20:23:02,123 - INFO - Git diff changed after running eval script
+2026-06-09 20:23:02,123 - INFO - Grading answer for django__django-11049...
+2026-06-09 20:23:02,123 - INFO - report: {'django__django-11049': {'patch_is_None': False, 'patch_exists': True, 'patch_successfully_applied': True, 'resolved': True, 'tests_status': {'FAIL_TO_PASS': {'success': ['test_invalid_string (model_fields.test_durationfield.TestValidation)'], 'failure': []}, 'PASS_TO_PASS': {'success': ['test_dumping (model_fields.test_durationfield.TestSerialization)', 'test_loading (model_fields.test_durationfield.TestSerialization)', 'test_formfield (model_fields.test_durationfield.TestFormField)', 'test_exact (model_fields.test_durationfield.TestQuerying)', 'test_gt (model_fields.test_durationfield.TestQuerying)', 'test_create_empty (model_fields.test_durationfield.TestSaveLoad)', 'test_fractional_seconds (model_fields.test_durationfield.TestSaveLoad)', 'test_simple_roundtrip (model_fields.test_durationfield.TestSaveLoad)'], 'failure': []}, 'FAIL_TO_FAIL': {'success': [], 'failure': []}, 'PASS_TO_FAIL': {'success': [], 'failure': []}}}}
+Result for django__django-11049: resolved: True
+2026-06-09 20:23:02,123 - INFO - Attempting to stop container sweb.eval.django__django-11049.pico-v3-lite-deepseek-full-20260609-141010...
+2026-06-09 20:23:17,237 - INFO - Attempting to remove container sweb.eval.django__django-11049.pico-v3-lite-deepseek-full-20260609-141010...
+2026-06-09 20:23:17,260 - INFO - Container sweb.eval.django__django-11049.pico-v3-lite-deepseek-full-20260609-141010 removed.

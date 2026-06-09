@@ -1,0 +1,45 @@
+2026-06-09 20:20:23,920 - INFO - Creating container for astropy__astropy-6938...
+2026-06-09 20:20:23,999 - INFO - Container for astropy__astropy-6938 created: 969a6ccf3e3368abb8c37967e8b70bc342b612f7b6a7b47940155a5701868943
+2026-06-09 20:20:24,203 - INFO - Container for astropy__astropy-6938 started: 969a6ccf3e3368abb8c37967e8b70bc342b612f7b6a7b47940155a5701868943
+2026-06-09 20:20:24,203 - INFO - Intermediate patch for astropy__astropy-6938 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/astropy__astropy-6938/patch.diff, now applying to container...
+2026-06-09 20:20:24,372 - INFO - >>>>> Applied Patch:
+Checking patch astropy/io/fits/fitsrec.py...
+Applied patch astropy/io/fits/fitsrec.py cleanly.
+
+2026-06-09 20:20:29,163 - INFO - Git diff before:
+diff --git a/astropy/io/fits/fitsrec.py b/astropy/io/fits/fitsrec.py
+index 574b4073b1..cb79142dce 100644
+--- a/astropy/io/fits/fitsrec.py
++++ b/astropy/io/fits/fitsrec.py
+@@ -1261,7 +1261,7 @@ class FITS_rec(np.recarray):
+ 
+         # Replace exponent separator in floating point numbers
+         if 'D' in format:
+-            output_field.replace(encode_ascii('E'), encode_ascii('D'))
++            output_field = output_field.replace(encode_ascii('E'), encode_ascii('D'))
+ 
+ 
+ def _get_recarray_field(array, key):
+2026-06-09 20:20:29,163 - INFO - Eval script for astropy__astropy-6938 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/astropy__astropy-6938/eval.sh; copying to container...
+2026-06-09 20:21:33,740 - INFO - Test runtime: 64.50 seconds
+2026-06-09 20:21:33,741 - INFO - Test output for astropy__astropy-6938 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/astropy__astropy-6938/test_output.txt
+2026-06-09 20:21:34,036 - INFO - Git diff after:
+diff --git a/astropy/io/fits/fitsrec.py b/astropy/io/fits/fitsrec.py
+index 574b4073b1..cb79142dce 100644
+--- a/astropy/io/fits/fitsrec.py
++++ b/astropy/io/fits/fitsrec.py
+@@ -1261,7 +1261,7 @@ class FITS_rec(np.recarray):
+ 
+         # Replace exponent separator in floating point numbers
+         if 'D' in format:
+-            output_field.replace(encode_ascii('E'), encode_ascii('D'))
++            output_field = output_field.replace(encode_ascii('E'), encode_ascii('D'))
+ 
+ 
+ def _get_recarray_field(array, key):
+2026-06-09 20:21:34,036 - INFO - Grading answer for astropy__astropy-6938...
+2026-06-09 20:21:34,038 - INFO - report: {'astropy__astropy-6938': {'patch_is_None': False, 'patch_exists': True, 'patch_successfully_applied': True, 'resolved': False, 'tests_status': {'FAIL_TO_PASS': {'success': [], 'failure': ['astropy/io/fits/tests/test_checksum.py::TestChecksumFunctions::test_ascii_table_data', 'astropy/io/fits/tests/test_table.py::TestTableFunctions::test_ascii_table']}, 'PASS_TO_PASS': {'success': ['astropy/io/fits/tests/test_checksum.py::TestChecksumFunctions::test_sample_file', 'astropy/io/fits/tests/test_checksum.py::TestChecksumFunctions::test_image_create', 'astropy/io/fits/tests/test_checksum.py::TestChecksumFunctions::test_scaled_data', 'astropy/io/fits/tests/test_checksum.py::TestChecksumFunctions::test_scaled_data_auto_rescale', 'astropy/io/fits/tests/test_checksum.py::TestChecksumFunctions::test_uint16_data', 'astropy/io/fits/tests/test_checksum.py::TestChecksumFunctions::test_groups_hdu_data', 'astropy/io/fits/tests/test_checksum.py::TestChecksumFunctions::test_open_with_no_keywords', 'astropy/io/fits/tests/test_checksum.py::TestChecksumFunctions::test_writeto_convenience', 'astropy/io/fits/tests/test_checksum.py::TestChecksumFunctions::test_hdu_writeto', 'astropy/io/fits/tests/test_checksum.py::TestChecksumFunctions::test_datasum_only', 'astropy/io/fits/tests/test_table.py::test_regression_scalar_indexing'], 'failure': []}, 'FAIL_TO_FAIL': {'success': [], 'failure': []}, 'PASS_TO_FAIL': {'success': [], 'failure': []}}}}
+Result for astropy__astropy-6938: resolved: False
+2026-06-09 20:21:34,038 - INFO - Attempting to stop container sweb.eval.astropy__astropy-6938.pico-v3-lite-deepseek-full-20260609-141010...
+2026-06-09 20:21:49,141 - INFO - Attempting to remove container sweb.eval.astropy__astropy-6938.pico-v3-lite-deepseek-full-20260609-141010...
+2026-06-09 20:21:49,166 - INFO - Container sweb.eval.astropy__astropy-6938.pico-v3-lite-deepseek-full-20260609-141010 removed.

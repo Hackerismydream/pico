@@ -1,0 +1,47 @@
+2026-06-09 20:30:30,830 - INFO - Creating container for django__django-15061...
+2026-06-09 20:30:30,868 - INFO - Container for django__django-15061 created: c0f221e37fba9a3940436d7e740d6a07ffb76056588a384cfab3831d2628712d
+2026-06-09 20:30:30,987 - INFO - Container for django__django-15061 started: c0f221e37fba9a3940436d7e740d6a07ffb76056588a384cfab3831d2628712d
+2026-06-09 20:30:30,987 - INFO - Intermediate patch for django__django-15061 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/django__django-15061/patch.diff, now applying to container...
+2026-06-09 20:30:31,197 - INFO - >>>>> Applied Patch:
+Checking patch django/forms/widgets.py...
+Applied patch django/forms/widgets.py cleanly.
+
+2026-06-09 20:30:36,218 - INFO - Git diff before:
+diff --git a/django/forms/widgets.py b/django/forms/widgets.py
+index 00c19e2c55..8705318a26 100644
+--- a/django/forms/widgets.py
++++ b/django/forms/widgets.py
+@@ -846,10 +846,6 @@ class MultiWidget(Widget):
+                 widget_attrs = final_attrs
+             subwidgets.append(widget.get_context(widget_name, widget_value, widget_attrs)['widget'])
+         context['widget']['subwidgets'] = subwidgets
+-        return context
+-
+-    def id_for_label(self, id_):
+-        if id_:
+             id_ += '_0'
+         return id_
+2026-06-09 20:30:36,218 - INFO - Eval script for django__django-15061 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/django__django-15061/eval.sh; copying to container...
+2026-06-09 20:31:13,525 - INFO - Test runtime: 37.24 seconds
+2026-06-09 20:31:13,530 - INFO - Test output for django__django-15061 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/django__django-15061/test_output.txt
+2026-06-09 20:31:13,798 - INFO - Git diff after:
+diff --git a/django/forms/widgets.py b/django/forms/widgets.py
+index 00c19e2c55..8705318a26 100644
+--- a/django/forms/widgets.py
++++ b/django/forms/widgets.py
+@@ -846,10 +846,6 @@ class MultiWidget(Widget):
+                 widget_attrs = final_attrs
+             subwidgets.append(widget.get_context(widget_name, widget_value, widget_attrs)['widget'])
+         context['widget']['subwidgets'] = subwidgets
+-        return context
+-
+-    def id_for_label(self, id_):
+-        if id_:
+             id_ += '_0'
+         return id_
+2026-06-09 20:31:13,798 - INFO - Grading answer for django__django-15061...
+2026-06-09 20:31:13,800 - INFO - report: {'django__django-15061': {'patch_is_None': False, 'patch_exists': True, 'patch_successfully_applied': True, 'resolved': False, 'tests_status': {'FAIL_TO_PASS': {'success': [], 'failure': ['test_form_as_table (forms_tests.field_tests.test_multivaluefield.MultiValueFieldTest)', 'test_form_as_table_data (forms_tests.field_tests.test_multivaluefield.MultiValueFieldTest)', 'test_form_as_table (forms_tests.field_tests.test_splitdatetimefield.SplitDateTimeFieldTest)']}, 'PASS_TO_PASS': {'success': [], 'failure': ['test_bad_choice (forms_tests.field_tests.test_multivaluefield.MultiValueFieldTest)', 'test_clean (forms_tests.field_tests.test_multivaluefield.MultiValueFieldTest)', 'test_clean_disabled_multivalue (forms_tests.field_tests.test_multivaluefield.MultiValueFieldTest)', 'test_disabled_has_changed (forms_tests.field_tests.test_multivaluefield.MultiValueFieldTest)', 'test_form_cleaned_data (forms_tests.field_tests.test_multivaluefield.MultiValueFieldTest)', "Test when the first widget's data has changed.", "Test when the last widget's data has changed. This ensures that it is", 'test_has_changed_no_initial (forms_tests.field_tests.test_multivaluefield.MultiValueFieldTest)', 'test_has_changed_same (forms_tests.field_tests.test_multivaluefield.MultiValueFieldTest)', 'If insufficient data is provided, None is substituted.', 'test_render_required_attributes (forms_tests.field_tests.test_multivaluefield.MultiValueFieldTest)', 'test_splitdatetimefield_1 (forms_tests.field_tests.test_splitdatetimefield.SplitDateTimeFieldTest)', 'test_splitdatetimefield_2 (forms_tests.field_tests.test_splitdatetimefield.SplitDateTimeFieldTest)', 'test_splitdatetimefield_changed (forms_tests.field_tests.test_splitdatetimefield.SplitDateTimeFieldTest)']}, 'FAIL_TO_FAIL': {'success': [], 'failure': []}, 'PASS_TO_FAIL': {'success': [], 'failure': []}}}}
+Result for django__django-15061: resolved: False
+2026-06-09 20:31:13,800 - INFO - Attempting to stop container sweb.eval.django__django-15061.pico-v3-lite-deepseek-full-20260609-141010...
+2026-06-09 20:31:29,041 - INFO - Attempting to remove container sweb.eval.django__django-15061.pico-v3-lite-deepseek-full-20260609-141010...
+2026-06-09 20:31:29,145 - INFO - Container sweb.eval.django__django-15061.pico-v3-lite-deepseek-full-20260609-141010 removed.

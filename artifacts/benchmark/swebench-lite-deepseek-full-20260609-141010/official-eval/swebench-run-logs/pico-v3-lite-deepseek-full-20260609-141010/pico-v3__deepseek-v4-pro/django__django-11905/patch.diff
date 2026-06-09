@@ -1,0 +1,56 @@
+diff --git a/django/db/models/lookups.py b/django/db/models/lookups.py
+index 9344979c56..fa473d0385 100644
+--- a/django/db/models/lookups.py
++++ b/django/db/models/lookups.py
+@@ -278,6 +278,12 @@ class IExact(BuiltinLookup):
+     lookup_name = 'iexact'
+     prepare_rhs = False
+ 
++    def __init__(self, lhs, rhs):
++        if rhs is not None and not isinstance(rhs, bool):
++            raise ValueError('The __isnull lookup only accepts True or False.')
++        super().__init__(lhs, rhs)
++
++
+     def process_rhs(self, qn, connection):
+         rhs, params = super().process_rhs(qn, connection)
+         if params:
+@@ -394,6 +400,12 @@ class PatternLookup(BuiltinLookup):
+     param_pattern = '%%%s%%'
+     prepare_rhs = False
+ 
++    def __init__(self, lhs, rhs):
++        if rhs is not None and not isinstance(rhs, bool):
++            raise ValueError('The __isnull lookup only accepts True or False.')
++        super().__init__(lhs, rhs)
++
++
+     def get_rhs_op(self, connection, rhs):
+         # Assume we are in startswith. We need to produce SQL like:
+         #     col LIKE %s, ['thevalue%']
+@@ -462,6 +474,12 @@ class IsNull(BuiltinLookup):
+     lookup_name = 'isnull'
+     prepare_rhs = False
+ 
++    def __init__(self, lhs, rhs):
++        if rhs is not None and not isinstance(rhs, bool):
++            raise ValueError('The __isnull lookup only accepts True or False.')
++        super().__init__(lhs, rhs)
++
++
+     def as_sql(self, compiler, connection):
+         sql, params = compiler.compile(self.lhs)
+         if self.rhs:
+@@ -475,6 +493,12 @@ class Regex(BuiltinLookup):
+     lookup_name = 'regex'
+     prepare_rhs = False
+ 
++    def __init__(self, lhs, rhs):
++        if rhs is not None and not isinstance(rhs, bool):
++            raise ValueError('The __isnull lookup only accepts True or False.')
++        super().__init__(lhs, rhs)
++
++
+     def as_sql(self, compiler, connection):
+         if self.lookup_name in connection.operators:
+             return super().as_sql(compiler, connection)

@@ -1,0 +1,131 @@
+2026-06-09 20:24:49,284 - INFO - Creating container for django__django-11905...
+2026-06-09 20:24:49,344 - INFO - Container for django__django-11905 created: 1848d2b123ecb25238b2e1e79998aa6decc31573d1cbfbc112accb1c1cabe593
+2026-06-09 20:24:49,443 - INFO - Container for django__django-11905 started: 1848d2b123ecb25238b2e1e79998aa6decc31573d1cbfbc112accb1c1cabe593
+2026-06-09 20:24:49,443 - INFO - Intermediate patch for django__django-11905 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/django__django-11905/patch.diff, now applying to container...
+2026-06-09 20:24:49,563 - INFO - >>>>> Applied Patch:
+Checking patch django/db/models/lookups.py...
+Applied patch django/db/models/lookups.py cleanly.
+
+2026-06-09 20:24:52,808 - INFO - Git diff before:
+diff --git a/django/db/models/lookups.py b/django/db/models/lookups.py
+index 9344979c56..fa473d0385 100644
+--- a/django/db/models/lookups.py
++++ b/django/db/models/lookups.py
+@@ -278,6 +278,12 @@ class IExact(BuiltinLookup):
+     lookup_name = 'iexact'
+     prepare_rhs = False
+ 
++    def __init__(self, lhs, rhs):
++        if rhs is not None and not isinstance(rhs, bool):
++            raise ValueError('The __isnull lookup only accepts True or False.')
++        super().__init__(lhs, rhs)
++
++
+     def process_rhs(self, qn, connection):
+         rhs, params = super().process_rhs(qn, connection)
+         if params:
+@@ -394,6 +400,12 @@ class PatternLookup(BuiltinLookup):
+     param_pattern = '%%%s%%'
+     prepare_rhs = False
+ 
++    def __init__(self, lhs, rhs):
++        if rhs is not None and not isinstance(rhs, bool):
++            raise ValueError('The __isnull lookup only accepts True or False.')
++        super().__init__(lhs, rhs)
++
++
+     def get_rhs_op(self, connection, rhs):
+         # Assume we are in startswith. We need to produce SQL like:
+         #     col LIKE %s, ['thevalue%']
+@@ -462,6 +474,12 @@ class IsNull(BuiltinLookup):
+     lookup_name = 'isnull'
+     prepare_rhs = False
+ 
++    def __init__(self, lhs, rhs):
++        if rhs is not None and not isinstance(rhs, bool):
++            raise ValueError('The __isnull lookup only accepts True or False.')
++        super().__init__(lhs, rhs)
++
++
+     def as_sql(self, compiler, connection):
+         sql, params = compiler.compile(self.lhs)
+         if self.rhs:
+@@ -475,6 +493,12 @@ class Regex(BuiltinLookup):
+     lookup_name = 'regex'
+     prepare_rhs = False
+ 
++    def __init__(self, lhs, rhs):
++        if rhs is not None and not isinstance(rhs, bool):
++            raise ValueError('The __isnull lookup only accepts True or False.')
++        super().__init__(lhs, rhs)
++
++
+     def as_sql(self, compiler, connection):
+         if self.lookup_name in connection.operators:
+             return super().as_sql(compiler, connection)
+2026-06-09 20:24:52,808 - INFO - Eval script for django__django-11905 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/django__django-11905/eval.sh; copying to container...
+2026-06-09 20:25:58,140 - INFO - Test runtime: 65.25 seconds
+2026-06-09 20:25:58,140 - INFO - Test output for django__django-11905 written to logs/run_evaluation/pico-v3-lite-deepseek-full-20260609-141010/pico-v3__deepseek-v4-pro/django__django-11905/test_output.txt
+2026-06-09 20:25:58,400 - INFO - Git diff after:
+diff --git a/django/db/models/lookups.py b/django/db/models/lookups.py
+index 9344979c56..fa473d0385 100644
+--- a/django/db/models/lookups.py
++++ b/django/db/models/lookups.py
+@@ -278,6 +278,12 @@ class IExact(BuiltinLookup):
+     lookup_name = 'iexact'
+     prepare_rhs = False
+ 
++    def __init__(self, lhs, rhs):
++        if rhs is not None and not isinstance(rhs, bool):
++            raise ValueError('The __isnull lookup only accepts True or False.')
++        super().__init__(lhs, rhs)
++
++
+     def process_rhs(self, qn, connection):
+         rhs, params = super().process_rhs(qn, connection)
+         if params:
+@@ -394,6 +400,12 @@ class PatternLookup(BuiltinLookup):
+     param_pattern = '%%%s%%'
+     prepare_rhs = False
+ 
++    def __init__(self, lhs, rhs):
++        if rhs is not None and not isinstance(rhs, bool):
++            raise ValueError('The __isnull lookup only accepts True or False.')
++        super().__init__(lhs, rhs)
++
++
+     def get_rhs_op(self, connection, rhs):
+         # Assume we are in startswith. We need to produce SQL like:
+         #     col LIKE %s, ['thevalue%']
+@@ -462,6 +474,12 @@ class IsNull(BuiltinLookup):
+     lookup_name = 'isnull'
+     prepare_rhs = False
+ 
++    def __init__(self, lhs, rhs):
++        if rhs is not None and not isinstance(rhs, bool):
++            raise ValueError('The __isnull lookup only accepts True or False.')
++        super().__init__(lhs, rhs)
++
++
+     def as_sql(self, compiler, connection):
+         sql, params = compiler.compile(self.lhs)
+         if self.rhs:
+@@ -475,6 +493,12 @@ class Regex(BuiltinLookup):
+     lookup_name = 'regex'
+     prepare_rhs = False
+ 
++    def __init__(self, lhs, rhs):
++        if rhs is not None and not isinstance(rhs, bool):
++            raise ValueError('The __isnull lookup only accepts True or False.')
++        super().__init__(lhs, rhs)
++
++
+     def as_sql(self, compiler, connection):
+         if self.lookup_name in connection.operators:
+             return super().as_sql(compiler, connection)
+2026-06-09 20:25:58,400 - INFO - Grading answer for django__django-11905...
+2026-06-09 20:25:58,403 - INFO - report: {'django__django-11905': {'patch_is_None': False, 'patch_exists': True, 'patch_successfully_applied': True, 'resolved': False, 'tests_status': {'FAIL_TO_PASS': {'success': [], 'failure': ['test_isnull_non_boolean_value (lookup.tests.LookupTests)', 'test_iterator (lookup.tests.LookupTests)']}, 'PASS_TO_PASS': {'success': ['test_chain_date_time_lookups (lookup.tests.LookupTests)', 'test_custom_field_none_rhs (lookup.tests.LookupTests)', 'Lookup.can_use_none_as_rhs=True allows None as a lookup value.', 'test_error_messages (lookup.tests.LookupTests)', 'test_exact_exists (lookup.tests.LookupTests)', 'Transforms are used for __exact=None.', 'test_exact_query_rhs_with_selected_columns (lookup.tests.LookupTests)', 'test_exact_sliced_queryset_limit_one (lookup.tests.LookupTests)', 'test_exact_sliced_queryset_limit_one_offset (lookup.tests.LookupTests)', 'test_exact_sliced_queryset_not_limited_to_one (lookup.tests.LookupTests)', 'test_exists (lookup.tests.LookupTests)', 'test_in (lookup.tests.LookupTests)', 'test_in_bulk (lookup.tests.LookupTests)', 'test_in_bulk_lots_of_ids (lookup.tests.LookupTests)', 'test_in_bulk_non_unique_field (lookup.tests.LookupTests)', 'test_in_bulk_with_field (lookup.tests.LookupTests)', 'test_in_different_database (lookup.tests.LookupTests)', 'test_in_keeps_value_ordering (lookup.tests.LookupTests)', 'test_lookup_collision (lookup.tests.LookupTests)', 'test_nested_outerref_lhs (lookup.tests.LookupTests)', 'test_nonfield_lookups (lookup.tests.LookupTests)', 'test_relation_nested_lookup_error (lookup.tests.LookupTests)', 'test_unsupported_lookups (lookup.tests.LookupTests)', 'test_values (lookup.tests.LookupTests)', 'test_values_list (lookup.tests.LookupTests)'], 'failure': ['test_count (lookup.tests.LookupTests)', 'test_escaping (lookup.tests.LookupTests)', 'test_exclude (lookup.tests.LookupTests)', 'test_get_next_previous_by (lookup.tests.LookupTests)', 'test_lookup_date_as_str (lookup.tests.LookupTests)', 'test_lookup_int_as_str (lookup.tests.LookupTests)', 'test_none (lookup.tests.LookupTests)', 'test_pattern_lookups_with_substr (lookup.tests.LookupTests)', 'test_regex (lookup.tests.LookupTests)', 'test_regex_backreferencing (lookup.tests.LookupTests)', 'test_regex_non_ascii (lookup.tests.LookupTests)', 'test_regex_non_string (lookup.tests.LookupTests)', 'test_regex_null (lookup.tests.LookupTests)']}, 'FAIL_TO_FAIL': {'success': [], 'failure': []}, 'PASS_TO_FAIL': {'success': [], 'failure': []}}}}
+Result for django__django-11905: resolved: False
+2026-06-09 20:25:58,403 - INFO - Attempting to stop container sweb.eval.django__django-11905.pico-v3-lite-deepseek-full-20260609-141010...
+2026-06-09 20:26:13,518 - INFO - Attempting to remove container sweb.eval.django__django-11905.pico-v3-lite-deepseek-full-20260609-141010...
+2026-06-09 20:26:13,546 - INFO - Container sweb.eval.django__django-11905.pico-v3-lite-deepseek-full-20260609-141010 removed.

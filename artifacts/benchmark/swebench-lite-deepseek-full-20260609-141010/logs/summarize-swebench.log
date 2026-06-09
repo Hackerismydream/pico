@@ -1,0 +1,14 @@
+{
+  "attempted_instances": 31,
+  "completed_instances": null,
+  "empty_patch_count": 31,
+  "model_error_count": 13,
+  "non_empty_predictions": 59,
+  "predictions_count": 300,
+  "resolved_instances": null,
+  "resolved_rate": null,
+  "selected_instances": 300,
+  "setup_error_count": 18,
+  "submitted_instances": null,
+  "timeout_count": 0
+}
