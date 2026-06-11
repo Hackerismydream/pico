@@ -17,17 +17,13 @@ from .commands.slash import command_help_text, parse_subagent_args, resolve_comm
 from .config import (
     DEFAULT_PROVIDER,
     PROVIDER_DEFAULTS,
-    default_max_tokens_for_provider,
     load_project_env,
     resolve_project_sandbox_config,
-    resolve_provider_config,
-    resolve_vision_provider_config,
-    ENV_VISION_TIMEOUT,
 )
 from .features import skills as skillslib
 from .features.skills_runtime import invoke_skill
 from .providers import AnthropicCompatibleModelClient, OpenAICompatibleModelClient
-from .core.model_router import ModelClientRouter
+from .providers.runtime import ProviderClientClasses, build_provider_runtime
 from .core.runtime import Pico, SessionStore
 from .core.workspace import WorkspaceContext, middle
 
@@ -85,74 +81,10 @@ def _configured_secret_names(args):
     return sorted(configured_secret_names)
 
 
-def _build_model_client(args, provider=None, use_cli_overrides=True):
-    config = resolve_provider_config(
-        provider if provider is not None else getattr(args, "provider", None),
-        start=getattr(args, "cwd", "."),
-        config_path=getattr(args, "config", None),
-        model=getattr(args, "model", None) if use_cli_overrides else None,
-        base_url=getattr(args, "base_url", None) if use_cli_overrides else None,
-        api_key=getattr(args, "api_key", None) if use_cli_overrides else None,
-        vision_provider=getattr(args, "vision_provider", None) if use_cli_overrides else None,
-    )
-    return _model_client_from_config(config, args)
-
-
-def _build_vision_model_client(args, provider):
-    config = resolve_vision_provider_config(
-        provider,
-        start=getattr(args, "cwd", "."),
-        config_path=getattr(args, "config", None),
-        model=getattr(args, "vision_model", None),
-        base_url=getattr(args, "vision_base_url", None),
-        api_key=getattr(args, "vision_api_key", None),
-    )
-    return _model_client_from_config(config, args, timeout=_vision_timeout(args))
-
-
-def _model_client_from_config(config, args, timeout=None):
-    # CLI 只负责把 provider profile 翻译成具体协议 client。
-    # 例如 deepseek 是 profile，protocol=anthropic 才决定走 Messages API。
-    timeout = getattr(args, "openai_timeout", 300) if timeout is None else timeout
-    if config.protocol == "openai":
-        return OpenAICompatibleModelClient(
-            model=config.model,
-            base_url=config.base_url,
-            api_key=config.api_key,
-            temperature=args.temperature,
-            timeout=timeout,
-        )
-    if config.protocol == "anthropic":
-        return AnthropicCompatibleModelClient(
-            model=config.model,
-            base_url=config.base_url,
-            api_key=config.api_key,
-            temperature=args.temperature,
-            timeout=timeout,
-        )
-
-    raise ValueError(f"unknown provider protocol: {config.protocol}")
-
-
-def _vision_timeout(args):
-    value = getattr(args, "vision_timeout", None)
-    if value is None:
-        value = os.environ.get(ENV_VISION_TIMEOUT)
-    return int(value) if value else getattr(args, "openai_timeout", 300)
-
-
-def _build_model_client_router(args, provider_config, model_client):
-    if provider_config.supports_vision:
-        return ModelClientRouter(main_client=model_client, vision_client=model_client)
-    if not provider_config.vision_provider:
-        return ModelClientRouter(main_client=model_client)
-
-    def vision_client_factory():
-        return _build_vision_model_client(args, provider_config.vision_provider)
-
-    return ModelClientRouter(
-        main_client=model_client,
-        vision_client_factory=vision_client_factory,
+def _provider_client_classes():
+    return ProviderClientClasses(
+        openai=OpenAICompatibleModelClient,
+        anthropic=AnthropicCompatibleModelClient,
     )
 
 
@@ -221,23 +153,13 @@ def build_agent(args):
     # 先采集工作区快照，再整理 secret 名单、模型后端和 session。
     workspace = WorkspaceContext.build(args.cwd)
     store = SessionStore(workspace.repo_root + "/.pico/sessions")
-    provider_config = resolve_provider_config(
-        getattr(args, "provider", None),
-        start=getattr(args, "cwd", "."),
-        config_path=getattr(args, "config", None),
-        model=getattr(args, "model", None),
-        base_url=getattr(args, "base_url", None),
-        api_key=getattr(args, "api_key", None),
-        vision_provider=getattr(args, "vision_provider", None),
+    provider_runtime = build_provider_runtime(
+        args, client_classes=_provider_client_classes()
     )
-    model = _build_model_client(args)
-    model_client_router = _build_model_client_router(args, provider_config, model)
-
-    def model_client_factory():
-        return _build_model_client(args)
-
-    if args.max_new_tokens is None:
-        args.max_new_tokens = default_max_tokens_for_provider(provider_config.name)
+    model = provider_runtime.model_client
+    model_client_router = provider_runtime.model_client_router
+    model_client_factory = provider_runtime.model_client_factory
+    args.max_new_tokens = provider_runtime.max_new_tokens
 
     sandbox_config = resolve_project_sandbox_config(
         start=workspace.repo_root,
