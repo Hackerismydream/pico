@@ -254,6 +254,18 @@ def test_list_files_hides_internal_agent_state(tmp_path):
     assert "[F] hello.txt" in result
 
 
+def test_list_files_shows_one_level_child_preview(tmp_path):
+    agent = build_agent(tmp_path, [])
+    nested = tmp_path / "fixtures" / "db"
+    nested.mkdir(parents=True)
+    (nested / "deployment_guide.md").write_text("docs\n", encoding="utf-8")
+
+    result = agent.run_tool("list_files", {"path": "fixtures"})
+
+    assert "[D] fixtures/db" in result
+    assert "  [F] fixtures/db/deployment_guide.md" in result
+
+
 def test_repeated_identical_tool_call_is_rejected(tmp_path):
     agent = build_agent(tmp_path, [])
     agent.record({"role": "tool", "name": "list_files", "args": {}, "content": "(empty)", "created_at": "1"})

@@ -391,7 +391,7 @@ class Engine:
                 emit_continue_transition(agent, task_state, CONTINUE_PLAN_NOTICE)
                 continue
 
-            readiness_action, notice = final_readiness_action(self, task_state)
+            readiness_action, notice = final_readiness_action(self, task_state, final)
             if readiness_action == "runtime_notice":
                 yield {
                     "type": "runtime_notice",

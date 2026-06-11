@@ -30,7 +30,7 @@ def read_jsonl(path):
 
 
 def test_long_shell_output_is_clipped_and_full_output_is_saved_as_run_artifact(tmp_path):
-    script = "print('x'*6000)"
+    script = "print('x'*12000)"
     command = f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}"
     agent = build_agent(
         tmp_path,
@@ -43,14 +43,14 @@ def test_long_shell_output_is_clipped_and_full_output_is_saved_as_run_artifact(t
     assert agent.ask("produce long shell output") == "captured"
 
     tool_item = next(item for item in agent.session["history"] if item["role"] == "tool" and item["name"] == "run_shell")
-    assert len(tool_item["content"]) < 1200
+    assert len(tool_item["content"]) < 8500
     assert "full output saved:" in tool_item["content"]
     assert "full output saved:" in agent.model_client.prompts[1]
 
     report = json.loads((agent.current_run_dir / "report.json").read_text(encoding="utf-8"))
     artifact_path = report["runtime_reminders"][0]["artifact_path"] if report["runtime_reminders"] else agent._last_tool_result_metadata["full_output_artifact"]
     full_output = (tmp_path / artifact_path).read_text(encoding="utf-8")
-    assert "x" * 6000 in full_output
+    assert "x" * 12000 in full_output
     assert tool_item["content_sha256"] == hashlib.sha256(full_output.encode("utf-8")).hexdigest()
 
     trace_events = read_jsonl(agent.current_run_dir / "trace.jsonl")
@@ -67,7 +67,7 @@ def test_run_shell_status_is_parsed_from_full_result_before_artifact_rendering(t
             "<final>captured</final>",
         ],
     )
-    long_stdout = "x" * 3000
+    long_stdout = "x" * 12000
     agent.tools["run_shell"] = RegisteredTool(
         name="run_shell",
         schema={"command": "str", "timeout": "int=20"},
@@ -100,7 +100,7 @@ def test_long_tool_output_artifact_ref_survives_external_run_store(tmp_path):
         schema={"command": "str", "timeout": "int=20"},
         description="Synthetic shell command.",
         risky=True,
-        runner=lambda args: "exit_code: 0\nstdout:\n" + ("x" * 3000),
+        runner=lambda args: "exit_code: 0\nstdout:\n" + ("x" * 12000),
     )
 
     assert agent.ask("run synthetic shell") == "captured"

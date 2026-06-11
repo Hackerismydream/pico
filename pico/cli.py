@@ -21,6 +21,8 @@ from .config import (
     load_project_env,
     resolve_project_sandbox_config,
     resolve_provider_config,
+    resolve_vision_provider_config,
+    ENV_VISION_TIMEOUT,
 )
 from .features import skills as skillslib
 from .features.skills_runtime import invoke_skill
@@ -34,6 +36,7 @@ DEFAULT_SECRET_ENV_NAMES = (
     "PICO_OPENAI_API_KEY",
     "OPENAI_API_KEY",
     "OPENAI_API_TOKEN",
+    "PICO_VISION_API_KEY",
     "PICO_ANTHROPIC_API_KEY",
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
@@ -95,16 +98,29 @@ def _build_model_client(args, provider=None, use_cli_overrides=True):
     return _model_client_from_config(config, args)
 
 
-def _model_client_from_config(config, args):
+def _build_vision_model_client(args, provider):
+    config = resolve_vision_provider_config(
+        provider,
+        start=getattr(args, "cwd", "."),
+        config_path=getattr(args, "config", None),
+        model=getattr(args, "vision_model", None),
+        base_url=getattr(args, "vision_base_url", None),
+        api_key=getattr(args, "vision_api_key", None),
+    )
+    return _model_client_from_config(config, args, timeout=_vision_timeout(args))
+
+
+def _model_client_from_config(config, args, timeout=None):
     # CLI 只负责把 provider profile 翻译成具体协议 client。
     # 例如 deepseek 是 profile，protocol=anthropic 才决定走 Messages API。
+    timeout = getattr(args, "openai_timeout", 300) if timeout is None else timeout
     if config.protocol == "openai":
         return OpenAICompatibleModelClient(
             model=config.model,
             base_url=config.base_url,
             api_key=config.api_key,
             temperature=args.temperature,
-            timeout=getattr(args, "openai_timeout", 300),
+            timeout=timeout,
         )
     if config.protocol == "anthropic":
         return AnthropicCompatibleModelClient(
@@ -112,10 +128,17 @@ def _model_client_from_config(config, args):
             base_url=config.base_url,
             api_key=config.api_key,
             temperature=args.temperature,
-            timeout=getattr(args, "openai_timeout", 300),
+            timeout=timeout,
         )
 
     raise ValueError(f"unknown provider protocol: {config.protocol}")
+
+
+def _vision_timeout(args):
+    value = getattr(args, "vision_timeout", None)
+    if value is None:
+        value = os.environ.get(ENV_VISION_TIMEOUT)
+    return int(value) if value else getattr(args, "openai_timeout", 300)
 
 
 def _build_model_client_router(args, provider_config, model_client):
@@ -125,9 +148,7 @@ def _build_model_client_router(args, provider_config, model_client):
         return ModelClientRouter(main_client=model_client)
 
     def vision_client_factory():
-        return _build_model_client(
-            args, provider=provider_config.vision_provider, use_cli_overrides=False
-        )
+        return _build_vision_model_client(args, provider_config.vision_provider)
 
     return ModelClientRouter(
         main_client=model_client,
@@ -308,6 +329,27 @@ def build_arg_parser():
         "--vision-provider",
         default=None,
         help="Provider profile used by image inspection when the main provider lacks vision.",
+    )
+    parser.add_argument(
+        "--vision-api-key",
+        default=None,
+        help="API key override used only by image inspection.",
+    )
+    parser.add_argument(
+        "--vision-model",
+        default=None,
+        help="Model override used only by image inspection.",
+    )
+    parser.add_argument(
+        "--vision-base-url",
+        default=None,
+        help="API base URL override used only by image inspection.",
+    )
+    parser.add_argument(
+        "--vision-timeout",
+        type=int,
+        default=None,
+        help="Image inspection provider request timeout in seconds.",
     )
     parser.add_argument(
         "--openai-timeout",

@@ -54,9 +54,7 @@ DEFAULT_SHELL_ENV_ALLOWLIST = (
     "TEMP",
     "USER",
 )
-DEFAULT_FEATURE_FLAGS = dict(
-    memory=True, relevant_memory=True, context_reduction=True, prompt_cache=True
-)
+DEFAULT_FEATURE_FLAGS = dict(memory=True, relevant_memory=True, context_reduction=True, prompt_cache=True)
 CHECKPOINT_SCHEMA_VERSION = "phase1-v1"
 CHECKPOINT_NONE_STATUS = "no-checkpoint"
 CHECKPOINT_FULL_VALID_STATUS = "full-valid"
@@ -103,6 +101,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         ask_user_callback=None,
         allowed_tools=None,
         final_readiness_mode="warn",
+        before_final_hooks=None,
     ):
         self.model_client = model_client
         self.model_client_factory = model_client_factory
@@ -146,6 +145,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.dream_min_sessions = int(dream_min_sessions)
         self.allowed_tools = self._normalize_allowed_tools(allowed_tools)
         self.final_readiness_mode = str(final_readiness_mode or "warn")
+        self.before_final_hooks = tuple(before_final_hooks or ())
         self.run_store = run_store or RunStore(
             Path(workspace.repo_root) / ".pico" / "runs"
         )
@@ -486,7 +486,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
 
             Rules:
             - Use tools instead of guessing about the workspace.
-            - Return exactly one <tool>...</tool> or one <final>...</final>.
+            - Return one or more <tool>...</tool> calls, or one <final>...</final>.
             - Tool calls must look like:
               <tool>{{"name":"tool_name","args":{{...}}}}</tool>
             - For write_file and patch_file with multi-line text, prefer XML style:
@@ -495,7 +495,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
               <final>your answer</final>
             - Never invent tool results.
             - Keep answers concise and concrete.
-            - If the user asks you to create or update a specific file and the path is clear, use write_file or patch_file instead of repeatedly listing files.
+            - If the path is clear, write or patch directly; for multi-file deliverables, batch related writes in one response or one shell script and do not read back files you just wrote.
             - Before writing tests for existing code, read the implementation first.
             - When writing tests, match the current implementation unless the user explicitly asked you to change the code.
             - New files should be complete and runnable, including obvious imports.

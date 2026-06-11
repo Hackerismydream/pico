@@ -204,18 +204,19 @@ def tool_list_files(agent, args):
     path = agent.path(args.get("path", "."))
     if not path.is_dir():
         raise ValueError("path is not a directory")
-    entries = [
-        item
-        for item in sorted(
-            path.iterdir(), key=lambda item: (item.is_file(), item.name.lower())
-        )
-        if item.name not in IGNORED_PATH_NAMES
-    ]
+    entries = _visible_entries(path)
     lines = []
     for entry in entries[:200]:
         kind = "[D]" if entry.is_dir() else "[F]"
         lines.append(f"{kind} {entry.relative_to(agent.root)}")
+        if entry.is_dir():
+            for child in _visible_entries(entry)[:12]:
+                child_kind = "[D]" if child.is_dir() else "[F]"
+                lines.append(f"  {child_kind} {child.relative_to(agent.root)}")
     return "\n".join(lines) or "(empty)"
+
+def _visible_entries(path):
+    return [item for item in sorted(path.iterdir(), key=lambda item: (item.is_file(), item.name.lower())) if item.name not in IGNORED_PATH_NAMES]
 
 
 def tool_read_file(agent, args):

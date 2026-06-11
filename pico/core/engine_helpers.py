@@ -9,6 +9,7 @@ import time
 
 from ..providers.base import complete_model
 from ..providers.errors import ProviderError
+from .before_final_hooks import run_before_final_hooks
 from .final_readiness import evaluate_final_readiness, readiness_notice
 from .turn_transitions import emit_terminal_transition
 from .workspace import clip, now
@@ -98,8 +99,28 @@ def execute_tool_payload(engine, task_state, user_message, payload):
     }
 
 
-def final_readiness_action(engine, task_state):
+def final_readiness_action(engine, task_state, proposed_final=""):
     agent = engine.runtime
+    hook_decision = run_before_final_hooks(agent, task_state, proposed_final)
+    if hook_decision.get("hook_count"):
+        agent.emit_trace(task_state, "before_final_hook_decision", hook_decision)
+        action = str(hook_decision.get("action", "allow"))
+        if action == "runtime_notice":
+            notice = str(hook_decision.get("message", "")) or "Before-final hook requested more work."
+            agent.record({"role": "assistant", "content": notice, "created_at": now()})
+            agent.session_event_bus.emit(
+                "assistant_message",
+                {
+                    "run_id": task_state.run_id,
+                    "kind": "runtime_notice",
+                    "content": notice,
+                },
+            )
+            agent.run_store.write_task_state(task_state)
+            return action, notice
+        if action == "block":
+            return action, str(hook_decision.get("message", "")) or "Before-final hook blocked the final answer."
+
     decision = evaluate_final_readiness(
         task_state, getattr(agent, "final_readiness_mode", "warn")
     )

@@ -1,10 +1,6 @@
-"""Reduce trace events into TaskState evidence summaries.
+"""Reduce append-only trace events into TaskState evidence summaries."""
 
-This module is the bridge from append-only trace facts to compact report-ready
-state. It does not re-read trace files; runtime consumers call it as events are
-emitted during a run.
-"""
-
+from .before_final_hooks import reduce_before_final_hook_summary
 from .final_readiness import reduce_final_readiness_summary
 from .governance import reduce_governance_summary
 from .turn_transitions import reduce_transition_summary
@@ -34,6 +30,10 @@ def update_evidence_summaries(summaries, event, changed_paths=None):
     elif event.get("event") == "final_readiness_decision":
         summaries["final_readiness_summary"] = reduce_final_readiness_summary(
             summaries.get("final_readiness_summary", {}), event
+        )
+    elif event.get("event") == "before_final_hook_decision":
+        summaries["before_final_hook_summary"] = reduce_before_final_hook_summary(
+            summaries.get("before_final_hook_summary", {}), event
         )
     return summaries
 

@@ -80,6 +80,11 @@ ENV_API_KEY = "PICO_API_KEY"
 ENV_BASE_URL = "PICO_BASE_URL"
 ENV_MODEL = "PICO_MODEL"
 ENV_VISION_PROVIDER = "PICO_VISION_PROVIDER"
+ENV_VISION_API_KEY = "PICO_VISION_API_KEY"
+ENV_VISION_BASE_URL = "PICO_VISION_API_BASE"
+ENV_VISION_BASE_URL_ALT = "PICO_VISION_BASE_URL"
+ENV_VISION_MODEL = "PICO_VISION_MODEL"
+ENV_VISION_TIMEOUT = "PICO_VISION_TIMEOUT"
 
 PROVIDER_ENV_NAMES = {
     "openai": {
@@ -292,6 +297,53 @@ def resolve_provider_config(
         model=str(resolved_model or ""),
         supports_vision=supports_vision,
         vision_provider=normalize_provider_name(resolved_vision_provider) if resolved_vision_provider else "",
+    )
+
+
+def resolve_vision_provider_config(
+    provider: str | None = None,
+    *,
+    start: str | Path = ".",
+    config_path: str | None = None,
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+) -> ProviderConfig:
+    """Resolve a provider profile for image inspection calls.
+
+    Vision calls often need a different endpoint from the main text provider.
+    For example, a project can use DeepSeek for normal tool planning but route
+    image inspection to an official OpenAI-compatible vision endpoint. These
+    overrides intentionally apply only to the vision client, so existing
+    OpenAI-compatible text profiles can keep pointing at right.codes or another
+    proxy.
+    """
+
+    legacy_env = _load_legacy_env_values(start)
+    resolved_model = _first_value(
+        model,
+        os.environ.get(ENV_VISION_MODEL),
+        legacy_env.get(ENV_VISION_MODEL),
+    )
+    resolved_base_url = _first_value(
+        base_url,
+        os.environ.get(ENV_VISION_BASE_URL),
+        os.environ.get(ENV_VISION_BASE_URL_ALT),
+        legacy_env.get(ENV_VISION_BASE_URL),
+        legacy_env.get(ENV_VISION_BASE_URL_ALT),
+    )
+    resolved_api_key = _first_value(
+        api_key,
+        os.environ.get(ENV_VISION_API_KEY),
+        legacy_env.get(ENV_VISION_API_KEY),
+    )
+    return resolve_provider_config(
+        provider,
+        start=start,
+        config_path=config_path,
+        model=resolved_model or None,
+        base_url=resolved_base_url or None,
+        api_key=resolved_api_key or None,
     )
 
 

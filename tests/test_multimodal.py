@@ -1,4 +1,5 @@
 import json
+import time
 import urllib.request
 
 import pytest
@@ -149,6 +150,25 @@ def test_deepseek_profile_defaults_to_openai_vision_provider(tmp_path, monkeypat
     assert config.vision_provider == "openai"
 
 
+def test_vision_provider_uses_vision_specific_env_overrides(tmp_path, monkeypatch):
+    from pico.config import resolve_vision_provider_config
+
+    monkeypatch.setenv("PICO_OPENAI_API_KEY", "sk-text")
+    monkeypatch.setenv("PICO_OPENAI_MODEL", "text-model")
+    monkeypatch.setenv("PICO_OPENAI_API_BASE", "https://text.example/v1")
+    monkeypatch.setenv("PICO_VISION_API_KEY", "sk-vision")
+    monkeypatch.setenv("PICO_VISION_MODEL", "vision-model")
+    monkeypatch.setenv("PICO_VISION_API_BASE", "https://vision.example/v1")
+
+    config = resolve_vision_provider_config("openai", start=tmp_path)
+
+    assert config.name == "openai"
+    assert config.protocol == "openai"
+    assert config.api_key == "sk-vision"
+    assert config.model == "vision-model"
+    assert config.base_url == "https://vision.example/v1"
+
+
 def test_build_agent_uses_separate_vision_provider_for_deepseek(tmp_path, monkeypatch):
     args = pico_cli.build_arg_parser().parse_args(
         ["--cwd", str(tmp_path), "--provider", "deepseek"]
@@ -170,6 +190,33 @@ def test_build_agent_uses_separate_vision_provider_for_deepseek(tmp_path, monkey
     assert vision_client[0] == "openai"
     assert vision_client[1]["model"] == "vision-model"
     assert vision_client[1]["base_url"] == "https://vision.example/v1"
+
+
+def test_build_agent_uses_vision_specific_client_overrides(tmp_path, monkeypatch):
+    args = pico_cli.build_arg_parser().parse_args(
+        ["--cwd", str(tmp_path), "--provider", "deepseek", "--vision-timeout", "45"]
+    )
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-text")
+    monkeypatch.setenv("OPENAI_MODEL", "text-model")
+    monkeypatch.setenv("OPENAI_API_BASE", "https://text.example/v1")
+    monkeypatch.setenv("PICO_VISION_API_KEY", "sk-vision")
+    monkeypatch.setenv("PICO_VISION_MODEL", "vision-model")
+    monkeypatch.setenv("PICO_VISION_API_BASE", "https://vision.example/v1")
+
+    with pytest.MonkeyPatch.context() as patcher:
+        patcher.setattr(pico_cli, "AnthropicCompatibleModelClient", lambda **kwargs: ("anthropic", kwargs))
+        patcher.setattr(pico_cli, "OpenAICompatibleModelClient", lambda **kwargs: ("openai", kwargs))
+        agent = pico_cli.build_agent(args)
+        vision_client = agent.model_client_router.vision_client()
+
+    assert agent.model_client[0] == "anthropic"
+    assert agent.model_client[1]["model"] == "deepseek-v4-pro"
+    assert vision_client[0] == "openai"
+    assert vision_client[1]["api_key"] == "sk-vision"
+    assert vision_client[1]["model"] == "vision-model"
+    assert vision_client[1]["base_url"] == "https://vision.example/v1"
+    assert vision_client[1]["timeout"] == 45
 
 
 def test_inspect_image_uses_separate_vision_model_when_configured(tmp_path):
@@ -194,6 +241,55 @@ def test_inspect_image_uses_separate_vision_model_when_configured(tmp_path):
     assert main_client.prompts == []
     assert isinstance(vision_client.prompts[0], ModelInput)
     assert vision_client.prompts[0].images[0].path == "chart.png"
+
+
+def test_inspect_image_keeps_medium_summary_inline(tmp_path):
+    from pico.core.task_state import TaskState
+
+    write_png(tmp_path)
+    summary = "vision detail\n" * 180
+    client = RecordingVisionClient([summary])
+    agent = build_agent(tmp_path, model_client=client)
+    task_state = TaskState.create(run_id="run_direct", task_id="task_direct", user_request="inspect")
+    agent.current_task_state = task_state
+    agent.current_run_dir = agent.run_store.start_run(task_state)
+
+    result = agent.run_tool("inspect_image", {"path": "chart.png", "question": "What is shown?"})
+
+    assert summary.strip() in result
+    assert "full output saved:" not in result
+    assert agent._last_tool_result_metadata["full_output_artifact"] == ""
+
+
+def test_image_inspection_prompt_preserves_complete_ocr_extraction():
+    from pico.core.vision import image_inspection_prompt
+
+    prompt = image_inspection_prompt(
+        "rows.png",
+        "Extract all data rows from this screenshot.",
+        "general",
+        "",
+    )
+
+    assert "complete requested extraction" in prompt
+    assert "Do not omit rows" in prompt
+    assert "Return concise" not in prompt
+
+
+def test_vision_model_call_has_total_timeout(monkeypatch):
+    from pico.core.content_blocks import ModelInput
+    from pico.core.vision import complete_model_with_timeout
+
+    class SlowClient:
+        timeout = 0.01
+
+    def slow_complete(*_args, **_kwargs):
+        time.sleep(0.2)
+
+    monkeypatch.setattr("pico.core.vision.complete_model", slow_complete)
+
+    with pytest.raises(TimeoutError, match="vision provider request exceeded"):
+        complete_model_with_timeout(SlowClient(), ModelInput(text="describe"), 64)
 
 
 def test_load_workspace_image_rejects_path_escape_and_records_safe_metadata(tmp_path):
@@ -284,3 +380,27 @@ def test_inspect_image_tool_trace_and_history_do_not_store_base64(tmp_path):
     assert "chart.png" in prompt
     assert "base64" not in prompt
     assert metadata["history"]["summarized_tool_count"] >= 0
+
+
+def test_same_image_inspection_is_budgeted_per_turn(tmp_path):
+    write_png(tmp_path)
+    client = RecordingVisionClient(
+        [
+            '<tool>{"name":"inspect_image","args":{"path":"chart.png","question":"first pass"}}</tool>',
+            "first observations",
+            '<tool>{"name":"inspect_image","args":{"path":"chart.png","question":"second pass"}}</tool>',
+            "second observations",
+            '<tool>{"name":"inspect_image","args":{"path":"chart.png","question":"third pass"}}</tool>',
+            "<final>done</final>",
+        ]
+    )
+    agent = build_agent(tmp_path, model_client=client)
+
+    events = list(agent.engine.run_turn("inspect chart.png repeatedly"))
+
+    assert any(event["type"] == "final" for event in events)
+    tool_items = [item for item in agent.session["history"] if item.get("name") == "inspect_image"]
+    assert len(tool_items) == 3
+    assert "first observations" in tool_items[0]["content"]
+    assert "second observations" in tool_items[1]["content"]
+    assert tool_items[2]["content"].startswith("error: repeated identical tool call")

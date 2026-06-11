@@ -7,6 +7,7 @@ def test_core_modules_stay_below_entropy_budget():
     root = Path(__file__).resolve().parents[1]
     budgets = {
         "pico/core/runtime.py": 950,
+        "pico/core/before_final_hooks.py": 140,
         "pico/core/evidence_summaries.py": 90,
         "pico/core/final_readiness.py": 120,
         "pico/core/final_readiness_reasons.py": 60,
