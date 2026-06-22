@@ -186,6 +186,8 @@ class CompactManager:
             "summary_chars": len(summary_text),
             "summary_called": bool(summary_called),
             "summary_mode": str(summary_mode),
+            "summary_has_next_steps": "## Next Steps" in summary_text,
+            "summary_has_file_references": "## Files Read" in summary_text or "## Files Modified" in summary_text,
             "compact_call_usage": compact_call_usage,
             "no_op_reason": plan.no_op_reason,
             "summary_event_id": context_summary.get("summary_event_id", plan.prior_summary_event_id),

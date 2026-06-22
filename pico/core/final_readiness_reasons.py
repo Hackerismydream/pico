@@ -45,6 +45,9 @@ READINESS_REASONS = {
         "soft",
         "Provider real token usage was unavailable; context pressure used estimates.",
     ),
+    "compact_net_negative": ("soft", "LLM compaction cost more tokens than it saved."),
+    "compact_summary_quality_low": ("soft", "Compaction summary lacks concrete next steps or file references."),
+    "context_pressure_compaction_failed": ("hard", "Context pressure is extreme but compaction yielded no token savings."),
 }
 
 

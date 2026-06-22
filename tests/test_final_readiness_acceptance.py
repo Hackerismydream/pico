@@ -148,3 +148,41 @@ def test_strict_final_readiness_blocks_partial_success_workspace_changes(tmp_pat
     assert [(event["decision"], event["action"]) for event in readiness] == [
         ("block", "block")
     ]
+
+
+def test_soft_final_readiness_warns_for_net_negative_llm_compaction(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            """## Goal
+Continue the large task.
+
+## Files Read
+- README.md
+
+## Next Steps
+- Finish the task.
+""",
+            "<final>Done after compact.</final>",
+            "<final>Done after compact.</final>",
+        ],
+        final_readiness_mode="soft",
+        max_steps=2,
+    )
+    agent.model_client.context_window = 1000
+    agent.model_client.last_completion_metadata = {
+        "input_tokens": 500,
+        "output_tokens": 500,
+        "total_tokens": 1000,
+    }
+    for index in range(5):
+        agent.record({"role": "user", "content": f"request {index} " + ("x" * 900)})
+        agent.record({"role": "assistant", "content": f"answer {index} " + ("y" * 900)})
+
+    events = list(agent.engine.run_turn("finish"))
+
+    assert any(event["type"] == "runtime_notice" for event in events)
+    trace = read_jsonl(agent.current_run_dir / "trace.jsonl")
+    readiness = [event for event in trace if event["event"] == "final_readiness_decision"]
+    assert any(event["decision"] == "remind" for event in readiness)
+    assert any("compact_net_negative" in event["reasons"] for event in readiness)
