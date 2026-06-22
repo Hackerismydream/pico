@@ -56,8 +56,9 @@ def test_engine_streams_a_real_session_with_tool_artifacts(tmp_path):
     assert (tmp_path / "notes" / "result.txt").read_text(encoding="utf-8") == "ok\n"
 
     persisted_events = read_jsonl(agent.session_event_bus.path)
-    assert [event["event"] for event in persisted_events][-6:] == [
+    assert [event["event"] for event in persisted_events][-7:] == [
         "tool_finished",
+        "context_orchestrator_decision",
         "context_usage_recorded",
         "model_requested",
         "model_parsed",
@@ -90,6 +91,18 @@ def test_engine_reports_context_budget_summary_from_prompt_metadata(tmp_path):
     )
     assert summary["prompt_changed_by_phase_3"] is False
     assert summary["reductions"] == []
+    assert "pressure_tier" in summary
+    assert "usage_source" in summary
+    assert summary["snip_count"] == 0
+    assert summary["prune_count"] == 0
+    assert summary["summary_called"] is False
+    assert summary["summary_delta_event_count"] == 0
+    assert summary["replacement_cache_hits"] == 0
+    assert summary["replacement_records_created"] == 0
+    assert summary["replacement_ledger_enabled"] is True
+    assert summary["provider_usage_available"] is False
+    assert summary["saved_chars"] == 0
+    assert summary["cached_tokens"] == 0
 
 
 def test_engine_records_provider_error_as_failed_run(tmp_path):

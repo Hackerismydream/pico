@@ -10,29 +10,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..features import memory as memorylib, skills as skillslib
-from .context_usage import ContextUsageAnalyzer
+from .context_report import ContextReportBuilder, RELEVANT_MEMORY_LIMIT
+from .context_sections import (
+    CURRENT_REQUEST_SECTION,
+    DEFAULT_SECTION_BUDGETS,
+    MIN_SECTION_BUDGETS,
+    REDUCTION_ORDER,
+    SECTION_ORDER,
+)
 from .turn_history import TurnHistoryBuilder, tail_clip
 
 DEFAULT_TOTAL_BUDGET = 60000
-DEFAULT_SECTION_BUDGETS = {
-    "prefix": 12000,
-    "memory": 8000,
-    "skills": 4000,
-    "relevant_memory": 6000,
-    "history": 30000,
-}
-DEFAULT_SECTION_FLOORS = {
-    "prefix": 4000,
-    "memory": 1200,
-    "skills": 600,
-    "relevant_memory": 1000,
-    "history": 6000,
-}
-# 当 prompt 超预算时，会优先压缩这些 section。
-DEFAULT_REDUCTION_ORDER = ("relevant_memory", "skills", "history", "memory", "prefix")
-SECTION_ORDER = ("prefix", "memory", "skills", "relevant_memory", "history", "current_request")
-CURRENT_REQUEST_SECTION = "current_request"
-RELEVANT_MEMORY_LIMIT = 3
+DEFAULT_SECTION_FLOORS = MIN_SECTION_BUDGETS
+DEFAULT_REDUCTION_ORDER = REDUCTION_ORDER
 
 
 @dataclass
@@ -67,7 +57,7 @@ class ContextManager:
             self.section_budgets.update({str(key): int(value) for key, value in section_budgets.items()})
         self._section_floor_overrides = {str(key): int(value) for key, value in (section_floors or {}).items()}
         self.section_floors = self._compute_section_floors()
-        self.reduction_order = tuple(reduction_order or DEFAULT_REDUCTION_ORDER)
+        self.reduction_order = tuple(reduction_order or REDUCTION_ORDER)
         self.history_builder = TurnHistoryBuilder(agent)
 
     def build(self, user_message):
@@ -218,10 +208,13 @@ class ContextManager:
         }
 
     def _compute_section_floors(self):
-        floors = {
-            section: max(20, int(budget) // 4)
-            for section, budget in self.section_budgets.items()
-        }
+        if self.section_budgets == DEFAULT_SECTION_BUDGETS:
+            floors = dict(MIN_SECTION_BUDGETS)
+        else:
+            floors = {
+                section: max(20, int(budget) // 4)
+                for section, budget in self.section_budgets.items()
+            }
         floors.update(self._section_floor_overrides)
         return floors
 
@@ -329,70 +322,16 @@ class ContextManager:
         return "\n\n".join(rendered[section].rendered for section in SECTION_ORDER).strip()
 
     def _metadata(self, prompt, rendered, budgets, reduction_log, selected_notes, user_message, section_texts):
-        section_metadata = {}
-        for section in SECTION_ORDER[:-1]:
-            section_metadata[section] = {
-                "raw_chars": rendered[section].raw_chars,
-                "budget_chars": int(budgets.get(section, 0)),
-                "rendered_chars": rendered[section].rendered_chars,
-            }
-        section_metadata[CURRENT_REQUEST_SECTION] = {
-            "raw_chars": len(section_texts[CURRENT_REQUEST_SECTION]),
-            "budget_chars": None,
-            "rendered_chars": len(rendered[CURRENT_REQUEST_SECTION].rendered),
-        }
-        return {
-            "prompt_chars": len(prompt),
-            "prompt_budget_chars": self.total_budget,
-            "prompt_over_budget": len(prompt) > self.total_budget,
-            "section_order": list(SECTION_ORDER),
-            "section_budgets": {
-                section: (None if section == CURRENT_REQUEST_SECTION else int(budgets.get(section, 0)))
-                for section in SECTION_ORDER
-            },
-            "sections": section_metadata,
-            "budget_reductions": reduction_log,
-            "reduction_order": list(self.reduction_order),
-            "relevant_memory": {
-                "limit": RELEVANT_MEMORY_LIMIT,
-                "selected_count": len(selected_notes),
-                "selected_notes": [note["text"] for note in selected_notes],
-                "selected_sources": [str(note.get("source", "")).strip() for note in selected_notes],
-                "selected_kinds": [str(note.get("kind", "episodic")).strip() or "episodic" for note in selected_notes],
-                "selected_durable_count": sum(
-                    1 for note in selected_notes if (str(note.get("kind", "episodic")).strip() or "episodic") == "durable"
-                ),
-                "raw_chars": rendered["relevant_memory"].raw_chars,
-                "rendered_chars": rendered["relevant_memory"].rendered_chars,
-                "rendered_notes": list(rendered["relevant_memory"].details.get("rendered_notes", [])),
-                "rendered_count": int(rendered["relevant_memory"].details.get("rendered_count", 0)),
-            },
-            "history": {
-                "raw_chars": rendered["history"].raw_chars,
-                "rendered_chars": rendered["history"].rendered_chars,
-                "older_entries_count": int(rendered["history"].details.get("older_entries_count", 0)),
-                "collapsed_duplicate_reads": int(rendered["history"].details.get("collapsed_duplicate_reads", 0)),
-                "reused_file_summary_count": int(rendered["history"].details.get("reused_file_summary_count", 0)),
-                "summarized_tool_count": int(rendered["history"].details.get("summarized_tool_count", 0)),
-                "rendered_turns": int(rendered["history"].details.get("rendered_turns", 0)),
-                "microcompact_artifact_refs": list(rendered["history"].details.get("microcompact_artifact_refs", [])),
-                "microcompact_saved_chars": int(rendered["history"].details.get("microcompact_saved_chars", 0)),
-            },
-            "skills": self._skills_metadata(),
-            "current_request": {
-                "text": user_message,
-                "raw_chars": len(user_message),
-                "rendered_chars": len(user_message),
-                "section_chars": len(rendered[CURRENT_REQUEST_SECTION].rendered),
-            },
-            "context_usage": ContextUsageAnalyzer(self.agent).analyze(rendered),
-        }
-
-    def _skills_metadata(self):
-        skills = getattr(self.agent, "skills", {})
-        items = [skill.metadata() for skill in skillslib.list_skills(skills, user_invocable_only=False)]
-        return {
-            "available_count": len(items),
-            "user_invocable_count": sum(1 for item in items if item["user_invocable"]),
-            "items": items,
-        }
+        return ContextReportBuilder(
+            self.agent,
+            total_budget=self.total_budget,
+            reduction_order=self.reduction_order,
+        ).build(
+            prompt=prompt,
+            rendered=rendered,
+            budgets=budgets,
+            reduction_log=reduction_log,
+            selected_notes=selected_notes,
+            user_message=user_message,
+            section_texts=section_texts,
+        )

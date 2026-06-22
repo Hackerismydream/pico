@@ -150,6 +150,47 @@ def test_status_bar_reads_context_usage_governance_fields():
     assert "context 1234/200000" in rendered_text(status)
 
 
+def test_status_bar_optionally_shows_context_pressure_fields():
+    from pico.tui.widgets import StatusBar
+
+    status = StatusBar()
+
+    status.update_context_usage(
+        {
+            "total_estimated_tokens": 500,
+            "context_window": 1000,
+            "pressure_tier": "medium",
+            "usage_source": "estimated",
+            "cached_tokens": 64,
+        }
+    )
+
+    text = rendered_text(status)
+    assert "context 500/1000" in text
+    assert "tier medium" in text
+    assert "source estimated" in text
+    assert "cached 64" in text
+
+
+def test_status_bar_omits_optional_context_pressure_fields_when_absent():
+    from pico.tui.widgets import StatusBar
+
+    status = StatusBar()
+
+    status.update_context_usage(
+        {
+            "total_estimated_tokens": 500,
+            "context_window": 1000,
+        }
+    )
+
+    text = rendered_text(status)
+    assert "context 500/1000" in text
+    assert "tier" not in text
+    assert "source" not in text
+    assert "cached" not in text
+
+
 def test_cli_plan_mode_and_session_commands_expose_runtime_state(tmp_path):
     from pico.cli import handle_repl_command
 

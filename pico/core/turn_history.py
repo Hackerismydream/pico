@@ -7,15 +7,11 @@ it must not rewrite the stored session history.
 
 import json
 from collections import OrderedDict
-from dataclasses import dataclass
 
+from .context_replacements import ReplacementLedger
+from .context_retention import ContextRetentionPolicy, RetentionContext
 
-@dataclass(frozen=True)
-class HistoryRetentionContext:
-    recent_turns: set
-    last_failed_tool_event_id: str
-    last_changed_tool_event_id: str
-    changed_paths: set
+HistoryRetentionContext = RetentionContext
 
 
 def tail_clip(text, limit):
@@ -106,12 +102,14 @@ class TurnHistoryBuilder:
         last_changed_tool = self._last_matching_tool(
             history_items, lambda item: bool(item.get("workspace_changed"))
         )
-        retention = HistoryRetentionContext(
+        retention = RetentionContext(
             recent_turns=recent_turns,
             last_failed_tool_event_id=str((last_failed_tool or {}).get("event_id", "")),
             last_changed_tool_event_id=str((last_changed_tool or {}).get("event_id", "")),
             changed_paths=self._current_changed_paths(),
         )
+        policy = ContextRetentionPolicy()
+        ledger = ReplacementLedger.from_session(getattr(self.agent, "session", {}))
         details = {
             "recent_window": len(recent_turns),
             "older_entries_count": 0,
@@ -120,6 +118,10 @@ class TurnHistoryBuilder:
             "summarized_tool_count": 0,
             "microcompact_artifact_refs": [],
             "microcompact_saved_chars": 0,
+            "replacement_cache_hits": 0,
+            "replacement_records_created": 0,
+            "replacement_saved_chars": 0,
+            "proposed_replacements": [],
         }
         for turn_id, items in turns.items():
             recent = turn_id in recent_turns and any(item.get("role") != "tool" for item in items)
@@ -128,19 +130,21 @@ class TurnHistoryBuilder:
                 if item.get("kind") == "compact_summary":
                     lines.extend(str(item.get("content", "")).splitlines())
                     continue
-                if not recent and item.get("role") == "tool" and should_render_tool_inline(item, retention):
+                if not recent and item.get("role") == "tool" and policy.should_render_tool_inline(item, retention):
                     lines.extend(self._render_item(item, 900))
                     continue
+                if not recent and item.get("role") == "tool" and policy.can_replace_tool(item, retention):
+                    replacement = self._ledger_replacement(item, ledger, details)
+                    if replacement:
+                        lines.append(replacement)
+                        self._record_stub_metadata(item, replacement, details)
+                        continue
                 if not recent and item.get("role") == "tool" and item.get("name") == "read_file":
                     artifact_ref = str(item.get("artifact_ref", "")).strip()
                     if artifact_ref:
                         summary = self._summarize_old_tool_item(item)
                         lines.append(summary)
-                        details["summarized_tool_count"] += 1
-                        details["microcompact_artifact_refs"].append(artifact_ref)
-                        details["microcompact_saved_chars"] += max(
-                            0, len(str(item.get("content", ""))) - len(summary)
-                        )
+                        self._record_stub_metadata(item, summary, details)
                         continue
                     path = str(item.get("args", {}).get("path", "")).strip()
                     if path in seen_older_reads:
@@ -155,13 +159,7 @@ class TurnHistoryBuilder:
                 if not recent and item.get("role") == "tool":
                     summary = self._summarize_old_tool_item(item)
                     lines.append(summary)
-                    details["summarized_tool_count"] += 1
-                    artifact_ref = str(item.get("artifact_ref", "")).strip()
-                    if artifact_ref:
-                        details["microcompact_artifact_refs"].append(artifact_ref)
-                        details["microcompact_saved_chars"] += max(
-                            0, len(str(item.get("content", ""))) - len(summary)
-                        )
+                    self._record_stub_metadata(item, summary, details)
                     continue
                 lines.extend(self._render_item(item, 900 if recent else 80))
             if not recent:
@@ -211,6 +209,30 @@ class TurnHistoryBuilder:
         task_state = getattr(self.agent, "current_task_state", None)
         return {str(path) for path in getattr(task_state, "changed_paths", []) if str(path).strip()}
 
+    def _ledger_replacement(self, item, ledger, details):
+        record = ledger.matching_record(item)
+        if record:
+            details["replacement_cache_hits"] += 1
+            details["replacement_saved_chars"] += max(0, int(record.saved_chars or 0))
+            return record.replacement_text
+        summary = self._summarize_old_tool_item(item)
+        proposed = ledger.proposed_record(item, summary)
+        if proposed is None:
+            return ""
+        details["replacement_records_created"] += 1
+        details["replacement_saved_chars"] += proposed.record.saved_chars
+        details["proposed_replacements"].append(proposed.to_dict())
+        return summary
+
+    def _record_stub_metadata(self, item, summary, details):
+        details["summarized_tool_count"] += 1
+        artifact_ref = str(item.get("artifact_ref", "")).strip()
+        if artifact_ref:
+            details["microcompact_artifact_refs"].append(artifact_ref)
+            details["microcompact_saved_chars"] += max(
+                0, len(str(item.get("content", ""))) - len(str(summary))
+            )
+
     @staticmethod
     def _last_matching_tool(history, predicate):
         for item in reversed(history):
@@ -225,12 +247,4 @@ class TurnHistoryBuilder:
 
 
 def should_render_tool_inline(item, context):
-    if item.get("turn_id") in context.recent_turns:
-        return True
-    if item.get("event_id") in {context.last_failed_tool_event_id, context.last_changed_tool_event_id}:
-        return True
-    paths = set(str(path) for path in item.get("affected_paths", []) if str(path).strip())
-    path_arg = str(item.get("args", {}).get("path", "")).strip()
-    if path_arg:
-        paths.add(path_arg)
-    return bool(paths & context.changed_paths)
+    return ContextRetentionPolicy().should_render_tool_inline(item, context)

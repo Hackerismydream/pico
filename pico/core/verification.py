@@ -28,9 +28,7 @@ def reduce_verification_signal(previous, event, changed_paths):
             "source_span_id": str(event.get("span_id", "")),
             "command": command,
             "command_class": command_class,
-            "after_last_workspace_change": bool(
-                signal.get("last_workspace_change_span_id") or changed_paths
-            ),
+            "after_last_workspace_change": bool(signal.get("last_workspace_change_span_id") or changed_paths),
             "changed_paths_present": bool(changed_paths),
             "covers_changed_paths": False,
             "coverage_confidence": "unknown",
@@ -38,8 +36,6 @@ def reduce_verification_signal(previous, event, changed_paths):
         }
     )
     return signal
-
-
 def classify_verification_command(command):
     try:
         tokens = shlex.split(str(command))
@@ -53,7 +49,7 @@ def classify_verification_command(command):
             tokens = tokens[:2] + tokens[3:]
         tokens = tokens[2:]
     python_cmd = tokens[0].rsplit("/", 1)[-1]
-    if len(tokens) > 2 and python_cmd in {"python", "python3"} and tokens[1] == "-m":
+    if len(tokens) > 2 and _is_python_command(python_cmd) and tokens[1] == "-m":
         return {"pytest": "test", "compileall": "compile"}.get(tokens[2], "")
     if tokens[0] in {"pytest", "tox"}:
         return "test"
@@ -66,15 +62,14 @@ def classify_verification_command(command):
     if tokens[:2] in (["yarn", "test"], ["go", "test"], ["cargo", "test"], ["make", "test"]):
         return "test"
     return ""
-
-
 def _js_command_class(tokens):
     if len(tokens) < 2:
         return ""
     if tokens[1] == "test":
         return "test"
-    if len(tokens) > 2 and tokens[1] == "run" and tokens[2] in {"test", "build"}:
+    if len(tokens) > 2 and tokens[1:3] in (["run", "test"], ["run", "build"]):
         return "test" if tokens[2] == "test" else "build"
-    if tokens[1] == "build":
-        return "build"
-    return ""
+    return "build" if tokens[1] == "build" else ""
+def _is_python_command(command):
+    suffix = command.removeprefix("python3.")
+    return command in {"python", "python3"} or (suffix != command and suffix.replace(".", "").isdigit())

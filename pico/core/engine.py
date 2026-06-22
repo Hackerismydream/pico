@@ -7,6 +7,7 @@ one user request into model calls, tool executions, and user-visible events.
 import time
 
 from ..providers.base import complete_model
+from .context_replacements import commit_proposed_replacements
 from .model_errors import finish_model_error
 from .engine_helpers import (
     execute_tool_payload,
@@ -133,6 +134,8 @@ class Engine:
             agent.run_store.write_task_state(task_state)
             prompt_started_at = time.monotonic()
             prompt, prompt_metadata = agent._build_prompt_and_metadata(user_message)
+            if commit_proposed_replacements(agent.session, prompt_metadata):
+                agent.session_path = agent.session_store.save(agent.session)
             agent.emit_trace(
                 task_state,
                 "prompt_built",

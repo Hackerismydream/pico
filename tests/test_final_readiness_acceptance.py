@@ -29,6 +29,24 @@ def read_jsonl(path):
     ]
 
 
+def test_soft_final_readiness_does_not_warn_for_low_pressure_missing_provider_usage(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        ["<final>done</final>"],
+        final_readiness_mode="soft",
+    )
+
+    events = list(agent.engine.run_turn("answer directly"))
+
+    assert [event["type"] for event in events] == [
+        "turn_started",
+        "model_requested",
+        "model_parsed",
+        "final",
+        "turn_finished",
+    ]
+
+
 def test_soft_final_readiness_reminds_once_then_allows_unchanged_final(tmp_path):
     agent = build_agent(
         tmp_path,

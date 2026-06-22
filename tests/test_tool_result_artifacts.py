@@ -123,6 +123,7 @@ def test_long_read_file_result_is_artifact_backed_when_history_is_microcompacted
         [
             '<tool>{"name":"read_file","args":{"path":"large.txt","start":1,"end":120}}</tool>',
             "<final>read</final>",
+            "<final>committed</final>",
         ],
     )
 
@@ -146,11 +147,19 @@ def test_long_read_file_result_is_artifact_backed_when_history_is_microcompacted
         item for item in agent.session["history"] if item.get("artifact_ref") == artifact_ref
     )
     assert json.dumps(agent.session["history"], sort_keys=True) == before_history
+    assert "context_replacements" not in agent.session
     assert persisted_tool_item["content"] == original_history_content
     assert artifact_ref in prompt
     assert "line-119" not in prompt
     assert metadata["history"]["microcompact_artifact_refs"] == [artifact_ref]
     assert metadata["history"]["microcompact_saved_chars"] > 0
+    assert metadata["history"]["proposed_replacements"]
+
+    assert agent.ask("continue") == "committed"
+
+    event_id = persisted_tool_item["event_id"]
+    assert agent.session["context_replacements"][event_id]["content_sha256"] == persisted_tool_item["content_sha256"]
+    assert agent.session["context_replacements"][event_id]["artifact_ref"] == artifact_ref
 
 
 def test_recent_long_tool_result_is_not_microcompact_stubbed(tmp_path):

@@ -28,6 +28,7 @@ def test_verification_classifier_accepts_common_test_commands():
         "pytest -q": "test",
         "uv run pytest tests -q": "test",
         "python -m pytest -q": "test",
+        "python3.11 -m compileall pico": "compile",
         "ruff check pico tests": "lint",
         "mypy pico": "typecheck",
         "pyright": "typecheck",

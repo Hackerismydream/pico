@@ -99,7 +99,9 @@ def execute_tool_payload(engine, task_state, user_message, payload):
 def final_readiness_action(engine, task_state):
     agent = engine.runtime
     decision = evaluate_final_readiness(
-        task_state, getattr(agent, "final_readiness_mode", "warn")
+        task_state,
+        getattr(agent, "final_readiness_mode", "warn"),
+        workspace_root=agent.root,
     )
     if decision["mode"] == "off":
         return "allow", ""

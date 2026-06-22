@@ -160,6 +160,24 @@ def _extract_usage_cache_details(data):
     }
 
 
+def _extract_anthropic_usage_cache_details(data):
+    usage = data.get("usage") or {}
+    input_tokens = usage.get("input_tokens")
+    output_tokens = usage.get("output_tokens")
+    cached_tokens = int(usage.get("cache_read_input_tokens") or 0)
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": (
+            int(input_tokens) + int(output_tokens)
+            if input_tokens is not None and output_tokens is not None
+            else None
+        ),
+        "cached_tokens": cached_tokens,
+        "cache_hit": cached_tokens > 0,
+    }
+
+
 def _request_with_retries(provider, model, base_url, request, timeout, retry_budget=2):
     retry_count = 0
     attempts = int(retry_budget) + 1
@@ -528,7 +546,10 @@ class AnthropicCompatibleModelClient:
             raise error
         text = _extract_anthropic_text(data)
         if text:
-            self.last_completion_metadata = dict(request_metadata)
+            self.last_completion_metadata = {
+                **request_metadata,
+                **_extract_anthropic_usage_cache_details(data),
+            }
             return text
         error = _provider_failure(
             "anthropic",
