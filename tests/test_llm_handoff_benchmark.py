@@ -3,6 +3,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from pico.evaluation.context_cost import generate_report, run_paired_experiment
 
 
@@ -16,6 +18,13 @@ def _load_long_session_tasks():
 
 def test_long_session_tasks_define_five_fixture_backed_tasks():
     tasks = _load_long_session_tasks()
+    expected_scripted_counts = {
+        "multi-file-refactor": 10,
+        "debug-and-fix": 8,
+        "add-endpoint-with-test": 12,
+        "config-migration": 10,
+        "dependency-upgrade": 12,
+    }
 
     assert len(tasks) == 5
     assert {task["category"] for task in tasks} == {"long_session"}
@@ -29,7 +38,7 @@ def test_long_session_tasks_define_five_fixture_backed_tasks():
     for task in tasks:
         assert (ROOT / task["fixture_repo"]).is_dir()
         assert 8 <= int(task["step_budget"]) <= 16
-        assert len(task["scripted_outputs"]) >= 5
+        assert len(task["scripted_outputs"]) == expected_scripted_counts[task["id"]]
 
 
 def test_run_paired_experiment_scripted_populates_llm_handoff_metrics(tmp_path):
@@ -60,6 +69,86 @@ def test_run_paired_experiment_scripted_populates_llm_handoff_metrics(tmp_path):
     assert isinstance(handoff_rows[0]["compact_call_input_tokens"], int)
     assert isinstance(handoff_rows[0]["compact_call_output_tokens"], int)
     assert isinstance(handoff_rows[0]["compact_net_benefit_tokens"], int)
+    assert handoff_rows[0]["usage"]["input_tokens"] >= (
+        handoff_rows[0]["prompt_estimated_tokens"]
+        + handoff_rows[0]["compact_call_input_tokens"]
+    )
+    assert handoff_rows[0]["usage"]["output_tokens"] >= handoff_rows[0]["compact_call_output_tokens"]
+    assert payload["summary"]["estimated_proxy_only"]["claimable_cost_win"] is False
+
+
+def test_live_mode_routes_through_provider_client_factory(tmp_path):
+    tasks = _load_long_session_tasks()[:1]
+    calls = []
+
+    def provider_client_factory(*, provider, task, variant, repeat):
+        calls.append((provider, task["id"], variant, repeat))
+        from pico.evaluation.context_cost import _LongSessionScriptedClient
+
+        return _LongSessionScriptedClient(task["scripted_outputs"])
+
+    payload = run_paired_experiment(
+        tasks=tasks,
+        variants=["full_orchestrator"],
+        mode="live",
+        provider="deepseek",
+        repetitions=1,
+        output_dir=tmp_path / "work",
+        provider_client_factory=provider_client_factory,
+    )
+
+    assert calls == [("deepseek", "multi-file-refactor", "full_orchestrator", 0)]
+    assert payload["pricing_profile"] == "llm-handoff-live-configured"
+    assert payload["rows"][0]["layer"] == "live"
+    assert payload["rows"][0]["verification_status"] == "passed"
+
+
+def test_live_mode_without_provider_config_reports_clear_blocked_error(monkeypatch, tmp_path):
+    import pico.evaluation.context_cost as context_cost
+
+    monkeypatch.setattr(
+        context_cost,
+        "resolve_provider_config",
+        lambda provider, start=".": type(
+            "Config",
+            (),
+            {
+                "name": provider,
+                "protocol": "openai",
+                "api_key": "",
+                "base_url": "https://example.test/v1",
+                "model": "test-model",
+            },
+        )(),
+    )
+
+    with pytest.raises(RuntimeError, match="live provider config blocked: API key missing"):
+        run_paired_experiment(
+            tasks=_load_long_session_tasks()[:1],
+            variants=["full_orchestrator"],
+            mode="live",
+            provider="deepseek",
+            repetitions=1,
+            output_dir=tmp_path / "work",
+        )
+
+
+def test_long_session_benchmark_verifier_can_downgrade_runtime_pass(tmp_path):
+    task = dict(_load_long_session_tasks()[1])
+    task["verifier"] = "python3 -c \"raise SystemExit(1)\""
+
+    payload = run_paired_experiment(
+        tasks=[task],
+        variants=["full_orchestrator"],
+        mode="scripted",
+        provider=None,
+        repetitions=1,
+        output_dir=tmp_path / "work",
+    )
+
+    row = payload["rows"][0]
+    assert row["status"] == "completed"
+    assert row["verification_status"] == "failed"
 
 
 def test_generate_report_includes_llm_handoff_comparison():

@@ -13,7 +13,9 @@ from pathlib import Path
 from types import MethodType
 
 from pico import Pico, SessionStore, WorkspaceContext
+from pico.config import resolve_provider_config
 from pico.core.run_store import RunStore
+from pico.providers import AnthropicCompatibleModelClient, OpenAICompatibleModelClient
 from pico.testing import ScriptedModelClient
 
 
@@ -127,8 +129,12 @@ def extract_usage_from_artifacts(
         or orchestrator.get("compact_call_usage")
         or {}
     )
+    if compact_call_usage and variant == "full_orchestrator_with_llm_handoff":
+        trace_usage["usage"] = _usage_with_compact_call(
+            trace_usage["usage"], compact_call_usage
+        )
     derived_verification = _verification_status(report)
-    if allow_verification_override and verification_status is not None and derived_verification in {"unknown", "missing"}:
+    if allow_verification_override and verification_status is not None:
         derived_verification = str(verification_status)
     return ExperimentRow(
         task_id=str(task_id),
@@ -289,10 +295,11 @@ def run_paired_experiment(
     repetitions=1,
     output_dir=None,
     pricing=None,
+    provider_client_factory=None,
 ):
-    if str(mode) != "scripted":
-        raise ValueError("run_paired_experiment currently supports scripted mode only")
-    del provider
+    mode = str(mode)
+    if mode not in {"scripted", "live"}:
+        raise ValueError(f"unsupported experiment mode: {mode}")
     pricing = pricing or DEFAULT_PROXY_PRICING
     variants = list(variants or ["full_orchestrator", "full_orchestrator_with_llm_handoff"])
     for variant in variants:
@@ -304,10 +311,13 @@ def run_paired_experiment(
         for task in tasks:
             for variant in variants:
                 rows.append(
-                    _run_long_session_scripted_task(
+                    _run_long_session_task(
                         dict(task),
                         variant=variant,
                         repeat=repeat,
+                        mode=mode,
+                        provider=provider,
+                        provider_client_factory=provider_client_factory,
                         output_dir=output_dir,
                         pricing=pricing,
                     )
@@ -315,7 +325,11 @@ def run_paired_experiment(
     treatment, control = _comparison_variants(variants)
     return build_result_payload(
         rows,
-        pricing_profile="llm-handoff-scripted-proxy",
+        pricing_profile=(
+            "llm-handoff-live-configured"
+            if mode == "live"
+            else "llm-handoff-scripted-proxy"
+        ),
         pricing=pricing,
         treatment=treatment,
         control=control,
@@ -510,6 +524,19 @@ def _compact_metrics_from_trace(trace_path):
     return metrics
 
 
+def _usage_with_compact_call(usage, compact_call_usage):
+    compact_input = int(compact_call_usage.get("input_tokens", 0) or 0)
+    compact_cached = int(compact_call_usage.get("cached_tokens", 0) or 0)
+    compact_output = int(compact_call_usage.get("output_tokens", 0) or 0)
+    return CostUsage(
+        input_tokens=int(usage.input_tokens) + compact_input,
+        cached_tokens=int(usage.cached_tokens) + compact_cached,
+        output_tokens=int(usage.output_tokens) + compact_output,
+        usage_source=usage.usage_source,
+        model_call_count=int(usage.model_call_count) + 1,
+    )
+
+
 def _is_provider_usage_metadata(metadata):
     return (
         metadata.get("provider_protocol") is not None
@@ -634,6 +661,12 @@ def _cost_per_successful_task(rows):
 def _claimable_cost_win(pairs, *, treatment, control, cost_deltas):
     if not pairs or not cost_deltas or _median_rounded(cost_deltas) >= 0:
         return False
+    if any(
+        pair[treatment].compact_net_benefit_tokens is not None
+        and int(pair[treatment].compact_net_benefit_tokens) < 0
+        for pair in pairs
+    ):
+        return False
     if any(_quality_regressed(pair[treatment], pair[control]) for pair in pairs):
         return False
     return all(
@@ -753,16 +786,34 @@ class _LongSessionScriptedClient(ScriptedModelClient):
         return super().complete(prompt, max_new_tokens, **kwargs)
 
 
-def _run_long_session_scripted_task(task, *, variant, repeat, output_dir, pricing):
+def _run_long_session_task(
+    task,
+    *,
+    variant,
+    repeat,
+    mode,
+    provider,
+    provider_client_factory,
+    output_dir,
+    pricing,
+):
     fixture_source = Path(task["fixture_repo"]).resolve()
     workspace = Path(output_dir) / "runs" / task["id"] / variant / str(repeat) / fixture_source.name
     if workspace.exists():
         shutil.rmtree(workspace)
     workspace.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(fixture_source, workspace)
+    model_client = _model_client_for_long_session_task(
+        task,
+        variant=variant,
+        repeat=repeat,
+        mode=mode,
+        provider=provider,
+        provider_client_factory=provider_client_factory,
+    )
 
     agent = Pico(
-        model_client=_LongSessionScriptedClient(task.get("scripted_outputs", [])),
+        model_client=model_client,
         workspace=WorkspaceContext.build(workspace, repo_root_override=workspace),
         session_store=SessionStore(workspace / ".pico" / "sessions"),
         run_store=RunStore(workspace / ".pico" / "runs"),
@@ -793,12 +844,60 @@ def _run_long_session_scripted_task(task, *, variant, repeat, output_dir, pricin
         report_path,
         trace_path,
         task_id=task["id"],
-        layer="scripted",
+        layer=mode,
         variant=variant,
         repeat=repeat,
         pricing=pricing,
         verification_status=verification_status,
         allow_verification_override=True,
+    )
+
+
+def _model_client_for_long_session_task(
+    task,
+    *,
+    variant,
+    repeat,
+    mode,
+    provider,
+    provider_client_factory,
+):
+    if mode == "scripted":
+        return _LongSessionScriptedClient(task.get("scripted_outputs", []))
+    if provider_client_factory is not None:
+        return provider_client_factory(
+            provider=provider,
+            task=task,
+            variant=variant,
+            repeat=repeat,
+        )
+    return _build_live_provider_client(provider)
+
+
+def _build_live_provider_client(provider):
+    config = resolve_provider_config(provider, start=Path.cwd())
+    if not config.api_key:
+        raise RuntimeError(
+            f"live provider config blocked: API key missing for provider profile {config.name}"
+        )
+    if config.protocol == "openai":
+        return OpenAICompatibleModelClient(
+            model=config.model,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            temperature=0.0,
+            timeout=300,
+        )
+    if config.protocol == "anthropic":
+        return AnthropicCompatibleModelClient(
+            model=config.model,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            temperature=0.0,
+            timeout=300,
+        )
+    raise RuntimeError(
+        f"live provider config blocked: unsupported protocol {config.protocol}"
     )
 
 
