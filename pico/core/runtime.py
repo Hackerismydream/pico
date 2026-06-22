@@ -18,6 +18,7 @@ from ..features import memory as memorylib, skills as skillslib
 from ..features.sandbox import SandboxConfig, SandboxRunner
 from .compact import CompactManager
 from .context_manager import ContextManager
+from .context_orchestrator import ContextOrchestrator
 from .engine import Engine
 from . import model_output, tool_executor
 from .plan_mode import PlanModeController
@@ -201,6 +202,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.compact_manager = CompactManager(self)
         self.runtime_consumers = default_runtime_consumers()
         self.context_manager = ContextManager(self)
+        self.context_orchestrator = ContextOrchestrator(self)
         self.resume_state = self.evaluate_resume_state()
         self.session_path = self.session_store.save(self.session)
         self.current_task_state = None
@@ -623,58 +625,13 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
     def _build_prompt_and_metadata(self, user_message):
         refresh = self.refresh_prefix()
         self.resume_state = self.evaluate_resume_state()
-        prompt, metadata = self.context_manager.build(user_message)
-        if (
-            metadata.get("prompt_over_budget")
-            and len(self.session.get("history", [])) > 4
-        ):
-            self.compact_history(trigger="auto_prompt_over_budget")
-            prompt, metadata = self.context_manager.build(user_message)
-            metadata["auto_compacted"] = True
-        # 这里把“这轮 prompt 是怎么拼出来的”连同缓存相关状态一起记下来，
-        # 后面 trace/report 才能解释清楚：为什么这一轮 prefix 变了、缓存有没有命中。
-        metadata.update(
-            {
-                "prefix_chars": len(self.prefix),
-                "workspace_chars": len(self.workspace.text()),
-                "memory_chars": len(self.memory_text()),
-                "history_chars": len(self.history_text()),
-                "request_chars": len(user_message),
-                "tool_count": len(self.tools),
-                "workspace_docs": len(self.workspace.project_docs),
-                "recent_commits": len(self.workspace.recent_commits),
-                "prefix_hash": self.prefix_state.hash,
-                "prompt_cache_key": self.prefix_state.hash,
-                "workspace_fingerprint": self.prefix_state.workspace_fingerprint,
-                "tool_signature": self.prefix_state.tool_signature,
-                "workspace_changed": refresh["workspace_changed"],
-                "prefix_changed": refresh["prefix_changed"],
-                "prompt_cache_supported": bool(
-                    getattr(self.model_client, "supports_prompt_cache", False)
-                ),
-                "resume_status": self.resume_state.get(
-                    "status", CHECKPOINT_NONE_STATUS
-                ),
-                "stale_summary_invalidations": int(
-                    self.resume_state.get("stale_summary_invalidations", 0)
-                ),
-                "stale_paths": list(self.resume_state.get("stale_paths", [])),
-                "runtime_identity_mismatch_fields": list(
-                    self.resume_state.get("runtime_identity_mismatch_fields", [])
-                ),
-            }
-        )
-        metadata.update(self.detected_secret_env_summary())
-        usage_payload = {
-            "run_id": getattr(getattr(self, "current_task_state", None), "run_id", ""),
-            "context_usage": metadata.get("context_usage", {}),
-        }
-        self.session_event_bus.emit("context_usage_recorded", usage_payload)
-        return prompt, metadata
+        snapshot = self.context_orchestrator.snapshot(user_message, prefix_refresh=refresh)
+        result = self.context_orchestrator.build(snapshot)
+        return result.prompt, result.metadata
 
-    def compact_history(self, trigger="manual", keep_recent_turns=2):
+    def compact_history(self, trigger="manual", keep_recent_turns=2, summary_mode="deterministic"):
         return self.compact_manager.compact(
-            trigger=trigger, keep_recent_turns=keep_recent_turns
+            trigger=trigger, keep_recent_turns=keep_recent_turns, summary_mode=summary_mode
         )
 
     def durable_memory_index_text(self):
