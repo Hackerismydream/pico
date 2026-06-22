@@ -171,6 +171,8 @@ class ContextOrchestrator:
             "summary_delta_event_count": int(summary.get("delta_event_count", 0) or 0),
             "summary_called": bool(summary.get("summary_called", False)),
             "summary_mode": str(summary.get("summary_mode", "")),
+            "compact_summary_has_next_steps": summary.get("summary_has_next_steps"),
+            "compact_summary_has_file_references": summary.get("summary_has_file_references"),
             "compact_call_usage": summary.get("compact_call_usage"),
             "should_compact": bool(should_compact),
             "compact_trigger": plan.trigger if plan else None,

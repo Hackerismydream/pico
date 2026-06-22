@@ -503,14 +503,8 @@ def handle_repl_command(agent, user_input):
     if user_input == "/clear":
         session_id = agent.clear_session()
         return True, False, f"new session {session_id}"
-    if user_input == "/compact":
-        return (
-            True,
-            False,
-            json.dumps(
-                agent.compact_history(trigger="manual"), indent=2, sort_keys=True
-            ),
-        )
+    if command_name == "compact":
+        return True, False, _handle_compact(agent, command_args)
     if user_input == "/reset":
         agent.reset()
         return True, False, "session reset"
@@ -574,6 +568,34 @@ def _worker_summary(agent):
     return ", ".join(f"{item.get('id')}:{item.get('status')}" for item in items)
 
 
+def _handle_compact(agent, args_text):
+    args_text = str(args_text or "").strip()
+    summary_mode = "deterministic"
+    if args_text == "--llm":
+        summary_mode = "llm"
+    elif args_text == "--auto":
+        metadata = dict(getattr(agent, "last_prompt_metadata", {}) or {})
+        usage = dict(metadata.get("context_usage", {}) or {})
+        summary_mode = "llm" if usage.get("pressure_tier") == "tier3_summary" else "deterministic"
+    result = agent.compact_history(trigger="manual", summary_mode=summary_mode)
+    return json.dumps(_compact_command_output(result), indent=2, sort_keys=True)
+
+
+def _compact_command_output(result):
+    output = {
+        "summary_mode": result.get("summary_mode", ""),
+        "summary_called": bool(result.get("summary_called", False)),
+        "pre_tokens": int(result.get("pre_tokens", 0) or 0),
+        "post_tokens": int(result.get("post_tokens", 0) or 0),
+        "delta_event_count": int(result.get("delta_event_count", 0) or 0),
+    }
+    usage = result.get("compact_call_usage")
+    if usage:
+        output["compact_call_usage"] = usage
+        output["net_benefit_tokens"] = output["pre_tokens"] - output["post_tokens"] - int(usage.get("total_tokens", 0) or 0)
+    return output
+
+
 def _format_usage(agent):
     metadata = dict(getattr(agent, "last_completion_metadata", {}) or {})
     context_usage = dict(
@@ -616,10 +638,27 @@ def _format_usage(agent):
 
 
 def _context_payload(agent):
-    metadata = agent.prompt_metadata("", "")
+    metadata = dict(getattr(agent, "last_prompt_metadata", {}) or {})
+    if not metadata:
+        metadata = agent.prompt_metadata("", "")
+    orchestrator = dict(metadata.get("context_orchestrator", {}) or {})
     return {
         "context_usage": metadata.get("context_usage", {}),
-        "context_orchestrator": metadata.get("context_orchestrator", {}),
+        "context_orchestrator": orchestrator,
+        "llm_handoff_status": _llm_handoff_status(orchestrator),
+    }
+
+
+def _llm_handoff_status(orchestrator):
+    usage = dict(orchestrator.get("compact_call_usage", {}) or {})
+    pre = int(orchestrator.get("pre_compact_estimated_tokens", 0) or 0)
+    post = int(orchestrator.get("post_compact_estimated_tokens", 0) or 0)
+    total = int(usage.get("total_tokens", 0) or 0)
+    return {
+        "last_compact_mode": orchestrator.get("summary_mode") or "none",
+        "compact_call_tokens": total if usage else None,
+        "net_benefit_tokens": pre - post - total if usage else None,
+        "handoff_armed": orchestrator.get("pressure_tier") == "tier3_summary",
     }
 
 
