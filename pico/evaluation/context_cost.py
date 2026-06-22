@@ -942,45 +942,71 @@ def _comparison_variants(variants):
 
 def _render_llm_handoff_comparison(payload):
     rows = [dict(row) for row in payload.get("rows", []) or []]
-    by_task = {}
+    by_pair = {}
     for row in rows:
-        by_task.setdefault(str(row.get("task_id", "")), {})[str(row.get("variant", ""))] = row
+        key = (
+            str(row.get("task_id", "")),
+            int(row.get("repeat", 0) or 0),
+            str(row.get("layer", "")),
+        )
+        by_pair.setdefault(key, {})[str(row.get("variant", ""))] = row
     comparison_rows = []
-    for task_id, variants in sorted(by_task.items()):
+    for (task_id, repeat, layer), variants in sorted(by_pair.items()):
         deterministic = variants.get("full_orchestrator")
         handoff = variants.get("full_orchestrator_with_llm_handoff")
         if not deterministic or not handoff:
             continue
-        comparison_rows.append((task_id, deterministic, handoff))
+        comparison_rows.append((task_id, repeat, layer, deterministic, handoff))
 
     net_values = [
         int(handoff.get("compact_net_benefit_tokens"))
-        for _, _, handoff in comparison_rows
+        for _, _, _, _, handoff in comparison_rows
         if handoff.get("compact_net_benefit_tokens") is not None
     ]
     positive = sum(1 for value in net_values if value > 0)
     negative = sum(1 for value in net_values if value < 0)
+    total = len(net_values)
+    show_repeat = any(repeat > 0 for _, repeat, _, _, _ in comparison_rows)
     negative_tasks = [
-        task_id
-        for task_id, _, handoff in comparison_rows
+        _repeat_label(task_id, repeat, show_repeat=show_repeat)
+        for task_id, repeat, _, _, handoff in comparison_rows
         if handoff.get("compact_net_benefit_tokens") is not None
         and int(handoff.get("compact_net_benefit_tokens")) < 0
     ]
-    total = len(net_values)
     lines = [
         "## LLM Handoff vs Deterministic Comparison",
         "",
-        "| Task | Deterministic Cost | LLM Handoff Cost | Net Benefit | Mode Used |",
-        "|------|-------------------|------------------|-------------|-----------|",
     ]
-    for task_id, deterministic, handoff in comparison_rows:
+    if show_repeat:
+        lines.extend(
+            [
+                "| Task | Repeat | Deterministic Cost | LLM Handoff Cost | Net Benefit | Mode Used |",
+                "|------|--------|-------------------|------------------|-------------|-----------|",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "| Task | Deterministic Cost | LLM Handoff Cost | Net Benefit | Mode Used |",
+                "|------|-------------------|------------------|-------------|-----------|",
+            ]
+        )
+    for task_id, repeat, _, deterministic, handoff in comparison_rows:
         net = handoff.get("compact_net_benefit_tokens")
         net_text = "n/a" if net is None else f"{int(net)} tokens"
-        lines.append(
-            f"| {task_id} | {float(deterministic.get('cost_usd', 0.0)):.8f} | "
-            f"{float(handoff.get('cost_usd', 0.0)):.8f} | {net_text} | "
-            f"{handoff.get('compact_summary_mode', '')} |"
-        )
+        if show_repeat:
+            lines.append(
+                f"| {task_id} | {repeat} | "
+                f"{float(deterministic.get('cost_usd', 0.0)):.8f} | "
+                f"{float(handoff.get('cost_usd', 0.0)):.8f} | {net_text} | "
+                f"{handoff.get('compact_summary_mode', '')} |"
+            )
+        else:
+            lines.append(
+                f"| {task_id} | {float(deterministic.get('cost_usd', 0.0)):.8f} | "
+                f"{float(handoff.get('cost_usd', 0.0)):.8f} | {net_text} | "
+                f"{handoff.get('compact_summary_mode', '')} |"
+            )
     lines.extend(
         [
             "",
@@ -991,6 +1017,10 @@ def _render_llm_handoff_comparison(payload):
         ]
     )
     return "\n".join(lines)
+
+
+def _repeat_label(task_id, repeat, *, show_repeat):
+    return f"{task_id}#{repeat}" if show_repeat else str(task_id)
 
 
 def _median_tokens(values):

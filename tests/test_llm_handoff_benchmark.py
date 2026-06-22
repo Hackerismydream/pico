@@ -181,6 +181,57 @@ def test_generate_report_includes_llm_handoff_comparison():
     assert "Net-negative tasks: task-a" in report
 
 
+def test_generate_report_includes_all_repeats_in_llm_handoff_comparison():
+    payload = {
+        "summary": {},
+        "pricing": {},
+        "rows": [
+            {
+                "task_id": "task-a",
+                "repeat": 0,
+                "variant": "full_orchestrator",
+                "cost_usd": 0.01,
+                "compact_net_benefit_tokens": None,
+                "compact_summary_mode": "deterministic",
+            },
+            {
+                "task_id": "task-a",
+                "repeat": 0,
+                "variant": "full_orchestrator_with_llm_handoff",
+                "cost_usd": 0.012,
+                "compact_net_benefit_tokens": -10,
+                "compact_summary_mode": "llm",
+            },
+            {
+                "task_id": "task-a",
+                "repeat": 1,
+                "variant": "full_orchestrator",
+                "cost_usd": 0.02,
+                "compact_net_benefit_tokens": None,
+                "compact_summary_mode": "deterministic",
+            },
+            {
+                "task_id": "task-a",
+                "repeat": 1,
+                "variant": "full_orchestrator_with_llm_handoff",
+                "cost_usd": 0.018,
+                "compact_net_benefit_tokens": 30,
+                "compact_summary_mode": "llm",
+            },
+        ],
+    }
+
+    report = generate_report(payload, include_llm_handoff_comparison=True)
+
+    assert "| Task | Repeat | Deterministic Cost | LLM Handoff Cost | Net Benefit | Mode Used |" in report
+    assert "| task-a | 0 |" in report
+    assert "| task-a | 1 |" in report
+    assert "Median net benefit: 10 tokens" in report
+    assert "Positive net benefit: 50%" in report
+    assert "Negative net benefit: 50%" in report
+    assert "Net-negative tasks: task-a#0" in report
+
+
 def test_fixture_verifiers_pass_after_scripted_correct_state(tmp_path):
     tasks = _load_long_session_tasks()
     payload = run_paired_experiment(
