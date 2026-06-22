@@ -141,6 +141,9 @@ pico
 | OpenAI-compatible | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` |
 | Anthropic-compatible | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL` |
 
+如果你的网关给 OpenAI-compatible 和 Anthropic-compatible 共用同一个 key，
+也可以设置 `PICO_RIGHT_CODES_API_KEY` 作为 fallback。
+
 也可以用通用覆盖变量：
 
 ```bash

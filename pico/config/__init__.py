@@ -76,7 +76,7 @@ ENV_MODEL = "PICO_MODEL"
 
 PROVIDER_ENV_NAMES = {
     "openai": {
-        "api_key": ("OPENAI_API_KEY",),
+        "api_key": ("OPENAI_API_KEY", "PICO_RIGHT_CODES_API_KEY", "RIGHT_CODES_API_KEY"),
         "base_url": ("OPENAI_API_BASE", "OPENAI_BASE_URL"),
         "model": ("OPENAI_MODEL",),
     },
@@ -99,7 +99,12 @@ PROVIDER_ENV_NAMES = {
 
 LEGACY_ENV_NAMES = {
     "openai": {
-        "api_key": ("PICO_OPENAI_API_KEY", "OPENAI_API_KEY"),
+        "api_key": (
+            "PICO_OPENAI_API_KEY",
+            "OPENAI_API_KEY",
+            "PICO_RIGHT_CODES_API_KEY",
+            "RIGHT_CODES_API_KEY",
+        ),
         "base_url": ("PICO_OPENAI_API_BASE", "OPENAI_API_BASE", "OPENAI_BASE_URL"),
         "model": ("PICO_OPENAI_MODEL", "OPENAI_MODEL"),
     },
