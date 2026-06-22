@@ -1,7 +1,10 @@
 """Evidence and tool-state checks for final-readiness decisions."""
 
 from .final_readiness_artifacts import summarize_required_artifacts
+from .final_readiness_context import compact_net_negative
+from .final_readiness_context import compact_summary_quality_low
 from .final_readiness_context import context_pressure_without_reduction
+from .final_readiness_context import context_pressure_compaction_failed
 from .final_readiness_context import provider_usage_unavailable
 from .final_readiness_context import replacement_ledger_disabled_under_pressure
 from .final_readiness_context import tier3_summary_without_delta
@@ -39,6 +42,12 @@ def readiness_reasons(task_state, workspace_root=None):
         reasons.append("replacement_ledger_disabled_under_pressure")
     if provider_usage_unavailable(context):
         reasons.append("provider_real_token_usage_unavailable")
+    if compact_net_negative(context):
+        reasons.append("compact_net_negative")
+    if compact_summary_quality_low(context):
+        reasons.append("compact_summary_quality_low")
+    if context_pressure_compaction_failed(context):
+        reasons.append("context_pressure_compaction_failed")
     return reasons
 
 

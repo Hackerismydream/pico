@@ -122,6 +122,88 @@ def test_final_readiness_allows_missing_provider_usage_at_low_pressure():
     assert decision["reasons"] == []
 
 
+def test_final_readiness_warns_on_negative_llm_compact_net_benefit():
+    state = task_state()
+    state.evidence_summaries = {
+        "context_budget_summary": {
+            "summary_mode": "llm",
+            "compact_net_benefit_tokens": -25,
+        }
+    }
+
+    decision = evaluate_final_readiness(state, "strict")
+
+    assert decision["decision"] == "warn"
+    assert decision["reasons"] == ["compact_net_negative"]
+
+
+def test_final_readiness_allows_non_negative_or_unknown_compact_net_benefit():
+    for net in (0, 50, None):
+        state = task_state()
+        state.evidence_summaries = {
+            "context_budget_summary": {
+                "summary_mode": "llm",
+                "compact_net_benefit_tokens": net,
+            }
+        }
+
+        decision = evaluate_final_readiness(state, "strict")
+
+        assert decision["decision"] == "allow"
+        assert decision["reasons"] == []
+
+
+def test_final_readiness_warns_on_low_quality_llm_compact_summary():
+    state = task_state()
+    state.evidence_summaries = {
+        "context_budget_summary": {
+            "summary_mode": "llm",
+            "compact_summary_has_next_steps": True,
+            "compact_summary_has_file_references": False,
+        }
+    }
+
+    decision = evaluate_final_readiness(state, "strict")
+
+    assert decision["decision"] == "warn"
+    assert decision["reasons"] == ["compact_summary_quality_low"]
+
+
+def test_final_readiness_ignores_deterministic_compact_summary_quality():
+    state = task_state()
+    state.evidence_summaries = {
+        "context_budget_summary": {
+            "summary_mode": "deterministic",
+            "compact_summary_has_next_steps": False,
+            "compact_summary_has_file_references": False,
+        }
+    }
+
+    decision = evaluate_final_readiness(state, "strict")
+
+    assert decision["decision"] == "allow"
+    assert decision["reasons"] == []
+
+
+def test_final_readiness_blocks_tier3_compaction_without_token_savings():
+    state = task_state()
+    state.evidence_summaries = {
+        "context_budget_summary": {
+            "pressure_tier": "tier3_summary",
+            "pressure_ratio": 0.90,
+            "pre_compact_estimated_tokens": 1200,
+            "post_compact_estimated_tokens": 1200,
+            "reductions": [{"source": "microcompact", "saved_chars": 1}],
+        }
+    }
+
+    decision = evaluate_final_readiness(state, "strict")
+
+    assert decision["decision"] == "block"
+    assert decision["action"] == "block"
+    assert decision["reasons"] == ["context_pressure_compaction_failed"]
+
+
 def test_final_readiness_blocks_partial_success_workspace_change():
     state = task_state()
     state.runtime_reminders = [
