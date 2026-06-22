@@ -1,21 +1,25 @@
 import os
+import io
 import json
 import subprocess
 import sys
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
 import pico as pico_pkg
+import pico.providers as providers_pkg
+import pytest
+from pico.testing import ScriptedModelClient
 from pico import (
     AnthropicCompatibleModelClient,
-    FakeModelClient,
     Pico,
-    OllamaModelClient,
     OpenAICompatibleModelClient,
     SessionStore,
     WorkspaceContext,
     build_welcome,
 )
+from pico.providers import ProviderError
 
 
 def build_workspace(tmp_path):
@@ -28,7 +32,7 @@ def build_agent(tmp_path, outputs, **kwargs):
     store = SessionStore(tmp_path / ".pico" / "sessions")
     approval_policy = kwargs.pop("approval_policy", "auto")
     return Pico(
-        model_client=FakeModelClient(outputs),
+        model_client=ScriptedModelClient(outputs),
         workspace=workspace,
         session_store=store,
         approval_policy=approval_policy,
@@ -87,7 +91,7 @@ def test_agent_only_stores_reusable_epistemic_notes(tmp_path):
     assert not any(note["text"] == "Done." for note in notes)
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>It is red.</final>"]),
+        model_client=ScriptedModelClient(["<final>It is red.</final>"]),
         workspace=agent.workspace,
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -113,7 +117,7 @@ def test_file_summary_cache_is_invalidated_on_out_of_band_edit_and_path_spelling
     file_path.write_text("beta\n", encoding="utf-8")
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient([]),
+        model_client=ScriptedModelClient([]),
         workspace=agent.workspace,
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -196,7 +200,7 @@ def test_agent_saves_and_resumes_session(tmp_path):
     assert agent.ask("Start a session") == "First pass."
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>Resumed.</final>"]),
+        model_client=ScriptedModelClient(["<final>Resumed.</final>"]),
         workspace=agent.workspace,
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -207,29 +211,12 @@ def test_agent_saves_and_resumes_session(tmp_path):
     assert resumed.ask("Continue") == "Resumed."
 
 
-def test_delegate_uses_child_agent(tmp_path):
-    agent = build_agent(
-        tmp_path,
-        [
-            '<tool>{"name":"delegate","args":{"task":"inspect README","max_steps":2}}</tool>',
-            "<final>Child result.</final>",
-            "<final>Parent incorporated the child result.</final>",
-        ],
-    )
-
-    answer = agent.ask("Use delegation")
-
-    assert answer == "Parent incorporated the child result."
-    tool_events = [item for item in agent.session["history"] if item["role"] == "tool"]
-    assert tool_events[0]["name"] == "delegate"
-    assert "delegate_result" in tool_events[0]["content"]
-
-
 def test_patch_file_replaces_exact_match(tmp_path):
     file_path = tmp_path / "sample.txt"
     file_path.write_text("hello world\n", encoding="utf-8")
     agent = build_agent(tmp_path, [])
 
+    agent.run_tool("read_file", {"path": "sample.txt", "start": 1, "end": 1})
     result = agent.run_tool(
         "patch_file",
         {
@@ -278,7 +265,7 @@ def test_repeated_identical_tool_call_is_rejected(tmp_path):
 
 
 def test_welcome_screen_keeps_box_shape_for_long_paths(tmp_path):
-    deep = tmp_path / "very" / "long" / "path" / "for" / "the" / "pico" / "agent" / "welcome" / "screen"
+    deep = tmp_path / "very" / "long" / "path" / "for" / "the" / "mini" / "agent" / "welcome" / "screen"
     deep.mkdir(parents=True)
     agent = build_agent(deep, [])
 
@@ -289,52 +276,12 @@ def test_welcome_screen_keeps_box_shape_for_long_paths(tmp_path):
     assert len({len(line) for line in lines}) == 1
     assert "..." in welcome
     assert "(  o o  )" in welcome
-    assert "MINI-CODING-AGENT" not in welcome
-    assert "MINI CODING AGENT" not in welcome
     assert "pico" in welcome
     assert "local coding agent" in welcome
     assert "// READY" not in welcome
     assert "SLASH" not in welcome
     assert "READY      " not in welcome
     assert "commands: Commands:" not in welcome
-
-
-def test_ollama_client_posts_expected_payload():
-    captured = {}
-
-    class FakeResponse:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def read(self):
-            return json.dumps({"response": "<final>ok</final>"}).encode("utf-8")
-
-    def fake_urlopen(request, timeout):
-        captured["url"] = request.full_url
-        captured["timeout"] = timeout
-        captured["body"] = json.loads(request.data.decode("utf-8"))
-        return FakeResponse()
-
-    client = OllamaModelClient(
-        model="qwen3.5:4b",
-        host="http://127.0.0.1:11434",
-        temperature=0.2,
-        top_p=0.9,
-        timeout=30,
-    )
-
-    with patch("urllib.request.urlopen", fake_urlopen):
-        result = client.complete("hello", 42)
-
-    assert result == "<final>ok</final>"
-    assert captured["url"] == "http://127.0.0.1:11434/api/generate"
-    assert captured["timeout"] == 30
-    assert captured["body"]["model"] == "qwen3.5:4b"
-    assert captured["body"]["prompt"] == "hello"
-    assert captured["body"]["stream"] is False
 
 
 def test_openai_compatible_client_posts_expected_responses_payload():
@@ -451,6 +398,129 @@ def test_openai_compatible_client_sends_prompt_cache_fields_and_records_usage():
     assert client.last_completion_metadata["cached_tokens"] == 1536
     assert client.last_completion_metadata["cache_hit"] is True
     assert client.last_completion_metadata["input_tokens"] == 2048
+    assert client.last_completion_metadata["provider_attempts"] == 1
+
+
+def test_openai_compatible_client_retries_rate_limit_and_records_retry_metadata():
+    calls = {"count": 0}
+
+    class FakeResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"output_text": "<final>ok</final>"}).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        del request, timeout
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise urllib.error.HTTPError(
+                "https://right.codes/v1/responses",
+                429,
+                "rate limited",
+                {"Retry-After": "0"},
+                io.BytesIO(b'{"error":"busy"}'),
+            )
+        return FakeResponse()
+
+    client = OpenAICompatibleModelClient(
+        model="right.codes/codex-mini",
+        base_url="https://right.codes/v1",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+    )
+
+    with patch("urllib.request.urlopen", fake_urlopen), patch("pico.providers.clients.time.sleep"):
+        result = client.complete("hello", 42)
+
+    assert result == "<final>ok</final>"
+    assert calls["count"] == 2
+    assert client.last_completion_metadata["provider_attempts"] == 2
+    assert client.last_completion_metadata["provider_retry_count"] == 1
+
+
+def test_openai_compatible_client_classifies_invalid_json_provider_failure():
+    class FakeResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b"not-json"
+
+    client = OpenAICompatibleModelClient(
+        model="right.codes/codex-mini",
+        base_url="https://right.codes/v1",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+    )
+
+    with patch("urllib.request.urlopen", return_value=FakeResponse()), pytest.raises(ProviderError) as exc:
+        client.complete("hello", 42)
+
+    assert exc.value.code == "invalid_json"
+    assert client.last_completion_metadata["provider_error"]["code"] == "invalid_json"
+    assert client.last_completion_metadata["provider_error"]["attempts"] == 1
+
+
+def test_provider_error_metadata_sanitizes_url_credentials():
+    error = ProviderError(
+        "failed",
+        provider="openai",
+        model="gpt-test",
+        base_url="https://user:secret@example.test:8443/v1?api_key=sk-real-secret#frag",
+        code="server_error",
+    )
+
+    metadata = error.to_metadata()["provider_error"]
+
+    assert metadata["base_url"] == "https://example.test:8443/v1"
+    assert "secret" not in metadata["base_url"]
+    assert "api_key" not in metadata["base_url"]
+
+
+def test_provider_success_metadata_sanitizes_url_credentials():
+    class FakeResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"output_text": "<final>ok</final>"}).encode("utf-8")
+
+    client = OpenAICompatibleModelClient(
+        model="right.codes/codex-mini",
+        base_url="https://user:secret@example.test:8443/v1?api_key=sk-real-secret",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+    )
+
+    with patch("urllib.request.urlopen", return_value=FakeResponse()):
+        assert client.complete("hello", 42) == "<final>ok</final>"
+
+    assert client.last_completion_metadata["provider_base_url"] == "https://example.test:8443/v1"
+
+
+def test_provider_url_sanitizer_handles_invalid_ports_and_ipv6():
+    assert ProviderError("failed", base_url="https://example.test:bad/v1?api_key=sk-real-secret").base_url == "https://example.test/v1"
+    assert ProviderError("failed", base_url="http://user:secret@[::1]:8080/v1").base_url == "http://[::1]:8080/v1"
 
 
 def test_openai_compatible_client_extracts_text_from_event_stream():
@@ -620,6 +690,48 @@ def test_anthropic_compatible_client_extracts_first_text_block():
     assert result == "<final>ok</final>"
 
 
+def test_anthropic_compatible_client_records_usage_metadata():
+    class FakeResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "content": [{"type": "text", "text": "<final>ok</final>"}],
+                    "usage": {
+                        "input_tokens": 1234,
+                        "output_tokens": 56,
+                        "cache_read_input_tokens": 100,
+                    },
+                }
+            ).encode("utf-8")
+
+    client = AnthropicCompatibleModelClient(
+        model="claude-sonnet-4-5-20250929",
+        base_url="https://www.right.codes/claude-aws/v1",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+    )
+
+    with patch("urllib.request.urlopen", return_value=FakeResponse()):
+        result = client.complete("hello", 42)
+
+    assert result == "<final>ok</final>"
+    assert client.last_completion_metadata["provider_protocol"] == "anthropic"
+    assert client.last_completion_metadata["provider_model"] == "claude-sonnet-4-5-20250929"
+    assert client.last_completion_metadata["input_tokens"] == 1234
+    assert client.last_completion_metadata["output_tokens"] == 56
+    assert client.last_completion_metadata["cached_tokens"] == 100
+    assert client.last_completion_metadata["cache_hit"] is True
+
+
 def test_build_agent_uses_openai_provider_and_model_override(tmp_path):
     args = type(
         "Args",
@@ -630,7 +742,6 @@ def test_build_agent_uses_openai_provider_and_model_override(tmp_path):
             "model": "override-model",
             "base_url": None,
             "host": "http://127.0.0.1:11434",
-            "ollama_timeout": 300,
             "temperature": 0.2,
             "top_p": 0.9,
             "resume": None,
@@ -650,10 +761,7 @@ def test_build_agent_uses_openai_provider_and_model_override(tmp_path):
         },
         clear=False,
     ):
-        with patch(
-            "pico.cli.OllamaModelClient",
-            side_effect=AssertionError("ollama client should not be used"),
-        ), patch("pico.cli.OpenAICompatibleModelClient") as mock_openai:
+        with patch("pico.cli.OpenAICompatibleModelClient") as mock_openai:
             fake_client = mock_openai.return_value
             agent = pico_pkg.build_agent(args)
 
@@ -664,45 +772,10 @@ def test_build_agent_uses_openai_provider_and_model_override(tmp_path):
     assert agent.model_client is fake_client
 
 
-def test_build_agent_uses_right_codes_shared_key_for_openai_provider(tmp_path):
-    args = type(
-        "Args",
-        (),
-        {
-            "cwd": str(tmp_path),
-            "provider": "openai",
-            "model": None,
-            "base_url": None,
-            "host": "http://127.0.0.1:11434",
-            "ollama_timeout": 300,
-            "openai_timeout": 300,
-            "temperature": 0.2,
-            "top_p": 0.9,
-            "resume": None,
-            "approval": "ask",
-            "secret_env_names": [],
-            "max_steps": 6,
-            "max_new_tokens": 512,
-        },
-    )()
-
-    with patch.dict(os.environ, {"PICO_RIGHT_CODES_API_KEY": "sk-right-codes"}, clear=True):
-        with patch(
-            "pico.cli.OllamaModelClient",
-            side_effect=AssertionError("ollama client should not be used"),
-        ), patch("pico.cli.OpenAICompatibleModelClient") as mock_openai:
-            fake_client = mock_openai.return_value
-            agent = pico_pkg.build_agent(args)
-
-    mock_openai.assert_called_once()
-    assert mock_openai.call_args.kwargs["api_key"] == "sk-right-codes"
-    assert agent.model_client is fake_client
-
-
-def test_build_arg_parser_defaults_provider_to_deepseek(tmp_path):
+def test_build_arg_parser_leaves_provider_to_config_by_default(tmp_path):
     args = pico_pkg.build_arg_parser().parse_args(["--cwd", str(tmp_path)])
 
-    assert args.provider == "deepseek"
+    assert args.provider is None
 
 
 def test_build_arg_parser_accepts_anthropic_provider(tmp_path):
@@ -727,7 +800,6 @@ def test_build_agent_uses_anthropic_provider_and_openai_key_fallback(tmp_path):
             "model": "claude-sonnet-4-5-20250929",
             "base_url": None,
             "host": "http://127.0.0.1:11434",
-            "ollama_timeout": 300,
             "openai_timeout": 300,
             "temperature": 0.2,
             "top_p": 0.9,
@@ -747,9 +819,6 @@ def test_build_agent_uses_anthropic_provider_and_openai_key_fallback(tmp_path):
         clear=True,
     ):
         with patch(
-            "pico.cli.OllamaModelClient",
-            side_effect=AssertionError("ollama client should not be used"),
-        ), patch(
             "pico.cli.OpenAICompatibleModelClient",
             side_effect=AssertionError("openai client should not be used"),
         ), patch("pico.cli.AnthropicCompatibleModelClient") as mock_anthropic:
@@ -799,7 +868,6 @@ def test_build_agent_uses_deepseek_provider_and_env_configuration(tmp_path):
             "model": None,
             "base_url": None,
             "host": "http://127.0.0.1:11434",
-            "ollama_timeout": 300,
             "openai_timeout": 300,
             "temperature": 0.2,
             "top_p": 0.9,
@@ -813,19 +881,10 @@ def test_build_agent_uses_deepseek_provider_and_env_configuration(tmp_path):
 
     with patch.dict(
         os.environ,
-        {
-            "DEEPSEEK_API_BASE": "https://legacy.deepseek.example/anthropic",
-            "DEEPSEEK_API_KEY": "sk-legacy-deepseek",
-            "DEEPSEEK_MODEL": "legacy-deepseek-model",
-            "ANTHROPIC_API_KEY": "sk-anthropic",
-            "OPENAI_API_KEY": "sk-openai",
-        },
+        {"ANTHROPIC_API_KEY": "sk-anthropic", "OPENAI_API_KEY": "sk-openai"},
         clear=True,
     ):
         with patch(
-            "pico.cli.OllamaModelClient",
-            side_effect=AssertionError("ollama client should not be used"),
-        ), patch(
             "pico.cli.OpenAICompatibleModelClient",
             side_effect=AssertionError("openai client should not be used"),
         ), patch("pico.cli.AnthropicCompatibleModelClient") as mock_anthropic:
@@ -836,6 +895,39 @@ def test_build_agent_uses_deepseek_provider_and_env_configuration(tmp_path):
     assert mock_anthropic.call_args.kwargs["model"] == "deepseek-v4-pro"
     assert mock_anthropic.call_args.kwargs["base_url"] == "https://api.deepseek.com/anthropic"
     assert mock_anthropic.call_args.kwargs["api_key"] == "sk-project-deepseek"
+    assert agent.model_client is fake_client
+
+
+def test_build_agent_uses_provider_profile_protocol_from_project_toml(tmp_path):
+    (tmp_path / ".pico.toml").write_text(
+        "\n".join(
+            [
+                'provider = "deepseek"',
+                "",
+                "[providers.deepseek]",
+                'protocol = "anthropic"',
+                'api_key = "sk-config-deepseek"',
+                'base_url = "https://api.deepseek.com/anthropic"',
+                'model = "deepseek-v4-pro"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    args = pico_pkg.build_arg_parser().parse_args(["--cwd", str(tmp_path)])
+
+    with patch.dict(os.environ, {"PICO_DEEPSEEK_API_KEY": "sk-legacy-env"}, clear=True):
+        with patch(
+            "pico.cli.OpenAICompatibleModelClient",
+            side_effect=AssertionError("openai client should not be used"),
+        ), patch("pico.cli.AnthropicCompatibleModelClient") as mock_anthropic:
+            fake_client = mock_anthropic.return_value
+            agent = pico_pkg.build_agent(args)
+
+    mock_anthropic.assert_called_once()
+    assert mock_anthropic.call_args.kwargs["model"] == "deepseek-v4-pro"
+    assert mock_anthropic.call_args.kwargs["base_url"] == "https://api.deepseek.com/anthropic"
+    assert mock_anthropic.call_args.kwargs["api_key"] == "sk-config-deepseek"
     assert agent.model_client is fake_client
 
 
@@ -850,31 +942,25 @@ def test_build_agent_uses_deepseek_default_model_when_env_is_missing(tmp_path):
     assert mock_anthropic.call_args.kwargs["base_url"] == "https://api.deepseek.com/anthropic"
 
 
-def test_build_agent_uses_deepseek_provider_by_default(tmp_path):
+def test_build_agent_uses_openai_provider_by_default(tmp_path):
     args = pico_pkg.build_arg_parser().parse_args(["--cwd", str(tmp_path)])
 
     with patch.dict(
         os.environ,
         {
-            "DEEPSEEK_API_BASE": "https://api.deepseek.com/anthropic",
-            "DEEPSEEK_API_KEY": "sk-test",
+            "OPENAI_API_BASE": "https://www.right.codes/codex/v1",
+            "OPENAI_API_KEY": "sk-test",
         },
         clear=False,
     ):
-        with patch(
-            "pico.cli.OllamaModelClient",
-            side_effect=AssertionError("ollama client should not be used"),
-        ), patch(
-            "pico.cli.OpenAICompatibleModelClient",
-            side_effect=AssertionError("openai client should not be used"),
-        ), patch("pico.cli.AnthropicCompatibleModelClient") as mock_anthropic:
-            fake_client = mock_anthropic.return_value
+        with patch("pico.cli.OpenAICompatibleModelClient") as mock_openai:
+            fake_client = mock_openai.return_value
             agent = pico_pkg.build_agent(args)
 
-    mock_anthropic.assert_called_once()
-    assert mock_anthropic.call_args.kwargs["model"] == "deepseek-v4-pro"
-    assert mock_anthropic.call_args.kwargs["base_url"] == "https://api.deepseek.com/anthropic"
-    assert mock_anthropic.call_args.kwargs["api_key"] == "sk-test"
+    mock_openai.assert_called_once()
+    assert mock_openai.call_args.kwargs["model"] == "gpt-5.4"
+    assert mock_openai.call_args.kwargs["base_url"] == "https://www.right.codes/codex/v1"
+    assert mock_openai.call_args.kwargs["api_key"] == "sk-test"
     assert agent.model_client is fake_client
 
 
@@ -1089,7 +1175,7 @@ def test_resume_prompt_uses_checkpoint_state_not_just_history(tmp_path):
     agent.session_store.save(agent.session)
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>Resumed.</final>"]),
+        model_client=ScriptedModelClient(["<final>Resumed.</final>"]),
         workspace=build_workspace(tmp_path),
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -1135,7 +1221,7 @@ def test_resume_invalidates_stale_file_summaries_and_marks_partial_stale(tmp_pat
     file_path.write_text("beta\n", encoding="utf-8")
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>Resumed.</final>"]),
+        model_client=ScriptedModelClient(["<final>Resumed.</final>"]),
         workspace=build_workspace(tmp_path),
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -1191,7 +1277,7 @@ def test_resume_marks_workspace_mismatch_when_checkpoint_runtime_identity_is_sta
     agent.session_store.save(agent.session)
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>Resumed.</final>"]),
+        model_client=ScriptedModelClient(["<final>Resumed.</final>"]),
         workspace=build_workspace(tmp_path),
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -1253,7 +1339,7 @@ def test_resume_marks_schema_mismatch_when_checkpoint_version_is_incompatible(tm
     agent.session_store.save(agent.session)
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>Resumed.</final>"]),
+        model_client=ScriptedModelClient(["<final>Resumed.</final>"]),
         workspace=build_workspace(tmp_path),
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -1270,7 +1356,7 @@ def test_resume_marks_no_checkpoint_when_session_has_no_checkpoint_state(tmp_pat
     agent.session_store.save(agent.session)
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>Resumed.</final>"]),
+        model_client=ScriptedModelClient(["<final>Resumed.</final>"]),
         workspace=build_workspace(tmp_path),
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -1327,7 +1413,7 @@ def test_runtime_identity_persists_key_execution_metadata(tmp_path):
     workspace = build_workspace(tmp_path)
     store = SessionStore(tmp_path / ".pico" / "sessions")
     agent = Pico(
-        model_client=FakeModelClient(["<final>Done.</final>"]),
+        model_client=ScriptedModelClient(["<final>Done.</final>"]),
         workspace=workspace,
         session_store=store,
         approval_policy="never",
@@ -1374,7 +1460,7 @@ def test_resume_records_runtime_identity_mismatch_fields_in_metadata_and_trace(t
                     "max_steps": 6,
                     "max_new_tokens": 512,
                     "model": "old-model",
-                    "model_client": "FakeModelClient",
+                    "model_client": "ScriptedModelClient",
                     "feature_flags": {"memory": True, "relevant_memory": True},
                     "shell_env_allowlist": ["PATH"],
                     "session_id": agent.session["id"],
@@ -1386,7 +1472,7 @@ def test_resume_records_runtime_identity_mismatch_fields_in_metadata_and_trace(t
     agent.session_store.save(agent.session)
 
     resumed = Pico.from_session(
-        model_client=FakeModelClient(["<final>Resumed.</final>"]),
+        model_client=ScriptedModelClient(["<final>Resumed.</final>"]),
         workspace=build_workspace(tmp_path),
         session_store=agent.session_store,
         session_id=agent.session["id"],
@@ -1482,6 +1568,185 @@ def test_explicit_memory_promotion_persists_durable_memory_topics(tmp_path):
     ]
 
 
+def test_final_memory_tags_are_appended_to_daily_log(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        ["<final>Done. <memory>Preference: keep reports concise.</memory></final>"],
+    )
+
+    assert agent.ask("Remember this if useful") == "Done. <memory>Preference: keep reports concise.</memory>"
+
+    log_files = list((tmp_path / ".pico" / "memory" / "logs").rglob("*.md"))
+    report = json.loads(agent.run_store.report_path(agent.current_task_state).read_text(encoding="utf-8"))
+    events = agent.session_store.event_path(agent.session["id"]).read_text(encoding="utf-8")
+    trace = agent.run_store.trace_path(agent.current_task_state).read_text(encoding="utf-8")
+
+    assert len(log_files) == 1
+    assert "Preference: keep reports concise." in log_files[0].read_text(encoding="utf-8")
+    assert report["memory_maintenance"]["memory_tags_appended"][0]["source"] == "final_answer"
+    assert report["memory_maintenance"]["memory_tags_appended"][0]["path"].startswith(".pico/memory/logs/")
+    assert report["memory_maintenance"]["auto_dream"]["triggered"] is False
+    assert "memory_note_appended" in events
+    assert "memory_auto_dream_skipped" in trace
+
+
+def test_memory_maintenance_report_explains_auto_dream_skip_reason(tmp_path):
+    agent = build_agent(tmp_path, ["<final>Done.</final>"])
+
+    assert agent.ask("Finish without enough sessions") == "Done."
+
+    report = json.loads(agent.run_store.report_path(agent.current_task_state).read_text(encoding="utf-8"))
+    trace = agent.run_store.trace_path(agent.current_task_state).read_text(encoding="utf-8")
+
+    assert report["memory_maintenance"]["auto_dream"] == {
+        "enabled": True,
+        "triggered": False,
+        "skip_reason": "session_gate",
+        "session_count": 0,
+        "session_ids": [],
+        "changed_files": [],
+    }
+    assert "memory_auto_dream_skipped" in trace
+
+
+def test_memory_maintenance_failure_does_not_mask_final_answer(tmp_path, monkeypatch):
+    agent = build_agent(tmp_path, ["<final>Done.</final>"])
+
+    def fail_memory_maintenance(_final_answer):
+        raise RuntimeError("memory disk is unavailable")
+
+    monkeypatch.setattr(agent, "maintain_memory_after_turn", fail_memory_maintenance)
+
+    assert agent.ask("Finish the task") == "Done."
+    report = json.loads(agent.run_store.report_path(agent.current_task_state).read_text(encoding="utf-8"))
+    events = agent.session_store.event_path(agent.session["id"]).read_text(encoding="utf-8")
+    trace = agent.run_store.trace_path(agent.current_task_state).read_text(encoding="utf-8")
+    assert report["memory_maintenance"]["errors"] == ["memory disk is unavailable"]
+    assert "memory_maintenance_failed" in events
+    assert "memory_maintenance_failed" in trace
+
+
+def test_memory_dir_is_workspace_relative_and_repo_local(tmp_path):
+    workspace = build_workspace(tmp_path)
+    store = SessionStore(tmp_path / ".pico" / "sessions")
+
+    agent = Pico(
+        model_client=ScriptedModelClient([]),
+        workspace=workspace,
+        session_store=store,
+        memory_dir="custom-memory",
+    )
+
+    assert agent.memory_dir == tmp_path / "custom-memory"
+
+    with pytest.raises(ValueError, match="memory_dir must stay inside workspace"):
+        Pico(
+            model_client=ScriptedModelClient([]),
+            workspace=workspace,
+            session_store=store,
+            memory_dir=tmp_path.parent / f"{tmp_path.name}-outside",
+        )
+
+
+def test_auto_dream_runs_in_background_after_session_gate(tmp_path):
+    for index in range(2):
+        (tmp_path / ".pico" / "sessions" / f"older-{index}.json").parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".pico" / "sessions" / f"older-{index}.json").write_text("{}", encoding="utf-8")
+    agent = build_agent(
+        tmp_path,
+        [
+            "<final><memory>Project: use repo-local memory.</memory></final>",
+            '<tool>{"name":"read_file","args":{"path":".pico/memory/MEMORY.md","start":1,"end":50}}</tool>',
+            '<tool>{"name":"write_file","args":{"path":".pico/memory/MEMORY.md","content":"# Durable Memory Index\\n\\n- [Project](topics/project.md): Project memory\\n"}}</tool>',
+            "<final>Dreamed.</final>",
+        ],
+        dream_min_sessions=2,
+        dream_interval_hours=0,
+    )
+
+    answer = agent.ask("Finish and trigger memory maintenance")
+
+    report = json.loads(agent.run_store.report_path(agent.current_task_state).read_text(encoding="utf-8"))
+
+    assert answer == "<memory>Project: use repo-local memory.</memory>"
+    assert report["memory_maintenance"]["auto_dream"]["triggered"] is True
+    assert report["memory_maintenance"]["auto_dream"]["status"] == "submitted"
+    assert report["memory_maintenance"]["auto_dream"]["session_count"] == 2
+    assert report["memory_maintenance"]["auto_dream"]["changed_files"] == []
+
+    agent.wait_for_memory_maintenance(timeout=2)
+
+    post_report = json.loads(agent.run_store.report_path(agent.current_task_state).read_text(encoding="utf-8"))
+    trace = agent.run_store.trace_path(agent.current_task_state).read_text(encoding="utf-8")
+    assert "Project memory" in (tmp_path / ".pico" / "memory" / "MEMORY.md").read_text(encoding="utf-8")
+    assert agent.last_memory_maintenance["auto_dream"]["status"] == "finished"
+    assert post_report["memory_maintenance"]["auto_dream"]["changed_files"] == [".pico/memory/MEMORY.md"]
+    assert "memory_auto_dream_finished" in trace
+    assert ".pico/memory/MEMORY.md" in trace
+
+
+def test_background_auto_dream_failure_restores_lock_and_reports_error(tmp_path, monkeypatch):
+    memory_root = tmp_path / ".pico" / "memory"
+    memory_root.mkdir(parents=True)
+    lock_path = memory_root / ".consolidate-lock"
+    lock_path.write_text("released", encoding="utf-8")
+    os.utime(lock_path, (123, 123))
+    for index in range(2):
+        session_path = tmp_path / ".pico" / "sessions" / f"older-{index}.json"
+        session_path.parent.mkdir(parents=True, exist_ok=True)
+        session_path.write_text("{}", encoding="utf-8")
+
+    def fail_dream(*_args, **_kwargs):
+        raise RuntimeError("dream provider unavailable")
+
+    monkeypatch.setattr("pico.features.memory.run_dream", fail_dream)
+    agent = build_agent(
+        tmp_path,
+        ["<final><memory>Project: keep memory observable.</memory></final>"],
+        dream_min_sessions=2,
+        dream_interval_hours=0,
+    )
+
+    assert agent.ask("Finish and trigger failing memory maintenance") == "<memory>Project: keep memory observable.</memory>"
+
+    agent.wait_for_memory_maintenance(timeout=2)
+
+    report = json.loads(agent.run_store.report_path(agent.current_task_state).read_text(encoding="utf-8"))
+    events = agent.session_store.event_path(agent.session["id"]).read_text(encoding="utf-8")
+    trace = agent.run_store.trace_path(agent.current_task_state).read_text(encoding="utf-8")
+    assert report["memory_maintenance"]["auto_dream"]["status"] == "failed"
+    assert report["memory_maintenance"]["errors"] == ["dream provider unavailable"]
+    assert int(lock_path.stat().st_mtime) == 123
+    assert "memory_auto_dream_failed" in events
+    assert "memory_auto_dream_failed" in trace
+
+
+def test_explicit_memory_promotion_accepts_bullet_prefixed_labels(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            "<final>Promoted facts:\n"
+            "- Project convention: Keep manual black-box artifacts under artifacts/.\n"
+            "- Decision: Use CLI-level testing before implementation claims.</final>",
+        ],
+    )
+
+    agent.ask("Remember these stable facts and return only the promoted facts.")
+
+    conventions_path = tmp_path / ".pico" / "memory" / "topics" / "project-conventions.md"
+    decisions_path = tmp_path / ".pico" / "memory" / "topics" / "key-decisions.md"
+    report = json.loads(agent.run_store.report_path(agent.current_task_state).read_text(encoding="utf-8"))
+
+    assert conventions_path.exists()
+    assert decisions_path.exists()
+    assert "Keep manual black-box artifacts under artifacts/." in conventions_path.read_text(encoding="utf-8")
+    assert "Use CLI-level testing before implementation claims." in decisions_path.read_text(encoding="utf-8")
+    assert report["durable_promotions"] == [
+        "project-conventions: Keep manual black-box artifacts under artifacts/.",
+        "key-decisions: Use CLI-level testing before implementation claims.",
+    ]
+
+
 def test_explicit_memory_promotion_supports_chinese_intent_and_labels(tmp_path):
     agent = build_agent(
         tmp_path,
@@ -1573,7 +1838,7 @@ def test_explicit_memory_promotion_dedupes_duplicate_durable_note(tmp_path):
 
 
 def test_agent_records_model_cache_metadata_in_last_prompt_metadata(tmp_path):
-    class CacheAwareFakeModelClient(FakeModelClient):
+    class CacheAwareScriptedModelClient(ScriptedModelClient):
         def complete(self, prompt, max_new_tokens, **kwargs):
             self.last_completion_metadata = {
                 "prompt_cache_supported": True,
@@ -1586,7 +1851,7 @@ def test_agent_records_model_cache_metadata_in_last_prompt_metadata(tmp_path):
     workspace = build_workspace(tmp_path)
     store = SessionStore(tmp_path / ".pico" / "sessions")
     agent = Pico(
-        model_client=CacheAwareFakeModelClient(["<final>Done.</final>"]),
+        model_client=CacheAwareScriptedModelClient(["<final>Done.</final>"]),
         workspace=workspace,
         session_store=store,
         approval_policy="auto",
@@ -1625,30 +1890,39 @@ def test_recent_transcript_entries_stay_richer_than_older_ones(tmp_path):
 
 def test_public_api_exports_resolve_through_package_path():
     assert callable(build_welcome)
-    assert FakeModelClient is not None
+    assert not hasattr(pico_pkg, "ScriptedModelClient")
+    assert not hasattr(providers_pkg, "ScriptedModelClient")
     assert Pico is not None
-    assert OllamaModelClient is not None
+    assert not hasattr(pico_pkg, "OllamaModelClient")
     assert SessionStore is not None
     assert WorkspaceContext is not None
     assert Path(pico_pkg.__file__).as_posix().endswith("/pico/__init__.py")
 
 
 def test_reviewer_skeleton_docs_exist():
-    review_pack = Path("docs/review-pack/README.md")
-    architecture = Path("docs/architecture/agent-harness-v1-overview.md")
+    release_readme = Path("release/v3/README.md")
+    review_pack = Path("release/v3/REVIEW.md")
+    testing = Path("release/v3/TESTING.md")
 
+    assert release_readme.exists()
     assert review_pack.exists()
-    assert architecture.exists()
+    assert testing.exists()
+
+    release_text = release_readme.read_text(encoding="utf-8")
+    assert "v3 release pack" in release_text
+    assert "release/v3/testing/" in release_text
+    assert "release/v3/learning/" in release_text
 
     review_text = review_pack.read_text(encoding="utf-8")
     assert "Project pitch" in review_text
     assert "Architecture map" in review_text
     assert "Benchmark evidence" in review_text
     assert "Sample run artifact list" in review_text
+    assert "Harness boundaries" in review_text
 
-    architecture_text = architecture.read_text(encoding="utf-8")
-    assert "Agent Harness v1" in architecture_text
-    assert "task state" in architecture_text.lower()
+    testing_text = testing.read_text(encoding="utf-8")
+    assert "50 human scenarios" in testing_text
+    assert "scripts/run_v3_human_scenario_gate.py" in testing_text
 
 
 def test_package_import_surface_includes_cli_entrypoints():

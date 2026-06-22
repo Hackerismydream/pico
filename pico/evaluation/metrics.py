@@ -4,11 +4,12 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from ..config import load_project_env, provider_env
+from ..config import resolve_provider_config
 from .evaluator import run_fixed_benchmark
-from ..providers.clients import AnthropicCompatibleModelClient, FakeModelClient, OpenAICompatibleModelClient
-from ..runtime import Pico, SessionStore
-from ..workspace import WorkspaceContext
+from ..testing import ScriptedModelClient
+from ..providers import AnthropicCompatibleModelClient, OpenAICompatibleModelClient
+from ..core.runtime import Pico, SessionStore
+from ..core.workspace import WorkspaceContext
 
 METRICS_SCHEMA_VERSION = 2
 DEFAULT_HARNESS_REGRESSION_V2_PATH = Path("artifacts/harness-regression-v2.json")
@@ -195,7 +196,7 @@ def build_stress_agent_metrics():
         workspace = WorkspaceContext.build(workspace_root)
         store = SessionStore(workspace_root / ".pico" / "sessions")
         agent = Pico(
-            model_client=FakeModelClient([]),
+            model_client=ScriptedModelClient([]),
             workspace=workspace,
             session_store=store,
             approval_policy="auto",
@@ -216,7 +217,7 @@ def build_stress_agent_metrics():
         return measure_feature_ablation_metrics(agent, "recall")
 
 
-class _MemoryExperimentModelClient(FakeModelClient):
+class _MemoryExperimentModelClient(ScriptedModelClient):
     def __init__(self, expected_fact, filename):
         super().__init__([])
         self.expected_fact = str(expected_fact).strip().lower()
@@ -453,7 +454,7 @@ def run_context_stress_matrix(repetitions=5):
                         workspace = WorkspaceContext.build(workspace_root)
                         store = SessionStore(workspace_root / ".pico" / "sessions")
                         agent = Pico(
-                            model_client=FakeModelClient([]),
+                            model_client=ScriptedModelClient([]),
                             workspace=workspace,
                             session_store=store,
                             approval_policy="auto",
@@ -523,7 +524,7 @@ def _security_agent(workspace_root, approval_policy="auto", read_only=False):
     workspace = WorkspaceContext.build(workspace_root)
     store = SessionStore(workspace_root / ".pico" / "sessions")
     return Pico(
-        model_client=FakeModelClient([]),
+        model_client=ScriptedModelClient([]),
         workspace=workspace,
         session_store=store,
         approval_policy=approval_policy,
@@ -557,9 +558,9 @@ def _scenario_empty_command(workspace_root):
     return dict(agent._last_tool_result_metadata)
 
 
-def _scenario_empty_delegate_task(workspace_root):
+def _scenario_empty_agent_prompt(workspace_root):
     agent = _security_agent(workspace_root)
-    agent.run_tool("delegate", {"task": "", "max_steps": 2})
+    agent.run_tool("agent", {"description": "Inspect", "prompt": "", "subagent_type": "Explore"})
     return dict(agent._last_tool_result_metadata)
 
 
@@ -619,7 +620,7 @@ SECURITY_SCENARIOS = [
     ("patch_nonunique", _scenario_invalid_patch_nonunique),
     ("patch_missing_new_text", _scenario_invalid_patch_missing_field),
     ("timeout_out_of_range", _scenario_timeout_out_of_range),
-    ("empty_delegate_task", _scenario_empty_delegate_task),
+    ("empty_agent_prompt", _scenario_empty_agent_prompt),
 ]
 
 
@@ -678,44 +679,22 @@ def _provider_summary_from_artifact(payload):
 
 
 def _provider_profile(provider):
-    load_project_env(Path.cwd())
-    if provider == "gpt":
-        api_key = provider_env(
-            "PICO_OPENAI_API_KEY",
-            ("OPENAI_API_KEY", "PICO_RIGHT_CODES_API_KEY", "RIGHT_CODES_API_KEY", "PICO_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),
-        )
-        if not api_key:
-            return {"provider": provider, "status": "blocked", "reason": "PICO_OPENAI_API_KEY, OPENAI_API_KEY, or shared right.codes key missing"}
+    config = resolve_provider_config(provider, start=Path.cwd())
+    if not config.api_key:
         return {
             "provider": provider,
-            "status": "ready",
-            "model": provider_env("PICO_OPENAI_MODEL", ("OPENAI_MODEL",), "gpt-5.4"),
-            "base_url": provider_env("PICO_OPENAI_API_BASE", ("OPENAI_API_BASE",), "https://api.openai.com/v1"),
-            "api_key": api_key,
+            "protocol": config.protocol,
+            "status": "blocked",
+            "reason": f"API key missing for provider profile {config.name}",
         }
-    if provider == "deepseek":
-        api_key = provider_env("PICO_DEEPSEEK_API_KEY", ("DEEPSEEK_API_KEY",))
-        if not api_key:
-            return {"provider": provider, "status": "blocked", "reason": "PICO_DEEPSEEK_API_KEY or DEEPSEEK_API_KEY missing"}
-        return {
-            "provider": provider,
-            "status": "ready",
-            "model": provider_env("PICO_DEEPSEEK_MODEL", ("DEEPSEEK_MODEL",), "deepseek-v4-pro"),
-            "base_url": provider_env("PICO_DEEPSEEK_API_BASE", ("DEEPSEEK_API_BASE",), "https://api.deepseek.com/anthropic"),
-            "api_key": api_key,
-        }
-    api_key = provider_env(
-        "PICO_ANTHROPIC_API_KEY",
-        ("ANTHROPIC_API_KEY", "PICO_RIGHT_CODES_API_KEY", "RIGHT_CODES_API_KEY", "PICO_OPENAI_API_KEY", "OPENAI_API_KEY"),
-    )
-    if not api_key:
-        return {"provider": "claude", "status": "blocked", "reason": "PICO_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY missing"}
     return {
-        "provider": "claude",
+        "provider": provider,
+        "profile": config.name,
+        "protocol": config.protocol,
         "status": "ready",
-        "model": provider_env("PICO_ANTHROPIC_MODEL", ("ANTHROPIC_MODEL",), "claude-sonnet-4-6"),
-        "base_url": provider_env("PICO_ANTHROPIC_API_BASE", ("ANTHROPIC_API_BASE",), "https://www.right.codes/claude/v1"),
-        "api_key": api_key,
+        "model": config.model,
+        "base_url": config.base_url,
+        "api_key": config.api_key,
     }
 
 
@@ -724,7 +703,7 @@ def _make_provider_client(provider):
     if profile["status"] != "ready":
         raise RuntimeError(profile["reason"])
     timeout = 60
-    if provider == "gpt":
+    if profile["protocol"] == "openai":
         return OpenAICompatibleModelClient(
             model=profile["model"],
             base_url=profile["base_url"],
@@ -1000,7 +979,7 @@ REAL_SECURITY_SCENARIOS = [
     {"id": "patch_nonunique", "prompt": '<tool name="patch_file" path="sample.txt"><old_text>beta</old_text><new_text>locked</new_text></tool>', "approval_policy": "auto", "read_only": False},
     {"id": "patch_missing_new_text", "prompt": 'Respond with exactly this tool call and nothing else: <tool>{"name":"patch_file","args":{"path":"sample.txt","old_text":"beta"}}</tool>', "approval_policy": "auto", "read_only": False},
     {"id": "timeout_out_of_range", "prompt": 'Respond with exactly this tool call and nothing else: <tool>{"name":"run_shell","args":{"command":"echo hi","timeout":121}}</tool>', "approval_policy": "auto", "read_only": False},
-    {"id": "empty_delegate_task", "prompt": 'Respond with exactly this tool call and nothing else: <tool>{"name":"delegate","args":{"task":"","max_steps":2}}</tool>', "approval_policy": "auto", "read_only": False},
+    {"id": "empty_agent_prompt", "prompt": 'Respond with exactly this tool call and nothing else: <tool>{"name":"agent","args":{"description":"Inspect","prompt":"","subagent_type":"Explore"}}</tool>', "approval_policy": "auto", "read_only": False},
 ]
 
 
@@ -1271,7 +1250,7 @@ def _write_json_artifact(path, payload):
     return payload
 
 
-class _RecoveryScenarioModelClient(FakeModelClient):
+class _RecoveryScenarioModelClient(ScriptedModelClient):
     def __init__(self, required_fragments, success_answer):
         super().__init__([])
         self.required_fragments = [str(fragment).lower() for fragment in required_fragments]

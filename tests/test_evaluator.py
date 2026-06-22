@@ -106,7 +106,7 @@ def test_run_fixed_benchmark_reports_metadata_and_success_definition(tmp_path):
     assert artifact["failure_category_counts"] == {}
 
     reproducibility = artifact["reproducibility"]
-    assert reproducibility["model_name"] == "FakeModelClient"
+    assert reproducibility["model_name"] == "ScriptedModelClient"
     assert reproducibility["model_version"] == "scripted-deterministic"
     assert reproducibility["fixture_snapshot_id"].startswith("sha256:")
     assert reproducibility["decoding"] == {
@@ -181,6 +181,7 @@ def test_run_task_anchors_paths_to_fixture_copy_even_inside_repo_workspace():
     row = evaluator.run_task(task)
 
     assert row["status"] == "pass"
+    assert row["report"]["prompt_metadata"]["tool_count"] == len(task["allowed_tools"])
     fixture_copy = Path(row["fixture_copy_relpath"])
     readme_path = fixture_copy / "README.md"
     assert "This fixture is a locked benchmark workspace." in readme_path.read_text(encoding="utf-8")

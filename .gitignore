@@ -32,6 +32,7 @@ tmp/
 .worktrees/
 .pico/
 .mini-pico/
+_local/
 artifacts/
 release/
 readme_intro_locked/
@@ -40,16 +41,24 @@ readme_intro_locked/
 .env
 .env.*
 !.env.example
+.pico.toml
+!.pico.toml.example
 
 # Local docs not intended for publication
-docs/*
-!docs/review-pack/
-!docs/review-pack/README.md
+docs/**
+!docs/
 !docs/architecture/
 !docs/architecture/agent-harness-v1-overview.md
+!docs/configuration.md
+!docs/memory.md
+!docs/review-pack/
+!docs/review-pack/README.md
+!docs/skills.md
+!docs/sandbox.md
 
 # OS files
 .DS_Store
 
 # Packaging metadata
 pico.egg-info/
+.gstack/

@@ -1,10 +1,11 @@
-"""Model provider adapters."""
-
-from .clients import AnthropicCompatibleModelClient, FakeModelClient, OllamaModelClient, OpenAICompatibleModelClient
+from .base import ModelResult, complete_model
+from .clients import AnthropicCompatibleModelClient, OpenAICompatibleModelClient
+from .errors import ProviderError
 
 __all__ = [
     "AnthropicCompatibleModelClient",
-    "FakeModelClient",
-    "OllamaModelClient",
+    "complete_model",
+    "ModelResult",
     "OpenAICompatibleModelClient",
+    "ProviderError",
 ]

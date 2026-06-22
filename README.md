@@ -1,259 +1,323 @@
+<div align="center">
+
 # pico
 
-`pico` 是一个面向代码仓库的轻量本地 coding agent。它直接跑在终端里，先看当前工作区，再用一组受约束的工具去读文件、改文件、跑命令，并把会话状态保存在本地 `.pico/` 目录里。
+**轻量、本地、有记忆的终端 coding agent**
 
-它更像一个能在仓库里持续工作的命令行助手，不是纯聊天窗口。你可以拿它做代码排查、测试修复、仓库分析，或者让它在当前项目里执行一次性的工程任务。
+pico 跑在本地仓库里，接上一个模型 provider，就能读代码、跑命令、改文件、
+保留运行证据，并把有价值的上下文沉淀成本地记忆。
 
-## 适合做什么
+</div>
 
-- 在本地仓库里排查测试失败
-- 读取当前代码结构并给出修改建议
-- 基于现有文件做小步迭代，而不是脱离仓库空想
-- 在会话中保留上下文，支持继续上一次工作
+<p align="center">
+  <img src="assets/screenshots/pico-tui-intro.png" alt="pico TUI 启动界面" width="960">
+</p>
 
-## 主要特性
+---
 
-- 包名是 `pico`
-- CLI 命令是 `pico`
-- 模块入口是 `python -m pico`
-- 会话保存在 `.pico/sessions/`
-- 每次运行的工件保存在 `.pico/runs/<run_id>/`
-- 支持四类模型后端：
-  - Ollama
-  - OpenAI 兼容 Responses API
-  - Anthropic 兼容 Messages API
-  - DeepSeek Anthropic 兼容 API
+## pico 是什么
 
-## 使用截图
+pico 是一个本地终端里的 coding agent，运行在你的仓库上下文里。一次 agent 运行会被拆成几个可观察的部分：
 
-CLI 帮助信息：
+- **provider profile**：决定调用哪个模型、哪个 endpoint、用什么协议。
+- **context**：把系统提示、仓库信息、skills、记忆和最近对话装进 prompt。
+- **tools**：文件读取、搜索、shell、写文件、patch、子 agent 都走统一工具协议。
+- **approval / sandbox**：写操作和 shell 命令可以被审批或沙箱限制。
+- **session / run evidence**：对话、事件流、trace、report 都写到本地 `.pico/`。
+- **memory / dream**：把 daily log 整理成长期 topic，下次 session 可以继续用。
 
-![pico help](assets/screenshots/pico-help.png)
+pico 关注本地 coding agent 的工程边界：配置清楚、任务能续接、结果能复盘。
 
-启动界面：
+## 界面
 
-![pico start](assets/screenshots/pico-start.png)
+TUI 直接连接同一个 runtime。输入框、工具结果、状态栏、slash command 和补全都来自当前 session。
 
-REPL 内置命令与会话路径：
+| 工具和子 agent | Skills、help 和命令补全 |
+| --- | --- |
+| ![pico TUI 工具表](assets/screenshots/pico-tui-tools.png) | ![pico TUI skills 和 help](assets/screenshots/pico-tui-skills-help.png) |
 
-![pico repl](assets/screenshots/pico-repl.png)
+| Memory 和 durable topics | Slash command 工作区 |
+| --- | --- |
+| ![pico TUI memory 和 skills](assets/screenshots/pico-tui-memory-skills.png) | ![pico TUI slash command 补全](assets/screenshots/pico-tui-latest.png) |
 
 ## 安装
 
-需要 Python 3.10+。
+要求：Python 3.10+，以及至少一个可用的模型 provider key。
 
-如果你用 `uv`，直接安装依赖：
+一键安装：
 
 ```bash
-uv sync
+curl -fsSL https://raw.githubusercontent.com/martin-los/pico/main/install.sh | bash
 ```
 
-如果你已经在自己的 Python 环境里工作，也可以直接装成可编辑模式：
+源码安装：
 
 ```bash
+git clone https://github.com/martin-los/pico.git
+cd pico
 pip install -e .
 ```
 
-## 快速开始
-
-在当前仓库里启动交互模式。默认 provider 是 DeepSeek：
+开发 checkout 里也可以直接跑：
 
 ```bash
 uv run pico
 ```
 
-指定另一个工作目录：
+## 配置 provider
 
-```bash
-uv run pico --cwd /path/to/repo
-```
+pico 启动前先解析一个 **provider profile**。一个 profile 主要由四项组成：
 
-直接跑一次性任务：
+| 字段 | 作用 |
+| --- | --- |
+| `protocol` | 请求协议，目前支持 `openai` 和 `anthropic`。 |
+| `api_key` | 发给 provider 的 key。 |
+| `base_url` | provider endpoint。 |
+| `model` | 本次请求使用的模型名。 |
 
-```bash
-uv run pico "inspect the test failures and propose a fix"
-```
-
-如果当前环境已经安装过包，也可以直接这样启动：
-
-```bash
-python -m pico
-```
-
-## 模型后端
-
-Pico 启动时会读取项目根目录的 `.env`。本地真实 key 放在 `.env`，仓库只保留 `.env.example`。配置优先级是：
+配置合并优先级是：
 
 ```text
-显式 CLI 参数 > .env 里的 PICO_* 变量 > 旧环境变量 > 代码默认值
+CLI 参数 > 环境变量 > 项目 .pico.toml > 全局 ~/.config/pico/config.toml > 代码默认值
 ```
 
-不传 `--provider` 时默认使用 `deepseek`。这是推荐配置路径：DeepSeek 的 Anthropic-compatible endpoint 比本地 Ollama 更少依赖本机模型环境，也比 OpenAI-compatible/Anthropic-compatible 代理少一层默认 gateway 假设。其他 provider 仍然保留，可以显式传 `--provider openai`、`--provider anthropic` 或 `--provider ollama`。
+### 方式一：项目 `.pico.toml`
 
-`.env` 会在构建 provider client 前加载，并覆盖当前进程里的同名环境变量。模型名和 base URL 可以通过 `--model`、`--base-url` 临时覆盖；API key 只从环境变量读取。
-
-本地第一次配置：
+这是最推荐的配置方式，适合每个仓库独立指定 provider：
 
 ```bash
-cp .env.example .env
+cp .pico.toml.example .pico.toml
+$EDITOR .pico.toml
 ```
 
-然后把要使用的 provider key 填进去。`.env` 已经被 `.gitignore` 忽略，不要提交真实 key。
+`.pico.toml` 默认被 `.gitignore` 忽略，不要把真实 key 提交进 git。
 
-### 推荐配置：DeepSeek
+最小可用示例：
 
-最小配置只需要 key：
+```toml
+provider = "deepseek"
+
+[providers.deepseek]
+protocol = "anthropic"
+api_key = "sk-..."
+base_url = "https://api.deepseek.com/anthropic"
+model = "deepseek-v4-pro"
+
+[providers.openai]
+protocol = "openai"
+api_key = "sk-..."
+base_url = "https://www.right.codes/codex/v1"
+model = "gpt-5.4"
+
+[providers.anthropic]
+protocol = "anthropic"
+api_key = "sk-ant-..."
+base_url = "https://www.right.codes/claude/v1"
+model = "claude-sonnet-4-6"
+```
+
+注意：`provider = "deepseek"` 只是选择 profile 名字，真正决定请求格式的是
+`protocol`。例如 DeepSeek 可以通过 Anthropic-compatible endpoint 使用，所以这里写
+`protocol = "anthropic"`。
+
+### 方式二：环境变量
+
+不想把 key 写进 TOML 时，用环境变量：
 
 ```bash
-PICO_DEEPSEEK_API_KEY="your-api-key"
+export PICO_PROVIDER=deepseek
+export DEEPSEEK_API_KEY=sk-...
+export DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
+export DEEPSEEK_MODEL=deepseek-v4-pro
+
+pico
 ```
 
-默认模型和接口是：
+常用 provider 变量：
+
+| Provider | 变量 |
+| --- | --- |
+| DeepSeek | `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL` |
+| OpenAI-compatible | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` |
+| Anthropic-compatible | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL` |
+
+如果你的网关给 OpenAI-compatible 和 Anthropic-compatible 共用同一个 key，
+也可以设置 `PICO_RIGHT_CODES_API_KEY` 作为 fallback。
+
+也可以用通用覆盖变量：
 
 ```bash
-PICO_DEEPSEEK_API_BASE="https://api.deepseek.com/anthropic"
-PICO_DEEPSEEK_MODEL="deepseek-v4-pro"
+export PICO_API_KEY=sk-...
+export PICO_BASE_URL=https://api.openai.com/v1
+export PICO_MODEL=gpt-5.4
 ```
 
-所以常规情况下 `.env` 里只填 `PICO_DEEPSEEK_API_KEY` 就能直接启动：
+### 方式三：命令行临时覆盖
+
+临时换 provider 或模型：
 
 ```bash
-uv run pico
+pico --provider openai --model gpt-5.4 --base-url https://api.openai.com/v1
+pico --provider deepseek --approval ask --max-steps 80
+pico --config /path/to/custom.toml --cwd /path/to/repo
 ```
 
-如果你需要临时切模型或代理地址，不必改 `.env`，可以直接覆盖：
+完整配置说明见 [docs/configuration.md](docs/configuration.md)。
+
+## 启动
+
+常用入口：
 
 ```bash
-uv run pico --model deepseek-v4-pro --base-url https://api.deepseek.com/anthropic
+pico                              # 默认 Textual TUI
+pico --repl                       # 普通终端 REPL
+pico "找出测试失败的根因"          # one-shot 任务
+pico --resume latest              # 续接最近 session
+pico --cwd /path/to/repo          # 指定工作目录
 ```
 
-DeepSeek 当前走 Anthropic-compatible Messages API，所以 runtime 里复用的是 Anthropic-compatible client；这只影响 HTTP 协议，不影响 CLI 用法。
-
-### 可选配置：right.codes
-
-right.codes 在 Pico 里有两条可选 provider 路径：
-
-- `--provider openai`：走 OpenAI-compatible `/responses`，默认 base URL 是 `https://www.right.codes/codex/v1`，默认模型是 `gpt-5.4`
-- `--provider anthropic`：走 Anthropic-compatible `/messages`，默认 base URL 是 `https://www.right.codes/claude/v1`，默认模型是 `claude-sonnet-4-6`
-
-如果 right.codes 给你的是一把共享 key，推荐只填这一项：
+常用运行参数：
 
 ```bash
-PICO_RIGHT_CODES_API_KEY="your-right-codes-key"
+pico --approval ask               # shell / 写文件前询问
+pico --approval auto              # 普通操作自动通过
+pico --approval never             # 非交互模式
+pico --sandbox best_effort        # 尽量隔离 shell 命令
+pico --no-auto-dream              # 关闭后台 memory 整合
 ```
 
-然后按需要选择 provider：
+## 日常用法
+
+进入 TUI 或 REPL 后可以直接输入自然语言，也可以用 slash command：
+
+```text
+> /help
+> /skills
+> 找出测试失败的根因
+> /plan 重构 provider 配置加载逻辑
+> /review
+> /test tests/test_config.py
+> /remember 这个项目用 DeepSeek 的 Anthropic-compatible endpoint
+> /dream
+```
+
+常用命令：
+
+| 命令 | 作用 |
+| --- | --- |
+| `/help` | 查看内置命令。 |
+| `/skills` | 列出可用 skills。 |
+| `/session` | 查看当前 session、events、run 路径。 |
+| `/history` | 列出历史 session。 |
+| `/resume latest` | 续接最近 session。 |
+| `/context` | 查看 prompt context 使用情况。 |
+| `/usage` | 查看 provider、model、token 元数据。 |
+| `/memory` | 查看 durable memory 索引。 |
+| `/working-memory` | 查看当前 session 工作记忆。 |
+| `/remember <text>` | 保存一条 durable note 到 daily log。 |
+| `/dream` | 把 daily log 整合成 durable memory topics。 |
+| `/plan <topic>` | 进入 plan mode。 |
+| `/plan-exit` | 退出 plan mode。 |
+| `/agents` | 查看子 agent 状态。 |
+| `/model <name>` | 当前 session 临时切模型。 |
+| `/compact` | 压缩较早的对话历史。 |
+| `/clear` | 开一个新的空 session。 |
+| `/exit` | 退出 pico。 |
+
+## pico 能做什么
+
+| 能力 | 说明 |
+| --- | --- |
+| TUI / REPL / one-shot | 同一个 runtime，通过不同入口使用。 |
+| 工具执行 | 文件列表、读文件、搜索、shell、写文件、patch、ask_user、子 agent、todo。 |
+| Plan mode | 先读代码和拆计划，再进入可写执行阶段。 |
+| 子 agent | 启动 bounded Explore / Worker 任务。 |
+| Skills | 复用 `/review`、`/test`、`/commit`、`/simplify` 等工作流。 |
+| Memory | working memory、daily logs、durable topics、auto-dream。 |
+| Evidence | session JSON、event stream、run trace、task state、report。 |
+| Sandbox | 对 `run_shell` 做可选隔离。 |
+
+## 本地文件
+
+| 数据 | 路径 |
+| --- | --- |
+| 项目配置 | `.pico.toml` |
+| 全局配置 | `~/.config/pico/config.toml` |
+| 会话历史 | `.pico/sessions/<id>.json` |
+| 事件流 | `.pico/sessions/<id>.events.jsonl` |
+| 运行证据 | `.pico/runs/<run_id>/` |
+| 记忆索引 | `.pico/memory/MEMORY.md` |
+| Daily logs | `.pico/memory/logs/YYYY/MM/YYYY-MM-DD.md` |
+| Durable topics | `.pico/memory/topics/*.md` |
+| 用户 skills | `~/.pico/skills/<name>/SKILL.md` |
+| 项目 skills | `skills/<name>/SKILL.md` 或 `.pico/skills/<name>/SKILL.md` |
+
+## 项目结构
+
+```text
+pico/
+├── cli.py                 # CLI 参数、启动模式、REPL 命令
+├── config/                # provider profile、TOML、env 解析
+├── core/                  # runtime、engine、session、workers、context
+├── features/              # memory、skills、sandbox
+├── providers/             # OpenAI-compatible / Anthropic-compatible client
+├── tools/                 # tool registry 和具体工具
+├── tui/                   # Textual TUI
+└── evaluation/            # run evidence、metrics、evaluation helpers
+```
+
+## 测试
 
 ```bash
-uv run pico --provider openai
-uv run pico --provider anthropic
+pip install -e ".[dev]"
+pytest tests/ -q
+
+# 真实 provider 烟测需要 key
+PICO_LIVE_SMOKE=1 pytest tests/test_release_smoke.py -q
 ```
 
-如果你想显式区分两条 provider 的 key，也可以分别配置：
+## 文档
 
-```bash
-PICO_OPENAI_API_KEY="your-right-codes-key-for-codex"
-PICO_ANTHROPIC_API_KEY="your-right-codes-key-for-claude"
-```
+| 入口 | 内容 |
+| --- | --- |
+| [配置](docs/configuration.md) | provider profile、`.pico.toml`、环境变量和 sandbox 配置。 |
+| [分层记忆 + auto-dream](docs/memory.md) | working memory、daily logs、durable topics 和后台整合。 |
+| [Skills](docs/skills.md) | `SKILL.md` 目录结构、内置技能和自定义 workflow。 |
+| [Sandbox](docs/sandbox.md) | `run_shell` 隔离模式、backend 选择和文件系统边界。 |
 
-不要在 `.env` 里写 `PICO_OPENAI_API_KEY=$PICO_RIGHT_CODES_API_KEY` 这种 shell 展开形式；Pico 的 `.env` 解析器只读取字面量，不展开变量引用。要么只写 `PICO_RIGHT_CODES_API_KEY`，要么把 key 字符串分别填到 provider-specific 变量里。
+### v3 发布包
 
-如果请求 right.codes 返回 `API Key额度不足`，说明协议和 endpoint 已经打通，但当前 key 没有可用额度；换一把有额度的 key，或到 right.codes 后台处理额度。
+| 入口 | 内容 |
+| --- | --- |
+| [Release pack](release/v3/README.md) | v3 发布材料入口。 |
+| [Changelog](release/v3/CHANGELOG.md) | v3 变更摘要。 |
+| [Review pack](release/v3/REVIEW.md) | 项目 pitch、架构地图、边界和评审材料。 |
+| [Testing](release/v3/TESTING.md) | v3 测试范围和执行摘要。 |
+| [真人场景测试包](release/v3/testing/README.md) | 50 个真实使用场景的测试入口。 |
+| [测试设计](release/v3/testing/01-test-design.md) | 场景设计、覆盖面和验收口径。 |
+| [执行记录](release/v3/testing/02-execution-record.md) | 全量执行结果和失败修复记录。 |
+| [Runner 与证据](release/v3/testing/03-runner-and-evidence.md) | 测试 runner、输出目录和证据文件说明。 |
+| [场景检查清单](release/v3/testing/04-scenario-checklist.md) | 50 个场景的逐项状态。 |
 
-当前 provider 环境变量：
+### v3 学习文档
 
-| provider | base URL | API key | model |
-| --- | --- | --- | --- |
-| `deepseek` | `PICO_DEEPSEEK_API_BASE`，回退 `DEEPSEEK_API_BASE`，默认 `https://api.deepseek.com/anthropic` | `PICO_DEEPSEEK_API_KEY`，回退 `DEEPSEEK_API_KEY` | `PICO_DEEPSEEK_MODEL`，回退 `DEEPSEEK_MODEL`，默认 `deepseek-v4-pro` |
-| `openai` | `PICO_OPENAI_API_BASE`，回退 `OPENAI_API_BASE`，默认 `https://www.right.codes/codex/v1` | `PICO_OPENAI_API_KEY`，回退 `OPENAI_API_KEY`、`PICO_RIGHT_CODES_API_KEY`、`RIGHT_CODES_API_KEY`、`PICO_ANTHROPIC_API_KEY`、`ANTHROPIC_API_KEY` | `PICO_OPENAI_MODEL`，回退 `OPENAI_MODEL`，默认 `gpt-5.4` |
-| `anthropic` | `PICO_ANTHROPIC_API_BASE`，回退 `ANTHROPIC_API_BASE`，默认 `https://www.right.codes/claude/v1` | `PICO_ANTHROPIC_API_KEY`，回退 `ANTHROPIC_API_KEY`、`PICO_RIGHT_CODES_API_KEY`、`RIGHT_CODES_API_KEY`、`PICO_OPENAI_API_KEY`、`OPENAI_API_KEY` | `PICO_ANTHROPIC_MODEL`，回退 `ANTHROPIC_MODEL`，默认 `claude-sonnet-4-6` |
-| `ollama` | `--host`，默认 `http://127.0.0.1:11434` | 不需要 | `--model`，默认 `qwen3.5:4b` |
+按这个顺序读，能从整体架构一路落到模块和测试：
 
-如果有额外的敏感环境变量需要从 trace/report 里脱敏，可以用 `PICO_SECRET_ENV_NAMES` 配置逗号分隔的变量名，或启动时重复传 `--secret-env-name NAME`。
+| 顺序 | 文档 |
+| --- | --- |
+| 0 | [阅读索引](release/v3/learning/00-reading-map.md) |
+| 1 | [总体架构](release/v3/learning/01-overall-architecture.md) |
+| 2 | [Runtime 和 Engine](release/v3/learning/02-runtime-engine.md) |
+| 3 | [上下文、记忆和压缩](release/v3/learning/03-context-memory-compact.md) |
+| 4 | [工具、权限和沙箱](release/v3/learning/04-tools-permissions-sandbox.md) |
+| 5 | [子 agent、计划模式和 Todo](release/v3/learning/05-workers-plan-todo.md) |
+| 6 | [Provider 和配置](release/v3/learning/06-providers-config.md) |
+| 7 | [Skills、命令、CLI 和 TUI](release/v3/learning/07-skills-commands-cli-tui.md) |
+| 8 | [Session、Run 和 Evaluation](release/v3/learning/08-session-run-evaluation.md) |
+| 9 | [模块地图](release/v3/learning/09-module-map.md) |
+| 10 | [模块学习指南](release/v3/learning/10-module-learning-guide.md) |
+| 11 | [Dream 后台记忆整合](release/v3/learning/11-dream-memory-consolidation.md) |
 
-### OpenAI 兼容接口
+## License
 
-如果要改用 OpenAI-compatible `/responses` 服务，显式传 `--provider openai`：
-
-```bash
-uv run pico --provider openai
-```
-
-默认 OpenAI 兼容接口使用 right.codes 的 Codex endpoint：
-
-```bash
-PICO_OPENAI_API_BASE="https://www.right.codes/codex/v1"
-PICO_RIGHT_CODES_API_KEY="your-right-codes-key"
-PICO_OPENAI_MODEL="gpt-5.4"
-```
-
-也可以改成其他 OpenAI-compatible 服务：
-
-```bash
-PICO_OPENAI_API_BASE="https://your-api.example/v1"
-PICO_OPENAI_API_KEY="your-api-key"
-PICO_OPENAI_MODEL="gpt-5.4"
-```
-
-### Anthropic 兼容接口
-
-如果要改用 Anthropic-compatible 服务，显式传 `--provider anthropic`：
-
-```bash
-uv run pico --provider anthropic
-```
-
-默认 Anthropic 兼容接口使用 right.codes 的 Claude endpoint：
-
-```bash
-PICO_ANTHROPIC_API_BASE="https://www.right.codes/claude/v1"
-PICO_RIGHT_CODES_API_KEY="your-right-codes-key"
-PICO_ANTHROPIC_MODEL="claude-sonnet-4-6"
-```
-
-如果你的服务端对多个兼容接口复用了同一套密钥，`pico` 也支持从 `PICO_ANTHROPIC_API_KEY` 回退到 `ANTHROPIC_API_KEY`、`PICO_RIGHT_CODES_API_KEY`、`RIGHT_CODES_API_KEY`、`PICO_OPENAI_API_KEY` 或 `OPENAI_API_KEY`。
-
-### Ollama
-
-如果要改用本地 Ollama，显式传 `--provider ollama`：
-
-```bash
-ollama serve
-ollama pull qwen3.5:4b
-uv run pico --provider ollama --model qwen3.5:4b
-```
-
-## 常用交互命令
-
-- `/help`：查看内置命令
-- `/memory`：查看提炼后的工作记忆
-- `/session`：查看当前会话文件路径
-- `/reset`：清空当前会话状态
-- `/exit` 或 `/quit`：退出 REPL
-
-## 安全与持久化
-
-`pico` 不会默认把所有动作都放开。像 shell 执行、文件写入这类高风险操作，会受审批模式控制：
-
-- `--approval ask`
-- `--approval auto`
-- `--approval never`
-
-每次运行结束后，都会在 `.pico/runs/<run_id>/` 下写出这些文件：
-
-- `task_state.json`
-- `trace.jsonl`
-- `report.json`
-
-这些内容默认只保存在本地，不需要跟仓库一起提交。
-
-## 开发
-
-常用本地检查：
-
-```bash
-uv run pytest tests -q
-uv run ruff check pico tests scripts
-```
-
-内部代码现在按较轻的边界拆分：`pico/evaluation/` 放 benchmark 和 metrics，`pico/providers/` 放模型 provider client，`pico/features/` 放可选运行时能力。新代码应直接使用这些包路径；旧的 `pico.evaluator`、`pico.metrics`、`pico.models` 和 `pico.memory` import 不再作为公共入口保留。
+MIT

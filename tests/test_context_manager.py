@@ -1,5 +1,7 @@
-from pico import FakeModelClient, Pico, SessionStore, WorkspaceContext
-from pico.context_manager import ContextManager
+from pico.testing import ScriptedModelClient
+from pico import Pico, SessionStore, WorkspaceContext
+from pico.core.context_report import ContextReportBuilder
+from pico.core.context_manager import ContextManager
 
 
 def build_workspace(tmp_path):
@@ -12,7 +14,7 @@ def build_agent(tmp_path, outputs, **kwargs):
     store = SessionStore(tmp_path / ".pico" / "sessions")
     approval_policy = kwargs.pop("approval_policy", "auto")
     return Pico(
-        model_client=FakeModelClient(outputs),
+        model_client=ScriptedModelClient(outputs),
         workspace=workspace,
         session_store=store,
         approval_policy=approval_policy,
@@ -29,11 +31,45 @@ def test_context_manager_assembles_sections_in_expected_order(tmp_path):
     prompt, metadata = ContextManager(agent).build("Where is the deploy key?")
 
     assert prompt.index("You are pico") < prompt.index("Memory:")
-    assert prompt.index("Memory:") < prompt.index("Relevant memory:")
+    assert prompt.index("Memory:") < prompt.index("Available skills:")
+    assert prompt.index("Available skills:") < prompt.index("Relevant memory:")
     assert prompt.index("Relevant memory:") < prompt.index("Transcript:")
     assert prompt.index("Transcript:") < prompt.index("Current user request:")
     assert prompt.rstrip().endswith("Current user request:\nWhere is the deploy key?")
-    assert metadata["section_order"] == ["prefix", "memory", "relevant_memory", "history", "current_request"]
+    assert metadata["section_order"] == ["prefix", "memory", "skills", "relevant_memory", "history", "current_request"]
+
+
+def test_context_manager_build_delegates_metadata_to_report_builder(tmp_path, monkeypatch):
+    agent = build_agent(tmp_path, [])
+    calls = []
+    original = ContextReportBuilder.build
+
+    def recording_build(self, **kwargs):
+        calls.append(kwargs)
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(ContextReportBuilder, "build", recording_build)
+
+    prompt, metadata = ContextManager(agent).build("Where is the deploy key?")
+
+    assert prompt
+    assert calls
+    assert calls[0]["user_message"] == "Where is the deploy key?"
+    assert list(metadata.keys()) == [
+        "prompt_chars",
+        "prompt_budget_chars",
+        "prompt_over_budget",
+        "section_order",
+        "section_budgets",
+        "sections",
+        "budget_reductions",
+        "reduction_order",
+        "relevant_memory",
+        "history",
+        "skills",
+        "current_request",
+        "context_usage",
+    ]
 
 
 def test_context_manager_reduces_relevant_memory_before_history_and_preserves_newer_context(tmp_path):
@@ -55,6 +91,7 @@ def test_context_manager_reduces_relevant_memory_before_history_and_preserves_ne
         section_budgets={
             "prefix": 120,
             "memory": 120,
+            "skills": 60,
             "relevant_memory": 120,
             "history": 400,
         },
@@ -83,10 +120,11 @@ def test_context_manager_renders_top_three_episodic_notes_per_note_under_budget(
 
     prompt, metadata = ContextManager(
         agent,
-        total_budget=250,
+        total_budget=500,
         section_budgets={
             "prefix": 60,
             "memory": 60,
+            "skills": 80,
             "relevant_memory": 80,
             "history": 60,
         },
@@ -126,6 +164,7 @@ def test_context_manager_preserves_current_request_when_over_budget(tmp_path):
         section_budgets={
             "prefix": 80,
             "memory": 80,
+            "skills": 40,
             "relevant_memory": 80,
             "history": 80,
         },

@@ -3,9 +3,10 @@ import shlex
 import sys
 from unittest.mock import patch
 
-from pico import FakeModelClient, Pico, SessionStore, WorkspaceContext
+from pico.testing import ScriptedModelClient
+from pico import Pico, SessionStore, WorkspaceContext
 from pico import cli as pico_cli
-from pico.task_state import TaskState
+from pico.core.task_state import TaskState
 
 
 def build_workspace(tmp_path):
@@ -18,7 +19,7 @@ def build_agent(tmp_path, outputs, **kwargs):
     store = SessionStore(tmp_path / ".pico" / "sessions")
     approval_policy = kwargs.pop("approval_policy", "auto")
     return Pico(
-        model_client=FakeModelClient(outputs),
+        model_client=ScriptedModelClient(outputs),
         workspace=workspace,
         session_store=store,
         approval_policy=approval_policy,
@@ -65,7 +66,7 @@ def test_cli_build_agent_wires_secret_env_names_from_parser(tmp_path):
 
     (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
     with patch.dict(os.environ, {"GITHUB_PAT": "ghp-1", "GH_PAT": "ghp-2"}, clear=True), patch(
-        "pico.cli.OllamaModelClient",
+        "pico.cli.OpenAICompatibleModelClient",
         DummyModelClient,
     ):
         args = pico_cli.build_arg_parser().parse_args(
@@ -95,7 +96,7 @@ def test_cli_build_agent_uses_default_configured_secret_names(tmp_path):
 
     (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
     with patch.dict(os.environ, {"GH_PAT": "ghp-default-1"}, clear=True), patch(
-        "pico.cli.OllamaModelClient",
+        "pico.cli.OpenAICompatibleModelClient",
         DummyModelClient,
     ):
         args = pico_cli.build_arg_parser().parse_args(["--cwd", str(tmp_path), "--approval", "auto"])
@@ -137,7 +138,7 @@ def test_cli_build_agent_reads_secret_names_from_environment_config(tmp_path):
             "PICO_SECRET_ENV_NAMES": "PICO_CUSTOM_SECRET",
         },
         clear=True,
-    ), patch("pico.cli.OllamaModelClient", DummyModelClient):
+    ), patch("pico.cli.OpenAICompatibleModelClient", DummyModelClient):
         args = pico_cli.build_arg_parser().parse_args(["--cwd", str(tmp_path), "--approval", "auto"])
         agent = pico_cli.build_agent(args)
         assert agent.secret_env_summary()["secret_env_names"] == ["PICO_CUSTOM_SECRET"]
@@ -146,20 +147,20 @@ def test_cli_build_agent_reads_secret_names_from_environment_config(tmp_path):
 def test_run_shell_uses_allowlisted_environment_only(tmp_path):
     secret = "shh-allowlist-secret"
     agent = build_agent(tmp_path, [], approval_policy="auto")
-    script = 'import os; print(os.getenv("PICO_ALLOWLIST_SECRET", "missing"))'
+    script = 'import os; print(os.getenv("MCA_ALLOWLIST_SECRET", "missing"))'
     command = f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}"
 
-    with patch.dict(os.environ, {"PICO_ALLOWLIST_SECRET": secret}, clear=False):
+    with patch.dict(os.environ, {"MCA_ALLOWLIST_SECRET": secret}, clear=False):
         result = agent.run_tool("run_shell", {"command": command, "timeout": 20})
 
     assert secret not in result
     assert "missing" in result
 
 
-def test_bound_tool_methods_delegate_into_tools_module(tmp_path):
+def test_bound_tool_methods_call_tools_module(tmp_path):
     agent = build_agent(tmp_path, [], approval_policy="auto")
 
-    with patch("pico.tools.subprocess.run") as fake_run:
+    with patch("pico.tools.registry.subprocess.run") as fake_run:
         fake_run.return_value = type(
             "Result",
             (),
@@ -169,45 +170,7 @@ def test_bound_tool_methods_delegate_into_tools_module(tmp_path):
 
     assert "toolkit-shell" in shell_result
     fake_run.assert_called_once()
-    assert agent.tool_run_shell.__func__.__module__ == "pico.runtime"
-
-    with patch("pico.tools.tool_delegate", return_value="toolkit-delegate") as fake_delegate:
-        delegate_result = agent.tool_delegate({"task": "inspect README.md", "max_steps": 2})
-
-    assert delegate_result == "toolkit-delegate"
-    fake_delegate.assert_called_once()
-
-
-def test_delegate_depth_limit_is_enforced(tmp_path):
-    agent = build_agent(tmp_path, [], depth=1, max_depth=1)
-
-    try:
-        agent.validate_tool("delegate", {"task": "inspect README.md", "max_steps": 2})
-    except ValueError as exc:
-        assert "delegate depth exceeded" in str(exc)
-    else:
-        raise AssertionError("delegate depth validation did not fail")
-
-
-def test_delegate_child_is_read_only(tmp_path):
-    target = tmp_path / "child-was-not-allowed.txt"
-    agent = build_agent(
-        tmp_path,
-        [
-            '<tool>{"name":"delegate","args":{"task":"write a file","max_steps":2}}</tool>',
-            '<tool>{"name":"write_file","args":{"path":"child-was-not-allowed.txt","content":"nope"}}</tool>',
-            "<final>child done</final>",
-            "<final>parent done</final>",
-        ],
-    )
-
-    result = agent.ask("Delegate the work")
-
-    assert result == "parent done"
-    assert not target.exists()
-    tool_events = [item for item in agent.session["history"] if item["role"] == "tool"]
-    assert tool_events[0]["name"] == "delegate"
-    assert "delegate_result" in tool_events[0]["content"]
+    assert agent.tool_run_shell.__func__.__module__ == "pico.core.runtime"
 
 
 def test_configured_secret_env_names_are_redacted_in_trace_and_report(tmp_path):

@@ -1,1 +1,1 @@
-"""Evaluation and benchmark helpers."""
+"""Evaluation and metrics utilities for Pico."""
