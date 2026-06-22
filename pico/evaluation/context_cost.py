@@ -5,11 +5,15 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import shutil
 import statistics
+import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from types import MethodType
 
 from pico import Pico, SessionStore, WorkspaceContext
+from pico.core.run_store import RunStore
 from pico.testing import ScriptedModelClient
 
 
@@ -52,6 +56,10 @@ class ExperimentRow:
     summary_delta_event_count: int
     report_path: str
     trace_path: str
+    compact_summary_mode: str = ""
+    compact_call_input_tokens: int = 0
+    compact_call_output_tokens: int = 0
+    compact_net_benefit_tokens: int | None = None
 
     def to_dict(self) -> dict:
         payload = asdict(self)
@@ -64,6 +72,23 @@ DEFAULT_PROXY_PRICING = ProviderPricing(
     cached_input_per_1m=0.2,
     output_per_1m=8.0,
 )
+
+EXPERIMENT_VARIANTS = {
+    "no_context_reduction": {
+        "description": "Baseline: no context reduction features",
+        "context_orchestrator_enabled": False,
+    },
+    "full_orchestrator": {
+        "description": "All context reduction features, deterministic compact",
+        "context_orchestrator_enabled": True,
+        "compact_summary_mode": "deterministic",
+    },
+    "full_orchestrator_with_llm_handoff": {
+        "description": "All features + LLM handoff compact when triggered",
+        "context_orchestrator_enabled": True,
+        "compact_summary_mode": "llm",
+    },
+}
 
 
 def compute_cost_usd(usage: CostUsage, pricing: ProviderPricing) -> float:
@@ -90,12 +115,20 @@ def extract_usage_from_artifacts(
     trace_path = Path(trace_path)
     report = json.loads(report_path.read_text(encoding="utf-8"))
     trace_usage = _usage_from_trace(trace_path)
+    compact_metrics = _compact_metrics_from_trace(trace_path)
     summary = dict(
         (report.get("evidence_summaries", {}) or {}).get("context_budget_summary", {})
         or {}
     )
+    orchestrator = dict((report.get("prompt_metadata", {}) or {}).get("context_orchestrator", {}) or {})
+    compact_call_usage = dict(
+        compact_metrics.get("compact_call_usage")
+        or summary.get("compact_call_usage")
+        or orchestrator.get("compact_call_usage")
+        or {}
+    )
     derived_verification = _verification_status(report)
-    if allow_verification_override and verification_status is not None and derived_verification == "unknown":
+    if allow_verification_override and verification_status is not None and derived_verification in {"unknown", "missing"}:
         derived_verification = str(verification_status)
     return ExperimentRow(
         task_id=str(task_id),
@@ -111,8 +144,20 @@ def extract_usage_from_artifacts(
         cost_usd=compute_cost_usd(trace_usage["usage"], pricing) if pricing else 0.0,
         saved_chars=int(summary.get("saved_chars", 0) or 0),
         replacement_cache_hits=int(summary.get("replacement_cache_hits", 0) or 0),
-        summary_called=bool(summary.get("summary_called", False)),
-        summary_delta_event_count=int(summary.get("summary_delta_event_count", 0) or 0),
+        summary_called=bool(compact_metrics.get("summary_called") or summary.get("summary_called", False)),
+        summary_delta_event_count=int(
+            compact_metrics.get("summary_delta_event_count")
+            or summary.get("summary_delta_event_count", 0)
+            or 0
+        ),
+        compact_summary_mode=str(compact_metrics.get("compact_summary_mode") or orchestrator.get("summary_mode", "") or ""),
+        compact_call_input_tokens=int(compact_call_usage.get("input_tokens", 0) or 0),
+        compact_call_output_tokens=int(compact_call_usage.get("output_tokens", 0) or 0),
+        compact_net_benefit_tokens=(
+            compact_metrics.get("compact_net_benefit_tokens")
+            if compact_metrics.get("compact_net_benefit_tokens") is not None
+            else summary.get("compact_net_benefit_tokens")
+        ),
         report_path=report_path.as_posix(),
         trace_path=trace_path.as_posix(),
     )
@@ -235,13 +280,55 @@ def run_scripted_e2e_experiment(output_dir, repetitions=1, pricing=None):
     return build_result_payload(rows, pricing_profile="scripted-proxy", pricing=pricing)
 
 
-def build_result_payload(rows, *, pricing_profile, pricing=None):
+def run_paired_experiment(
+    tasks,
+    *,
+    variants=None,
+    mode="scripted",
+    provider=None,
+    repetitions=1,
+    output_dir=None,
+    pricing=None,
+):
+    if str(mode) != "scripted":
+        raise ValueError("run_paired_experiment currently supports scripted mode only")
+    del provider
+    pricing = pricing or DEFAULT_PROXY_PRICING
+    variants = list(variants or ["full_orchestrator", "full_orchestrator_with_llm_handoff"])
+    for variant in variants:
+        if variant not in EXPERIMENT_VARIANTS:
+            raise ValueError(f"unknown experiment variant: {variant}")
+    output_dir = Path(output_dir or "artifacts/llm-handoff-benchmark/work")
+    rows = []
+    for repeat in range(int(repetitions)):
+        for task in tasks:
+            for variant in variants:
+                rows.append(
+                    _run_long_session_scripted_task(
+                        dict(task),
+                        variant=variant,
+                        repeat=repeat,
+                        output_dir=output_dir,
+                        pricing=pricing,
+                    )
+                )
+    treatment, control = _comparison_variants(variants)
+    return build_result_payload(
+        rows,
+        pricing_profile="llm-handoff-scripted-proxy",
+        pricing=pricing,
+        treatment=treatment,
+        control=control,
+    )
+
+
+def build_result_payload(rows, *, pricing_profile, pricing=None, treatment="full_orchestrator", control="no_context_reduction"):
     rows = list(rows)
     return {
         "artifact_type": "context-cost-experiment",
         "pricing_profile": str(pricing_profile),
         "pricing": asdict(pricing) if pricing else None,
-        "summary": summarize_paired_rows(rows),
+        "summary": summarize_paired_rows(rows, treatment=treatment, control=control),
         "rows": [row.to_dict() for row in rows],
     }
 
@@ -313,6 +400,13 @@ def render_markdown_report(payload):
     )
 
 
+def generate_report(payload, include_llm_handoff_comparison=False):
+    report = render_markdown_report(payload)
+    if include_llm_handoff_comparison:
+        report += "\n\n" + _render_llm_handoff_comparison(payload)
+    return report
+
+
 def write_experiment_artifacts(payload, output_dir):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -322,7 +416,7 @@ def write_experiment_artifacts(payload, output_dir):
 
     json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     _write_rows_csv(payload.get("rows", []) or [], csv_path)
-    markdown_path.write_text(render_markdown_report(payload) + "\n", encoding="utf-8")
+    markdown_path.write_text(generate_report(payload) + "\n", encoding="utf-8")
     return {
         "json": str(json_path),
         "csv": str(csv_path),
@@ -385,6 +479,35 @@ def _usage_from_trace(trace_path):
     else:
         usage = CostUsage(estimated_input_tokens, 0, 0, "estimated_proxy", model_call_count)
     return {"estimated_input_tokens": estimated_input_tokens, "usage": usage}
+
+
+def _compact_metrics_from_trace(trace_path):
+    metrics = {
+        "summary_called": False,
+        "summary_delta_event_count": 0,
+        "compact_summary_mode": "",
+        "compact_call_usage": None,
+        "compact_net_benefit_tokens": None,
+    }
+    for event in _read_jsonl(trace_path):
+        if event.get("event") != "context_orchestrator_decision":
+            continue
+        orchestrator = dict(event.get("context_orchestrator", {}) or {})
+        if orchestrator.get("summary_mode"):
+            metrics["compact_summary_mode"] = str(orchestrator.get("summary_mode", ""))
+        metrics["summary_called"] = bool(metrics["summary_called"] or orchestrator.get("summary_called", False))
+        metrics["summary_delta_event_count"] = max(
+            int(metrics["summary_delta_event_count"] or 0),
+            int(orchestrator.get("summary_delta_event_count", 0) or 0),
+        )
+        usage = orchestrator.get("compact_call_usage")
+        if isinstance(usage, dict):
+            metrics["compact_call_usage"] = dict(usage)
+            pre_tokens = int(orchestrator.get("pre_compact_estimated_tokens", 0) or 0)
+            post_tokens = int(orchestrator.get("post_compact_estimated_tokens", 0) or 0)
+            compact_tokens = int(usage.get("total_tokens", 0) or 0)
+            metrics["compact_net_benefit_tokens"] = pre_tokens - post_tokens - compact_tokens
+    return metrics
 
 
 def _is_provider_usage_metadata(metadata):
@@ -584,6 +707,199 @@ def _build_scripted_agent(workspace_root, *, context_reduction=True):
         agent.record({"role": "user", "content": f"prior request {index} " + ("u" * 400)})
         agent.record({"role": "assistant", "content": f"prior answer {index} " + ("a" * 400)})
     return agent
+
+
+class _LongSessionScriptedClient(ScriptedModelClient):
+    def __init__(self, outputs):
+        super().__init__(outputs)
+        self.context_window = 2200
+        self.model = "scripted-long-session"
+
+    def complete(self, prompt, max_new_tokens, **kwargs):
+        if "You are a context compactor for a coding agent" in str(prompt):
+            self.prompts.append(prompt)
+            self.last_completion_metadata = {
+                "input_tokens": max(1, len(str(prompt)) // 4),
+                "cached_tokens": 0,
+                "output_tokens": 80,
+                "total_tokens": max(1, len(str(prompt)) // 4) + 80,
+                "provider_protocol": "openai",
+                "provider_model": "scripted-handoff",
+            }
+            return "\n".join(
+                [
+                    "## Goal",
+                    "Complete the long-session benchmark task.",
+                    "",
+                    "## Constraints",
+                    "- Preserve the requested fixture changes.",
+                    "",
+                    "## Files Read",
+                    "- benchmark fixture files",
+                    "",
+                    "## Files Modified",
+                    "- benchmark fixture files",
+                    "",
+                    "## Next Steps",
+                    "- Continue with the scripted task plan.",
+                ]
+            )
+        self.last_completion_metadata = {
+            "input_tokens": max(1, len(str(prompt)) // 4),
+            "cached_tokens": 0,
+            "output_tokens": 32,
+            "synthetic": True,
+        }
+        return super().complete(prompt, max_new_tokens, **kwargs)
+
+
+def _run_long_session_scripted_task(task, *, variant, repeat, output_dir, pricing):
+    fixture_source = Path(task["fixture_repo"]).resolve()
+    workspace = Path(output_dir) / "runs" / task["id"] / variant / str(repeat) / fixture_source.name
+    if workspace.exists():
+        shutil.rmtree(workspace)
+    workspace.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(fixture_source, workspace)
+
+    agent = Pico(
+        model_client=_LongSessionScriptedClient(task.get("scripted_outputs", [])),
+        workspace=WorkspaceContext.build(workspace, repo_root_override=workspace),
+        session_store=SessionStore(workspace / ".pico" / "sessions"),
+        run_store=RunStore(workspace / ".pico" / "runs"),
+        approval_policy="auto",
+        feature_flags={
+            "context_reduction": bool(EXPERIMENT_VARIANTS[variant]["context_orchestrator_enabled"])
+        },
+        max_steps=int(task.get("step_budget", 12)),
+        max_new_tokens=256,
+        allowed_tools=task["allowed_tools"],
+    )
+    _seed_long_session_history(agent)
+    _force_compact_summary_mode(agent, EXPERIMENT_VARIANTS[variant].get("compact_summary_mode", "deterministic"))
+
+    agent.ask(task["prompt"])
+    report_path = agent.current_run_dir / "report.json"
+    trace_path = agent.current_run_dir / "trace.jsonl"
+    verifier = subprocess.run(
+        task["verifier"],
+        cwd=workspace,
+        shell=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    verification_status = "passed" if verifier.returncode == 0 else "failed"
+    return extract_usage_from_artifacts(
+        report_path,
+        trace_path,
+        task_id=task["id"],
+        layer="scripted",
+        variant=variant,
+        repeat=repeat,
+        pricing=pricing,
+        verification_status=verification_status,
+        allow_verification_override=True,
+    )
+
+
+def _seed_long_session_history(agent):
+    for index in range(6):
+        agent.record(
+            {
+                "role": "user",
+                "content": f"prior long-session request {index} " + ("u" * 1100),
+            }
+        )
+        agent.record(
+            {
+                "role": "assistant",
+                "content": f"prior long-session answer {index} " + ("a" * 1100),
+            }
+        )
+
+
+def _force_compact_summary_mode(agent, summary_mode):
+    original = agent.context_orchestrator._compact_request
+
+    def compact_request(self, metadata, snapshot):
+        trigger, mode, skip_reason = original(metadata, snapshot)
+        del mode
+        if trigger:
+            return trigger, str(summary_mode), skip_reason
+        return trigger, "deterministic", skip_reason
+
+    agent.context_orchestrator._compact_request = MethodType(
+        compact_request, agent.context_orchestrator
+    )
+
+
+def _comparison_variants(variants):
+    if "full_orchestrator_with_llm_handoff" in variants and "full_orchestrator" in variants:
+        return "full_orchestrator_with_llm_handoff", "full_orchestrator"
+    if len(variants) >= 2:
+        return variants[-1], variants[0]
+    return variants[0], "no_context_reduction"
+
+
+def _render_llm_handoff_comparison(payload):
+    rows = [dict(row) for row in payload.get("rows", []) or []]
+    by_task = {}
+    for row in rows:
+        by_task.setdefault(str(row.get("task_id", "")), {})[str(row.get("variant", ""))] = row
+    comparison_rows = []
+    for task_id, variants in sorted(by_task.items()):
+        deterministic = variants.get("full_orchestrator")
+        handoff = variants.get("full_orchestrator_with_llm_handoff")
+        if not deterministic or not handoff:
+            continue
+        comparison_rows.append((task_id, deterministic, handoff))
+
+    net_values = [
+        int(handoff.get("compact_net_benefit_tokens"))
+        for _, _, handoff in comparison_rows
+        if handoff.get("compact_net_benefit_tokens") is not None
+    ]
+    positive = sum(1 for value in net_values if value > 0)
+    negative = sum(1 for value in net_values if value < 0)
+    negative_tasks = [
+        task_id
+        for task_id, _, handoff in comparison_rows
+        if handoff.get("compact_net_benefit_tokens") is not None
+        and int(handoff.get("compact_net_benefit_tokens")) < 0
+    ]
+    total = len(net_values)
+    lines = [
+        "## LLM Handoff vs Deterministic Comparison",
+        "",
+        "| Task | Deterministic Cost | LLM Handoff Cost | Net Benefit | Mode Used |",
+        "|------|-------------------|------------------|-------------|-----------|",
+    ]
+    for task_id, deterministic, handoff in comparison_rows:
+        net = handoff.get("compact_net_benefit_tokens")
+        net_text = "n/a" if net is None else f"{int(net)} tokens"
+        lines.append(
+            f"| {task_id} | {float(deterministic.get('cost_usd', 0.0)):.8f} | "
+            f"{float(handoff.get('cost_usd', 0.0)):.8f} | {net_text} | "
+            f"{handoff.get('compact_summary_mode', '')} |"
+        )
+    lines.extend(
+        [
+            "",
+            f"- Median net benefit: {_median_tokens(net_values)} tokens",
+            f"- Positive net benefit: {_pct(positive, total)}",
+            f"- Negative net benefit: {_pct(negative, total)}",
+            f"- Net-negative tasks: {', '.join(negative_tasks) if negative_tasks else 'none'}",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _median_tokens(values):
+    return int(statistics.median(values)) if values else 0
+
+
+def _pct(count, total):
+    return f"{(count / total):.0%}" if total else "0%"
 
 
 def _write_prompt_only_trace(trace_path, prompt_metadata):
