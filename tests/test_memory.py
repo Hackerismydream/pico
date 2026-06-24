@@ -3,6 +3,7 @@ import hashlib
 import subprocess
 from datetime import date
 
+from pico.features.memory_lint import SECRET_PATTERNS
 from pico.features.memory import (
     LayeredMemory,
     append_to_daily_log,
@@ -137,6 +138,30 @@ def test_anchor_hash_returns_none_for_large_or_missing_files(tmp_path):
 
     assert compute_anchor_hash(large_path) is None
     assert compute_anchor_hash(tmp_path / "missing.txt") is None
+
+
+def test_secret_patterns_match_supported_secret_shapes():
+    positives = [
+        "sk-" + "A" * 20,
+        "AKIA" + "0" * 16,
+        "ghp_" + "A" * 36,
+        "xoxb-" + "A" * 10,
+        "api key " + "a" * 40,
+    ]
+
+    for candidate in positives:
+        assert any(pattern.search(candidate) for pattern in SECRET_PATTERNS), candidate
+
+
+def test_secret_patterns_do_not_match_short_or_context_free_random_text():
+    negatives = [
+        "abc123",
+        "A" * 40,
+        "deadbeef" * 4,
+    ]
+
+    for candidate in negatives:
+        assert not any(pattern.search(candidate) for pattern in SECRET_PATTERNS), candidate
 
 
 def test_process_notes_keep_kind_and_latest_duplicate_wins():
