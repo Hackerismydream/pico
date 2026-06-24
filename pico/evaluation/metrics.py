@@ -1,4 +1,6 @@
+import argparse
 import json
+import sys
 import tempfile
 from contextlib import contextmanager
 from datetime import datetime
@@ -16,7 +18,20 @@ DEFAULT_HARNESS_REGRESSION_V2_PATH = Path("artifacts/harness-regression-v2.json"
 DEFAULT_CONTEXT_ABLATION_V2_PATH = Path("artifacts/context-ablation-v2.json")
 DEFAULT_MEMORY_ABLATION_V2_PATH = Path("artifacts/memory-ablation-v2.json")
 DEFAULT_RECOVERY_ABLATION_V2_PATH = Path("artifacts/recovery-ablation-v2.json")
+DEFAULT_MEMORY_FIDELITY_V1_PATH = Path("artifacts/memory-fidelity-v1.json")
+DEFAULT_DREAM_QUALITY_V1_PATH = Path("artifacts/dream-quality-v1.json")
+DEFAULT_MEMORY_LIVE_SMOKE_V1_PATH = Path("artifacts/memory-live-smoke-v1.json")
 DEFAULT_CORE_REPORT_PATH = Path("docs/metrics/pico-benchmark-core-report.md")
+
+RUN_NAMES = (
+    "harness_regression",
+    "context_ablation",
+    "memory_ablation",
+    "memory_fidelity",
+    "recovery_ablation",
+    "dream_quality",
+    "live_smoke",
+)
 
 
 def _safe_mean(values):
@@ -1666,3 +1681,62 @@ def write_benchmark_core_report(
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(report_text, encoding="utf-8")
     return report_text
+
+
+def _artifact_exists(path):
+    path = Path(path)
+    if not path.exists():
+        print(f"missing artifact: {path}", file=sys.stderr)
+        return False
+    return True
+
+
+def _run_metrics_cli(name):
+    if name == "harness_regression":
+        return 0 if _artifact_exists(DEFAULT_HARNESS_REGRESSION_V2_PATH) else 1
+    if name == "context_ablation":
+        run_context_ablation_v2()
+        return 0
+    if name == "memory_ablation":
+        run_memory_ablation_v2()
+        return 0
+    if name == "recovery_ablation":
+        run_recovery_ablation_v2()
+        return 0
+    artifact_only_runs = {
+        "memory_fidelity": DEFAULT_MEMORY_FIDELITY_V1_PATH,
+        "dream_quality": DEFAULT_DREAM_QUALITY_V1_PATH,
+        "live_smoke": DEFAULT_MEMORY_LIVE_SMOKE_V1_PATH,
+    }
+    if name in artifact_only_runs:
+        return 0 if _artifact_exists(artifact_only_runs[name]) else 1
+    print(f"unknown run: {name}", file=sys.stderr)
+    return 2
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Pico benchmark metrics utilities.")
+    parser.add_argument("--core-report", action="store_true", help="Write the benchmark core report.")
+    parser.add_argument("--run", choices=RUN_NAMES, help="Run or validate a benchmark artifact by name.")
+    parser.add_argument("--list-runs", action="store_true", help="List available run names.")
+    args = parser.parse_args(argv)
+
+    if args.list_runs:
+        for name in RUN_NAMES:
+            print(name)
+        return 0
+    if args.core_report:
+        try:
+            write_benchmark_core_report()
+        except FileNotFoundError as exc:
+            print(f"missing artifact: {exc.filename}", file=sys.stderr)
+            return 1
+        return 0
+    if args.run:
+        return _run_metrics_cli(args.run)
+    parser.print_help()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
