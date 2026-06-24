@@ -1,0 +1,54 @@
+{
+  "artifact_type": "memory-fidelity-v1",
+  "captured_at": "2026-06-24T00:00:00Z",
+  "rows": [
+    {
+      "category": "irrelevant_memory_present",
+      "distractor_selected": false,
+      "id": "irrelevant_memory_present_001",
+      "passed": true,
+      "query": "deploy",
+      "rejected_reasons": {
+        "deploy key is blue and unrelated": "below_limit"
+      },
+      "selected_texts": [
+        "deploy key is red"
+      ]
+    },
+    {
+      "category": "superseded_fact",
+      "id": "superseded_fact_001",
+      "new_fact_selected": true,
+      "old_fact_superseded": true,
+      "passed": true,
+      "query": "capital",
+      "rejected_reasons": {
+        "capital is X": "superseded"
+      },
+      "selected_texts": [
+        "capital is Y"
+      ]
+    },
+    {
+      "category": "secret_shaped",
+      "id": "secret_shaped_001",
+      "passed": true,
+      "query": "config",
+      "rejected_reasons": {
+        "api key sk-AAAAAAAAAAAAAAAAAAAA for service X": "quarantined"
+      },
+      "secret_selected": false,
+      "selected_texts": []
+    }
+  ],
+  "schema_version": 1,
+  "summary": {
+    "failed": 0,
+    "irrelevant_injection_rate": 0.0,
+    "pass_rate": 1.0,
+    "passed": 3,
+    "secret_exposure_rate": 0.0,
+    "supersede_success_rate": 1.0,
+    "total_tasks": 3
+  }
+}

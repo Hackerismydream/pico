@@ -4,6 +4,7 @@ from unittest.mock import patch
 from pico.evaluation.metrics import (
     _provider_profile,
     run_context_ablation_v2,
+    run_memory_fidelity_v1,
     run_memory_ablation_v2,
     run_recovery_ablation_v2,
     write_benchmark_core_report,
@@ -73,6 +74,48 @@ def test_run_memory_ablation_v2_writes_expected_artifact(tmp_path):
     assert "memory_hit_rate" in artifact["variants"]["memory_on"]
 
 
+def test_memory_fidelity_irrelevant_memory_present_category(tmp_path):
+    artifact = run_memory_fidelity_v1(tmp_path / "artifacts" / "memory-fidelity-v1.json")
+    row = next(row for row in artifact["rows"] if row["category"] == "irrelevant_memory_present")
+
+    assert row["passed"]
+    assert not row["distractor_selected"]
+
+
+def test_memory_fidelity_superseded_fact_category(tmp_path):
+    artifact = run_memory_fidelity_v1(tmp_path / "artifacts" / "memory-fidelity-v1.json")
+    row = next(row for row in artifact["rows"] if row["category"] == "superseded_fact")
+
+    assert row["passed"]
+    assert row["new_fact_selected"]
+    assert row["old_fact_superseded"]
+
+
+def test_memory_fidelity_secret_shaped_category(tmp_path):
+    artifact = run_memory_fidelity_v1(tmp_path / "artifacts" / "memory-fidelity-v1.json")
+    row = next(row for row in artifact["rows"] if row["category"] == "secret_shaped")
+
+    assert row["passed"]
+    assert not row["secret_selected"]
+
+
+def test_run_memory_fidelity_v1_writes_expected_artifact(tmp_path):
+    artifact_path = tmp_path / "artifacts" / "memory-fidelity-v1.json"
+
+    artifact = run_memory_fidelity_v1(artifact_path)
+
+    assert artifact_path.exists()
+    assert artifact["artifact_type"] == "memory-fidelity-v1"
+    assert artifact["summary"]["irrelevant_injection_rate"] == 0
+    assert artifact["summary"]["supersede_success_rate"] == 1
+    assert artifact["summary"]["secret_exposure_rate"] == 0
+    assert {row["category"] for row in artifact["rows"]} == {
+        "irrelevant_memory_present",
+        "superseded_fact",
+        "secret_shaped",
+    }
+
+
 def test_run_recovery_ablation_v2_writes_expected_artifact(tmp_path):
     artifact_path = tmp_path / "artifacts" / "recovery-ablation-v2.json"
 
@@ -96,6 +139,7 @@ def test_run_recovery_ablation_v2_writes_expected_artifact(tmp_path):
 def test_write_benchmark_core_report_marks_resume_safe_metrics(tmp_path):
     run_context_ablation_v2(tmp_path / "artifacts" / "context-ablation-v2.json", repetitions=1)
     run_memory_ablation_v2(tmp_path / "artifacts" / "memory-ablation-v2.json", repetitions=1)
+    run_memory_fidelity_v1(tmp_path / "artifacts" / "memory-fidelity-v1.json")
     run_recovery_ablation_v2(tmp_path / "artifacts" / "recovery-ablation-v2.json", repetitions=1)
     harness_artifact_path = tmp_path / "artifacts" / "harness-regression-v2.json"
     harness_artifact_path.write_text(
@@ -110,6 +154,7 @@ def test_write_benchmark_core_report_marks_resume_safe_metrics(tmp_path):
         context_artifact_path=tmp_path / "artifacts" / "context-ablation-v2.json",
         memory_artifact_path=tmp_path / "artifacts" / "memory-ablation-v2.json",
         recovery_artifact_path=tmp_path / "artifacts" / "recovery-ablation-v2.json",
+        fidelity_artifact_path=tmp_path / "artifacts" / "memory-fidelity-v1.json",
     )
 
     assert report_path.exists()
@@ -117,6 +162,8 @@ def test_write_benchmark_core_report_marks_resume_safe_metrics(tmp_path):
     assert "只适合放文档/面试展开的指标" in report_text
     assert "resume_success_rate" in report_text
     assert "memory_hit_rate" in report_text
+    assert "Context Efficiency Under Follow-up" in report_text
+    assert "Memory Fidelity" in report_text
 
 
 def test_write_benchmark_core_report_falls_back_to_local_artifacts(tmp_path, monkeypatch):
@@ -125,6 +172,7 @@ def test_write_benchmark_core_report_falls_back_to_local_artifacts(tmp_path, mon
     local_artifacts.mkdir(parents=True)
     run_context_ablation_v2(local_artifacts / "context-ablation-v2.json", repetitions=1)
     run_memory_ablation_v2(local_artifacts / "memory-ablation-v2.json", repetitions=1)
+    run_memory_fidelity_v1(local_artifacts / "memory-fidelity-v1.json")
     run_recovery_ablation_v2(local_artifacts / "recovery-ablation-v2.json", repetitions=1)
     (local_artifacts / "harness-regression-v2.json").write_text(
         '{"summary":{"total_tasks":12,"pass_rate":1.0,"within_budget_rate":1.0,"verifier_pass_rate":1.0},"failure_category_counts":{}}',
@@ -134,4 +182,5 @@ def test_write_benchmark_core_report_falls_back_to_local_artifacts(tmp_path, mon
     report_text = write_benchmark_core_report()
 
     assert "Harness Regression" in report_text
-    assert "Working Memory Ablation" in report_text
+    assert "Context Efficiency Under Follow-up" in report_text
+    assert "Memory Fidelity" in report_text

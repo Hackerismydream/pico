@@ -12,17 +12,18 @@ from ..testing import ScriptedModelClient
 from ..providers import AnthropicCompatibleModelClient, OpenAICompatibleModelClient
 from ..core.runtime import Pico, SessionStore
 from ..core.workspace import WorkspaceContext
+from ..features.memory import LayeredMemory, retrieval_view_structured
 
 METRICS_SCHEMA_VERSION = 2
+LOCAL_BENCHMARK_ARTIFACT_DIR = Path("_local/benchmark/artifacts")
 DEFAULT_HARNESS_REGRESSION_V2_PATH = Path("artifacts/harness-regression-v2.json")
 DEFAULT_CONTEXT_ABLATION_V2_PATH = Path("artifacts/context-ablation-v2.json")
 DEFAULT_MEMORY_ABLATION_V2_PATH = Path("artifacts/memory-ablation-v2.json")
 DEFAULT_RECOVERY_ABLATION_V2_PATH = Path("artifacts/recovery-ablation-v2.json")
-DEFAULT_MEMORY_FIDELITY_V1_PATH = Path("artifacts/memory-fidelity-v1.json")
-DEFAULT_DREAM_QUALITY_V1_PATH = Path("artifacts/dream-quality-v1.json")
-DEFAULT_MEMORY_LIVE_SMOKE_V1_PATH = Path("artifacts/memory-live-smoke-v1.json")
+DEFAULT_MEMORY_FIDELITY_V1_PATH = LOCAL_BENCHMARK_ARTIFACT_DIR / "memory-fidelity-v1.json"
+DEFAULT_DREAM_QUALITY_V1_PATH = LOCAL_BENCHMARK_ARTIFACT_DIR / "dream-quality-v1.json"
+DEFAULT_MEMORY_LIVE_SMOKE_V1_PATH = LOCAL_BENCHMARK_ARTIFACT_DIR / "memory-live-smoke-v1.json"
 DEFAULT_CORE_REPORT_PATH = Path("docs/metrics/pico-benchmark-core-report.md")
-LOCAL_BENCHMARK_ARTIFACT_DIR = Path("_local/benchmark/artifacts")
 
 RUN_NAMES = (
     "harness_regression",
@@ -450,6 +451,98 @@ def run_large_scale_memory_experiment(repetitions=5):
         },
         "rows": variants,
     }
+
+
+def _run_memory_fidelity_irrelevant_case():
+    memory = LayeredMemory()
+    memory.append_note("deploy key is blue and unrelated", tags=("deploy",), created_at="2026-06-24T10:00:00+00:00")
+    memory.append_note("deploy key is red", tags=("deploy",), created_at="2026-06-24T10:01:00+00:00")
+    structured = memory.retrieval_view_structured("deploy", limit=1)
+    selected_texts = [note["text"] for note in structured["selected"]]
+    return {
+        "id": "irrelevant_memory_present_001",
+        "category": "irrelevant_memory_present",
+        "query": "deploy",
+        "selected_texts": selected_texts,
+        "rejected_reasons": {note["text"]: note.get("reject_reason", "") for note in structured["rejected"]},
+        "passed": "deploy key is red" in selected_texts and "deploy key is blue and unrelated" not in selected_texts,
+        "distractor_selected": "deploy key is blue and unrelated" in selected_texts,
+    }
+
+
+def _run_memory_fidelity_superseded_case():
+    memory = LayeredMemory()
+    memory.append_note("capital is X", tags=("capital",), created_at="2026-06-24T10:00:00+00:00")
+    memory.append_note("capital is Y", tags=("capital",), created_at="2026-06-24T10:01:00+00:00")
+    old_note = memory.state["episodic_notes"][0]
+    new_note = memory.state["episodic_notes"][1]
+    old_note["status"] = "superseded"
+    new_note["supersedes"] = old_note.get("note_id") or "old-capital"
+    structured = retrieval_view_structured(memory.state, "capital", limit=3)
+    selected_texts = [note["text"] for note in structured["selected"]]
+    rejected = {note["text"]: note.get("reject_reason", "") for note in structured["rejected"]}
+    passed = "capital is Y" in selected_texts and rejected.get("capital is X") == "superseded"
+    return {
+        "id": "superseded_fact_001",
+        "category": "superseded_fact",
+        "query": "capital",
+        "selected_texts": selected_texts,
+        "rejected_reasons": rejected,
+        "passed": passed,
+        "new_fact_selected": "capital is Y" in selected_texts,
+        "old_fact_superseded": rejected.get("capital is X") == "superseded",
+    }
+
+
+def _run_memory_fidelity_secret_case():
+    memory = LayeredMemory()
+    memory.append_note(
+        "api key sk-AAAAAAAAAAAAAAAAAAAA for service X",
+        tags=("config",),
+        created_at="2026-06-24T10:00:00+00:00",
+    )
+    memory.state["episodic_notes"][0]["status"] = "quarantined"
+    structured = retrieval_view_structured(memory.state, "config", limit=3)
+    selected_texts = [note["text"] for note in structured["selected"]]
+    secret_text = "api key sk-AAAAAAAAAAAAAAAAAAAA for service X"
+    rejected = {note["text"]: note.get("reject_reason", "") for note in structured["rejected"]}
+    return {
+        "id": "secret_shaped_001",
+        "category": "secret_shaped",
+        "query": "config",
+        "selected_texts": selected_texts,
+        "rejected_reasons": rejected,
+        "passed": secret_text not in selected_texts and rejected.get(secret_text) == "quarantined",
+        "secret_selected": secret_text in selected_texts,
+    }
+
+
+def run_memory_fidelity_v1(artifact_path=DEFAULT_MEMORY_FIDELITY_V1_PATH):
+    rows = [
+        _run_memory_fidelity_irrelevant_case(),
+        _run_memory_fidelity_superseded_case(),
+        _run_memory_fidelity_secret_case(),
+    ]
+    irrelevant_rows = [row for row in rows if row["category"] == "irrelevant_memory_present"]
+    superseded_rows = [row for row in rows if row["category"] == "superseded_fact"]
+    secret_rows = [row for row in rows if row["category"] == "secret_shaped"]
+    summary = {
+        "total_tasks": len(rows),
+        "passed": sum(1 for row in rows if row["passed"]),
+        "failed": sum(1 for row in rows if not row["passed"]),
+        "pass_rate": _safe_ratio(sum(1 for row in rows if row["passed"]), len(rows)),
+        "irrelevant_injection_rate": _safe_ratio(sum(1 for row in irrelevant_rows if row["distractor_selected"]), len(irrelevant_rows)),
+        "supersede_success_rate": _safe_ratio(sum(1 for row in superseded_rows if row["new_fact_selected"] and row["old_fact_superseded"]), len(superseded_rows)),
+        "secret_exposure_rate": _safe_ratio(sum(1 for row in secret_rows if row["secret_selected"]), len(secret_rows)),
+    }
+    artifact = {
+        "schema_version": 1,
+        "artifact_type": "memory-fidelity-v1",
+        "captured_at": "2026-06-24T00:00:00Z",
+        "summary": summary,
+        "rows": rows,
+    }
+    return _write_json_artifact(artifact_path, artifact)
 
 
 def run_context_stress_matrix(repetitions=5):
@@ -1626,17 +1719,20 @@ def write_benchmark_core_report(
     context_artifact_path=DEFAULT_CONTEXT_ABLATION_V2_PATH,
     memory_artifact_path=DEFAULT_MEMORY_ABLATION_V2_PATH,
     recovery_artifact_path=DEFAULT_RECOVERY_ABLATION_V2_PATH,
+    fidelity_artifact_path=DEFAULT_MEMORY_FIDELITY_V1_PATH,
 ):
     harness = json.loads(_existing_artifact_path(harness_artifact_path).read_text(encoding="utf-8"))
     context = json.loads(_existing_artifact_path(context_artifact_path).read_text(encoding="utf-8"))
     memory = json.loads(_existing_artifact_path(memory_artifact_path).read_text(encoding="utf-8"))
     recovery = json.loads(_existing_artifact_path(recovery_artifact_path).read_text(encoding="utf-8"))
+    fidelity_path = _existing_artifact_path(fidelity_artifact_path)
+    fidelity = json.loads(fidelity_path.read_text(encoding="utf-8")) if fidelity_path.exists() else None
 
     enabled_recovery = recovery["variants"]["resume_enabled"]["summary"]
     lines = [
         "# Pico Benchmark Core Report",
         "",
-        "这轮 benchmark 只收缩到 Harness regression、context ablation、working memory ablation 和 recovery ablation 四层，不把 provider、run aggregation 或 durable memory 的别的结论揉进来。",
+        "这轮 benchmark 只收缩到 Harness regression、context ablation、context efficiency、memory fidelity 和 recovery ablation，不把 provider、run aggregation 或 durable memory 的别的结论揉进来。",
         "",
         "## Harness Regression",
         f"- 固定 regression 任务数：{harness['summary']['total_tasks']}",
@@ -1652,41 +1748,58 @@ def write_benchmark_core_report(
         f"- max_prompt_compression_ratio：{context['summary']['max_prompt_compression_ratio']:.2%}",
         f"- current_request_preserved_rate：{context['summary']['current_request_preserved_rate']:.2%}",
         "",
-        "## Working Memory Ablation",
+        "## Context Efficiency Under Follow-up",
         f"- memory_on repeated_reads：{memory['variants']['memory_on']['repeated_reads']}",
         f"- memory_off repeated_reads：{memory['variants']['memory_off']['repeated_reads']}",
         f"- memory_on avg_tool_steps：{memory['variants']['memory_on']['avg_tool_steps']:.2f}",
         f"- memory_on correct_rate：{memory['variants']['memory_on']['correct_rate']:.2%}",
         f"- memory_hit_rate：{memory['variants']['memory_on']['memory_hit_rate']:.2%}",
         "",
-        "## Recovery / Resume Ablation",
-        f"- resume_success_rate：{enabled_recovery['resume_success_rate']:.2%}",
-        f"- stale_reanchor_rate：{enabled_recovery['stale_reanchor_rate']:.2%}",
-        f"- workspace_drift_detection_rate：{enabled_recovery['workspace_drift_detection_rate']:.2%}",
-        f"- resume_false_accept_rate：{enabled_recovery['resume_false_accept_rate']:.2%}",
-        "",
-        "## 可以安全写进简历的指标",
-        "- avg_full_prompt_chars",
-        "- avg_raw_prompt_chars",
-        "- avg_prompt_compression_ratio",
-        "- max_prompt_compression_ratio",
-        "- repeated_reads",
-        "- avg_tool_steps",
-        "- correct_rate",
-        "- resume_success_rate",
-        "- workspace_drift_detection_rate",
-        "- resume_false_accept_rate",
-        "",
-        "## 只适合放文档/面试展开的指标",
-        "- current_request_preserved_rate",
-        "- memory_hit_rate",
-        "- stale_reanchor_rate",
-        "- failure_category_counts",
-        "",
-        "## 口径边界",
-        "- Harness regression 只证明 runtime 合同稳定，不证明 provider 上限。",
-        "- Context、memory、recovery 这三层只证明模块收益，不和 provider benchmark 混写。",
     ]
+    if fidelity:
+        fidelity_summary = fidelity["summary"]
+        lines.extend(
+            [
+                "## Memory Fidelity",
+                f"- pass_rate：{fidelity_summary['pass_rate']:.2%}",
+                f"- irrelevant_injection_rate：{fidelity_summary['irrelevant_injection_rate']:.2%}",
+                f"- supersede_success_rate：{fidelity_summary['supersede_success_rate']:.2%}",
+                f"- secret_exposure_rate：{fidelity_summary['secret_exposure_rate']:.2%}",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "## Recovery / Resume Ablation",
+            f"- resume_success_rate：{enabled_recovery['resume_success_rate']:.2%}",
+            f"- stale_reanchor_rate：{enabled_recovery['stale_reanchor_rate']:.2%}",
+            f"- workspace_drift_detection_rate：{enabled_recovery['workspace_drift_detection_rate']:.2%}",
+            f"- resume_false_accept_rate：{enabled_recovery['resume_false_accept_rate']:.2%}",
+            "",
+            "## 可以安全写进简历的指标",
+            "- avg_full_prompt_chars",
+            "- avg_raw_prompt_chars",
+            "- avg_prompt_compression_ratio",
+            "- max_prompt_compression_ratio",
+            "- repeated_reads",
+            "- avg_tool_steps",
+            "- correct_rate",
+            "- resume_success_rate",
+            "- workspace_drift_detection_rate",
+            "- resume_false_accept_rate",
+            "",
+            "## 只适合放文档/面试展开的指标",
+            "- current_request_preserved_rate",
+            "- memory_hit_rate",
+            "  - scripted variant 下与 `repeated_reads == 0` tautological",
+            "- stale_reanchor_rate",
+            "- failure_category_counts",
+            "",
+            "## 口径边界",
+            "- Harness regression 只证明 runtime 合同稳定，不证明 provider 上限。",
+            "- Context、memory、recovery 这三层只证明模块收益，不和 provider benchmark 混写。",
+        ]
+    )
     report_text = "\n".join(lines) + "\n"
     report_path = Path(report_path)
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1714,8 +1827,10 @@ def _run_metrics_cli(name):
     if name == "recovery_ablation":
         run_recovery_ablation_v2()
         return 0
+    if name == "memory_fidelity":
+        artifact = run_memory_fidelity_v1()
+        return 0 if artifact.get("summary", {}).get("failed", 0) == 0 else 2
     artifact_only_runs = {
-        "memory_fidelity": DEFAULT_MEMORY_FIDELITY_V1_PATH,
         "dream_quality": DEFAULT_DREAM_QUALITY_V1_PATH,
         "live_smoke": DEFAULT_MEMORY_LIVE_SMOKE_V1_PATH,
     }
