@@ -148,10 +148,6 @@ class ContextManager:
             prompt = self._assemble_prompt(rendered)
         reduction_log = []
 
-        # 如果 prompt 超预算，就按固定顺序不断压缩。
-        # 这里的顺序体现了平台偏好：
-        # 先牺牲 relevant_memory，再牺牲 history，然后才动 memory 和 prefix。
-        # 最新用户请求永远不裁剪，因为那是本轮最重要的输入。
         while len(prompt) > self.total_budget:
             overflow = len(prompt) - self.total_budget
             reduced = False
@@ -255,7 +251,7 @@ class ContextManager:
         adjusted = dict(budgets)
         tier = str(getattr(pressure, "tier", ""))
         if tier in {"tier1_snip", "tier2_prune"}:
-            adjusted["relevant_memory"] = int(adjusted.get("relevant_memory", 0) * 0.7)
+            adjusted["relevant_memory"] = max(80, int(adjusted.get("relevant_memory", 0) * 0.7))
         if tier == "tier2_prune":
             adjusted["skills"] = int(adjusted.get("skills", 0) * 0.5)
         return adjusted

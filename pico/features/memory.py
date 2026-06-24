@@ -162,6 +162,8 @@ def _memory_file_snapshot(agent):
     for path in memory_dir.rglob("*"):
         if not path.is_file() or path.name == LOCK_FILE_NAME:
             continue
+        if "dream_reports" in path.relative_to(memory_dir).parts:
+            continue
         relative = _agent_relative_path(agent, path)
         try:
             snapshot[relative] = hashlib.sha256(path.read_bytes()).hexdigest()

@@ -62,16 +62,7 @@ class TurnHistoryBuilder:
         history = list(getattr(self.agent, "session", {}).get("history", []))
         raw = self.raw_text(history)
         if not history:
-            return raw, {
-                "rendered_entries": [],
-                "recent_window": 0,
-                "old_turn_line_limit": 80,
-                "older_entries_count": 0,
-                "collapsed_duplicate_reads": 0,
-                "reused_file_summary_count": 0,
-                "summarized_tool_count": 0,
-                "rendered_turns": 0,
-            }
+            return raw, {"rendered_entries": [], "recent_window": 0, "old_turn_line_limit": 80, "older_entries_count": 0, "collapsed_duplicate_reads": 0, "reused_file_summary_count": 0, "summarized_tool_count": 0, "rendered_turns": 0}
 
         turns = self._group_turns(history)
         recent_window, old_turn_line_limit = self._pressure_limits(pressure)

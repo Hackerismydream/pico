@@ -7,46 +7,16 @@ from .workspace import now
 
 
 CONSTRAINT_PATTERNS = (
-    "不要",
-    "不能",
-    "必须",
-    "只",
-    "不改",
-    "保持",
-    "除了",
-    "don't",
-    "must",
-    "only",
-    "keep",
-    "never",
-    "always",
-    "do not",
-    "without changing",
-    "preserve",
+    "不要", "不能", "必须", "只", "不改", "保持", "除了",
+    "don't", "must", "only", "keep", "never", "always", "do not", "without changing", "preserve",
 )
 
 DECISION_PATTERNS = (
-    "decided",
-    "选择",
-    "因为",
-    "approach",
-    "改用",
-    "放弃",
-    "instead",
-    "rather than",
-    "switched to",
+    "decided", "选择", "因为", "approach", "改用", "放弃", "instead", "rather than", "switched to",
 )
 
 ERROR_PATTERNS = (
-    "Error",
-    "error:",
-    "failed",
-    "失败",
-    "Traceback",
-    "FAILED",
-    "AssertionError",
-    "TypeError",
-    "KeyError",
+    "Error", "error:", "failed", "失败", "Traceback", "FAILED", "AssertionError", "TypeError", "KeyError",
 )
 
 
