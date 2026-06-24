@@ -1,7 +1,53 @@
 """Session compaction boundary."""
 
+import re
+
 from .context_usage import estimate_tokens
 from .workspace import now
+
+
+CONSTRAINT_PATTERNS = (
+    "不要",
+    "不能",
+    "必须",
+    "只",
+    "不改",
+    "保持",
+    "除了",
+    "don't",
+    "must",
+    "only",
+    "keep",
+    "never",
+    "always",
+    "do not",
+    "without changing",
+    "preserve",
+)
+
+DECISION_PATTERNS = (
+    "decided",
+    "选择",
+    "因为",
+    "approach",
+    "改用",
+    "放弃",
+    "instead",
+    "rather than",
+    "switched to",
+)
+
+ERROR_PATTERNS = (
+    "Error",
+    "error:",
+    "failed",
+    "失败",
+    "Traceback",
+    "FAILED",
+    "AssertionError",
+    "TypeError",
+    "KeyError",
+)
 
 
 class CompactManager:
@@ -66,32 +112,86 @@ class CompactManager:
         }
 
     def _summary_text(self, items):
+        def sentences(text):
+            parts = re.split(r"[。！？!?]+|\.(?:\s+|$)", str(text))
+            return [part.strip(" \t\r\n:;,.，；、") for part in parts if part.strip()]
+
+        def matches(text, patterns):
+            lowered = text.lower()
+            return any(str(pattern).lower() in lowered for pattern in patterns)
+
+        def add_unique(values, value, limit):
+            value = value.strip()
+            if value and value not in values and len(values) < limit:
+                values.append(value)
+
+        rejected_patterns = (
+            "tried",
+            "but",
+            "不行",
+            "reverted",
+            "doesn't work",
+            "does not work",
+        )
         files_read = []
         files_modified = []
         user_requests = []
-        assistant_notes = []
+        user_constraints = []
+        key_decisions = []
+        rejected_paths = []
+        critical_artifacts = []
         for item in items:
+            artifact_ref = str(item.get("artifact_ref", "")).strip()
+            if artifact_ref and artifact_ref not in critical_artifacts:
+                critical_artifacts.append(artifact_ref)
             if item.get("role") == "user":
-                user_requests.append(str(item.get("content", "")).strip())
+                content = str(item.get("content", "")).strip()
+                user_requests.append(content)
+                for sentence in sentences(content):
+                    if matches(sentence, CONSTRAINT_PATTERNS):
+                        add_unique(user_constraints, sentence, 5)
             elif item.get("role") == "assistant":
-                assistant_notes.append(str(item.get("content", "")).strip())
+                content = str(item.get("content", "")).strip()
+                for sentence in sentences(content):
+                    if matches(sentence, DECISION_PATTERNS):
+                        add_unique(key_decisions, sentence, 3)
+                    lowered = sentence.lower()
+                    tried_but = "tried" in lowered and "but" in lowered
+                    if tried_but or matches(sentence, rejected_patterns[2:]):
+                        add_unique(rejected_paths, sentence, 3)
             elif item.get("role") == "tool":
                 path = str(item.get("args", {}).get("path", "")).strip()
                 if item.get("name") == "read_file" and path:
                     files_read.append(path)
                 if item.get("name") in {"write_file", "patch_file"} and path:
                     files_modified.append(path)
-        return "\n".join(
+        last_error_context = "-"
+        for item in reversed(items):
+            if item.get("role") != "tool":
+                continue
+            content = str(item.get("content", "")).strip()
+            if content and matches(content, ERROR_PATTERNS):
+                last_error_context = content[:200]
+                break
+
+        def joined(values):
+            return "; ".join(values) if values else "-"
+
+        summary = "\n".join(
             [
                 "Compacted session summary:",
                 f"- Goal: {user_requests[-1] if user_requests else '-'}",
-                "- Constraints and preferences: -",
+                f"- User constraints: {joined(user_constraints)}",
                 f"- Files read: {', '.join(sorted(set(files_read))) or '-'}",
                 f"- Files modified: {', '.join(sorted(set(files_modified))) or '-'}",
-                f"- Key decisions: {assistant_notes[-1] if assistant_notes else '-'}",
+                f"- Key decisions: {joined(key_decisions)}",
+                f"- Rejected paths: {joined(rejected_paths)}",
+                f"- Last error context: {last_error_context}",
+                f"- Critical artifacts: {joined(critical_artifacts)}",
                 f"- Current progress: compacted {len(items)} history items",
-                "- Open blockers: -",
                 "- Next step: continue from the latest preserved turn",
-                "- Critical context: earlier turns were compacted; use preserved latest turns for exact wording",
             ]
         )
+        if len(summary) > 2000:
+            return summary[:1997].rstrip() + "..."
+        return summary
