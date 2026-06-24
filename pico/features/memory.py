@@ -629,6 +629,12 @@ class DurableMemoryStore:
         self.index_path = self.root / "MEMORY.md"
         self.topics_dir = self.root / "topics"
 
+    def _topic_path(self, topic):
+        return self.topics_dir / f"{topic}.md"
+
+    def _metadata_path(self, topic):
+        return self.topics_dir / f"{topic}.metadata.jsonl"
+
     def topic_slugs(self):
         return [topic["topic"] for topic in self.load_index()]
 
@@ -661,11 +667,67 @@ class DurableMemoryStore:
                 current["tags"] = [tag.strip() for tag in tags_match.group(1).split(",") if tag.strip()]
         return topics
 
+    def _load_topic_metadata(self, topic):
+        path = self._metadata_path(topic)
+        if not path.exists():
+            return {}
+        rows = {}
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            note_id = str(row.get("note_id", "")).strip()
+            if note_id:
+                rows[note_id] = row
+        return rows
+
+    def _write_topic_metadata(self, topic, rows):
+        path = self._metadata_path(topic)
+        self.topics_dir.mkdir(parents=True, exist_ok=True)
+        ordered = sorted(rows.values(), key=lambda row: str(row.get("note_id", "")))
+        lines = [json.dumps(row, ensure_ascii=False, sort_keys=True) for row in ordered]
+        path.write_text("\n".join(lines).rstrip() + ("\n" if lines else ""), encoding="utf-8")
+
+    def _default_note_metadata(self, topic, note_text, topic_path=None):
+        topic_path = Path(topic_path) if topic_path is not None else self._topic_path(topic)
+        created_at = datetime.fromtimestamp(topic_path.stat().st_mtime).astimezone().isoformat() if topic_path.exists() else now()
+        return {
+            "note_id": _note_id_for(topic, note_text),
+            "status": "active",
+            "supersedes": None,
+            "evidence": {
+                "session_id": "legacy",
+                "source_path": None,
+                "created_at": created_at,
+                "evidence_anchor_hash": None,
+            },
+            "scope": "workspace_fingerprint",
+        }
+
+    def _metadata_for_note(self, topic, note_text, metadata, topic_path=None):
+        note_id = _note_id_for(topic, note_text)
+        row = dict(metadata.get(note_id) or self._default_note_metadata(topic, note_text, topic_path=topic_path))
+        row["note_id"] = note_id
+        row.setdefault("status", "active")
+        row.setdefault("supersedes", None)
+        default_evidence = self._default_note_metadata(topic, note_text, topic_path=topic_path)["evidence"]
+        evidence = row.get("evidence") if isinstance(row.get("evidence"), dict) else {}
+        default_evidence.update(evidence)
+        row["evidence"] = default_evidence
+        row.setdefault("scope", "workspace_fingerprint")
+        return row
+
     def load_topic_notes(self, topic):
-        path = self.topics_dir / f"{topic}.md"
+        path = self._topic_path(topic)
         if not path.exists():
             return []
         lines = path.read_text(encoding="utf-8").splitlines()
+        metadata = self._load_topic_metadata(topic)
+        metadata_exists = self._metadata_path(topic).exists()
+        metadata_changed = False
         notes = []
         capture = False
         updated_at = ""
@@ -688,6 +750,14 @@ class DurableMemoryStore:
                         "kind": "durable",
                     }
                 )
+        for note in notes:
+            row = self._metadata_for_note(topic, note["text"], metadata, topic_path=path)
+            note.update(row)
+            if row["note_id"] not in metadata or not metadata_exists:
+                metadata_changed = True
+            metadata[row["note_id"]] = row
+        if metadata_changed:
+            self._write_topic_metadata(topic, metadata)
         return notes
 
     @staticmethod
@@ -735,7 +805,7 @@ class DurableMemoryStore:
             lines.append(f"  - tags: {', '.join(topic['tags'])}")
         self.index_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
-    def _write_topic(self, topic, notes):
+    def _write_topic(self, topic, notes, metadata=None):
         self.topics_dir.mkdir(parents=True, exist_ok=True)
         meta = DURABLE_TOPIC_DEFAULTS[topic]
         lines = [
@@ -750,13 +820,20 @@ class DurableMemoryStore:
         ]
         for note in notes:
             lines.append(f"- {note}")
-        (self.topics_dir / f"{topic}.md").write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+        path = self._topic_path(topic)
+        path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+        metadata = dict(metadata or self._load_topic_metadata(topic))
+        for note in notes:
+            row = self._metadata_for_note(topic, note, metadata, topic_path=path)
+            metadata[row["note_id"]] = row
+        self._write_topic_metadata(topic, metadata)
 
     def promote(self, promotions):
         if not promotions:
             return [], []
         topics = {topic["topic"]: topic for topic in self.load_index()}
         topic_notes = {slug: [note["text"] for note in self.load_topic_notes(slug)] for slug in topics}
+        topic_metadata = {slug: self._load_topic_metadata(slug) for slug in topics}
         results = []
         superseded = []
         for topic, note_text in promotions:
@@ -771,23 +848,34 @@ class DurableMemoryStore:
                 },
             )
             existing = topic_notes.setdefault(topic, [])
+            metadata = topic_metadata.setdefault(topic, {})
             if note_text in existing:
                 continue
             new_subject = self._subject_key(note_text)
             replaced = False
+            supersedes = None
             if new_subject:
                 for index, old_text in enumerate(list(existing)):
                     if self._subject_key(old_text) == new_subject:
                         superseded.append(f"{topic}: {old_text} -> {note_text}")
+                        old_id = _note_id_for(topic, old_text)
+                        old_meta = self._metadata_for_note(topic, old_text, metadata)
+                        old_meta["status"] = "superseded"
+                        metadata[old_id] = old_meta
+                        supersedes = old_id
                         existing[index] = note_text
                         replaced = True
                         break
             if not replaced:
                 existing.append(note_text)
+            new_meta = self._metadata_for_note(topic, note_text, metadata)
+            new_meta["status"] = "active"
+            new_meta["supersedes"] = supersedes
+            metadata[new_meta["note_id"]] = new_meta
             results.append(f"{topic}: {note_text}")
         self._write_index([topics[slug] for slug in sorted(topics)])
         for topic, notes in topic_notes.items():
-            self._write_topic(topic, notes)
+            self._write_topic(topic, notes, metadata=topic_metadata.get(topic, {}))
         return results, superseded
 
 

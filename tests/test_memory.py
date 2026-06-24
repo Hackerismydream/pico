@@ -1,3 +1,4 @@
+import json
 from datetime import date
 
 from pico.features.memory import (
@@ -157,6 +158,99 @@ def test_durable_memory_index_and_topic_notes_are_loaded_and_retrieved(tmp_path)
 
     lines = [line for line in memory.retrieval_view("constrained tools", limit=4).splitlines() if line.startswith("- ")]
     assert any("Use constrained tools instead of guessing." in line for line in lines)
+
+
+def test_structured_durable_sidecar_migration_preserves_topic_markdown(tmp_path):
+    memory_root = tmp_path / ".pico" / "memory"
+    topics_dir = memory_root / "topics"
+    topics_dir.mkdir(parents=True)
+    (memory_root / "MEMORY.md").write_text(
+        "# Durable Memory Index\n\n"
+        "- [project-conventions](topics/project-conventions.md): Project Conventions\n"
+        "  - summary: Stable repository conventions.\n"
+        "  - tags: convention\n",
+        encoding="utf-8",
+    )
+    topic_path = topics_dir / "project-conventions.md"
+    original_text = (
+        "# Project Conventions\n\n"
+        "- topic: project-conventions\n"
+        "- summary: Stable repository conventions.\n"
+        "- tags: convention\n"
+        "- updated_at: 2026-04-12T08:14:49+00:00\n\n"
+        "## Notes\n"
+        "- Use constrained tools instead of guessing.\n"
+        "- Preserve local agent state under .pico/.\n"
+    )
+    topic_path.write_text(original_text, encoding="utf-8")
+
+    memory = LayeredMemory(workspace_root=tmp_path)
+    notes = memory.durable_store.load_topic_notes("project-conventions")
+
+    assert topic_path.read_text(encoding="utf-8") == original_text
+    metadata_path = topics_dir / "project-conventions.metadata.jsonl"
+    rows = [json.loads(line) for line in metadata_path.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == len(notes) == 2
+    assert {row["status"] for row in rows} == {"active"}
+    assert {row["scope"] for row in rows} == {"workspace_fingerprint"}
+    assert {row["evidence"]["session_id"] for row in rows} == {"legacy"}
+    assert all(row["note_id"] for row in rows)
+
+
+def test_structured_durable_sidecar_ignores_unparsed_topic_sections(tmp_path):
+    memory_root = tmp_path / ".pico" / "memory"
+    topics_dir = memory_root / "topics"
+    topics_dir.mkdir(parents=True)
+    (memory_root / "MEMORY.md").write_text(
+        "# Durable Memory Index\n\n"
+        "- [key-decisions](topics/key-decisions.md): Key Decisions\n"
+        "  - summary: Long-lived decisions and rationale anchors.\n"
+        "  - tags: decision\n",
+        encoding="utf-8",
+    )
+    (topics_dir / "key-decisions.md").write_text(
+        "# Key Decisions\n\n"
+        "- topic: key-decisions\n"
+        "- summary: Long-lived decisions and rationale anchors.\n"
+        "- tags: decision\n"
+        "- updated_at: 2026-06-08\n\n"
+        "## Runtime scaling\n\n"
+        "- This bullet is outside the exact Notes section.\n",
+        encoding="utf-8",
+    )
+
+    memory = LayeredMemory(workspace_root=tmp_path)
+
+    assert memory.durable_store.load_topic_notes("key-decisions") == []
+    assert not (topics_dir / "key-decisions.metadata.jsonl").exists()
+
+
+def test_structured_durable_promote_records_supersede_metadata(tmp_path):
+    memory = LayeredMemory(workspace_root=tmp_path)
+
+    promoted, superseded = memory.promote_durable(
+        [
+            ("project-conventions", "Pico uses unittest."),
+            ("project-conventions", "Pico uses pytest."),
+        ]
+    )
+
+    assert promoted == [
+        "project-conventions: Pico uses unittest.",
+        "project-conventions: Pico uses pytest.",
+    ]
+    assert superseded == ["project-conventions: Pico uses unittest. -> Pico uses pytest."]
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / ".pico" / "memory" / "topics" / "project-conventions.metadata.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    old_rows = [row for row in rows if row["status"] == "superseded"]
+    new_rows = [row for row in rows if row["status"] == "active"]
+    assert len(old_rows) == 1
+    assert len(new_rows) == 1
+    assert new_rows[0]["supersedes"] == old_rows[0]["note_id"]
 
 
 def test_kairos_daily_log_index_policy_and_memory_tag_helpers(tmp_path):
