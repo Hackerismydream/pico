@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 
 from ..core.workspace import WorkspaceContext, clip, now
+from .memory_quarantine import should_quarantine
 
 WORKING_FILE_LIMIT = 8
 EPISODIC_NOTE_LIMIT = 12
@@ -719,6 +720,11 @@ class DurableMemoryStore:
         default_evidence = self._default_note_metadata(topic, note_text, topic_path=topic_path)["evidence"]
         evidence = row.get("evidence") if isinstance(row.get("evidence"), dict) else {}
         default_evidence.update(evidence)
+        if default_evidence.get("source_path") and not default_evidence.get("evidence_anchor_hash"):
+            workspace_root = self.root.parent.parent
+            default_evidence["evidence_anchor_hash"] = compute_anchor_hash(
+                _source_path_for_evidence(workspace_root, default_evidence.get("source_path"))
+            )
         row["evidence"] = default_evidence
         row.setdefault("scope", "workspace_fingerprint")
         return row
@@ -873,6 +879,8 @@ class DurableMemoryStore:
                 existing.append(note_text)
             new_meta = self._metadata_for_note(topic, note_text, metadata)
             new_meta["status"] = "active"
+            if should_quarantine(note_text):
+                new_meta["status"] = "quarantined"
             new_meta["supersedes"] = supersedes
             metadata[new_meta["note_id"]] = new_meta
             results.append(f"{topic}: {note_text}")
@@ -1025,6 +1033,31 @@ def _retrieval_record(note, score, reject_reason=""):
     if reject_reason:
         enriched["reject_reason"] = reject_reason
     return enriched
+
+
+def _source_path_for_evidence(workspace_root, source_path):
+    source_path = str(source_path or "").strip()
+    if not source_path:
+        return None
+    path = Path(source_path)
+    if path.is_absolute():
+        return path
+    if workspace_root is None:
+        return path
+    return Path(workspace_root) / path
+
+
+def _apply_evidence_staleness(note, workspace_root):
+    evidence = note.get("evidence") if isinstance(note.get("evidence"), dict) else {}
+    stored_hash = str(evidence.get("evidence_anchor_hash", "") or "").strip()
+    source_path = evidence.get("source_path")
+    if not stored_hash or not source_path:
+        return note
+    current_hash = compute_anchor_hash(_source_path_for_evidence(workspace_root, source_path))
+    if current_hash and current_hash != stored_hash:
+        note = dict(note)
+        note["stale_evidence"] = True
+    return note
 
 
 def _normalize_note(note, index):
@@ -1262,7 +1295,7 @@ def _iter_retrieval_notes(state, workspace_root=None):
         durable_store = DurableMemoryStore(Path(workspace_root) / ".pico" / "memory")
         for topic in durable_store.load_index():
             for note in durable_store.load_topic_notes(topic["topic"]):
-                yield dict(note)
+                yield _apply_evidence_staleness(dict(note), workspace_root)
 
 
 def _ranked_retrieval_notes(state, query, workspace_root=None):

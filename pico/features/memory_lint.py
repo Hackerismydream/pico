@@ -6,8 +6,6 @@ import re
 import sys
 from pathlib import Path
 
-from .memory import DurableMemoryStore, _note_id_for
-
 _KEYWORD = r"(?:key|token|secret|password|api)"
 _LONG_HEX = r"[A-Fa-f0-9]{32,}"
 _LONG_BASE64 = r"[A-Za-z0-9+/]{40,}={0,2}"
@@ -58,6 +56,34 @@ def _load_topic_notes(topic_path):
     return notes
 
 
+def _tokenize(text):
+    return {token.lower() for token in re.findall(r"[A-Za-z0-9_]+", str(text))}
+
+
+def _note_id_for(topic_slug, note_text):
+    import hashlib
+
+    return hashlib.sha256(f"{topic_slug}\n{note_text}".encode("utf-8")).hexdigest()[:12]
+
+
+def _subject_key(text):
+    text = str(text).strip()
+    patterns = (
+        r"^(.+?)\s+is\s+.+$",
+        r"^(.+?)\s+are\s+.+$",
+        r"^(.+?)\s+uses?\s+.+$",
+        r"^(.+?)\s+should\s+.+$",
+        r"^(.+?)是.+$",
+        r"^(.+?)使用.+$",
+    )
+    for pattern in patterns:
+        match = re.match(pattern, text, re.I)
+        if match:
+            subject = " ".join(_tokenize(match.group(1)))
+            return subject or None
+    return None
+
+
 def _finding(rule, topic, note_id="", text="", **extra):
     payload = {"rule": rule, "topic": topic}
     if note_id:
@@ -87,7 +113,7 @@ def lint_memory_dir(memory_dir):
             row = metadata.get(note["note_id"], {})
             status = str(row.get("status", "active")).strip() or "active"
             if status == "active":
-                subject = DurableMemoryStore._subject_key(note["text"])
+                subject = _subject_key(note["text"])
                 if subject:
                     subject_rows.setdefault((topic, subject), []).append(note)
                 evidence = row.get("evidence") if isinstance(row.get("evidence"), dict) else {}

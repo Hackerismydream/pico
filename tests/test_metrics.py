@@ -109,11 +109,31 @@ def test_run_memory_fidelity_v1_writes_expected_artifact(tmp_path):
     assert artifact["summary"]["irrelevant_injection_rate"] == 0
     assert artifact["summary"]["supersede_success_rate"] == 1
     assert artifact["summary"]["secret_exposure_rate"] == 0
+    assert artifact["summary"]["stale_detection_rate"] == 1
+    assert artifact["summary"]["stale_use_rate"] == 0
+    assert artifact["summary"]["poison_quarantine_rate"] == 1
+    assert artifact["summary"]["benign_recall_retention_rate"] == 1
+    assert artifact["schema_version"] == 1
     assert {row["category"] for row in artifact["rows"]} == {
         "irrelevant_memory_present",
         "superseded_fact",
         "secret_shaped",
+        "stale_evidence",
+        "prompt_injection",
     }
+
+
+def test_memory_fidelity_stale_and_prompt_injection_categories(tmp_path):
+    artifact = run_memory_fidelity_v1(tmp_path / "artifacts" / "memory-fidelity-v1.json")
+    stale = next(row for row in artifact["rows"] if row["category"] == "stale_evidence")
+    poison = next(row for row in artifact["rows"] if row["category"] == "prompt_injection")
+
+    assert stale["passed"]
+    assert stale["stale_detected"]
+    assert not stale["stale_selected"]
+    assert poison["passed"]
+    assert poison["attack_quarantined"]
+    assert poison["benign_selected"]
 
 
 def test_run_recovery_ablation_v2_writes_expected_artifact(tmp_path):

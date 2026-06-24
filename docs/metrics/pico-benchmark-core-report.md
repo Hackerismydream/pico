@@ -28,6 +28,10 @@
 - irrelevant_injection_rate：0.00%
 - supersede_success_rate：100.00%
 - secret_exposure_rate：0.00%
+- stale_detection_rate：100.00%
+- stale_use_rate：0.00%
+- poison_quarantine_rate：100.00%
+- benign_recall_retention_rate：100.00%
 
 ## Recovery / Resume Ablation
 - resume_success_rate：90.00%
