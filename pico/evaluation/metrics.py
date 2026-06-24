@@ -22,6 +22,7 @@ DEFAULT_MEMORY_FIDELITY_V1_PATH = Path("artifacts/memory-fidelity-v1.json")
 DEFAULT_DREAM_QUALITY_V1_PATH = Path("artifacts/dream-quality-v1.json")
 DEFAULT_MEMORY_LIVE_SMOKE_V1_PATH = Path("artifacts/memory-live-smoke-v1.json")
 DEFAULT_CORE_REPORT_PATH = Path("docs/metrics/pico-benchmark-core-report.md")
+LOCAL_BENCHMARK_ARTIFACT_DIR = Path("_local/benchmark/artifacts")
 
 RUN_NAMES = (
     "harness_regression",
@@ -1609,6 +1610,16 @@ def run_recovery_ablation_v2(artifact_path=DEFAULT_RECOVERY_ABLATION_V2_PATH, re
     return _write_json_artifact(artifact_path, artifact)
 
 
+def _existing_artifact_path(path):
+    path = Path(path)
+    if path.exists():
+        return path
+    fallback = LOCAL_BENCHMARK_ARTIFACT_DIR / path.name
+    if fallback.exists():
+        return fallback
+    return path
+
+
 def write_benchmark_core_report(
     report_path=DEFAULT_CORE_REPORT_PATH,
     harness_artifact_path=DEFAULT_HARNESS_REGRESSION_V2_PATH,
@@ -1616,10 +1627,10 @@ def write_benchmark_core_report(
     memory_artifact_path=DEFAULT_MEMORY_ABLATION_V2_PATH,
     recovery_artifact_path=DEFAULT_RECOVERY_ABLATION_V2_PATH,
 ):
-    harness = json.loads(Path(harness_artifact_path).read_text(encoding="utf-8"))
-    context = json.loads(Path(context_artifact_path).read_text(encoding="utf-8"))
-    memory = json.loads(Path(memory_artifact_path).read_text(encoding="utf-8"))
-    recovery = json.loads(Path(recovery_artifact_path).read_text(encoding="utf-8"))
+    harness = json.loads(_existing_artifact_path(harness_artifact_path).read_text(encoding="utf-8"))
+    context = json.loads(_existing_artifact_path(context_artifact_path).read_text(encoding="utf-8"))
+    memory = json.loads(_existing_artifact_path(memory_artifact_path).read_text(encoding="utf-8"))
+    recovery = json.loads(_existing_artifact_path(recovery_artifact_path).read_text(encoding="utf-8"))
 
     enabled_recovery = recovery["variants"]["resume_enabled"]["summary"]
     lines = [
@@ -1684,7 +1695,7 @@ def write_benchmark_core_report(
 
 
 def _artifact_exists(path):
-    path = Path(path)
+    path = _existing_artifact_path(path)
     if not path.exists():
         print(f"missing artifact: {path}", file=sys.stderr)
         return False

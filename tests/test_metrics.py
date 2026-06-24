@@ -117,3 +117,21 @@ def test_write_benchmark_core_report_marks_resume_safe_metrics(tmp_path):
     assert "只适合放文档/面试展开的指标" in report_text
     assert "resume_success_rate" in report_text
     assert "memory_hit_rate" in report_text
+
+
+def test_write_benchmark_core_report_falls_back_to_local_artifacts(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    local_artifacts = tmp_path / "_local" / "benchmark" / "artifacts"
+    local_artifacts.mkdir(parents=True)
+    run_context_ablation_v2(local_artifacts / "context-ablation-v2.json", repetitions=1)
+    run_memory_ablation_v2(local_artifacts / "memory-ablation-v2.json", repetitions=1)
+    run_recovery_ablation_v2(local_artifacts / "recovery-ablation-v2.json", repetitions=1)
+    (local_artifacts / "harness-regression-v2.json").write_text(
+        '{"summary":{"total_tasks":12,"pass_rate":1.0,"within_budget_rate":1.0,"verifier_pass_rate":1.0},"failure_category_counts":{}}',
+        encoding="utf-8",
+    )
+
+    report_text = write_benchmark_core_report()
+
+    assert "Harness Regression" in report_text
+    assert "Working Memory Ablation" in report_text
