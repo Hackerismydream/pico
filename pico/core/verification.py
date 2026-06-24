@@ -53,7 +53,7 @@ def classify_verification_command(command):
             tokens = tokens[:2] + tokens[3:]
         tokens = tokens[2:]
     python_cmd = tokens[0].rsplit("/", 1)[-1]
-    if len(tokens) > 2 and python_cmd in {"python", "python3"} and tokens[1] == "-m":
+    if len(tokens) > 2 and python_cmd.startswith("python") and tokens[1] == "-m":
         return {"pytest": "test", "compileall": "compile"}.get(tokens[2], "")
     if tokens[0] in {"pytest", "tox"}:
         return "test"

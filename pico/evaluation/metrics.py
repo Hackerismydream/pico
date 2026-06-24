@@ -18,6 +18,7 @@ METRICS_SCHEMA_VERSION = 2
 LOCAL_BENCHMARK_ARTIFACT_DIR = Path("_local/benchmark/artifacts")
 DEFAULT_HARNESS_REGRESSION_V2_PATH = Path("artifacts/harness-regression-v2.json")
 DEFAULT_CONTEXT_ABLATION_V2_PATH = Path("artifacts/context-ablation-v2.json")
+DEFAULT_CONTEXT_AB_V1_PATH = Path("artifacts/context-ab-v1/results.json")
 DEFAULT_MEMORY_ABLATION_V2_PATH = Path("artifacts/memory-ablation-v2.json")
 DEFAULT_RECOVERY_ABLATION_V2_PATH = Path("artifacts/recovery-ablation-v2.json")
 DEFAULT_MEMORY_FIDELITY_V1_PATH = LOCAL_BENCHMARK_ARTIFACT_DIR / "memory-fidelity-v1.json"
@@ -30,6 +31,7 @@ DEFAULT_CORE_REPORT_PATH = Path("docs/metrics/pico-benchmark-core-report.md")
 RUN_NAMES = (
     "harness_regression",
     "context_ablation",
+    "context_ab",
     "memory_ablation",
     "memory_fidelity",
     "memory_agent_eval",
@@ -1891,6 +1893,7 @@ def write_benchmark_core_report(
     report_path=DEFAULT_CORE_REPORT_PATH,
     harness_artifact_path=DEFAULT_HARNESS_REGRESSION_V2_PATH,
     context_artifact_path=DEFAULT_CONTEXT_ABLATION_V2_PATH,
+    context_ab_artifact_path=DEFAULT_CONTEXT_AB_V1_PATH,
     memory_artifact_path=DEFAULT_MEMORY_ABLATION_V2_PATH,
     recovery_artifact_path=DEFAULT_RECOVERY_ABLATION_V2_PATH,
     fidelity_artifact_path=DEFAULT_MEMORY_FIDELITY_V1_PATH,
@@ -2014,6 +2017,20 @@ def write_benchmark_core_report(
                 "",
             ]
         )
+    context_ab_path = _existing_artifact_path(context_ab_artifact_path)
+    if context_ab_path.exists():
+        context_ab = json.loads(context_ab_path.read_text(encoding="utf-8"))
+        proxy = dict((context_ab.get("summary", {}) or {}).get("estimated_proxy_only", {}) or {})
+        lines.extend(
+            [
+                "## Context A/B (Scripted)",
+                f"- paired_task_count：{proxy.get('paired_task_count', 0)}",
+                f"- median_cost_delta_pct：{proxy.get('median_cost_delta_pct', 0):.2%}",
+                f"- claimable_cost_win：{proxy.get('claimable_cost_win', False)}",
+                f"- quality_regression_count：{proxy.get('quality_regression_count', 0)}",
+                "",
+            ]
+        )
     lines.extend(
         [
             "## Recovery / Resume Ablation",
@@ -2074,6 +2091,13 @@ def _run_metrics_cli(name):
         return 0 if _artifact_exists(DEFAULT_HARNESS_REGRESSION_V2_PATH) else 1
     if name == "context_ablation":
         run_context_ablation_v2()
+        return 0
+    if name == "context_ab":
+        from .context_cost import run_deterministic_prompt_experiment, write_experiment_artifacts
+
+        output_dir = Path("artifacts/context-ab-v1")
+        payload = run_deterministic_prompt_experiment(output_dir, repetitions=3)
+        write_experiment_artifacts(payload, output_dir)
         return 0
     if name == "memory_ablation":
         run_memory_ablation_v2()

@@ -11,6 +11,12 @@ from dataclasses import dataclass
 
 from .media_history import render_media_refs
 
+PRESSURE_LIMITS = {
+    "tier1_snip": (2, 60),
+    "tier2_prune": (2, 40),
+    "tier3_summary": (1, 20),
+}
+
 
 @dataclass(frozen=True)
 class HistoryRetentionContext:
@@ -167,13 +173,7 @@ class TurnHistoryBuilder:
 
     def _pressure_limits(self, pressure):
         tier = str(getattr(pressure, "tier", "") or "tier0_observe")
-        if tier == "tier1_snip":
-            return 2, 60
-        if tier == "tier2_prune":
-            return 2, 40
-        if tier == "tier3_summary":
-            return 1, 20
-        return 3, 80
+        return PRESSURE_LIMITS.get(tier, (3, 80))
 
     def _render_turn_lines(self, history, line_limit):
         lines = []

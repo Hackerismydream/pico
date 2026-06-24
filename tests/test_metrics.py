@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from pico.evaluation.metrics import (
     _provider_profile,
+    main as metrics_main,
     run_context_ablation_v2,
     run_memory_fidelity_v1,
     run_memory_ablation_v2,
@@ -24,6 +25,15 @@ def test_run_context_ablation_v2_writes_expected_artifact(tmp_path):
     assert artifact["config_count"] == 12
     assert len(artifact["configs"]) == 12
     assert "current_request_preserved_rate" in artifact["summary"]
+
+
+def test_metrics_cli_context_ab_writes_artifacts(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    assert metrics_main(["--run", "context_ab"]) == 0
+
+    assert (tmp_path / "artifacts" / "context-ab-v1" / "results.json").is_file()
+    assert (tmp_path / "artifacts" / "context-ab-v1" / "report.md").is_file()
 
 
 def test_provider_profile_uses_project_toml_before_legacy_pico_env(tmp_path, monkeypatch):
@@ -194,6 +204,38 @@ def test_write_benchmark_core_report_marks_resume_safe_metrics(tmp_path):
     assert "memory_hit_rate" in report_text
     assert "Context Efficiency Under Follow-up" in report_text
     assert "Memory Fidelity" in report_text
+
+
+def test_write_benchmark_core_report_includes_optional_context_ab(tmp_path):
+    from pico.evaluation.context_cost import run_deterministic_prompt_experiment, write_experiment_artifacts
+
+    run_context_ablation_v2(tmp_path / "artifacts" / "context-ablation-v2.json", repetitions=1)
+    run_memory_ablation_v2(tmp_path / "artifacts" / "memory-ablation-v2.json", repetitions=1)
+    run_memory_fidelity_v1(tmp_path / "artifacts" / "memory-fidelity-v1.json")
+    run_recovery_ablation_v2(tmp_path / "artifacts" / "recovery-ablation-v2.json", repetitions=1)
+    harness_artifact_path = tmp_path / "artifacts" / "harness-regression-v2.json"
+    harness_artifact_path.write_text(
+        '{"summary":{"total_tasks":12,"pass_rate":1.0,"within_budget_rate":1.0,"verifier_pass_rate":1.0},"failure_category_counts":{}}',
+        encoding="utf-8",
+    )
+    context_ab_dir = tmp_path / "artifacts" / "context-ab-v1"
+    write_experiment_artifacts(
+        run_deterministic_prompt_experiment(context_ab_dir, repetitions=1),
+        context_ab_dir,
+    )
+
+    report_text = write_benchmark_core_report(
+        report_path=tmp_path / "docs" / "metrics" / "pico-benchmark-core-report.md",
+        harness_artifact_path=harness_artifact_path,
+        context_artifact_path=tmp_path / "artifacts" / "context-ablation-v2.json",
+        memory_artifact_path=tmp_path / "artifacts" / "memory-ablation-v2.json",
+        recovery_artifact_path=tmp_path / "artifacts" / "recovery-ablation-v2.json",
+        fidelity_artifact_path=tmp_path / "artifacts" / "memory-fidelity-v1.json",
+        context_ab_artifact_path=context_ab_dir / "results.json",
+    )
+
+    assert "Context A/B (Scripted)" in report_text
+    assert "claimable_cost_win：True" in report_text
 
 
 def test_write_benchmark_core_report_falls_back_to_local_artifacts(tmp_path, monkeypatch):

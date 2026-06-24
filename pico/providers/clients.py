@@ -557,6 +557,7 @@ class AnthropicCompatibleModelClient:
             self.last_completion_metadata = {
                 "image_input_count": image_input_count,
                 **request_metadata,
+                **_extract_usage_cache_details(data),
             }
             return text
         error = _provider_failure(

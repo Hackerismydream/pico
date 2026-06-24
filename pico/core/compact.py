@@ -19,6 +19,14 @@ ERROR_PATTERNS = (
     "Error", "error:", "failed", "失败", "Traceback", "FAILED", "AssertionError", "TypeError", "KeyError",
 )
 
+REJECTED_PATTERNS = (
+    "不行",
+    "reverted",
+    "doesn't work",
+    "didn't work",
+    "does not work",
+)
+
 
 class CompactManager:
     def __init__(self, agent):
@@ -95,15 +103,6 @@ class CompactManager:
             if value and value not in values and len(values) < limit:
                 values.append(value)
 
-        rejected_patterns = (
-            "tried",
-            "but",
-            "不行",
-            "reverted",
-            "doesn't work",
-            "didn't work",
-            "does not work",
-        )
         files_read = []
         files_modified = []
         user_requests = []
@@ -128,7 +127,7 @@ class CompactManager:
                         add_unique(key_decisions, sentence, 3)
                     lowered = sentence.lower()
                     tried_but = "tried" in lowered and "but" in lowered
-                    if tried_but or matches(sentence, rejected_patterns[2:]):
+                    if tried_but or matches(sentence, REJECTED_PATTERNS):
                         add_unique(rejected_paths, sentence, 3)
             elif item.get("role") == "tool":
                 path = str(item.get("args", {}).get("path", "")).strip()
