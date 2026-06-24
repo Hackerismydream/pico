@@ -9,6 +9,7 @@ from .workspace import now
 
 PHASE_BY_EVENT = {
     "run_started": "runtime",
+    "context_orchestrator_decision": "prompt",
     "prompt_built": "prompt",
     "model_requested": "model",
     "model_parsed": "parse",

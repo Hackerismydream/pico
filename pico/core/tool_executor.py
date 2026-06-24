@@ -1,5 +1,4 @@
 """Tool-call validation, authorization, execution, and evidence recording."""
-
 import re
 
 from .governance import record_governance_decision
@@ -70,6 +69,7 @@ def run_tool(agent, name, args):
         agent.record_process_note_for_tool(name, agent._last_tool_result_metadata)
         return policy.message
     before_snapshot = agent.capture_workspace_snapshot() if tool.risky else {}
+    after_snapshot = before_snapshot
     try:
         full_result = tool.execute(args).content
         pending_metadata = dict(getattr(agent, "_pending_tool_result_metadata", {}) or {})

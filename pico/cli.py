@@ -11,6 +11,7 @@ import os
 import shutil
 import sys
 import textwrap
+from pathlib import Path
 from urllib.parse import urlparse
 
 from .commands.slash import command_help_text, parse_subagent_args, resolve_command
@@ -20,12 +21,15 @@ from .config import (
     load_project_env,
     resolve_project_sandbox_config,
 )
+from .features import memory as memorylib
 from .features import skills as skillslib
 from .features.skills_runtime import invoke_skill
 from .providers import AnthropicCompatibleModelClient, OpenAICompatibleModelClient
+from .providers.errors import sanitize_url
 from .providers.runtime import ProviderClientClasses, build_provider_runtime
+from .core.model_router import ModelClientRouter
 from .core.runtime import Pico, SessionStore
-from .core.workspace import WorkspaceContext, middle
+from .core.workspace import WorkspaceContext, middle, now
 
 DEFAULT_SECRET_ENV_NAMES = (
     "PICO_API_KEY",
@@ -86,6 +90,19 @@ def _provider_client_classes():
         openai=OpenAICompatibleModelClient,
         anthropic=AnthropicCompatibleModelClient,
     )
+
+
+def _build_provider_runtime(args):
+    cached = getattr(args, "_provider_runtime", None)
+    if cached is not None:
+        return cached
+    runtime = build_provider_runtime(args, client_classes=_provider_client_classes())
+    setattr(args, "_provider_runtime", runtime)
+    return runtime
+
+
+def _build_model_client(args):
+    return _build_provider_runtime(args).model_client
 
 
 def build_welcome(agent, model, host):
@@ -151,13 +168,18 @@ def build_agent(args):
     """
     # 这里是 CLI 到 runtime 的装配点：
     # 先采集工作区快照，再整理 secret 名单、模型后端和 session。
-    workspace = WorkspaceContext.build(args.cwd)
-    store = SessionStore(workspace.repo_root + "/.pico/sessions")
-    provider_runtime = build_provider_runtime(
-        args, client_classes=_provider_client_classes()
+    workspace = WorkspaceContext.build(
+        args.cwd,
+        repo_root_override=getattr(args, "repo_root", None),
     )
-    model = provider_runtime.model_client
-    model_client_router = provider_runtime.model_client_router
+    store = SessionStore(workspace.repo_root + "/.pico/sessions")
+    provider_runtime = _build_provider_runtime(args)
+    model = _build_model_client(args)
+    model_client_router = (
+        provider_runtime.model_client_router
+        if model is provider_runtime.model_client
+        else ModelClientRouter(model)
+    )
     model_client_factory = provider_runtime.model_client_factory
     args.max_new_tokens = provider_runtime.max_new_tokens
 
@@ -170,13 +192,23 @@ def build_agent(args):
     load_project_env(workspace.repo_root, override=False)
     configured_secret_names = _configured_secret_names(args)
     session_id = args.resume
+    fixed_session_id = getattr(args, "session_id", None)
     if session_id == "latest":
         session_id = store.latest()
     memory_dir = getattr(args, "memory_dir", None)
     auto_dream = not getattr(args, "no_auto_dream", False)
     dream_interval = getattr(args, "dream_interval", 24.0)
     dream_min_sessions = getattr(args, "dream_min_sessions", 5)
-    ask_user_callback = None if getattr(args, "prompt", None) else _cli_ask_user
+    final_readiness_mode = getattr(args, "final_readiness", "warn")
+    ask_user_callback = (
+        None
+        if (
+            getattr(args, "prompt", None)
+            or getattr(args, "prompt_file", None)
+            or getattr(args, "non_interactive", False)
+        )
+        else _cli_ask_user
+    )
     if session_id:
         agent = Pico.from_session(
             model_client=model,
@@ -195,12 +227,27 @@ def build_agent(args):
             model_client_router=model_client_router,
             sandbox_config=sandbox_config,
             ask_user_callback=ask_user_callback,
+            final_readiness_mode=final_readiness_mode,
         )
         return agent
+    session = None
+    if fixed_session_id:
+        session_path = store.path(fixed_session_id)
+        if session_path.exists():
+            session = store.load(fixed_session_id)
+        else:
+            session = {
+                "id": fixed_session_id,
+                "created_at": now(),
+                "workspace_root": workspace.repo_root,
+                "history": [],
+                "memory": memorylib.default_memory_state(),
+            }
     agent = Pico(
         model_client=model,
         workspace=workspace,
         session_store=store,
+        session=session,
         approval_policy=args.approval,
         max_steps=args.max_steps,
         max_new_tokens=args.max_new_tokens,
@@ -213,6 +260,7 @@ def build_agent(args):
         model_client_router=model_client_router,
         sandbox_config=sandbox_config,
         ask_user_callback=ask_user_callback,
+        final_readiness_mode=final_readiness_mode,
     )
     return agent
 
@@ -224,6 +272,11 @@ def build_arg_parser():
     )
     parser.add_argument("prompt", nargs="*", help="Optional one-shot prompt.")
     parser.add_argument("--cwd", default=".", help="Workspace directory.")
+    parser.add_argument(
+        "--repo-root",
+        default=None,
+        help="Override the repository root used for Pico state and relative paths.",
+    )
     parser.add_argument(
         "--config", default=None, help="Path to a Pico TOML config file."
     )
@@ -283,6 +336,21 @@ def build_arg_parser():
         "--resume", default=None, help="Session id to resume or 'latest'."
     )
     parser.add_argument(
+        "--prompt-file",
+        default=None,
+        help="Read a one-shot prompt from a UTF-8 text file.",
+    )
+    parser.add_argument(
+        "--session-id",
+        default=None,
+        help="Create or resume a fixed session id.",
+    )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Disable prompts that wait for stdin.",
+    )
+    parser.add_argument(
         "--memory-dir",
         default=None,
         help="Memory directory. Defaults to .pico/memory in the workspace.",
@@ -340,6 +408,12 @@ def build_arg_parser():
         type=int,
         default=None,
         help="Maximum model output tokens per step. Defaults to a provider-aware value (anthropic 32000, openai/deepseek 8192).",
+    )
+    parser.add_argument(
+        "--final-readiness",
+        choices=("off", "warn", "soft", "strict"),
+        default="warn",
+        help="Final-answer readiness gate mode.",
     )
     parser.add_argument(
         "--temperature",
@@ -418,9 +492,7 @@ def handle_repl_command(agent, user_input):
         return (
             True,
             False,
-            json.dumps(
-                agent.prompt_metadata("", "")["context_usage"], indent=2, sort_keys=True
-            ),
+            json.dumps(_context_payload(agent), indent=2, sort_keys=True),
         )
     if user_input == "/usage":
         return True, False, _format_usage(agent)
@@ -445,14 +517,8 @@ def handle_repl_command(agent, user_input):
     if user_input == "/clear":
         session_id = agent.clear_session()
         return True, False, f"new session {session_id}"
-    if user_input == "/compact":
-        return (
-            True,
-            False,
-            json.dumps(
-                agent.compact_history(trigger="manual"), indent=2, sort_keys=True
-            ),
-        )
+    if command_name == "compact":
+        return True, False, _handle_compact(agent, command_args)
     if user_input == "/reset":
         agent.reset()
         return True, False, "session reset"
@@ -516,14 +582,42 @@ def _worker_summary(agent):
     return ", ".join(f"{item.get('id')}:{item.get('status')}" for item in items)
 
 
+def _handle_compact(agent, args_text):
+    args_text = str(args_text or "").strip()
+    summary_mode = "deterministic"
+    if args_text == "--llm":
+        summary_mode = "llm"
+    elif args_text == "--auto":
+        metadata = dict(getattr(agent, "last_prompt_metadata", {}) or {})
+        usage = dict(metadata.get("context_usage", {}) or {})
+        summary_mode = "llm" if usage.get("pressure_tier") == "tier3_summary" else "deterministic"
+    result = agent.compact_history(trigger="manual", summary_mode=summary_mode)
+    return json.dumps(_compact_command_output(result), indent=2, sort_keys=True)
+
+
+def _compact_command_output(result):
+    output = {
+        "summary_mode": result.get("summary_mode", ""),
+        "summary_called": bool(result.get("summary_called", False)),
+        "pre_tokens": int(result.get("pre_tokens", 0) or 0),
+        "post_tokens": int(result.get("post_tokens", 0) or 0),
+        "delta_event_count": int(result.get("delta_event_count", 0) or 0),
+    }
+    usage = result.get("compact_call_usage")
+    if usage:
+        output["compact_call_usage"] = usage
+        output["net_benefit_tokens"] = output["pre_tokens"] - output["post_tokens"] - int(usage.get("total_tokens", 0) or 0)
+    return output
+
+
 def _format_usage(agent):
     metadata = dict(getattr(agent, "last_completion_metadata", {}) or {})
     context_usage = dict(
         (getattr(agent, "last_prompt_metadata", {}) or {}).get("context_usage", {})
         or {}
     )
-    base_url = str(getattr(agent.model_client, "base_url", "") or "")
-    host = urlparse(base_url).netloc or "-"
+    base_url = sanitize_url(getattr(agent.model_client, "base_url", "") or "")
+    host = _safe_url_host(base_url)
     lines = [
         f"provider profile: {getattr(agent.model_client, 'provider', '-') or '-'}",
         f"provider protocol: {getattr(agent.model_client, 'protocol', '-') or '-'}",
@@ -538,7 +632,67 @@ def _format_usage(agent):
         f"last provider error: {metadata.get('provider_error', 'unavailable')}",
         f"context usage: {context_usage.get('total_estimated_tokens', '-')}/{context_usage.get('context_window', '-')}",
     ]
+    if context_usage.get("pressure_tier"):
+        lines.append(f"context pressure tier: {context_usage['pressure_tier']}")
+    if context_usage.get("usage_source"):
+        lines.append(f"context usage source: {context_usage['usage_source']}")
+    if context_usage.get("cached_tokens") is not None:
+        lines.append(f"context cached tokens: {context_usage['cached_tokens']}")
+    orchestrator = dict((getattr(agent, "last_prompt_metadata", {}) or {}).get("context_orchestrator", {}) or {})
+    if orchestrator:
+        lines.append(f"context orchestrator: {orchestrator.get('version', '-')}")
+        lines.append(f"context summary called: {bool(orchestrator.get('summary_called', False))}")
+        lines.append(
+            f"context summary delta events: {int(orchestrator.get('summary_delta_event_count', 0) or 0)}"
+        )
+        lines.append(
+            f"context replacement cache hits: {int(orchestrator.get('replacement_cache_hits', 0) or 0)}"
+        )
     return "\n".join(lines)
+
+
+def _safe_url_host(sanitized_url):
+    if not sanitized_url:
+        return "-"
+    try:
+        parsed = urlparse(sanitized_url)
+    except ValueError:
+        return _fallback_url_host(sanitized_url)
+    if parsed.netloc:
+        return parsed.netloc
+    return _fallback_url_host(sanitized_url)
+
+
+def _fallback_url_host(sanitized_url):
+    _, sep, rest = sanitized_url.partition("://")
+    candidate = rest if sep else sanitized_url
+    candidate = candidate.split("/", 1)[0]
+    return candidate or "-"
+
+
+def _context_payload(agent):
+    metadata = dict(getattr(agent, "last_prompt_metadata", {}) or {})
+    if not metadata:
+        metadata = agent.prompt_metadata("", "")
+    orchestrator = dict(metadata.get("context_orchestrator", {}) or {})
+    return {
+        "context_usage": metadata.get("context_usage", {}),
+        "context_orchestrator": orchestrator,
+        "llm_handoff_status": _llm_handoff_status(orchestrator),
+    }
+
+
+def _llm_handoff_status(orchestrator):
+    usage = dict(orchestrator.get("compact_call_usage", {}) or {})
+    pre = int(orchestrator.get("pre_compact_estimated_tokens", 0) or 0)
+    post = int(orchestrator.get("post_compact_estimated_tokens", 0) or 0)
+    total = int(usage.get("total_tokens", 0) or 0)
+    return {
+        "last_compact_mode": orchestrator.get("summary_mode") or "none",
+        "compact_call_tokens": total if usage else None,
+        "net_benefit_tokens": pre - post - total if usage else None,
+        "handoff_armed": orchestrator.get("pressure_tier") == "tier3_summary",
+    }
 
 
 def _format_model(agent):
@@ -593,7 +747,7 @@ def _drain_idle_worker_notifications(agent):
 
 
 def interaction_mode(args):
-    if args.prompt:
+    if args.prompt or getattr(args, "prompt_file", None):
         return "one_shot"
     if getattr(args, "repl", False):
         return "repl"
@@ -602,8 +756,34 @@ def interaction_mode(args):
     return "repl"
 
 
+def validate_args(args):
+    if getattr(args, "prompt_file", None) and getattr(args, "prompt", None):
+        return "--prompt-file cannot be combined with positional prompt"
+    if getattr(args, "session_id", None) and getattr(args, "resume", None):
+        return "--session-id cannot be combined with --resume"
+    if getattr(args, "non_interactive", False) and args.approval == "ask":
+        return "--non-interactive requires --approval auto or --approval never"
+    if (
+        getattr(args, "non_interactive", False)
+        and not getattr(args, "prompt", None)
+        and not getattr(args, "prompt_file", None)
+    ):
+        return "--non-interactive requires a positional prompt or --prompt-file"
+    return ""
+
+
+def _one_shot_prompt(args):
+    if getattr(args, "prompt_file", None):
+        return Path(args.prompt_file).read_text(encoding="utf-8")
+    return " ".join(args.prompt).strip()
+
+
 def main(argv=None):
     args = build_arg_parser().parse_args(argv)
+    validation_error = validate_args(args)
+    if validation_error:
+        print(validation_error, file=sys.stderr)
+        return 2
     try:
         agent = build_agent(args)
     except ValueError as exc:
@@ -629,7 +809,11 @@ def main(argv=None):
 
     if mode == "one_shot":
         # one-shot 模式：只跑一次 ask，不进入 REPL 循环。
-        prompt = " ".join(args.prompt).strip()
+        try:
+            prompt = _one_shot_prompt(args)
+        except OSError as exc:
+            print(f"could not read prompt file: {exc}", file=sys.stderr)
+            return 2
         if prompt:
             print()
             try:

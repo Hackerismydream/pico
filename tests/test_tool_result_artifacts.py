@@ -30,7 +30,7 @@ def read_jsonl(path):
 
 
 def test_long_shell_output_is_clipped_and_full_output_is_saved_as_run_artifact(tmp_path):
-    script = "print('x'*12000)"
+    script = "print('x'*6000)"
     command = f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}"
     agent = build_agent(
         tmp_path,
@@ -43,14 +43,14 @@ def test_long_shell_output_is_clipped_and_full_output_is_saved_as_run_artifact(t
     assert agent.ask("produce long shell output") == "captured"
 
     tool_item = next(item for item in agent.session["history"] if item["role"] == "tool" and item["name"] == "run_shell")
-    assert len(tool_item["content"]) < 8500
+    assert len(tool_item["content"]) < 1200
     assert "full output saved:" in tool_item["content"]
     assert "full output saved:" in agent.model_client.prompts[1]
 
     report = json.loads((agent.current_run_dir / "report.json").read_text(encoding="utf-8"))
     artifact_path = report["runtime_reminders"][0]["artifact_path"] if report["runtime_reminders"] else agent._last_tool_result_metadata["full_output_artifact"]
     full_output = (tmp_path / artifact_path).read_text(encoding="utf-8")
-    assert "x" * 12000 in full_output
+    assert "x" * 6000 in full_output
     assert tool_item["content_sha256"] == hashlib.sha256(full_output.encode("utf-8")).hexdigest()
 
     trace_events = read_jsonl(agent.current_run_dir / "trace.jsonl")
@@ -67,7 +67,7 @@ def test_run_shell_status_is_parsed_from_full_result_before_artifact_rendering(t
             "<final>captured</final>",
         ],
     )
-    long_stdout = "x" * 12000
+    long_stdout = "x" * 3000
     agent.tools["run_shell"] = RegisteredTool(
         name="run_shell",
         schema={"command": "str", "timeout": "int=20"},
@@ -100,7 +100,7 @@ def test_long_tool_output_artifact_ref_survives_external_run_store(tmp_path):
         schema={"command": "str", "timeout": "int=20"},
         description="Synthetic shell command.",
         risky=True,
-        runner=lambda args: "exit_code: 0\nstdout:\n" + ("x" * 12000),
+        runner=lambda args: "exit_code: 0\nstdout:\n" + ("x" * 3000),
     )
 
     assert agent.ask("run synthetic shell") == "captured"
@@ -123,6 +123,7 @@ def test_long_read_file_result_is_artifact_backed_when_history_is_microcompacted
         [
             '<tool>{"name":"read_file","args":{"path":"large.txt","start":1,"end":120}}</tool>',
             "<final>read</final>",
+            "<final>committed</final>",
         ],
     )
 
@@ -146,11 +147,19 @@ def test_long_read_file_result_is_artifact_backed_when_history_is_microcompacted
         item for item in agent.session["history"] if item.get("artifact_ref") == artifact_ref
     )
     assert json.dumps(agent.session["history"], sort_keys=True) == before_history
+    assert "context_replacements" not in agent.session
     assert persisted_tool_item["content"] == original_history_content
     assert artifact_ref in prompt
     assert "line-119" not in prompt
     assert metadata["history"]["microcompact_artifact_refs"] == [artifact_ref]
     assert metadata["history"]["microcompact_saved_chars"] > 0
+    assert metadata["history"]["proposed_replacements"]
+
+    assert agent.ask("continue") == "committed"
+
+    event_id = persisted_tool_item["event_id"]
+    assert agent.session["context_replacements"][event_id]["content_sha256"] == persisted_tool_item["content_sha256"]
+    assert agent.session["context_replacements"][event_id]["artifact_ref"] == artifact_ref
 
 
 def test_recent_long_tool_result_is_not_microcompact_stubbed(tmp_path):

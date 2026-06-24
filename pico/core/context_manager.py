@@ -10,30 +10,25 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..features import memory as memorylib, skills as skillslib
-from .context_pressure import measure_pressure
-from .context_usage import ContextUsageAnalyzer
+from .context_report import ContextReportBuilder, RELEVANT_MEMORY_LIMIT
+from .context_sections import (
+    CURRENT_REQUEST_SECTION,
+    DEFAULT_SECTION_BUDGETS,
+    MIN_SECTION_BUDGETS,
+    REDUCTION_ORDER,
+    SECTION_ORDER,
+)
 from .turn_history import TurnHistoryBuilder, tail_clip
 
 DEFAULT_TOTAL_BUDGET = 60000
-DEFAULT_SECTION_BUDGETS = {
-    "prefix": 12000,
-    "memory": 8000,
-    "skills": 4000,
-    "relevant_memory": 6000,
-    "history": 30000,
-}
-DEFAULT_SECTION_FLOORS = {
-    "prefix": 4000,
-    "memory": 1200,
-    "skills": 600,
-    "relevant_memory": 1000,
-    "history": 6000,
-}
-# 当 prompt 超预算时，会优先压缩这些 section。
-DEFAULT_REDUCTION_ORDER = ("relevant_memory", "skills", "history", "memory", "prefix")
-SECTION_ORDER = ("prefix", "memory", "skills", "relevant_memory", "history", "current_request")
-CURRENT_REQUEST_SECTION = "current_request"
-RELEVANT_MEMORY_LIMIT = 3
+DEFAULT_SECTION_FLOORS = MIN_SECTION_BUDGETS
+DEFAULT_REDUCTION_ORDER = REDUCTION_ORDER
+
+PROMPT_PRESSURE_TIERS = (
+    (0.60, "tier0_observe"),
+    (0.80, "tier1_snip"),
+    (0.95, "tier2_prune"),
+)
 
 
 @dataclass
@@ -52,6 +47,13 @@ class SectionRender:
         return len(self.rendered)
 
 
+@dataclass(frozen=True)
+class PromptPressure:
+    ratio: float
+    tier: str
+    source: str = "char_estimate"
+
+
 class ContextManager:
     def __init__(
         self,
@@ -68,7 +70,7 @@ class ContextManager:
             self.section_budgets.update({str(key): int(value) for key, value in section_budgets.items()})
         self._section_floor_overrides = {str(key): int(value) for key, value in (section_floors or {}).items()}
         self.section_floors = self._compute_section_floors()
-        self.reduction_order = tuple(reduction_order or DEFAULT_REDUCTION_ORDER)
+        self.reduction_order = tuple(reduction_order or REDUCTION_ORDER)
         self.history_builder = TurnHistoryBuilder(agent)
 
     def build(self, user_message):
@@ -125,7 +127,7 @@ class ContextManager:
         if not context_reduction_enabled:
             rendered = self._render_sections_without_reduction(section_texts, selected_notes=selected_notes)
             prompt = self._assemble_prompt(rendered)
-            pressure = measure_pressure(len(prompt), self.total_budget)
+            pressure = self._prompt_pressure(len(prompt))
             metadata = self._metadata(
                 prompt=prompt,
                 rendered=rendered,
@@ -141,13 +143,17 @@ class ContextManager:
         budgets = dict(self.section_budgets)
         rendered = self._render_sections(section_texts, budgets, selected_notes=selected_notes)
         prompt = self._assemble_prompt(rendered)
-        pressure = measure_pressure(len(prompt), self.total_budget)
+        pressure = self._prompt_pressure(len(prompt))
         if pressure.tier != "tier0_observe":
             budgets = self._pressure_adjusted_budgets(budgets, pressure)
             rendered = self._render_sections(section_texts, budgets, selected_notes=selected_notes, pressure=pressure)
             prompt = self._assemble_prompt(rendered)
         reduction_log = []
 
+        # 如果 prompt 超预算，就按固定顺序不断压缩。
+        # 这里的顺序体现了平台偏好：
+        # 先牺牲 relevant_memory，再牺牲 history，然后才动 memory 和 prefix。
+        # 最新用户请求永远不裁剪，因为那是本轮最重要的输入。
         while len(prompt) > self.total_budget:
             overflow = len(prompt) - self.total_budget
             reduced = False
@@ -223,10 +229,13 @@ class ContextManager:
         }
 
     def _compute_section_floors(self):
-        floors = {
-            section: max(20, int(budget) // 4)
-            for section, budget in self.section_budgets.items()
-        }
+        if self.section_budgets == DEFAULT_SECTION_BUDGETS:
+            floors = dict(MIN_SECTION_BUDGETS)
+        else:
+            floors = {
+                section: max(20, int(budget) // 4)
+                for section, budget in self.section_budgets.items()
+            }
         floors.update(self._section_floor_overrides)
         return floors
 
@@ -246,6 +255,11 @@ class ContextManager:
                 rendered_text = tail_clip(raw, int(budget)) if budget is not None else raw
                 rendered[section] = SectionRender(raw=raw, budget=int(budget) if budget is not None else 0, rendered=rendered_text, details={})
         return rendered
+
+    def _prompt_pressure(self, prompt_chars):
+        ratio = int(prompt_chars) / max(1, self.total_budget)
+        tier = next((name for threshold, name in PROMPT_PRESSURE_TIERS if ratio < threshold), "tier3_summary")
+        return PromptPressure(ratio=round(ratio, 4), tier=tier)
 
     def _pressure_adjusted_budgets(self, budgets, pressure):
         adjusted = dict(budgets)
@@ -343,77 +357,22 @@ class ContextManager:
         return "\n\n".join(rendered[section].rendered for section in SECTION_ORDER).strip()
 
     def _metadata(self, prompt, rendered, budgets, reduction_log, selected_notes, user_message, section_texts, pressure):
-        section_metadata = {}
-        for section in SECTION_ORDER[:-1]:
-            section_metadata[section] = {
-                "raw_chars": rendered[section].raw_chars,
-                "budget_chars": int(budgets.get(section, 0)),
-                "rendered_chars": rendered[section].rendered_chars,
-            }
-        section_metadata[CURRENT_REQUEST_SECTION] = {
-            "raw_chars": len(section_texts[CURRENT_REQUEST_SECTION]),
-            "budget_chars": None,
-            "rendered_chars": len(rendered[CURRENT_REQUEST_SECTION].rendered),
+        metadata = ContextReportBuilder(
+            self.agent,
+            total_budget=self.total_budget,
+            reduction_order=self.reduction_order,
+        ).build(
+            prompt=prompt,
+            rendered=rendered,
+            budgets=budgets,
+            reduction_log=reduction_log,
+            selected_notes=selected_notes,
+            user_message=user_message,
+            section_texts=section_texts,
+        )
+        metadata["pressure"] = {
+            "ratio": pressure.ratio,
+            "tier": pressure.tier,
+            "source": pressure.source,
         }
-        return {
-            "prompt_chars": len(prompt),
-            "prompt_budget_chars": self.total_budget,
-            "prompt_over_budget": len(prompt) > self.total_budget,
-            "section_order": list(SECTION_ORDER),
-            "section_budgets": {
-                section: (None if section == CURRENT_REQUEST_SECTION else int(budgets.get(section, 0)))
-                for section in SECTION_ORDER
-            },
-            "sections": section_metadata,
-            "budget_reductions": reduction_log,
-            "reduction_order": list(self.reduction_order),
-            "pressure": {
-                "ratio": pressure.ratio,
-                "tier": pressure.tier,
-                "source": pressure.source,
-            },
-            "relevant_memory": {
-                "limit": RELEVANT_MEMORY_LIMIT,
-                "selected_count": len(selected_notes),
-                "selected_notes": [note["text"] for note in selected_notes],
-                "selected_sources": [str(note.get("source", "")).strip() for note in selected_notes],
-                "selected_kinds": [str(note.get("kind", "episodic")).strip() or "episodic" for note in selected_notes],
-                "selected_durable_count": sum(
-                    1 for note in selected_notes if (str(note.get("kind", "episodic")).strip() or "episodic") == "durable"
-                ),
-                "raw_chars": rendered["relevant_memory"].raw_chars,
-                "rendered_chars": rendered["relevant_memory"].rendered_chars,
-                "rendered_notes": list(rendered["relevant_memory"].details.get("rendered_notes", [])),
-                "rendered_count": int(rendered["relevant_memory"].details.get("rendered_count", 0)),
-            },
-            "history": {
-                "raw_chars": rendered["history"].raw_chars,
-                "rendered_chars": rendered["history"].rendered_chars,
-                "older_entries_count": int(rendered["history"].details.get("older_entries_count", 0)),
-                "recent_window": int(rendered["history"].details.get("recent_window", 0)),
-                "old_turn_line_limit": int(rendered["history"].details.get("old_turn_line_limit", 0)),
-                "collapsed_duplicate_reads": int(rendered["history"].details.get("collapsed_duplicate_reads", 0)),
-                "reused_file_summary_count": int(rendered["history"].details.get("reused_file_summary_count", 0)),
-                "summarized_tool_count": int(rendered["history"].details.get("summarized_tool_count", 0)),
-                "rendered_turns": int(rendered["history"].details.get("rendered_turns", 0)),
-                "microcompact_artifact_refs": list(rendered["history"].details.get("microcompact_artifact_refs", [])),
-                "microcompact_saved_chars": int(rendered["history"].details.get("microcompact_saved_chars", 0)),
-            },
-            "skills": self._skills_metadata(),
-            "current_request": {
-                "text": user_message,
-                "raw_chars": len(user_message),
-                "rendered_chars": len(user_message),
-                "section_chars": len(rendered[CURRENT_REQUEST_SECTION].rendered),
-            },
-            "context_usage": ContextUsageAnalyzer(self.agent).analyze(rendered),
-        }
-
-    def _skills_metadata(self):
-        skills = getattr(self.agent, "skills", {})
-        items = [skill.metadata() for skill in skillslib.list_skills(skills, user_invocable_only=False)]
-        return {
-            "available_count": len(items),
-            "user_invocable_count": sum(1 for item in items if item["user_invocable"]),
-            "items": items,
-        }
+        return metadata

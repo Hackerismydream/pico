@@ -22,29 +22,19 @@ protocol = "anthropic"
 api_key = "sk-..."
 base_url = "https://api.deepseek.com/anthropic"
 model = "deepseek-v4-pro"
-supports_vision = false
-vision_provider = "openai"
 
 [providers.openai]
 protocol = "openai"
 api_key = "sk-..."
 base_url = "https://api.openai.com/v1"
 model = "gpt-5.4"
-supports_vision = true
 
 [providers.anthropic]
 protocol = "anthropic"
 api_key = "sk-ant-..."
 base_url = "https://api.anthropic.com"
 model = "claude-sonnet-4-6"
-supports_vision = true
 ```
-
-`supports_vision` 表示这个 profile 是否能直接接收图片输入。
-`vision_provider` 表示当前 profile 不支持图片时，`inspect_image` 应该懒加载哪个
-provider。DeepSeek V4 Pro 官方 API 当前不支持 image content block，所以默认把
-`vision_provider` 指向 `openai`；也可以改成 `anthropic` 或你自己配置的其他
-vision profile。
 
 切 provider：
 
@@ -62,7 +52,6 @@ pico --provider anthropic --model claude-opus-4-6
 |------|------|
 | `PICO_PROVIDER` | 默认 provider |
 | `PICO_API_KEY` / `PICO_BASE_URL` / `PICO_MODEL` | 通用 override |
-| `PICO_VISION_PROVIDER` | 图片工具使用的 fallback provider |
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` | Anthropic |
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` | OpenAI |
 | `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` | DeepSeek |
@@ -77,7 +66,6 @@ pico --provider anthropic --model claude-opus-4-6
 
 ```bash
 pico --provider deepseek --model deepseek-v4-pro
-pico --provider deepseek --vision-provider openai
 pico --api-key sk-... --base-url https://...
 pico --max-steps 50 --max-new-tokens 4096
 pico --temperature 0.0

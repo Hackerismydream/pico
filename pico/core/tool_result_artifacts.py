@@ -12,7 +12,6 @@ from .workspace import clip
 INLINE_TOOL_OUTPUT_LIMIT = 1000
 INLINE_TOOL_OUTPUT_LIMITS = {
     "inspect_image": 12000,
-    "run_shell": 8000,
 }
 
 

@@ -182,7 +182,11 @@ def _extract_usage_cache_details(data):
     input_tokens = usage.get("input_tokens", usage.get("prompt_tokens"))
     output_tokens = usage.get("output_tokens", usage.get("completion_tokens"))
     input_details = usage.get("input_tokens_details") or usage.get("prompt_tokens_details") or {}
-    cached_tokens = int(input_details.get("cached_tokens") or 0)
+    cached_tokens = int(
+        usage.get("cache_read_input_tokens")
+        or input_details.get("cached_tokens")
+        or 0
+    )
     return {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,

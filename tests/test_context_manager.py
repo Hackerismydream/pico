@@ -1,5 +1,6 @@
 from pico.testing import ScriptedModelClient
 from pico import Pico, SessionStore, WorkspaceContext
+from pico.core.context_report import ContextReportBuilder
 from pico.core.context_manager import ContextManager
 
 
@@ -36,6 +37,40 @@ def test_context_manager_assembles_sections_in_expected_order(tmp_path):
     assert prompt.index("Transcript:") < prompt.index("Current user request:")
     assert prompt.rstrip().endswith("Current user request:\nWhere is the deploy key?")
     assert metadata["section_order"] == ["prefix", "memory", "skills", "relevant_memory", "history", "current_request"]
+
+
+def test_context_manager_build_delegates_metadata_to_report_builder(tmp_path, monkeypatch):
+    agent = build_agent(tmp_path, [])
+    calls = []
+    original = ContextReportBuilder.build
+
+    def recording_build(self, **kwargs):
+        calls.append(kwargs)
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(ContextReportBuilder, "build", recording_build)
+
+    prompt, metadata = ContextManager(agent).build("Where is the deploy key?")
+
+    assert prompt
+    assert calls
+    assert calls[0]["user_message"] == "Where is the deploy key?"
+    assert list(metadata.keys()) == [
+        "prompt_chars",
+        "prompt_budget_chars",
+        "prompt_over_budget",
+        "section_order",
+        "section_budgets",
+        "sections",
+        "budget_reductions",
+        "reduction_order",
+        "relevant_memory",
+        "history",
+        "skills",
+        "current_request",
+        "context_usage",
+        "pressure",
+    ]
 
 
 def test_context_manager_reduces_relevant_memory_before_history_and_preserves_newer_context(tmp_path):
@@ -105,14 +140,14 @@ def test_context_manager_renders_top_three_episodic_notes_per_note_under_budget(
     ]
     assert len(metadata["relevant_memory"]["rendered_notes"]) == 3
     assert metadata["relevant_memory"]["rendered_count"] == 3
-    assert metadata["relevant_memory"]["rendered_notes"][0].startswith("gamma")
-    assert metadata["relevant_memory"]["rendered_notes"][1].startswith("alpha")
-    assert metadata["relevant_memory"]["rendered_notes"][2].startswith("beta")
+    assert metadata["relevant_memory"]["rendered_notes"][0].startswith("gamma episodi")
+    assert metadata["relevant_memory"]["rendered_notes"][1].startswith("alpha episodi")
+    assert metadata["relevant_memory"]["rendered_notes"][2].startswith("beta episodi")
     relevant_section = prompt.split("Relevant memory:\n", 1)[1].split("\n\nTranscript:", 1)[0]
     assert len([line for line in relevant_section.splitlines() if line.startswith("- ")]) == 3
-    assert "alpha" in relevant_section
-    assert "beta" in relevant_section
-    assert "gamma" in relevant_section
+    assert "alpha episodi" in relevant_section
+    assert "beta episodic" in relevant_section
+    assert "gamma episodi" in relevant_section
     assert "older unmatched note" not in relevant_section
 
 

@@ -16,6 +16,15 @@
 - max_prompt_compression_ratio：33.28%
 - current_request_preserved_rate：100.00%
 
+## Context A/B
+- paired_task_count：1
+- baseline estimated input tokens / task：4991
+- optimized estimated input tokens / task：4152
+- net saved estimated input tokens / task：839
+- median_cost_delta_pct：-16.81%
+- claimable_cost_win：True
+- quality_regression_count：0
+
 ## Context Efficiency Under Follow-up
 - memory_on repeated_reads：0
 - memory_off repeated_reads：60

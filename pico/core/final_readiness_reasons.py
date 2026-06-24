@@ -21,6 +21,10 @@ READINESS_REASONS = {
         "hard",
         "A tool partially succeeded and changed the workspace.",
     ),
+    "missing_required_artifact": (
+        "hard",
+        "A required output artifact mentioned in the request is still missing.",
+    ),
     "unresolved_high_priority_todo": (
         "soft",
         "A current-run high priority todo is still unresolved.",
@@ -29,6 +33,21 @@ READINESS_REASONS = {
         "soft",
         "Context pressure is high and no successful reduction was recorded.",
     ),
+    "tier3_summary_without_delta": (
+        "soft",
+        "Tier 3 context summary ran but had no new delta to summarize.",
+    ),
+    "replacement_ledger_disabled_under_pressure": (
+        "soft",
+        "Context pressure is high but the replacement ledger is disabled.",
+    ),
+    "provider_real_token_usage_unavailable": (
+        "soft",
+        "Provider real token usage was unavailable; context pressure used estimates.",
+    ),
+    "compact_net_negative": ("soft", "LLM compaction cost more tokens than it saved."),
+    "compact_summary_quality_low": ("soft", "Compaction summary lacks concrete next steps or file references."),
+    "context_pressure_compaction_failed": ("hard", "Context pressure is extreme but compaction yielded no token savings."),
 }
 
 

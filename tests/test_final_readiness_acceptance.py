@@ -29,6 +29,24 @@ def read_jsonl(path):
     ]
 
 
+def test_soft_final_readiness_does_not_warn_for_low_pressure_missing_provider_usage(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        ["<final>done</final>"],
+        final_readiness_mode="soft",
+    )
+
+    events = list(agent.engine.run_turn("answer directly"))
+
+    assert [event["type"] for event in events] == [
+        "turn_started",
+        "model_requested",
+        "model_parsed",
+        "final",
+        "turn_finished",
+    ]
+
+
 def test_soft_final_readiness_reminds_once_then_allows_unchanged_final(tmp_path):
     agent = build_agent(
         tmp_path,
@@ -132,67 +150,39 @@ def test_strict_final_readiness_blocks_partial_success_workspace_changes(tmp_pat
     ]
 
 
-def test_before_final_hook_can_request_runtime_notice_then_allow(tmp_path):
-    calls = {"count": 0}
-
-    def hook(context):
-        calls["count"] += 1
-        if calls["count"] == 1:
-            return {
-                "action": "runtime_notice",
-                "reason": "missing_external_artifact",
-                "message": "Create result.json before final.",
-                "metadata": {"missing_paths": ["result.json"]},
-            }
-        return {"action": "allow", "reason": "artifact_ready"}
-
+def test_soft_final_readiness_warns_for_net_negative_llm_compaction(tmp_path):
     agent = build_agent(
         tmp_path,
         [
-            "<final>Done too early.</final>",
-            "<final>Done after hook notice.</final>",
+            """## Goal
+Continue the large task.
+
+## Files Read
+- README.md
+
+## Next Steps
+- Finish the task.
+""",
+            "<final>Done after compact.</final>",
+            "<final>Done after compact.</final>",
         ],
-        before_final_hooks=[hook],
+        final_readiness_mode="soft",
         max_steps=2,
     )
+    agent.model_client.context_window = 1000
+    agent.model_client.last_completion_metadata = {
+        "input_tokens": 500,
+        "output_tokens": 500,
+        "total_tokens": 1000,
+    }
+    for index in range(5):
+        agent.record({"role": "user", "content": f"request {index} " + ("x" * 900)})
+        agent.record({"role": "assistant", "content": f"answer {index} " + ("y" * 900)})
 
-    events = list(agent.engine.run_turn("write the result"))
+    events = list(agent.engine.run_turn("finish"))
 
-    assert [event["content"] for event in events if event["type"] == "runtime_notice"] == [
-        "Create result.json before final."
-    ]
-    assert events[-2]["type"] == "final"
-    assert events[-2]["content"] == "Done after hook notice."
-
+    assert any(event["type"] == "runtime_notice" for event in events)
     trace = read_jsonl(agent.current_run_dir / "trace.jsonl")
-    hook_events = [event for event in trace if event["event"] == "before_final_hook_decision"]
-    assert [event["action"] for event in hook_events] == ["runtime_notice", "allow"]
-    assert hook_events[0]["metadata"] == {"missing_paths": ["result.json"]}
-
-    report = json.loads(
-        (agent.current_run_dir / "report.json").read_text(encoding="utf-8")
-    )
-    summary = report["evidence_summaries"]["before_final_hook_summary"]
-    assert summary["runtime_notice_count"] == 1
-    assert summary["allow_count"] == 1
-
-
-def test_before_final_hook_error_is_reported_as_warning(tmp_path):
-    def hook(_context):
-        raise RuntimeError("broken hook")
-
-    agent = build_agent(
-        tmp_path,
-        ["<final>Done.</final>"],
-        before_final_hooks=[hook],
-        max_steps=1,
-    )
-
-    events = list(agent.engine.run_turn("simple final"))
-
-    assert events[-2]["type"] == "final"
-    trace = read_jsonl(agent.current_run_dir / "trace.jsonl")
-    hook_event = next(event for event in trace if event["event"] == "before_final_hook_decision")
-    assert hook_event["action"] == "warn"
-    assert hook_event["reason"] == "hook_error"
-    assert "broken hook" in hook_event["message"]
+    readiness = [event for event in trace if event["event"] == "final_readiness_decision"]
+    assert any(event["decision"] == "remind" for event in readiness)
+    assert any("compact_net_negative" in event["reasons"] for event in readiness)

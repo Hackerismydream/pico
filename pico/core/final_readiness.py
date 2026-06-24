@@ -2,18 +2,25 @@
 
 import hashlib
 
-from .final_readiness_reasons import FINAL_READINESS_SUMMARY_SCHEMA, reason_message, reason_severity
+from .final_readiness_artifacts import (
+    extract_required_artifact_paths as extract_required_artifact_paths,
+    summarize_required_artifacts as summarize_required_artifacts,
+)
+from .final_readiness_reasons import (
+    FINAL_READINESS_SUMMARY_SCHEMA,
+    reason_message,
+    reason_severity,
+)
+from .final_readiness_tools import readiness_reasons
 
 VALID_MODES = {"off", "warn", "soft", "strict"}
-CONTEXT_HARD_PRESSURE_RATIO = 0.95
-UNRESOLVED_TODO_STATUS = {"pending", "in_progress"}
 
 
-def evaluate_final_readiness(task_state, mode):
+def evaluate_final_readiness(task_state, mode, workspace_root=None):
     mode = str(mode or "warn")
     if mode not in VALID_MODES:
         mode = "warn"
-    reasons = _readiness_reasons(task_state)
+    reasons = readiness_reasons(task_state, workspace_root=workspace_root)
     signature = _reason_signature(reasons)
     state = _state(task_state)
     reminded = set(state.get("reminded_reason_signatures", []))
@@ -38,6 +45,10 @@ def evaluate_final_readiness(task_state, mode):
         "reason_signature": signature,
         "reminder_already_sent": already_sent,
         "action": action,
+        "required_artifact_summary": dict(
+            (task_state.evidence_summaries or {}).get("required_artifact_summary", {})
+            or {}
+        ),
     }
 
 
@@ -64,27 +75,6 @@ def reduce_final_readiness_summary(summary, event):
     return summary
 
 
-def _readiness_reasons(task_state):
-    summaries = task_state.evidence_summaries or {}
-    reasons = []
-    verification = dict(summaries.get("verification_signal", {}) or {})
-    if task_state.changed_paths and verification.get("state") != "passed":
-        reasons.append("changed_paths_without_verification")
-    if verification.get("state") == "failed":
-        reasons.append("failed_verification")
-    if _has_partial_success_workspace_change(task_state):
-        reasons.append("partial_success_workspace_changed")
-    governance = dict(summaries.get("governance_summary", {}) or {})
-    if int(governance.get("deny_count", 0) or 0):
-        reasons.append("governance_denial")
-    if _has_unresolved_high_priority_todo(task_state):
-        reasons.append("unresolved_high_priority_todo")
-    context = dict(summaries.get("context_budget_summary", {}) or {})
-    if _context_pressure_without_reduction(context):
-        reasons.append("context_pressure_without_reduction")
-    return reasons
-
-
 def _reason_signature(reasons):
     if not reasons:
         return ""
@@ -97,24 +87,3 @@ def _state(task_state):
     summaries["final_readiness_state"] = state
     task_state.evidence_summaries = summaries
     return state
-def _has_unresolved_high_priority_todo(task_state):
-    latest = {}
-    for change in task_state.todo_changes or []:
-        todo = dict(change.get("todo", {}) or {})
-        todo_id = str(todo.get("id", ""))
-        if todo_id:
-            latest[todo_id] = todo
-    return any(todo.get("priority") == "high" and todo.get("status") in UNRESOLVED_TODO_STATUS for todo in latest.values())
-
-
-def _has_partial_success_workspace_change(task_state):
-    return any(item.get("status") == "partial_success" and item.get("workspace_changed") is True for item in task_state.runtime_reminders or [])
-
-
-def _context_pressure_without_reduction(context):
-    try:
-        pressure = float(context.get("pressure_ratio", 0) or 0)
-    except (TypeError, ValueError):
-        pressure = 0.0
-    reductions = context.get("reductions", []) or []
-    return pressure >= CONTEXT_HARD_PRESSURE_RATIO and not any(int(item.get("saved_chars", 0) or 0) > 0 for item in reductions)
