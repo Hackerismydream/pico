@@ -23,6 +23,8 @@ DEFAULT_RECOVERY_ABLATION_V2_PATH = Path("artifacts/recovery-ablation-v2.json")
 DEFAULT_MEMORY_FIDELITY_V1_PATH = LOCAL_BENCHMARK_ARTIFACT_DIR / "memory-fidelity-v1.json"
 DEFAULT_DREAM_QUALITY_V1_PATH = LOCAL_BENCHMARK_ARTIFACT_DIR / "dream-quality-v1.json"
 DEFAULT_MEMORY_LIVE_SMOKE_V1_PATH = LOCAL_BENCHMARK_ARTIFACT_DIR / "memory-live-smoke-v1.json"
+DEFAULT_MEMORY_AGENT_EVAL_V1_PATH = LOCAL_BENCHMARK_ARTIFACT_DIR / "memory-agent-eval-v1.json"
+DEFAULT_MEMORY_CHALLENGE_V1_PATH = LOCAL_BENCHMARK_ARTIFACT_DIR / "memory-challenge-v1.json"
 DEFAULT_CORE_REPORT_PATH = Path("docs/metrics/pico-benchmark-core-report.md")
 
 RUN_NAMES = (
@@ -30,6 +32,8 @@ RUN_NAMES = (
     "context_ablation",
     "memory_ablation",
     "memory_fidelity",
+    "memory_agent_eval",
+    "memory_challenge",
     "recovery_ablation",
     "dream_quality",
     "live_smoke",
@@ -1891,6 +1895,8 @@ def write_benchmark_core_report(
     recovery_artifact_path=DEFAULT_RECOVERY_ABLATION_V2_PATH,
     fidelity_artifact_path=DEFAULT_MEMORY_FIDELITY_V1_PATH,
     dream_artifact_path=DEFAULT_DREAM_QUALITY_V1_PATH,
+    memory_agent_artifact_path=DEFAULT_MEMORY_AGENT_EVAL_V1_PATH,
+    memory_challenge_artifact_path=DEFAULT_MEMORY_CHALLENGE_V1_PATH,
 ):
     harness = json.loads(_existing_artifact_path(harness_artifact_path).read_text(encoding="utf-8"))
     context = json.loads(_existing_artifact_path(context_artifact_path).read_text(encoding="utf-8"))
@@ -1900,12 +1906,18 @@ def write_benchmark_core_report(
     fidelity = json.loads(fidelity_path.read_text(encoding="utf-8")) if fidelity_path.exists() else None
     dream_path = _existing_artifact_path(dream_artifact_path)
     dream = json.loads(dream_path.read_text(encoding="utf-8")) if dream_path.exists() else None
+    memory_agent_path = _existing_artifact_path(memory_agent_artifact_path)
+    memory_agent = json.loads(memory_agent_path.read_text(encoding="utf-8")) if memory_agent_path.exists() else None
+    memory_challenge_path = _existing_artifact_path(memory_challenge_artifact_path)
+    memory_challenge = (
+        json.loads(memory_challenge_path.read_text(encoding="utf-8")) if memory_challenge_path.exists() else None
+    )
 
     enabled_recovery = recovery["variants"]["resume_enabled"]["summary"]
     lines = [
         "# Pico Benchmark Core Report",
         "",
-        "这轮 benchmark 只收缩到 Harness regression、context ablation、context efficiency、memory fidelity 和 recovery ablation，不把 provider、run aggregation 或 durable memory 的别的结论揉进来。",
+        "这轮 benchmark 只收缩到 Harness regression、context ablation、context efficiency、memory fidelity、memory agent evaluation 和 recovery ablation，不把 provider、run aggregation 或 live-provider 结论揉进来。",
         "",
         "## Harness Regression",
         f"- 固定 regression 任务数：{harness['summary']['total_tasks']}",
@@ -1958,6 +1970,50 @@ def write_benchmark_core_report(
                 "",
             ]
         )
+    if memory_agent and memory_agent.get("contract"):
+        contract_summary = memory_agent["contract"]["summary"]
+        contract_pass_rate = contract_summary.get("pass_rate", contract_summary.get("case_pass_rate", 0.0))
+        lines.extend(
+            [
+                "## Memory Contract Verification",
+                f"- total_cases：{contract_summary['total_cases']}",
+                f"- passed：{contract_summary['passed']}",
+                f"- failed：{contract_summary['failed']}",
+                f"- pass_rate：{contract_pass_rate:.2%}",
+                "",
+            ]
+        )
+    challenge = memory_challenge or (memory_agent or {}).get("challenge")
+    if challenge:
+        variants = challenge["variants"]
+        memory_on = variants["memory_on"]["summary"]
+        memory_off = variants["memory_off"]["summary"]
+        unsafe = variants["unsafe_memory"]["summary"]
+        variant_names = challenge.get("variant_names") or list(variants)
+        comparisons = challenge.get("comparisons", {})
+        on_vs_off = comparisons.get("memory_on_vs_memory_off", {})
+        on_vs_unsafe = comparisons.get("memory_on_vs_unsafe_memory", {})
+        lines.extend(
+            [
+                "## Memory Challenge Benchmark",
+                f"- case_count：{challenge['case_count']}",
+                f"- variants：{', '.join(variant_names)}",
+                f"- memory_on answer_accuracy：{memory_on['answer_accuracy']:.2%}",
+                f"- memory_on case_pass_rate：{memory_on['case_pass_rate']:.2%}",
+                f"- memory_on failed：{memory_on['failed']}",
+                f"- memory_on evidence_recall_at_k：{memory_on['evidence_recall_at_k']:.2%}",
+                f"- memory_on evidence_precision_at_k：{memory_on['evidence_precision_at_k']:.2%}",
+                f"- memory_on stale_use_rate：{memory_on['stale_use_rate']:.2%}",
+                f"- memory_on secret_exposure_rate：{memory_on['secret_exposure_rate']:.2%}",
+                f"- memory_on false_resume_accept_rate：{memory_on['false_resume_accept_rate']:.2%}",
+                f"- memory_off answer_accuracy：{memory_off['answer_accuracy']:.2%}",
+                f"- unsafe_memory secret_exposure_rate：{unsafe['secret_exposure_rate']:.2%}",
+                f"- memory_on_vs_memory_off evidence_recall_delta：{on_vs_off.get('evidence_recall_delta', 0.0):.2%}",
+                f"- memory_on_vs_memory_off repeated_reads_reduction：{on_vs_off.get('repeated_reads_reduction', 0.0):.2f}",
+                f"- memory_on_vs_unsafe_memory secret_exposure_reduction：{on_vs_unsafe.get('secret_exposure_reduction', 0.0):.2%}",
+                "",
+            ]
+        )
     lines.extend(
         [
             "## Recovery / Resume Ablation",
@@ -1977,6 +2033,11 @@ def write_benchmark_core_report(
             "- repeated_reads",
             "- avg_tool_steps",
             "- correct_rate",
+            "- evidence_recall_at_k",
+            "- evidence_precision_at_k",
+            "- task_correctness_rate",
+            "- stale_memory_use_rate",
+            "- secret_exposure_rate",
             "- resume_success_rate",
             "- workspace_drift_detection_rate",
             "- resume_false_accept_rate",
@@ -2023,6 +2084,16 @@ def _run_metrics_cli(name):
     if name == "memory_fidelity":
         artifact = run_memory_fidelity_v1()
         return 0 if artifact.get("summary", {}).get("failed", 0) == 0 else 2
+    if name == "memory_agent_eval":
+        from .memory_agent_eval import run_memory_agent_eval_v1
+
+        artifact = run_memory_agent_eval_v1()
+        return 0 if artifact.get("contract", {}).get("summary", {}).get("failed", 0) == 0 else 2
+    if name == "memory_challenge":
+        from .memory_agent_eval import run_memory_challenge_v1
+
+        run_memory_challenge_v1()
+        return 0
     artifact_only_runs = {
         "dream_quality": DEFAULT_DREAM_QUALITY_V1_PATH,
         "live_smoke": DEFAULT_MEMORY_LIVE_SMOKE_V1_PATH,

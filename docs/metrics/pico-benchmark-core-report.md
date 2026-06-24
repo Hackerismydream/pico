@@ -1,6 +1,6 @@
 # Pico Benchmark Core Report
 
-这轮 benchmark 只收缩到 Harness regression、context ablation、context efficiency、memory fidelity 和 recovery ablation，不把 provider、run aggregation 或 durable memory 的别的结论揉进来。
+这轮 benchmark 只收缩到 Harness regression、context ablation、context efficiency、memory fidelity、memory agent evaluation 和 recovery ablation，不把 provider、run aggregation 或 live-provider 结论揉进来。
 
 ## Harness Regression
 - 固定 regression 任务数：12
@@ -40,6 +40,29 @@
 - dedupe_rate：100.00%
 - relative_date_absolutization_rate：100.00%
 
+## Memory Contract Verification
+- total_cases：8
+- passed：8
+- failed：0
+- pass_rate：100.00%
+
+## Memory Challenge Benchmark
+- case_count：55
+- variants：memory_off, memory_on, naive_recent, unsafe_memory
+- memory_on answer_accuracy：94.55%
+- memory_on case_pass_rate：94.55%
+- memory_on failed：3
+- memory_on evidence_recall_at_k：100.00%
+- memory_on evidence_precision_at_k：87.23%
+- memory_on stale_use_rate：0.00%
+- memory_on secret_exposure_rate：0.00%
+- memory_on false_resume_accept_rate：0.00%
+- memory_off answer_accuracy：41.82%
+- unsafe_memory secret_exposure_rate：100.00%
+- memory_on_vs_memory_off evidence_recall_delta：100.00%
+- memory_on_vs_memory_off repeated_reads_reduction：0.58
+- memory_on_vs_unsafe_memory secret_exposure_reduction：100.00%
+
 ## Recovery / Resume Ablation
 - resume_success_rate：90.00%
 - stale_reanchor_rate：100.00%
@@ -57,6 +80,11 @@
 - repeated_reads
 - avg_tool_steps
 - correct_rate
+- evidence_recall_at_k
+- evidence_precision_at_k
+- task_correctness_rate
+- stale_memory_use_rate
+- secret_exposure_rate
 - resume_success_rate
 - workspace_drift_detection_rate
 - resume_false_accept_rate
