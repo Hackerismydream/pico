@@ -1,4 +1,6 @@
 import json
+import hashlib
+import subprocess
 from datetime import date
 
 from pico.features.memory import (
@@ -14,6 +16,7 @@ from pico.features.memory import (
     release_lock,
     retrieval_view_structured,
     try_acquire_lock,
+    workspace_fingerprint,
 )
 
 
@@ -103,6 +106,20 @@ def test_file_summaries_use_canonical_paths_and_freshness(tmp_path):
     memory.invalidate_file_summary("sample.txt")
 
     assert "sample.txt" not in memory.to_dict()["file_summaries"]
+
+
+def test_workspace_fingerprint_uses_git_root_when_available(tmp_path):
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / "nested").mkdir()
+    expected = hashlib.sha256(str(tmp_path.resolve()).encode("utf-8")).hexdigest()[:12]
+
+    assert workspace_fingerprint(tmp_path / "nested" / "..") == expected
+
+
+def test_workspace_fingerprint_uses_resolved_path_for_non_git_dir(tmp_path):
+    expected = hashlib.sha256(str(tmp_path.resolve()).encode("utf-8")).hexdigest()[:12]
+
+    assert workspace_fingerprint(tmp_path) == expected
 
 
 def test_process_notes_keep_kind_and_latest_duplicate_wins():
