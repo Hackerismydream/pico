@@ -6,6 +6,7 @@ one user request into model calls, tool executions, and user-visible events.
 
 import time
 
+from ..features import memory as memorylib
 from ..providers.base import complete_model
 from .completion_governance import (
     final_readiness_action,
@@ -143,6 +144,18 @@ class Engine:
                     "duration_ms": int((time.monotonic() - prompt_started_at) * 1000),
                 },
             )
+            structured_memory = getattr(getattr(agent, "memory", None), "last_retrieval", None)
+            if structured_memory is not None:
+                agent.emit_trace(
+                    task_state,
+                    "memory.retrieval",
+                    {
+                        "query_hash": structured_memory.get("query_hash", ""),
+                        "selected": list(structured_memory.get("selected", [])),
+                        "rejected": list(structured_memory.get("rejected", [])),
+                        "workspace_fingerprint": memorylib.workspace_fingerprint(agent.root),
+                    },
+                )
             if prompt_metadata.get("resume_status") == CHECKPOINT_PARTIAL_STALE_STATUS:
                 checkpoint = agent.create_checkpoint(
                     task_state, user_message, trigger="freshness_mismatch"

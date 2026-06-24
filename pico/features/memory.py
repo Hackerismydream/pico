@@ -1362,6 +1362,7 @@ class LayeredMemory:
         self.workspace_root = workspace_root
         self.state = normalize_memory_state(state, workspace_root)
         self.durable_store = DurableMemoryStore(Path(workspace_root) / ".pico" / "memory") if workspace_root is not None else None
+        self.last_retrieval = None
 
     def to_dict(self):
         self.state = normalize_memory_state(self.state, self.workspace_root)
@@ -1403,10 +1404,12 @@ class LayeredMemory:
         return invalidated
 
     def retrieval_candidates(self, query, limit=3):
-        return retrieval_candidates(self.state, query, limit=limit, workspace_root=self.workspace_root)
+        self.last_retrieval = retrieval_view_structured(self.state, query, limit=limit, workspace_root=self.workspace_root)
+        return self.last_retrieval["selected"]
 
     def retrieval_view_structured(self, query, limit=3):
-        return retrieval_view_structured(self.state, query, limit=limit, workspace_root=self.workspace_root)
+        self.last_retrieval = retrieval_view_structured(self.state, query, limit=limit, workspace_root=self.workspace_root)
+        return self.last_retrieval
 
     def retrieval_view(self, query, limit=3):
         return retrieval_view(self.state, query, limit=limit, workspace_root=self.workspace_root)
