@@ -1,0 +1,187 @@
+{
+  "artifact_type": "dream-quality-v1",
+  "captured_at": "2026-06-24T00:00:00Z",
+  "fixture_count": 6,
+  "rows": [
+    {
+      "checks": {
+        "duplicates_merged": true,
+        "noise_dropped": true,
+        "relative_dates_absolutized": true,
+        "secrets_rejected": true,
+        "signal_retained": true
+      },
+      "expected": {
+        "duplicates": 0,
+        "noise": 0,
+        "relative_dates": 0,
+        "secrets": 0,
+        "signal": 3
+      },
+      "fixture": "01_clean_signal",
+      "passed": true,
+      "report": {
+        "duplicates_merged": 0,
+        "noise_dropped": 0,
+        "notes_in_after": 3,
+        "notes_in_before": 3,
+        "relative_dates_absolutized": 0,
+        "secrets_rejected": 0,
+        "signal_retained": 3
+      },
+      "result": "Dream consolidation complete."
+    },
+    {
+      "checks": {
+        "duplicates_merged": true,
+        "noise_dropped": true,
+        "relative_dates_absolutized": true,
+        "secrets_rejected": true,
+        "signal_retained": true
+      },
+      "expected": {
+        "duplicates": 0,
+        "noise": 5,
+        "relative_dates": 0,
+        "secrets": 0,
+        "signal": 1
+      },
+      "fixture": "02_noise_heavy",
+      "passed": true,
+      "report": {
+        "duplicates_merged": 0,
+        "noise_dropped": 5,
+        "notes_in_after": 1,
+        "notes_in_before": 6,
+        "relative_dates_absolutized": 0,
+        "secrets_rejected": 0,
+        "signal_retained": 1
+      },
+      "result": "Dream consolidation complete."
+    },
+    {
+      "checks": {
+        "duplicates_merged": true,
+        "noise_dropped": true,
+        "relative_dates_absolutized": true,
+        "secrets_rejected": true,
+        "signal_retained": true
+      },
+      "expected": {
+        "duplicates": 0,
+        "noise": 0,
+        "relative_dates": 0,
+        "secrets": 1,
+        "signal": 0
+      },
+      "fixture": "03_secret_leak",
+      "passed": true,
+      "report": {
+        "duplicates_merged": 0,
+        "noise_dropped": 0,
+        "notes_in_after": 0,
+        "notes_in_before": 1,
+        "relative_dates_absolutized": 0,
+        "secrets_rejected": 1,
+        "signal_retained": 0
+      },
+      "result": "Dream consolidation complete."
+    },
+    {
+      "checks": {
+        "duplicates_merged": true,
+        "noise_dropped": true,
+        "relative_dates_absolutized": true,
+        "secrets_rejected": true,
+        "signal_retained": true
+      },
+      "expected": {
+        "duplicates": 2,
+        "noise": 0,
+        "relative_dates": 0,
+        "secrets": 0,
+        "signal": 1
+      },
+      "fixture": "04_duplicates",
+      "passed": true,
+      "report": {
+        "duplicates_merged": 2,
+        "noise_dropped": 0,
+        "notes_in_after": 1,
+        "notes_in_before": 3,
+        "relative_dates_absolutized": 0,
+        "secrets_rejected": 0,
+        "signal_retained": 1
+      },
+      "result": "Dream consolidation complete."
+    },
+    {
+      "checks": {
+        "duplicates_merged": true,
+        "noise_dropped": true,
+        "relative_dates_absolutized": true,
+        "secrets_rejected": true,
+        "signal_retained": true
+      },
+      "expected": {
+        "duplicates": 0,
+        "noise": 0,
+        "relative_dates": 2,
+        "secrets": 0,
+        "signal": 2
+      },
+      "fixture": "05_relative_dates",
+      "passed": true,
+      "report": {
+        "duplicates_merged": 0,
+        "noise_dropped": 0,
+        "notes_in_after": 2,
+        "notes_in_before": 2,
+        "relative_dates_absolutized": 2,
+        "secrets_rejected": 0,
+        "signal_retained": 2
+      },
+      "result": "Dream consolidation complete."
+    },
+    {
+      "checks": {
+        "duplicates_merged": true,
+        "noise_dropped": true,
+        "relative_dates_absolutized": true,
+        "secrets_rejected": true,
+        "signal_retained": true
+      },
+      "expected": {
+        "duplicates": 1,
+        "noise": 1,
+        "relative_dates": 1,
+        "secrets": 1,
+        "signal": 3
+      },
+      "fixture": "06_mixed",
+      "passed": true,
+      "report": {
+        "duplicates_merged": 1,
+        "noise_dropped": 1,
+        "notes_in_after": 3,
+        "notes_in_before": 6,
+        "relative_dates_absolutized": 1,
+        "secrets_rejected": 1,
+        "signal_retained": 3
+      },
+      "result": "Dream consolidation complete."
+    }
+  ],
+  "schema_version": 1,
+  "summary": {
+    "dedupe_rate": 1.0,
+    "failed": 0,
+    "noise_rejection_rate": 1.0,
+    "pass_rate": 1.0,
+    "passed": 6,
+    "relative_date_absolutization_rate": 1.0,
+    "secret_rejection_rate": 1.0,
+    "signal_retention_rate": 1.0,
+    "total_fixtures": 6
+  }
+}

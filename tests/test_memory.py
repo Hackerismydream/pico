@@ -3,6 +3,7 @@ import hashlib
 import subprocess
 from datetime import date
 
+from pico import Pico, SessionStore, WorkspaceContext
 from pico.features.memory_lint import SECRET_PATTERNS
 from pico.features.memory import (
     LayeredMemory,
@@ -20,6 +21,24 @@ from pico.features.memory import (
     try_acquire_lock,
     workspace_fingerprint,
 )
+from pico.testing import ScriptedModelClient
+
+
+def build_runtime_agent(tmp_path, outputs, **kwargs):
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+    return Pico(
+        model_client=ScriptedModelClient(outputs),
+        workspace=WorkspaceContext.build(tmp_path),
+        session_store=SessionStore(tmp_path / ".pico" / "sessions"),
+        approval_policy="auto",
+        **kwargs,
+    )
+
+
+def latest_dream_report(memory_root):
+    reports = sorted((memory_root / "dream_reports").glob("*.json"))
+    assert reports
+    return json.loads(reports[-1].read_text(encoding="utf-8"))
 
 
 def test_working_memory_tracks_summary_and_recent_files():
@@ -433,6 +452,60 @@ def test_dream_prompt_uses_four_phase_filesystem_maintenance_flow(tmp_path):
     assert "under ~25KB" in prompt
     assert "Never write memory content directly into it" in prompt
     assert "Remove pointers to memories that are now stale, wrong, or superseded" in prompt
+
+
+def test_dream_writes_quality_report_under_memory_dir(tmp_path):
+    agent = build_runtime_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"write_file","args":{"path":".pico/memory/topics/test-topic.md","content":"# Test Topic\\n\\n## Notes\\n- Pico keeps stable signal.\\n"}}</tool>',
+            "<final>Dream consolidation complete.</final>",
+        ],
+        auto_dream=False,
+    )
+
+    result = agent.run_dream(session_ids=["s1"])
+    report = latest_dream_report(tmp_path / ".pico" / "memory")
+
+    assert result == "Dream consolidation complete."
+    assert set(report) == {
+        "notes_in_before",
+        "notes_in_after",
+        "signal_retained",
+        "noise_dropped",
+        "secrets_rejected",
+        "duplicates_merged",
+        "relative_dates_absolutized",
+    }
+    assert report["notes_in_before"] == 0
+    assert report["notes_in_after"] == 1
+    assert report["signal_retained"] == 1
+    assert agent.last_dream_report == report
+
+
+def test_auto_dream_writes_quality_report_under_memory_dir(tmp_path):
+    for index in range(2):
+        session_path = tmp_path / ".pico" / "sessions" / f"older-{index}.json"
+        session_path.parent.mkdir(parents=True, exist_ok=True)
+        session_path.write_text("{}", encoding="utf-8")
+    agent = build_runtime_agent(
+        tmp_path,
+        [
+            "<final><memory>Project fact for auto dream.</memory></final>",
+            '<tool>{"name":"write_file","args":{"path":".pico/memory/topics/test-topic.md","content":"# Test Topic\\n\\n## Notes\\n- Project fact for auto dream.\\n"}}</tool>',
+            "<final>Dreamed.</final>",
+        ],
+        dream_min_sessions=2,
+        dream_interval_hours=0,
+    )
+
+    assert agent.ask("finish") == "<memory>Project fact for auto dream.</memory>"
+    agent.wait_for_memory_maintenance(timeout=2)
+
+    report = latest_dream_report(tmp_path / ".pico" / "memory")
+    assert report["notes_in_after"] == 1
+    assert report["signal_retained"] == 1
+    assert agent.last_memory_maintenance["auto_dream"]["status"] == "finished"
 
 
 def test_consolidation_lock_can_be_reacquired_after_release(tmp_path):

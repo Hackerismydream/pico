@@ -1787,6 +1787,7 @@ def write_benchmark_core_report(
     memory_artifact_path=DEFAULT_MEMORY_ABLATION_V2_PATH,
     recovery_artifact_path=DEFAULT_RECOVERY_ABLATION_V2_PATH,
     fidelity_artifact_path=DEFAULT_MEMORY_FIDELITY_V1_PATH,
+    dream_artifact_path=DEFAULT_DREAM_QUALITY_V1_PATH,
 ):
     harness = json.loads(_existing_artifact_path(harness_artifact_path).read_text(encoding="utf-8"))
     context = json.loads(_existing_artifact_path(context_artifact_path).read_text(encoding="utf-8"))
@@ -1794,6 +1795,8 @@ def write_benchmark_core_report(
     recovery = json.loads(_existing_artifact_path(recovery_artifact_path).read_text(encoding="utf-8"))
     fidelity_path = _existing_artifact_path(fidelity_artifact_path)
     fidelity = json.loads(fidelity_path.read_text(encoding="utf-8")) if fidelity_path.exists() else None
+    dream_path = _existing_artifact_path(dream_artifact_path)
+    dream = json.loads(dream_path.read_text(encoding="utf-8")) if dream_path.exists() else None
 
     enabled_recovery = recovery["variants"]["resume_enabled"]["summary"]
     lines = [
@@ -1836,6 +1839,19 @@ def write_benchmark_core_report(
                 f"- stale_use_rate：{fidelity_summary.get('stale_use_rate', 0.0):.2%}",
                 f"- poison_quarantine_rate：{fidelity_summary.get('poison_quarantine_rate', 0.0):.2%}",
                 f"- benign_recall_retention_rate：{fidelity_summary.get('benign_recall_retention_rate', 0.0):.2%}",
+                "",
+            ]
+        )
+    if dream:
+        dream_summary = dream["summary"]
+        lines.extend(
+            [
+                "## Dream Quality",
+                f"- signal_retention_rate：{dream_summary['signal_retention_rate']:.2%}",
+                f"- noise_rejection_rate：{dream_summary['noise_rejection_rate']:.2%}",
+                f"- secret_rejection_rate：{dream_summary['secret_rejection_rate']:.2%}",
+                f"- dedupe_rate：{dream_summary['dedupe_rate']:.2%}",
+                f"- relative_date_absolutization_rate：{dream_summary['relative_date_absolutization_rate']:.2%}",
                 "",
             ]
         )

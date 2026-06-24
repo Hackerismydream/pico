@@ -33,6 +33,13 @@
 - poison_quarantine_rate：100.00%
 - benign_recall_retention_rate：100.00%
 
+## Dream Quality
+- signal_retention_rate：100.00%
+- noise_rejection_rate：100.00%
+- secret_rejection_rate：100.00%
+- dedupe_rate：100.00%
+- relative_date_absolutization_rate：100.00%
+
 ## Recovery / Resume Ablation
 - resume_success_rate：90.00%
 - stale_reanchor_rate：100.00%

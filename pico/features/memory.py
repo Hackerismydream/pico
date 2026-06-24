@@ -10,12 +10,13 @@ import json
 import os
 import subprocess
 import threading
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import re
 from pathlib import Path
 
 from ..core.workspace import WorkspaceContext, clip, now
-from .memory_quarantine import should_quarantine
+from .memory_lint import RELATIVE_DATE_PATTERN
+from .memory_quarantine import SECRET_PATTERNS, should_quarantine
 
 WORKING_FILE_LIMIT = 8
 EPISODIC_NOTE_LIMIT = 12
@@ -47,6 +48,7 @@ DURABLE_MEMORY_LINE_PATTERNS = (
     ("user-preferences", re.compile(r"^偏好：\s*(.+)$")),
 )
 SECRET_SHAPED_TEXT_PATTERN = re.compile(r"(?i)(\b(api[_ -]?key|token|secret|password)\b|sk-[A-Za-z0-9_-]{6,})")
+DREAM_NOISE_PATTERN = re.compile(r"(?i)\b(user said hi|assistant acknowledged|acknowledged|hello|said hi)\b")
 
 DURABLE_TOPIC_DEFAULTS = {
     "project-conventions": {
@@ -147,6 +149,128 @@ def _memory_file_snapshot(agent):
 
 def _changed_memory_files(before, after):
     return sorted(path for path in set(before) | set(after) if before.get(path) != after.get(path))
+
+
+def _load_dream_sidecar(path):
+    if not path.exists():
+        return {}
+    rows = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        note_id = str(row.get("note_id", "")).strip()
+        if note_id:
+            rows[note_id] = row
+    return rows
+
+
+def _dream_topic_notes(memory_dir):
+    topics_dir = Path(memory_dir) / "topics"
+    if not topics_dir.exists():
+        return []
+    records = []
+    for topic_path in sorted(topics_dir.glob("*.md")):
+        topic = topic_path.stem
+        sidecar = _load_dream_sidecar(topics_dir / f"{topic}.metadata.jsonl")
+        capture = False
+        for raw in topic_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip()
+            if line == "## Notes":
+                capture = True
+                continue
+            if not capture or not line.startswith("- "):
+                continue
+            text = line[2:].strip()
+            note_id = _note_id_for(topic, text)
+            metadata = dict(sidecar.get(note_id, {}))
+            evidence = metadata.get("evidence") if isinstance(metadata.get("evidence"), dict) else {}
+            records.append(
+                {
+                    "topic": topic,
+                    "text": text,
+                    "note_id": note_id,
+                    "status": str(metadata.get("status", "active") or "active"),
+                    "evidence": dict(evidence),
+                }
+            )
+    return records
+
+
+def _dream_note_active(note):
+    return str(note.get("status", "active") or "active") == "active"
+
+
+def _dream_note_secret(note):
+    text = str(note.get("text", ""))
+    return any(pattern.search(text) for pattern in SECRET_PATTERNS)
+
+
+def _dream_note_noise(note):
+    evidence = note.get("evidence") if isinstance(note.get("evidence"), dict) else {}
+    session_id = str(evidence.get("session_id", "")).strip().lower()
+    return session_id == "noise" or bool(DREAM_NOISE_PATTERN.search(str(note.get("text", ""))))
+
+
+def build_dream_report(before_notes, after_notes):
+    active_after = [note for note in after_notes if _dream_note_active(note)]
+    active_after_texts = [note["text"] for note in active_after]
+    active_after_text_set = set(active_after_texts)
+    after_active_counts = {}
+    for text in active_after_texts:
+        after_active_counts[text] = after_active_counts.get(text, 0) + 1
+
+    before_text_counts = {}
+    for note in before_notes:
+        before_text_counts[note["text"]] = before_text_counts.get(note["text"], 0) + 1
+
+    secrets_rejected = 0
+    for note in before_notes:
+        if _dream_note_secret(note) and (
+            note["text"] not in active_after_text_set
+            or any(
+                after["text"] == note["text"] and str(after.get("status", "")) == "quarantined"
+                for after in after_notes
+            )
+        ):
+            secrets_rejected += 1
+
+    duplicates_merged = 0
+    for text, before_count in before_text_counts.items():
+        if before_count > 1 and after_active_counts.get(text, 0) == 1:
+            duplicates_merged += before_count - 1
+
+    relative_after_present = any(RELATIVE_DATE_PATTERN.search(note["text"]) for note in active_after)
+    relative_dates_absolutized = 0
+    for note in before_notes:
+        if RELATIVE_DATE_PATTERN.search(note["text"]) and note["text"] not in active_after_text_set and not relative_after_present:
+            relative_dates_absolutized += 1
+
+    return {
+        "notes_in_before": len(before_notes),
+        "notes_in_after": len(after_notes),
+        "signal_retained": sum(
+            1
+            for note in active_after
+            if not _dream_note_noise(note) and not _dream_note_secret(note) and not RELATIVE_DATE_PATTERN.search(note["text"])
+        ),
+        "noise_dropped": sum(1 for note in before_notes if _dream_note_noise(note) and note["text"] not in active_after_text_set),
+        "secrets_rejected": secrets_rejected,
+        "duplicates_merged": duplicates_merged,
+        "relative_dates_absolutized": relative_dates_absolutized,
+    }
+
+
+def write_dream_report(memory_dir, report, iso_ts=None):
+    iso_ts = iso_ts or datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    reports_dir = Path(memory_dir) / "dream_reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    path = reports_dir / f"{iso_ts}.json"
+    path.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    return path
 
 
 def _emit_memory_trace(agent, event, payload):
@@ -509,6 +633,7 @@ def run_dream(agent, quiet=False, session_ids=None):
 
     ensure_memory_dir(agent.memory_dir)
     session_ids = list(session_ids or [])
+    before_notes = _dream_topic_notes(agent.memory_dir)
     before_snapshot = _memory_file_snapshot(agent)
     dream_prompt = build_dream_prompt(agent.memory_dir, transcript_dir=str(agent.session_store.root), session_ids=session_ids)
     try:
@@ -532,11 +657,21 @@ def run_dream(agent, quiet=False, session_ids=None):
     dream_agent.refresh_prefix(force=True)
     result = dream_agent.ask(dream_prompt)
     record_consolidation(agent.memory_dir)
+    dream_report = build_dream_report(before_notes, _dream_topic_notes(agent.memory_dir))
+    report_path = write_dream_report(agent.memory_dir, dream_report)
     changed_files = _changed_memory_files(before_snapshot, _memory_file_snapshot(agent))
     agent.last_dream_changed_files = changed_files
+    agent.last_dream_report = dream_report
+    agent.last_dream_report_path = str(report_path)
     agent.session_event_bus.emit(
         "dream_consolidated",
-        {"quiet": bool(quiet), "session_ids": session_ids, "memory_dir": str(agent.memory_dir), "changed_files": changed_files},
+        {
+            "quiet": bool(quiet),
+            "session_ids": session_ids,
+            "memory_dir": str(agent.memory_dir),
+            "changed_files": changed_files,
+            "dream_report_path": str(report_path),
+        },
     )
     agent.memory.state = normalize_memory_state(agent.memory.state, agent.root)
     agent.session["memory"] = agent.memory.to_dict()
