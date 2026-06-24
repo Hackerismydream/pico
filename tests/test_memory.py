@@ -89,6 +89,22 @@ def test_retrieval_view_structured_reports_selected_and_rejected_reasons():
     assert "alpha below limit note" not in memory.retrieval_view("alpha", limit=1)
 
 
+def test_structured_retrieval_rejects_stale_evidence_and_scope_mismatch():
+    memory = LayeredMemory()
+    memory.append_note("alpha valid note", tags=("alpha",), created_at="2026-04-07T10:03:00+00:00")
+    memory.append_note("alpha stale evidence note", tags=("alpha",), created_at="2026-04-07T10:02:00+00:00")
+    memory.append_note("alpha wrong scope note", tags=("alpha",), created_at="2026-04-07T10:01:00+00:00")
+    memory.state["episodic_notes"][1]["stale_evidence"] = True
+    memory.state["episodic_notes"][2]["scope"] = "other-workspace"
+
+    structured = retrieval_view_structured(memory.state, "alpha", limit=3)
+
+    assert [note["text"] for note in structured["selected"]] == ["alpha valid note"]
+    rejected = {note["text"]: note["reject_reason"] for note in structured["rejected"]}
+    assert rejected["alpha stale evidence note"] == "stale_evidence"
+    assert rejected["alpha wrong scope note"] == "scope_mismatch"
+
+
 def test_file_summaries_use_canonical_paths_and_freshness(tmp_path):
     file_path = tmp_path / "sample.txt"
     file_path.write_text("alpha\n", encoding="utf-8")
