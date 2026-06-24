@@ -45,3 +45,24 @@ def test_retrieval_trace_event_records_selected_and_rejected_without_prompt_leak
     assert payload["rejected"][0]["text"] == "alpha note 0"
     assert payload["rejected"][0]["reject_reason"] == "below_limit"
     assert "alpha note 0" not in agent.model_client.prompts[-1]
+
+
+def test_memory_file_read_trace_event_records_memory_paths(tmp_path):
+    agent = build_agent(tmp_path, ["<final>Done.</final>"])
+    topic_dir = tmp_path / ".pico" / "memory" / "topics"
+    topic_dir.mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".pico" / "memory" / "MEMORY.md").write_text(
+        "# Durable Memory Index\n\n- [test-topic](topics/test-topic.md): Test Topic\n",
+        encoding="utf-8",
+    )
+    (topic_dir / "test-topic.md").write_text("# Test Topic\n\n## Notes\n- alpha durable note\n", encoding="utf-8")
+
+    assert agent.ask("alpha") == "Done."
+
+    trace_events = read_jsonl(agent.current_run_dir / "trace.jsonl")
+    file_reads = [event for event in trace_events if event["event"] == "memory.file_read"]
+    assert {event["reason"] for event in file_reads} == {"retrieval"}
+    assert {event["path"] for event in file_reads} >= {
+        ".pico/memory/MEMORY.md",
+        ".pico/memory/topics/test-topic.md",
+    }

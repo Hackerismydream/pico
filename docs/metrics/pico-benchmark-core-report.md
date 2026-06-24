@@ -45,6 +45,9 @@
 - stale_reanchor_rate：100.00%
 - workspace_drift_detection_rate：100.00%
 - resume_false_accept_rate：0.00%
+- resumption_success_rate：100.00%
+- first_action_correctness：100.00%
+- todo_continuity_rate：100.00%
 
 ## 可以安全写进简历的指标
 - avg_full_prompt_chars

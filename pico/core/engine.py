@@ -156,6 +156,8 @@ class Engine:
                         "workspace_fingerprint": memorylib.workspace_fingerprint(agent.root),
                     },
                 )
+            for file_read in memorylib.memory_file_read_payloads(agent.memory_dir, agent.root, reason="retrieval"):
+                agent.emit_trace(task_state, "memory.file_read", file_read)
             if prompt_metadata.get("resume_status") == CHECKPOINT_PARTIAL_STALE_STATUS:
                 checkpoint = agent.create_checkpoint(
                     task_state, user_message, trigger="freshness_mismatch"

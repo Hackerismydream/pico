@@ -131,6 +131,29 @@ def _agent_relative_path(agent, path):
         return str(path)
 
 
+def memory_file_read_payloads(memory_dir, workspace_root=None, reason="retrieval"):
+    memory_dir = Path(memory_dir)
+    paths = []
+    index_path = memory_dir / ENTRYPOINT_NAME
+    if index_path.exists():
+        paths.append(index_path)
+    topics_dir = memory_dir / "topics"
+    if topics_dir.exists():
+        paths.extend(sorted(topics_dir.glob("*.md")))
+    payloads = []
+    for path in paths:
+        try:
+            resolved = path.resolve()
+            if workspace_root is not None:
+                display_path = resolved.relative_to(Path(workspace_root).resolve()).as_posix()
+            else:
+                display_path = resolved.as_posix()
+        except ValueError:
+            display_path = str(path)
+        payloads.append({"path": display_path, "reason": str(reason)})
+    return payloads
+
+
 def _memory_file_snapshot(agent):
     memory_dir = Path(agent.memory_dir)
     if not memory_dir.exists():

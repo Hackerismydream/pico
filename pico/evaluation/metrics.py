@@ -1442,6 +1442,20 @@ class _RecoveryScenarioModelClient(ScriptedModelClient):
         return "<final>missing recovery state.</final>"
 
 
+class _MemoryContinuityModelClient(ScriptedModelClient):
+    def __init__(self):
+        super().__init__([])
+
+    def complete(self, prompt, max_new_tokens, **kwargs):
+        del max_new_tokens, kwargs
+        self.prompts.append(prompt)
+        self.last_completion_metadata = {}
+        prompt_lower = str(prompt).lower()
+        if "continuity fact alpha" in prompt_lower and "ship continuity todo" in prompt_lower:
+            return "<final>First action uses continuity fact alpha and keeps Ship continuity todo open.</final>"
+        return "<final>missing memory continuity.</final>"
+
+
 RECOVERY_ABLATION_TASKS = [
     {
         "id": "checkpoint_resume_goal",
@@ -1502,6 +1516,12 @@ RECOVERY_ABLATION_TASKS = [
         "category": "partial_success_recovery",
         "setup": "partial_success_tool",
         "required_fragments": ["current blocker: tool_failed", "next step: retry after checking the workspace state"],
+    },
+    {
+        "id": "memory_continuity_fact_todo",
+        "category": "memory_continuity",
+        "setup": "memory_continuity",
+        "required_fragments": [],
     },
 ]
 
@@ -1671,7 +1691,81 @@ def _apply_recovery_setup(agent, task, workspace_root):
         agent.session_store.save(agent.session)
 
 
+def _run_memory_continuity_variant(variant):
+    with tempfile.TemporaryDirectory(prefix="pico-memory-continuity-") as temp_dir:
+        workspace_root = Path(temp_dir)
+        (workspace_root / "README.md").write_text("demo\n", encoding="utf-8")
+        workspace = WorkspaceContext.build(workspace_root)
+        store = SessionStore(workspace_root / ".pico" / "sessions")
+        if variant == "resume_enabled":
+            session_one = Pico(
+                model_client=ScriptedModelClient([]),
+                workspace=workspace,
+                session_store=store,
+                approval_policy="auto",
+                auto_dream=False,
+            )
+            session_one.todo_ledger.add("Ship continuity todo", priority="high")
+            session_one.memory.append_note(
+                "Continuity fact alpha applies.",
+                tags=("continuity", "alpha"),
+                source="session-1",
+                kind="episodic",
+            )
+            session_one.memory.promote_durable([("project-conventions", "Continuity fact alpha applies.")])
+            session_one.session["memory"] = session_one.memory.to_dict()
+            store.save(session_one.session)
+            agent = Pico.from_session(
+                _MemoryContinuityModelClient(),
+                workspace,
+                store,
+                session_one.session["id"],
+                approval_policy="auto",
+                max_steps=2,
+            )
+        else:
+            agent = Pico(
+                model_client=_MemoryContinuityModelClient(),
+                workspace=workspace,
+                session_store=store,
+                approval_policy="auto",
+                max_steps=2,
+                auto_dream=False,
+            )
+        final_answer = agent.ask("Resume and state the first action for continuity fact alpha.")
+        trace = [
+            json.loads(line)
+            for line in agent.run_store.trace_path(agent.current_task_state).read_text(encoding="utf-8").splitlines()
+        ]
+        first_actions = [
+            event
+            for event in trace
+            if event.get("event") in {"model_requested", "model_parsed", "tool_started", "tool_executed", "turn_finished"}
+        ][:5]
+        todos = agent.session.get("todos", {}).get("items", [])
+        todo_continued = any(item.get("content") == "Ship continuity todo" and item.get("status") != "done" for item in todos)
+        first_action_correct = "continuity fact alpha" in final_answer.lower()
+        return {
+            "task_id": "memory_continuity_fact_todo",
+            "category": "memory_continuity",
+            "variant": variant,
+            "resume_status": str(agent.last_prompt_metadata.get("resume_status", "")),
+            "resume_succeeded": first_action_correct and todo_continued,
+            "stale_reanchored": False,
+            "workspace_drift_detected": False,
+            "false_accept": False,
+            "final_answer": final_answer,
+            "memory_file_read_in_first_actions": any(event.get("event") == "memory.file_read" for event in first_actions),
+            "resumption_succeeded": variant == "resume_enabled"
+            and not any(event.get("event") == "memory.file_read" for event in first_actions),
+            "first_action_correct": first_action_correct,
+            "todo_continued": todo_continued,
+        }
+
+
 def _run_recovery_task_variant(task, variant):
+    if task["setup"] == "memory_continuity":
+        return _run_memory_continuity_variant(variant)
     with tempfile.TemporaryDirectory(prefix="pico-recovery-ablation-") as temp_dir:
         workspace_root = Path(temp_dir)
         (workspace_root / "README.md").write_text("demo\n", encoding="utf-8")
@@ -1708,14 +1802,23 @@ def _run_recovery_task_variant(task, variant):
 
 def _recovery_variant_summary(rows):
     rows = list(rows)
+    legacy_rows = [row for row in rows if row["category"] != "memory_continuity"]
     stale_rows = [row for row in rows if row["category"] == "partial_stale"]
     drift_rows = [row for row in rows if row["category"] == "workspace_mismatch"]
     invalid_rows = [row for row in rows if row["category"] in {"partial_stale", "workspace_mismatch", "schema_mismatch"}]
+    continuity_rows = [row for row in rows if row["category"] == "memory_continuity"]
     return {
-        "resume_success_rate": _safe_ratio(sum(1 for row in rows if row["resume_succeeded"]), len(rows)),
+        "resume_success_rate": _safe_ratio(sum(1 for row in legacy_rows if row["resume_succeeded"]), len(legacy_rows)),
         "stale_reanchor_rate": _safe_ratio(sum(1 for row in stale_rows if row["stale_reanchored"]), len(stale_rows)),
         "workspace_drift_detection_rate": _safe_ratio(sum(1 for row in drift_rows if row["workspace_drift_detected"]), len(drift_rows)),
         "resume_false_accept_rate": _safe_ratio(sum(1 for row in invalid_rows if row["false_accept"]), len(invalid_rows)),
+        "resumption_success_rate": _safe_ratio(
+            sum(1 for row in continuity_rows if row.get("resumption_succeeded")), len(continuity_rows)
+        ),
+        "first_action_correctness": _safe_ratio(
+            sum(1 for row in continuity_rows if row.get("first_action_correct")), len(continuity_rows)
+        ),
+        "todo_continuity_rate": _safe_ratio(sum(1 for row in continuity_rows if row.get("todo_continued")), len(continuity_rows)),
     }
 
 
@@ -1862,6 +1965,9 @@ def write_benchmark_core_report(
             f"- stale_reanchor_rate：{enabled_recovery['stale_reanchor_rate']:.2%}",
             f"- workspace_drift_detection_rate：{enabled_recovery['workspace_drift_detection_rate']:.2%}",
             f"- resume_false_accept_rate：{enabled_recovery['resume_false_accept_rate']:.2%}",
+            f"- resumption_success_rate：{enabled_recovery.get('resumption_success_rate', 0.0):.2%}",
+            f"- first_action_correctness：{enabled_recovery.get('first_action_correctness', 0.0):.2%}",
+            f"- todo_continuity_rate：{enabled_recovery.get('todo_continuity_rate', 0.0):.2%}",
             "",
             "## 可以安全写进简历的指标",
             "- avg_full_prompt_chars",

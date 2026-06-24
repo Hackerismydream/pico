@@ -146,14 +146,21 @@ def test_run_recovery_ablation_v2_writes_expected_artifact(tmp_path):
 
     assert artifact_path.exists()
     assert artifact["artifact_type"] == "recovery-ablation-v2"
-    assert artifact["task_count"] == 10
+    assert artifact["schema_version"] == 2
+    assert artifact["task_count"] == 11
     assert set(artifact["variants"]) == {"resume_enabled", "resume_disabled"}
     assert set(artifact["variants"]["resume_enabled"]["summary"]) >= {
         "resume_success_rate",
         "stale_reanchor_rate",
         "workspace_drift_detection_rate",
         "resume_false_accept_rate",
+        "resumption_success_rate",
+        "first_action_correctness",
+        "todo_continuity_rate",
     }
+    assert artifact["variants"]["resume_enabled"]["summary"]["resumption_success_rate"] >= 0.8
+    assert artifact["variants"]["resume_enabled"]["summary"]["first_action_correctness"] >= 0.8
+    assert artifact["variants"]["resume_enabled"]["summary"]["todo_continuity_rate"] >= 0.8
 
 
 def test_write_benchmark_core_report_marks_resume_safe_metrics(tmp_path):
@@ -181,6 +188,9 @@ def test_write_benchmark_core_report_marks_resume_safe_metrics(tmp_path):
     assert "可以安全写进简历的指标" in report_text
     assert "只适合放文档/面试展开的指标" in report_text
     assert "resume_success_rate" in report_text
+    assert "resumption_success_rate" in report_text
+    assert "first_action_correctness" in report_text
+    assert "todo_continuity_rate" in report_text
     assert "memory_hit_rate" in report_text
     assert "Context Efficiency Under Follow-up" in report_text
     assert "Memory Fidelity" in report_text
