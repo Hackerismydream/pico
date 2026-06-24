@@ -1742,6 +1742,7 @@ def _run_memory_continuity_variant(variant):
             for event in trace
             if event.get("event") in {"model_requested", "model_parsed", "tool_started", "tool_executed", "turn_finished"}
         ][:5]
+        memory_read_in_first_actions = any(event.get("event") == "memory.file_read" for event in first_actions)
         todos = agent.session.get("todos", {}).get("items", [])
         todo_continued = any(item.get("content") == "Ship continuity todo" and item.get("status") != "done" for item in todos)
         first_action_correct = "continuity fact alpha" in final_answer.lower()
@@ -1755,9 +1756,8 @@ def _run_memory_continuity_variant(variant):
             "workspace_drift_detected": False,
             "false_accept": False,
             "final_answer": final_answer,
-            "memory_file_read_in_first_actions": any(event.get("event") == "memory.file_read" for event in first_actions),
-            "resumption_succeeded": variant == "resume_enabled"
-            and not any(event.get("event") == "memory.file_read" for event in first_actions),
+            "memory_file_read_in_first_actions": memory_read_in_first_actions,
+            "resumption_succeeded": variant == "resume_enabled" and not memory_read_in_first_actions,
             "first_action_correct": first_action_correct,
             "todo_continued": todo_continued,
         }

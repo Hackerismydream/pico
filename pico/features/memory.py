@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import threading
+from collections import Counter
 from datetime import date, datetime, timezone
 import re
 from pathlib import Path
@@ -133,13 +134,8 @@ def _agent_relative_path(agent, path):
 
 def memory_file_read_payloads(memory_dir, workspace_root=None, reason="retrieval"):
     memory_dir = Path(memory_dir)
-    paths = []
     index_path = memory_dir / ENTRYPOINT_NAME
-    if index_path.exists():
-        paths.append(index_path)
-    topics_dir = memory_dir / "topics"
-    if topics_dir.exists():
-        paths.extend(sorted(topics_dir.glob("*.md")))
+    paths = ([index_path] if index_path.exists() else []) + sorted((memory_dir / "topics").glob("*.md"))
     payloads = []
     for path in paths:
         try:
@@ -176,31 +172,15 @@ def _changed_memory_files(before, after):
     return sorted(path for path in set(before) | set(after) if before.get(path) != after.get(path))
 
 
-def _load_dream_sidecar(path):
-    if not path.exists():
-        return {}
-    rows = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        note_id = str(row.get("note_id", "")).strip()
-        if note_id:
-            rows[note_id] = row
-    return rows
-
-
 def _dream_topic_notes(memory_dir):
+    store = DurableMemoryStore(memory_dir)
     topics_dir = Path(memory_dir) / "topics"
     if not topics_dir.exists():
         return []
     records = []
     for topic_path in sorted(topics_dir.glob("*.md")):
         topic = topic_path.stem
-        sidecar = _load_dream_sidecar(topics_dir / f"{topic}.metadata.jsonl")
+        sidecar = store._load_topic_metadata(topic)
         capture = False
         for raw in topic_path.read_text(encoding="utf-8", errors="replace").splitlines():
             line = raw.strip()
@@ -244,23 +224,13 @@ def build_dream_report(before_notes, after_notes):
     active_after = [note for note in after_notes if _dream_note_active(note)]
     active_after_texts = [note["text"] for note in active_after]
     active_after_text_set = set(active_after_texts)
-    after_active_counts = {}
-    for text in active_after_texts:
-        after_active_counts[text] = after_active_counts.get(text, 0) + 1
-
-    before_text_counts = {}
-    for note in before_notes:
-        before_text_counts[note["text"]] = before_text_counts.get(note["text"], 0) + 1
+    after_active_counts = Counter(active_after_texts)
+    before_text_counts = Counter(note["text"] for note in before_notes)
+    quarantined_after_texts = {note["text"] for note in after_notes if str(note.get("status", "")) == "quarantined"}
 
     secrets_rejected = 0
     for note in before_notes:
-        if _dream_note_secret(note) and (
-            note["text"] not in active_after_text_set
-            or any(
-                after["text"] == note["text"] and str(after.get("status", "")) == "quarantined"
-                for after in after_notes
-            )
-        ):
+        if _dream_note_secret(note) and (note["text"] not in active_after_text_set or note["text"] in quarantined_after_texts):
             secrets_rejected += 1
 
     duplicates_merged = 0
