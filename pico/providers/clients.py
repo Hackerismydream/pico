@@ -164,7 +164,12 @@ def _extract_anthropic_usage_cache_details(data):
     usage = data.get("usage") or {}
     input_tokens = usage.get("input_tokens")
     output_tokens = usage.get("output_tokens")
-    cached_tokens = int(usage.get("cache_read_input_tokens") or 0)
+    input_details = usage.get("input_tokens_details") or usage.get("prompt_tokens_details") or {}
+    cached_tokens = int(
+        usage.get("cache_read_input_tokens")
+        or input_details.get("cached_tokens")
+        or 0
+    )
     return {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,

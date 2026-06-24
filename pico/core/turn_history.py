@@ -10,8 +10,15 @@ from collections import OrderedDict
 
 from .context_replacements import ReplacementLedger
 from .context_retention import ContextRetentionPolicy, RetentionContext
+from .media_history import render_media_refs
 
 HistoryRetentionContext = RetentionContext
+
+PRESSURE_LIMITS = {
+    "tier1_snip": (2, 60),
+    "tier2_prune": (2, 40),
+    "tier3_summary": (1, 20),
+}
 
 
 def tail_clip(text, limit):
@@ -52,12 +59,14 @@ class TurnHistoryBuilder:
             return "Transcript:\n- empty"
         return "\n".join(["Transcript:", *self._render_turn_lines(history, line_limit=2000)])
 
-    def render_section(self, budget):
+    def render_section(self, budget, pressure=None):
         history = list(getattr(self.agent, "session", {}).get("history", []))
         raw = self.raw_text(history)
         if not history:
             return raw, {
                 "rendered_entries": [],
+                "recent_window": 0,
+                "old_turn_line_limit": 80,
                 "older_entries_count": 0,
                 "collapsed_duplicate_reads": 0,
                 "reused_file_summary_count": 0,
@@ -66,9 +75,9 @@ class TurnHistoryBuilder:
             }
 
         turns = self._group_turns(history)
-        recent_window = 3
+        recent_window, old_turn_line_limit = self._pressure_limits(pressure)
         recent_turns = set(list(turns)[-recent_window:])
-        entries, details = self._compressed_turn_entries(turns, recent_turns)
+        entries, details = self._compressed_turn_entries(turns, recent_turns, old_turn_line_limit)
         rendered_entries = []
         for entry in reversed(entries):
             candidate = entry["lines"] + rendered_entries
@@ -94,7 +103,7 @@ class TurnHistoryBuilder:
             turns.setdefault(turn_id, []).append(item)
         return turns
 
-    def _compressed_turn_entries(self, turns, recent_turns):
+    def _compressed_turn_entries(self, turns, recent_turns, old_turn_line_limit=80):
         entries = []
         seen_older_reads = set()
         history_items = [item for items in turns.values() for item in items]
@@ -112,6 +121,7 @@ class TurnHistoryBuilder:
         ledger = ReplacementLedger.from_session(getattr(self.agent, "session", {}))
         details = {
             "recent_window": len(recent_turns),
+            "old_turn_line_limit": old_turn_line_limit,
             "older_entries_count": 0,
             "collapsed_duplicate_reads": 0,
             "reused_file_summary_count": 0,
@@ -161,11 +171,18 @@ class TurnHistoryBuilder:
                     lines.append(summary)
                     self._record_stub_metadata(item, summary, details)
                     continue
-                lines.extend(self._render_item(item, 900 if recent else 80))
+                lines.extend(self._render_item(item, 900 if recent else old_turn_line_limit))
             if not recent:
                 details["older_entries_count"] += 1
             entries.append({"turn_id": turn_id, "lines": lines})
         return entries, details
+
+    def _pressure_limits(self, pressure):
+        tier = (
+            str(getattr(pressure, "tier", "") or "")
+            or str(getattr(pressure, "pressure_tier", "") or "tier0_observe")
+        )
+        return PRESSURE_LIMITS.get(tier, (3, 80))
 
     def _render_turn_lines(self, history, line_limit):
         lines = []
@@ -180,6 +197,9 @@ class TurnHistoryBuilder:
             return str(item.get("content", "")).splitlines()
         if item.get("role") == "tool":
             prefix = f"[tool:{item.get('name', '')}] {json.dumps(item.get('args', {}), sort_keys=True)}"
+            if item.get("media_refs"):
+                content = tail_clip(item.get("content", ""), max(20, line_limit))
+                return [prefix, *render_media_refs(item), content]
             content = tail_clip(item.get("content", ""), max(20, line_limit))
             return [prefix, content]
         return [f"[{item.get('role', '')}] {tail_clip(item.get('content', ''), line_limit)}"]
@@ -193,6 +213,9 @@ class TurnHistoryBuilder:
 
     def _summarize_old_tool_item(self, item):
         artifact_ref = str(item.get("artifact_ref", "")).strip()
+        if item.get("media_refs"):
+            refs = render_media_refs(item)
+            return " | ".join(refs) if refs else f"{item.get('name', 'tool')} media output"
         if artifact_ref:
             original_chars = int(item.get("original_chars", 0) or 0)
             return (

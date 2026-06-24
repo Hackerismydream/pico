@@ -105,6 +105,8 @@ def test_context_report_builder_matches_existing_metadata_contract():
             "raw_chars": 11,
             "rendered_chars": 16,
             "older_entries_count": 2,
+            "recent_window": 0,
+            "old_turn_line_limit": 0,
             "collapsed_duplicate_reads": 1,
             "reused_file_summary_count": 1,
             "summarized_tool_count": 3,

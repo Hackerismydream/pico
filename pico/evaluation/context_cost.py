@@ -370,6 +370,12 @@ def render_markdown_report(payload):
     actual = dict(summary.get("actual_only", {}) or {})
     proxy = dict(summary.get("estimated_proxy_only", {}) or {})
     mixed = dict(summary.get("mixed_or_invalid", {}) or {})
+    benefit = actual if actual.get("paired_task_count", 0) else proxy
+    baseline = float(benefit.get("total_input_tokens_per_task_control", 0) or 0)
+    optimized = float(benefit.get("total_input_tokens_per_task_treatment", 0) or 0)
+    compact_call_tokens = float(benefit.get("compact_call_tokens_per_task", 0) or 0)
+    net_saved = baseline - optimized - compact_call_tokens
+    net_pct = (net_saved / baseline) if baseline else 0.0
     return "\n".join(
         [
             "# Context Cost Experiment",
@@ -402,6 +408,17 @@ def render_markdown_report(payload):
             f"- Input $/1M: {pricing.get('input_per_1m', '-')}",
             f"- Cached input $/1M: {pricing.get('cached_input_per_1m', '-')}",
             f"- Output $/1M: {pricing.get('output_per_1m', '-')}",
+            "",
+            "## Net Benefit",
+            "",
+            "- Formula: net_saved = baseline_input_tokens - optimized_input_tokens - compact_call_tokens",
+            f"- compact_call_tokens: {compact_call_tokens:g}",
+            f"- Baseline avg input tokens/task: {baseline:.2f}",
+            f"- Optimized avg input tokens/task: {optimized:.2f}",
+            f"- Net saved input tokens/task: {net_saved:.2f}",
+            f"- Net saved percentage: {net_pct:.2%}",
+            f"- Quality regression count: {benefit.get('quality_regression_count', 0)}",
+            f"- Claimable cost win: {benefit.get('claimable_cost_win', False)}",
             "",
             "## Interpretation Rules",
             "",

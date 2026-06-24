@@ -190,3 +190,79 @@ def test_auto_over_budget_no_delta_records_no_summary_call(tmp_path):
     assert summary["no_op_reason"]
     assert agent.last_prompt_metadata["auto_compacted"] is False
     assert agent.session["history"][: len(before)] == before
+
+
+def test_deterministic_compact_preserves_early_user_constraints(tmp_path):
+    agent = build_agent(tmp_path)
+    agent.record({"role": "user", "content": "修 compact，但是不要改公共 API。"})
+    agent.record({"role": "assistant", "content": "收到。"})
+    for index in range(4):
+        add_turn(agent, index)
+
+    agent.compact_history(trigger="manual", keep_recent_turns=1)
+
+    summary = agent.session["history"][0]["content"]
+    assert "- User constraints:" in summary
+    assert "不要改公共 API" in summary
+
+
+def test_deterministic_compact_empty_evidence_fields_render_dash(tmp_path):
+    agent = build_agent(tmp_path)
+    for index in range(4):
+        add_turn(agent, index)
+
+    agent.compact_history(trigger="manual", keep_recent_turns=1)
+
+    summary = agent.session["history"][0]["content"]
+    assert "- User constraints: -" in summary
+    assert "- Key decisions: -" in summary
+    assert "- Rejected paths: -" in summary
+    assert "- Last error context: -" in summary
+    assert "- Critical artifacts: -" in summary
+
+
+def test_deterministic_compact_extracts_mixed_language_evidence(tmp_path):
+    agent = build_agent(tmp_path)
+    agent.record(
+        {
+            "role": "user",
+            "content": "Please keep CLI stable. 不要改公共 API。Only change compact.py.",
+        }
+    )
+    agent.record(
+        {
+            "role": "assistant",
+            "content": "Decided to use rules because deterministic. Tried LLM but doesn't work.",
+        }
+    )
+    agent.record(
+        {
+            "role": "tool",
+            "name": "read_file",
+            "args": {"path": "pico/core/compact.py"},
+            "content": "class CompactManager: ...",
+            "artifact_ref": "artifact://read/compact",
+        }
+    )
+    agent.record(
+        {
+            "role": "tool",
+            "name": "run_shell",
+            "args": {"command": "uv run pytest tests/test_compact.py"},
+            "content": "FAILED tests/test_compact.py::test_x - KeyError: input_tokens",
+        }
+    )
+    for index in range(4):
+        add_turn(agent, index)
+
+    agent.compact_history(trigger="manual", keep_recent_turns=1)
+
+    summary = agent.session["history"][0]["content"]
+    assert "Please keep CLI stable" in summary
+    assert "不要改公共 API" in summary
+    assert "Only change compact.py" in summary
+    assert "Decided to use rules because deterministic" in summary
+    assert "Tried LLM but doesn't work" in summary
+    assert "KeyError: input_tokens" in summary
+    assert "pico/core/compact.py" in summary
+    assert "artifact://read/compact" in summary

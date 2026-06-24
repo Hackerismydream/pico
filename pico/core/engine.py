@@ -6,15 +6,18 @@ one user request into model calls, tool executions, and user-visible events.
 
 import time
 
+from ..features import memory as memorylib
 from ..providers.base import complete_model
-from .context_replacements import commit_proposed_replacements
-from .model_errors import finish_model_error
-from .engine_helpers import (
-    execute_tool_payload,
+from .completion_governance import (
     final_readiness_action,
     finish_limited_run,
     finish_stopped_run,
     finish_successful_run,
+)
+from .context_replacements import commit_proposed_replacements
+from .model_errors import finish_model_error
+from .engine_helpers import (
+    execute_tool_payload,
     request_step_limit_summary,
     should_retry_model_error,
 )
@@ -144,6 +147,20 @@ class Engine:
                     "duration_ms": int((time.monotonic() - prompt_started_at) * 1000),
                 },
             )
+            structured_memory = getattr(getattr(agent, "memory", None), "last_retrieval", None)
+            if structured_memory is not None:
+                agent.emit_trace(
+                    task_state,
+                    "memory.retrieval",
+                    {
+                        "query_hash": structured_memory.get("query_hash", ""),
+                        "selected": list(structured_memory.get("selected", [])),
+                        "rejected": list(structured_memory.get("rejected", [])),
+                        "workspace_fingerprint": memorylib.workspace_fingerprint(agent.root),
+                    },
+                )
+            for file_read in memorylib.memory_file_read_payloads(agent.memory_dir, agent.root, reason="retrieval"):
+                agent.emit_trace(task_state, "memory.file_read", file_read)
             if prompt_metadata.get("resume_status") == CHECKPOINT_PARTIAL_STALE_STATUS:
                 checkpoint = agent.create_checkpoint(
                     task_state, user_message, trigger="freshness_mismatch"
@@ -394,7 +411,7 @@ class Engine:
                 emit_continue_transition(agent, task_state, CONTINUE_PLAN_NOTICE)
                 continue
 
-            readiness_action, notice = final_readiness_action(self, task_state)
+            readiness_action, notice = final_readiness_action(self, task_state, final)
             if readiness_action == "runtime_notice":
                 yield {
                     "type": "runtime_notice",

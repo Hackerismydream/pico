@@ -5,14 +5,31 @@ import hashlib
 from ..providers.errors import sanitize_url
 from .context_pressure import ContextPressureController
 
-
 DEFAULT_CONTEXT_WINDOW = 200_000
-TOKEN_ESTIMATION_METHOD = "chars_div_4"
-
+TOKEN_ESTIMATION_METHOD = "typed_content_heuristic_v1"
 
 def estimate_tokens(chars):
     return max(0, (int(chars) + 3) // 4)
 
+def detect_content_type(text: str) -> str:
+    if not text:
+        return "mixed"
+    sample = str(text)[:2000]
+    cjk_count = sum(1 for ch in sample if "\u4e00" <= ch <= "\u9fff")
+    if sample and cjk_count > len(sample) * 0.3:
+        return "cjk_heavy"
+    code_indicators = sample.count("{") + sample.count("}") + sample.count("/")
+    if sample and code_indicators > len(sample) * 0.05:
+        return "code"
+    return "mixed"
+
+def estimate_tokens_typed(text: str, content_type: str = "mixed") -> int:
+    chars = len(str(text))
+    if content_type == "code":
+        return max(0, (chars * 10 + 31) // 32)
+    if content_type == "cjk_heavy":
+        return max(0, (chars * 10 + 17) // 18)
+    return estimate_tokens(chars)
 
 class ContextUsageAnalyzer:
     def __init__(self, agent):
@@ -23,17 +40,14 @@ class ContextUsageAnalyzer:
         sections = {}
         for name, section in rendered.items():
             key = "current_request" if name == "current_request" else name
+            text = str(section.rendered)
             chars = int(section.rendered_chars)
+            tokens = estimate_tokens_typed(text, detect_content_type(text))
             if key == "prefix":
                 chars = max(0, chars - tools_chars)
-            sections[key] = {
-                "chars": chars,
-                "tokens": estimate_tokens(chars),
-            }
-        sections["tools"] = {
-            "chars": tools_chars,
-            "tokens": estimate_tokens(tools_chars),
-        }
+                tokens = max(0, tokens - estimate_tokens(tools_chars))
+            sections[key] = {"chars": chars, "tokens": tokens}
+        sections["tools"] = {"chars": tools_chars, "tokens": estimate_tokens(tools_chars)}
         total = sum(section["tokens"] for section in sections.values())
         window = self._context_window()
         reserved = int(getattr(self.agent, "max_new_tokens", 0) or 0)
@@ -68,11 +82,9 @@ class ContextUsageAnalyzer:
 
     def _context_window(self):
         client_window = int(getattr(getattr(self.agent, "model_client", None), "context_window", 0) or 0)
-        if client_window:
-            return client_window
+        if client_window: return client_window
         model = str(getattr(getattr(self.agent, "model_client", None), "model", "")).lower()
-        if "1m" in model or "1000000" in model:
-            return 1_000_000
+        if "1m" in model or "1000000" in model: return 1_000_000
         return DEFAULT_CONTEXT_WINDOW
 
     def _tools_chars(self):
@@ -98,13 +110,11 @@ class ContextUsageAnalyzer:
         metadata = dict(getattr(self.agent, "last_prompt_metadata", {}) or {})
         usage = dict(metadata.get("context_usage", {}) or {})
         identity = dict(usage.get("current_identity", {}) or {})
-        if not identity:
-            identity = {
-                "provider": usage.get("provider") or metadata.get("provider"),
-                "provider_base_url": usage.get("provider_base_url") or metadata.get("provider_base_url"),
-                "model": usage.get("model") or metadata.get("model"),
-                "context_window": usage.get("context_window"),
-                "prompt_cache_key": metadata.get("prompt_cache_key"),
-                "prompt_hash": metadata.get("prompt_hash") or usage.get("prompt_hash"),
-            }
-        return identity
+        return identity or {
+            "provider": usage.get("provider") or metadata.get("provider"),
+            "provider_base_url": usage.get("provider_base_url") or metadata.get("provider_base_url"),
+            "model": usage.get("model") or metadata.get("model"),
+            "context_window": usage.get("context_window"),
+            "prompt_cache_key": metadata.get("prompt_cache_key"),
+            "prompt_hash": metadata.get("prompt_hash") or usage.get("prompt_hash"),
+        }

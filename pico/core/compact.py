@@ -3,6 +3,7 @@
 from dataclasses import asdict, dataclass
 
 from .context_handoff import HandoffAdapter, render_delta_for_handoff, render_handoff_summary
+from .compact_summary import summarize_compact_items
 from .context_usage import estimate_tokens
 from .workspace import now
 
@@ -155,11 +156,11 @@ class CompactManager:
 
     def _compact_summary_text(self, delta_items, prior_text, summary_mode):
         if summary_mode != "llm":
-            return self._summary_text(delta_items, prior_text=prior_text), "deterministic", None
+            return summarize_compact_items(delta_items, prior_text=prior_text), "deterministic", None
         adapter = HandoffAdapter(self.agent.model_client)
         handoff = adapter.generate(render_delta_for_handoff(delta_items), prior_text)
         if handoff is None:
-            return self._summary_text(delta_items, prior_text=prior_text), "deterministic_fallback", adapter.last_usage
+            return summarize_compact_items(delta_items, prior_text=prior_text), "deterministic_fallback", adapter.last_usage
         return render_handoff_summary(handoff), "llm", adapter.last_usage
 
     def _summary(
@@ -212,37 +213,3 @@ class CompactManager:
         persisted = dict(summary)
         persisted.pop("compact_call_usage", None)
         return persisted
-
-    def _summary_text(self, items, prior_text=""):
-        files_read = []
-        files_modified = []
-        user_requests = []
-        assistant_notes = []
-        for item in items:
-            if item.get("role") == "user":
-                user_requests.append(str(item.get("content", "")).strip())
-            elif item.get("role") == "assistant":
-                assistant_notes.append(str(item.get("content", "")).strip())
-            elif item.get("role") == "tool":
-                path = str(item.get("args", {}).get("path", "")).strip()
-                if item.get("name") == "read_file" and path:
-                    files_read.append(path)
-                if item.get("name") in {"write_file", "patch_file"} and path:
-                    files_modified.append(path)
-        summary = "\n".join(
-            [
-                "Compacted session summary:",
-                f"- Goal: {user_requests[-1] if user_requests else '-'}",
-                "- Constraints and preferences: -",
-                f"- Files read: {', '.join(sorted(set(files_read))) or '-'}",
-                f"- Files modified: {', '.join(sorted(set(files_modified))) or '-'}",
-                f"- Key decisions: {assistant_notes[-1] if assistant_notes else '-'}",
-                f"- Current progress: compacted {len(items)} history items",
-                "- Open blockers: -",
-                "- Next step: continue from the latest preserved turn",
-                "- Critical context: earlier turns were compacted; use preserved latest turns for exact wording",
-            ]
-        )
-        if prior_text:
-            return prior_text + "\n\nIncremental compacted delta:\n" + "\n".join(summary.splitlines()[1:])
-        return summary

@@ -79,6 +79,8 @@ class ContextReportBuilder:
             "raw_chars": history.raw_chars,
             "rendered_chars": history.rendered_chars,
             "older_entries_count": int(details.get("older_entries_count", 0)),
+            "recent_window": int(details.get("recent_window", 0)),
+            "old_turn_line_limit": int(details.get("old_turn_line_limit", 0)),
             "collapsed_duplicate_reads": int(details.get("collapsed_duplicate_reads", 0)),
             "reused_file_summary_count": int(details.get("reused_file_summary_count", 0)),
             "summarized_tool_count": int(details.get("summarized_tool_count", 0)),

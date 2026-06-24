@@ -21,6 +21,7 @@ from .context_manager import ContextManager
 from .context_orchestrator import ContextOrchestrator
 from .engine import Engine
 from . import model_output, tool_executor
+from .model_router import ModelClientRouter
 from .plan_mode import PlanModeController
 from .permissions import PermissionChecker
 from .run_store import RunStore
@@ -54,19 +55,13 @@ DEFAULT_SHELL_ENV_ALLOWLIST = (
     "TEMP",
     "USER",
 )
-DEFAULT_FEATURE_FLAGS = {
-    "memory": True,
-    "relevant_memory": True,
-    "context_reduction": True,
-    "prompt_cache": True,
-}
+DEFAULT_FEATURE_FLAGS = dict(memory=True, relevant_memory=True, context_reduction=True, prompt_cache=True)
 CHECKPOINT_SCHEMA_VERSION = "phase1-v1"
 CHECKPOINT_NONE_STATUS = "no-checkpoint"
 CHECKPOINT_FULL_VALID_STATUS = "full-valid"
 CHECKPOINT_PARTIAL_STALE_STATUS = "partial-stale"
 CHECKPOINT_WORKSPACE_MISMATCH_STATUS = "workspace-mismatch"
 CHECKPOINT_SCHEMA_MISMATCH_STATUS = "schema-mismatch"
-
 
 @dataclass
 class PromptPrefix:
@@ -102,13 +97,16 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         dream_interval_hours=24.0,
         dream_min_sessions=5,
         model_client_factory=None,
+        model_client_router=None,
         sandbox_config=None,
         ask_user_callback=None,
         allowed_tools=None,
         final_readiness_mode="warn",
+        before_final_hooks=None,
     ):
         self.model_client = model_client
         self.model_client_factory = model_client_factory
+        self.model_client_router = model_client_router or ModelClientRouter(model_client)
         self.abort_requested = False
         self.ask_user_callback = ask_user_callback
         self.sandbox_config = sandbox_config or SandboxConfig()
@@ -148,6 +146,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.dream_min_sessions = int(dream_min_sessions)
         self.allowed_tools = self._normalize_allowed_tools(allowed_tools)
         self.final_readiness_mode = str(final_readiness_mode or "warn")
+        self.before_final_hooks = tuple(before_final_hooks or ())
         self.run_store = run_store or RunStore(
             Path(workspace.repo_root) / ".pico" / "runs"
         )
@@ -218,6 +217,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.last_dream_changed_files = []
         self._memory_maintenance_thread = None
         self._last_tool_result_metadata = {}
+        self._pending_tool_result_metadata = {}
         self._last_prefix_refresh = {
             "workspace_changed": False,
             "prefix_changed": False,
@@ -488,7 +488,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
 
             Rules:
             - Use tools instead of guessing about the workspace.
-            - Return exactly one <tool>...</tool> or one <final>...</final>.
+            - Return one or more <tool>...</tool> calls, or one <final>...</final>.
             - Tool calls must look like:
               <tool>{{"name":"tool_name","args":{{...}}}}</tool>
             - For write_file and patch_file with multi-line text, prefer XML style:
@@ -497,7 +497,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
               <final>your answer</final>
             - Never invent tool results.
             - Keep answers concise and concrete.
-            - If the user asks you to create or update a specific file and the path is clear, use write_file or patch_file instead of repeatedly listing files.
+            - If the path is clear, write or patch directly; for multi-file deliverables, batch related writes in one response or one shell script and do not read back files you just wrote.
             - Before writing tests for existing code, read the implementation first.
             - When writing tests, match the current implementation unless the user explicitly asked you to change the code.
             - New files should be complete and runnable, including obvious imports.

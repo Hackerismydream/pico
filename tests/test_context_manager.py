@@ -69,6 +69,7 @@ def test_context_manager_build_delegates_metadata_to_report_builder(tmp_path, mo
         "skills",
         "current_request",
         "context_usage",
+        "pressure",
     ]
 
 

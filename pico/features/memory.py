@@ -8,12 +8,16 @@ session history 负责保存完整事件流；这个模块只保存更小的一�
 import hashlib
 import json
 import os
+import subprocess
 import threading
-from datetime import date, datetime
+from collections import Counter
+from datetime import date, datetime, timezone
 import re
 from pathlib import Path
 
 from ..core.workspace import WorkspaceContext, clip, now
+from .memory_lint import RELATIVE_DATE_PATTERN
+from .memory_quarantine import SECRET_PATTERNS, should_quarantine
 
 WORKING_FILE_LIMIT = 8
 EPISODIC_NOTE_LIMIT = 12
@@ -28,6 +32,8 @@ HOLDER_STALE_S = 3600
 DREAM_SESSION_CAP = 30
 # dream 任务需要更多输出 token（要写多个 topic 文件 + 更新索引）。
 DREAM_MIN_NEW_TOKENS = 4096
+_WORKSPACE_FINGERPRINT_CACHE = {}
+MAX_ANCHOR_HASH_BYTES = 10 * 1024 * 1024
 
 DURABLE_MEMORY_INTENT_PATTERN = re.compile(r"(?i)\b(capture|remember|save|store|persist|note)\b")
 DURABLE_MEMORY_INTENT_ZH_PATTERN = re.compile(r"(记住|保存|记录|沉淀|长期记忆|持久记忆)")
@@ -43,6 +49,7 @@ DURABLE_MEMORY_LINE_PATTERNS = (
     ("user-preferences", re.compile(r"^偏好：\s*(.+)$")),
 )
 SECRET_SHAPED_TEXT_PATTERN = re.compile(r"(?i)(\b(api[_ -]?key|token|secret|password)\b|sk-[A-Za-z0-9_-]{6,})")
+DREAM_NOISE_PATTERN = re.compile(r"(?i)\b(user said hi|assistant acknowledged|acknowledged|hello|said hi)\b")
 
 DURABLE_TOPIC_DEFAULTS = {
     "project-conventions": {
@@ -125,6 +132,24 @@ def _agent_relative_path(agent, path):
         return str(path)
 
 
+def memory_file_read_payloads(memory_dir, workspace_root=None, reason="retrieval"):
+    memory_dir = Path(memory_dir)
+    index_path = memory_dir / ENTRYPOINT_NAME
+    paths = ([index_path] if index_path.exists() else []) + sorted((memory_dir / "topics").glob("*.md"))
+    payloads = []
+    for path in paths:
+        try:
+            resolved = path.resolve()
+            if workspace_root is not None:
+                display_path = resolved.relative_to(Path(workspace_root).resolve()).as_posix()
+            else:
+                display_path = resolved.as_posix()
+        except ValueError:
+            display_path = str(path)
+        payloads.append({"path": display_path, "reason": str(reason)})
+    return payloads
+
+
 def _memory_file_snapshot(agent):
     memory_dir = Path(agent.memory_dir)
     if not memory_dir.exists():
@@ -132,6 +157,8 @@ def _memory_file_snapshot(agent):
     snapshot = {}
     for path in memory_dir.rglob("*"):
         if not path.is_file() or path.name == LOCK_FILE_NAME:
+            continue
+        if "dream_reports" in path.relative_to(memory_dir).parts:
             continue
         relative = _agent_relative_path(agent, path)
         try:
@@ -143,6 +170,102 @@ def _memory_file_snapshot(agent):
 
 def _changed_memory_files(before, after):
     return sorted(path for path in set(before) | set(after) if before.get(path) != after.get(path))
+
+
+def _dream_topic_notes(memory_dir):
+    store = DurableMemoryStore(memory_dir)
+    topics_dir = Path(memory_dir) / "topics"
+    if not topics_dir.exists():
+        return []
+    records = []
+    for topic_path in sorted(topics_dir.glob("*.md")):
+        topic = topic_path.stem
+        sidecar = store._load_topic_metadata(topic)
+        capture = False
+        for raw in topic_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip()
+            if line == "## Notes":
+                capture = True
+                continue
+            if not capture or not line.startswith("- "):
+                continue
+            text = line[2:].strip()
+            note_id = _note_id_for(topic, text)
+            metadata = dict(sidecar.get(note_id, {}))
+            evidence = metadata.get("evidence") if isinstance(metadata.get("evidence"), dict) else {}
+            records.append(
+                {
+                    "topic": topic,
+                    "text": text,
+                    "note_id": note_id,
+                    "status": str(metadata.get("status", "active") or "active"),
+                    "evidence": dict(evidence),
+                }
+            )
+    return records
+
+
+def _dream_note_active(note):
+    return str(note.get("status", "active") or "active") == "active"
+
+
+def _dream_note_secret(note):
+    text = str(note.get("text", ""))
+    return any(pattern.search(text) for pattern in SECRET_PATTERNS)
+
+
+def _dream_note_noise(note):
+    evidence = note.get("evidence") if isinstance(note.get("evidence"), dict) else {}
+    session_id = str(evidence.get("session_id", "")).strip().lower()
+    return session_id == "noise" or bool(DREAM_NOISE_PATTERN.search(str(note.get("text", ""))))
+
+
+def build_dream_report(before_notes, after_notes):
+    active_after = [note for note in after_notes if _dream_note_active(note)]
+    active_after_texts = [note["text"] for note in active_after]
+    active_after_text_set = set(active_after_texts)
+    after_active_counts = Counter(active_after_texts)
+    before_text_counts = Counter(note["text"] for note in before_notes)
+    quarantined_after_texts = {note["text"] for note in after_notes if str(note.get("status", "")) == "quarantined"}
+
+    secrets_rejected = 0
+    for note in before_notes:
+        if _dream_note_secret(note) and (note["text"] not in active_after_text_set or note["text"] in quarantined_after_texts):
+            secrets_rejected += 1
+
+    duplicates_merged = 0
+    for text, before_count in before_text_counts.items():
+        if before_count > 1 and after_active_counts.get(text, 0) == 1:
+            duplicates_merged += before_count - 1
+
+    relative_after_present = any(RELATIVE_DATE_PATTERN.search(note["text"]) for note in active_after)
+    relative_dates_absolutized = 0
+    for note in before_notes:
+        if RELATIVE_DATE_PATTERN.search(note["text"]) and note["text"] not in active_after_text_set and not relative_after_present:
+            relative_dates_absolutized += 1
+
+    return {
+        "notes_in_before": len(before_notes),
+        "notes_in_after": len(after_notes),
+        "signal_retained": sum(
+            1
+            for note in active_after
+            if not _dream_note_noise(note) and not _dream_note_secret(note) and not RELATIVE_DATE_PATTERN.search(note["text"])
+        ),
+        "noise_dropped": sum(1 for note in before_notes if _dream_note_noise(note) and note["text"] not in active_after_text_set),
+        "secrets_rejected": secrets_rejected,
+        "duplicates_merged": duplicates_merged,
+        "relative_dates_absolutized": relative_dates_absolutized,
+    }
+
+
+def write_dream_report(memory_dir, report, iso_ts=None):
+    iso_ts = iso_ts or datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    reports_dir = Path(memory_dir) / "dream_reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    path = reports_dir / f"{iso_ts}.json"
+    path.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    return path
 
 
 def _emit_memory_trace(agent, event, payload):
@@ -505,6 +628,7 @@ def run_dream(agent, quiet=False, session_ids=None):
 
     ensure_memory_dir(agent.memory_dir)
     session_ids = list(session_ids or [])
+    before_notes = _dream_topic_notes(agent.memory_dir)
     before_snapshot = _memory_file_snapshot(agent)
     dream_prompt = build_dream_prompt(agent.memory_dir, transcript_dir=str(agent.session_store.root), session_ids=session_ids)
     try:
@@ -528,11 +652,21 @@ def run_dream(agent, quiet=False, session_ids=None):
     dream_agent.refresh_prefix(force=True)
     result = dream_agent.ask(dream_prompt)
     record_consolidation(agent.memory_dir)
+    dream_report = build_dream_report(before_notes, _dream_topic_notes(agent.memory_dir))
+    report_path = write_dream_report(agent.memory_dir, dream_report)
     changed_files = _changed_memory_files(before_snapshot, _memory_file_snapshot(agent))
     agent.last_dream_changed_files = changed_files
+    agent.last_dream_report = dream_report
+    agent.last_dream_report_path = str(report_path)
     agent.session_event_bus.emit(
         "dream_consolidated",
-        {"quiet": bool(quiet), "session_ids": session_ids, "memory_dir": str(agent.memory_dir), "changed_files": changed_files},
+        {
+            "quiet": bool(quiet),
+            "session_ids": session_ids,
+            "memory_dir": str(agent.memory_dir),
+            "changed_files": changed_files,
+            "dream_report_path": str(report_path),
+        },
     )
     agent.memory.state = normalize_memory_state(agent.memory.state, agent.root)
     agent.session["memory"] = agent.memory.to_dict()
@@ -629,6 +763,12 @@ class DurableMemoryStore:
         self.index_path = self.root / "MEMORY.md"
         self.topics_dir = self.root / "topics"
 
+    def _topic_path(self, topic):
+        return self.topics_dir / f"{topic}.md"
+
+    def _metadata_path(self, topic):
+        return self.topics_dir / f"{topic}.metadata.jsonl"
+
     def topic_slugs(self):
         return [topic["topic"] for topic in self.load_index()]
 
@@ -661,11 +801,72 @@ class DurableMemoryStore:
                 current["tags"] = [tag.strip() for tag in tags_match.group(1).split(",") if tag.strip()]
         return topics
 
+    def _load_topic_metadata(self, topic):
+        path = self._metadata_path(topic)
+        if not path.exists():
+            return {}
+        rows = {}
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            note_id = str(row.get("note_id", "")).strip()
+            if note_id:
+                rows[note_id] = row
+        return rows
+
+    def _write_topic_metadata(self, topic, rows):
+        path = self._metadata_path(topic)
+        self.topics_dir.mkdir(parents=True, exist_ok=True)
+        ordered = sorted(rows.values(), key=lambda row: str(row.get("note_id", "")))
+        lines = [json.dumps(row, ensure_ascii=False, sort_keys=True) for row in ordered]
+        path.write_text("\n".join(lines).rstrip() + ("\n" if lines else ""), encoding="utf-8")
+
+    def _default_note_metadata(self, topic, note_text, topic_path=None):
+        topic_path = Path(topic_path) if topic_path is not None else self._topic_path(topic)
+        created_at = datetime.fromtimestamp(topic_path.stat().st_mtime).astimezone().isoformat() if topic_path.exists() else now()
+        return {
+            "note_id": _note_id_for(topic, note_text),
+            "status": "active",
+            "supersedes": None,
+            "evidence": {
+                "session_id": "legacy",
+                "source_path": None,
+                "created_at": created_at,
+                "evidence_anchor_hash": None,
+            },
+            "scope": "workspace_fingerprint",
+        }
+
+    def _metadata_for_note(self, topic, note_text, metadata, topic_path=None):
+        note_id = _note_id_for(topic, note_text)
+        row = dict(metadata.get(note_id) or self._default_note_metadata(topic, note_text, topic_path=topic_path))
+        row["note_id"] = note_id
+        row.setdefault("status", "active")
+        row.setdefault("supersedes", None)
+        default_evidence = self._default_note_metadata(topic, note_text, topic_path=topic_path)["evidence"]
+        evidence = row.get("evidence") if isinstance(row.get("evidence"), dict) else {}
+        default_evidence.update(evidence)
+        if default_evidence.get("source_path") and not default_evidence.get("evidence_anchor_hash"):
+            workspace_root = self.root.parent.parent
+            default_evidence["evidence_anchor_hash"] = compute_anchor_hash(
+                _source_path_for_evidence(workspace_root, default_evidence.get("source_path"))
+            )
+        row["evidence"] = default_evidence
+        row.setdefault("scope", "workspace_fingerprint")
+        return row
+
     def load_topic_notes(self, topic):
-        path = self.topics_dir / f"{topic}.md"
+        path = self._topic_path(topic)
         if not path.exists():
             return []
         lines = path.read_text(encoding="utf-8").splitlines()
+        metadata = self._load_topic_metadata(topic)
+        metadata_exists = self._metadata_path(topic).exists()
+        metadata_changed = False
         notes = []
         capture = False
         updated_at = ""
@@ -688,6 +889,14 @@ class DurableMemoryStore:
                         "kind": "durable",
                     }
                 )
+        for note in notes:
+            row = self._metadata_for_note(topic, note["text"], metadata, topic_path=path)
+            note.update(row)
+            if row["note_id"] not in metadata or not metadata_exists:
+                metadata_changed = True
+            metadata[row["note_id"]] = row
+        if metadata_changed:
+            self._write_topic_metadata(topic, metadata)
         return notes
 
     @staticmethod
@@ -735,7 +944,7 @@ class DurableMemoryStore:
             lines.append(f"  - tags: {', '.join(topic['tags'])}")
         self.index_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
-    def _write_topic(self, topic, notes):
+    def _write_topic(self, topic, notes, metadata=None):
         self.topics_dir.mkdir(parents=True, exist_ok=True)
         meta = DURABLE_TOPIC_DEFAULTS[topic]
         lines = [
@@ -750,13 +959,20 @@ class DurableMemoryStore:
         ]
         for note in notes:
             lines.append(f"- {note}")
-        (self.topics_dir / f"{topic}.md").write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+        path = self._topic_path(topic)
+        path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+        metadata = dict(metadata or self._load_topic_metadata(topic))
+        for note in notes:
+            row = self._metadata_for_note(topic, note, metadata, topic_path=path)
+            metadata[row["note_id"]] = row
+        self._write_topic_metadata(topic, metadata)
 
     def promote(self, promotions):
         if not promotions:
             return [], []
         topics = {topic["topic"]: topic for topic in self.load_index()}
         topic_notes = {slug: [note["text"] for note in self.load_topic_notes(slug)] for slug in topics}
+        topic_metadata = {slug: self._load_topic_metadata(slug) for slug in topics}
         results = []
         superseded = []
         for topic, note_text in promotions:
@@ -771,23 +987,36 @@ class DurableMemoryStore:
                 },
             )
             existing = topic_notes.setdefault(topic, [])
+            metadata = topic_metadata.setdefault(topic, {})
             if note_text in existing:
                 continue
             new_subject = self._subject_key(note_text)
             replaced = False
+            supersedes = None
             if new_subject:
                 for index, old_text in enumerate(list(existing)):
                     if self._subject_key(old_text) == new_subject:
                         superseded.append(f"{topic}: {old_text} -> {note_text}")
+                        old_id = _note_id_for(topic, old_text)
+                        old_meta = self._metadata_for_note(topic, old_text, metadata)
+                        old_meta["status"] = "superseded"
+                        metadata[old_id] = old_meta
+                        supersedes = old_id
                         existing[index] = note_text
                         replaced = True
                         break
             if not replaced:
                 existing.append(note_text)
+            new_meta = self._metadata_for_note(topic, note_text, metadata)
+            new_meta["status"] = "active"
+            if should_quarantine(note_text):
+                new_meta["status"] = "quarantined"
+            new_meta["supersedes"] = supersedes
+            metadata[new_meta["note_id"]] = new_meta
             results.append(f"{topic}: {note_text}")
         self._write_index([topics[slug] for slug in sorted(topics)])
         for topic, notes in topic_notes.items():
-            self._write_topic(topic, notes)
+            self._write_topic(topic, notes, metadata=topic_metadata.get(topic, {}))
         return results, superseded
 
 
@@ -846,6 +1075,32 @@ def file_freshness(raw_path, workspace_root=None):
     return hashlib.sha256(resolved.read_bytes()).hexdigest()
 
 
+def compute_anchor_hash(path):
+    path = Path(path)
+    if not path.exists() or not path.is_file():
+        return None
+    if path.stat().st_size > MAX_ANCHOR_HASH_BYTES:
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def workspace_fingerprint(workspace_root):
+    root = str(Path(workspace_root).resolve())
+    cached = _WORKSPACE_FINGERPRINT_CACHE.get(root)
+    if cached:
+        return cached
+    try:
+        git_root = subprocess.check_output(
+            ["git", "-C", root, "rev-parse", "--show-toplevel"],
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        fingerprint = hashlib.sha256(git_root).hexdigest()[:12]
+    except Exception:
+        fingerprint = hashlib.sha256(root.encode("utf-8")).hexdigest()[:12]
+    _WORKSPACE_FINGERPRINT_CACHE[root] = fingerprint
+    return fingerprint
+
+
 def _tokenize(text):
     return {token.lower() for token in re.findall(r"[A-Za-z0-9_]+", str(text))}
 
@@ -857,6 +1112,82 @@ def _parse_timestamp(value):
         return datetime.fromisoformat(str(value)).timestamp()
     except Exception:
         return 0.0
+
+
+def _query_hash(query):
+    return hashlib.sha256(str(query).encode("utf-8")).hexdigest()[:12]
+
+
+def _note_id_for(topic_slug, note_text):
+    return hashlib.sha256(f"{topic_slug}\n{note_text}".encode("utf-8")).hexdigest()[:12]
+
+
+def _note_layer(note):
+    kind = str(note.get("kind", "")).strip()
+    if kind == "durable":
+        return "durable"
+    if kind:
+        return kind
+    return "episodic"
+
+
+def _retrieval_note_id(note):
+    explicit = str(note.get("note_id", "")).strip()
+    if explicit:
+        return explicit
+    source = str(note.get("source", "")).strip() or _note_layer(note)
+    return _note_id_for(source, str(note.get("text", "")))
+
+
+def _retrieval_reject_reason(note, workspace_root=None):
+    status = str(note.get("status", "active")).strip() or "active"
+    if status == "quarantined":
+        return "quarantined"
+    if status == "superseded":
+        return "superseded"
+    if bool(note.get("stale_evidence")):
+        return "stale_evidence"
+    scope = str(note.get("scope", "")).strip()
+    if scope and scope not in {"workspace_fingerprint", "global"}:
+        return "scope_mismatch"
+    if bool(note.get("scope_mismatch")):
+        return "scope_mismatch"
+    return ""
+
+
+def _retrieval_record(note, score, reject_reason=""):
+    enriched = dict(note)
+    enriched["note_id"] = _retrieval_note_id(enriched)
+    enriched["layer"] = _note_layer(enriched)
+    enriched["score"] = float(score)
+    if reject_reason:
+        enriched["reject_reason"] = reject_reason
+    return enriched
+
+
+def _source_path_for_evidence(workspace_root, source_path):
+    source_path = str(source_path or "").strip()
+    if not source_path:
+        return None
+    path = Path(source_path)
+    if path.is_absolute():
+        return path
+    if workspace_root is None:
+        return path
+    return Path(workspace_root) / path
+
+
+def _apply_evidence_staleness(note, workspace_root):
+    evidence = note.get("evidence") if isinstance(note.get("evidence"), dict) else {}
+    stored_hash = str(evidence.get("evidence_anchor_hash", "") or "").strip()
+    source_path = evidence.get("source_path")
+    if not stored_hash or not source_path:
+        return note
+    current_hash = compute_anchor_hash(_source_path_for_evidence(workspace_root, source_path))
+    if current_hash and current_hash != stored_hash:
+        note = dict(note)
+        note["stale_evidence"] = True
+    return note
 
 
 def _normalize_note(note, index):
@@ -888,7 +1219,7 @@ def _normalize_note(note, index):
     created_at = str(note.get("created_at", "")).strip() or now()
     note_index = int(note.get("note_index", index))
     kind = str(note.get("kind", "episodic")).strip() or "episodic"
-    return {
+    normalized = {
         "text": text,
         "tags": _dedupe_preserve_order(tags),
         "source": source,
@@ -896,6 +1227,10 @@ def _normalize_note(note, index):
         "note_index": note_index,
         "kind": kind,
     }
+    for key in ("note_id", "status", "supersedes", "evidence", "scope", "stale_evidence", "scope_mismatch"):
+        if key in note:
+            normalized[key] = note[key]
+    return normalized
 
 
 def normalize_memory_state(state, workspace_root=None):
@@ -1083,11 +1418,21 @@ def summarize_read_result(result, limit=180):
     return clip(summary, limit)
 
 
-def retrieval_candidates(state, query, limit=3, workspace_root=None):
+def _iter_retrieval_notes(state, workspace_root=None):
+    for note in state["episodic_notes"]:
+        yield dict(note)
+    if workspace_root is not None:
+        durable_store = DurableMemoryStore(Path(workspace_root) / ".pico" / "memory")
+        for topic in durable_store.load_index():
+            for note in durable_store.load_topic_notes(topic["topic"]):
+                yield _apply_evidence_staleness(dict(note), workspace_root)
+
+
+def _ranked_retrieval_notes(state, query, workspace_root=None):
     state = normalize_memory_state(state, workspace_root)
     query_tokens = _tokenize(query)
     ranked = []
-    for note in state["episodic_notes"]:
+    for note in _iter_retrieval_notes(state, workspace_root):
         # 召回逻辑故意保持简单透明：先看 tag 精确命中，
         # 再看关键词重叠，最后看新旧程度。这里不引入 embedding。
         note_tags = {tag.lower() for tag in note.get("tags", [])}
@@ -1098,24 +1443,36 @@ def retrieval_candidates(state, query, limit=3, workspace_root=None):
             continue
         recency = _parse_timestamp(note.get("created_at"))
         note_index = int(note.get("note_index", 0))
-        ranked.append(((exact_tag_match, keyword_overlap, recency, note_index), note))
-
-    if workspace_root is not None:
-        durable_store = DurableMemoryStore(Path(workspace_root) / ".pico" / "memory")
-        for note in durable_store.retrieval_candidates(query, limit=limit):
-            note_tags = {tag.lower() for tag in note.get("tags", [])}
-            note_tokens = _tokenize(note.get("text", "")) | _tokenize(note.get("source", "")) | note_tags
-            exact_tag_match = int(bool(query_tokens & note_tags))
-            keyword_overlap = len(query_tokens & note_tokens)
-            recency = _parse_timestamp(note.get("created_at"))
-            ranked.append(((exact_tag_match, keyword_overlap, recency, -1), note))
+        score = exact_tag_match * 1000 + keyword_overlap * 10 + recency / 1_000_000 + note_index / 1_000_000_000
+        ranked.append(((exact_tag_match, keyword_overlap, recency, note_index), score, note))
 
     ranked.sort(key=lambda item: item[0], reverse=True)
-    return [note for _, note in ranked[:limit]]
+    return ranked
+
+
+def retrieval_view_structured(state, query, limit=3, workspace_root=None):
+    selected = []
+    rejected = []
+    for _, score, note in _ranked_retrieval_notes(state, query, workspace_root):
+        reject_reason = _retrieval_reject_reason(note, workspace_root)
+        if reject_reason:
+            rejected.append(_retrieval_record(note, score, reject_reason=reject_reason))
+            continue
+        if len(selected) < int(limit):
+            selected.append(_retrieval_record(note, score))
+        else:
+            rejected.append(_retrieval_record(note, score, reject_reason="below_limit"))
+    return {"selected": selected, "rejected": rejected, "query_hash": _query_hash(query)}
+
+
+def retrieval_candidates(state, query, limit=3, workspace_root=None):
+    structured = retrieval_view_structured(state, query, limit=limit, workspace_root=workspace_root)
+    return structured["selected"]
 
 
 def retrieval_view(state, query, limit=3, workspace_root=None):
-    candidates = retrieval_candidates(state, query, limit=limit, workspace_root=workspace_root)
+    structured = retrieval_view_structured(state, query, limit=limit, workspace_root=workspace_root)
+    candidates = structured["selected"]
     lines = ["Relevant memory:"]
     if not candidates:
         lines.append("- none")
@@ -1168,6 +1525,7 @@ class LayeredMemory:
         self.workspace_root = workspace_root
         self.state = normalize_memory_state(state, workspace_root)
         self.durable_store = DurableMemoryStore(Path(workspace_root) / ".pico" / "memory") if workspace_root is not None else None
+        self.last_retrieval = None
 
     def to_dict(self):
         self.state = normalize_memory_state(self.state, self.workspace_root)
@@ -1209,7 +1567,12 @@ class LayeredMemory:
         return invalidated
 
     def retrieval_candidates(self, query, limit=3):
-        return retrieval_candidates(self.state, query, limit=limit, workspace_root=self.workspace_root)
+        self.last_retrieval = retrieval_view_structured(self.state, query, limit=limit, workspace_root=self.workspace_root)
+        return self.last_retrieval["selected"]
+
+    def retrieval_view_structured(self, query, limit=3):
+        self.last_retrieval = retrieval_view_structured(self.state, query, limit=limit, workspace_root=self.workspace_root)
+        return self.last_retrieval
 
     def retrieval_view(self, query, limit=3):
         return retrieval_view(self.state, query, limit=limit, workspace_root=self.workspace_root)
