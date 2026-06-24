@@ -2,11 +2,33 @@
 
 
 DEFAULT_CONTEXT_WINDOW = 200_000
-TOKEN_ESTIMATION_METHOD = "chars_div_4"
+TOKEN_ESTIMATION_METHOD = "typed_content_heuristic_v1"
 
 
 def estimate_tokens(chars):
     return max(0, (int(chars) + 3) // 4)
+
+
+def detect_content_type(text: str) -> str:
+    if not text:
+        return "mixed"
+    sample = str(text)[:2000]
+    cjk_count = sum(1 for ch in sample if "\u4e00" <= ch <= "\u9fff")
+    if sample and cjk_count > len(sample) * 0.3:
+        return "cjk_heavy"
+    code_indicators = sample.count("{") + sample.count("}") + sample.count("/")
+    if sample and code_indicators > len(sample) * 0.05:
+        return "code"
+    return "mixed"
+
+
+def estimate_tokens_typed(text: str, content_type: str = "mixed") -> int:
+    chars = len(str(text))
+    if content_type == "code":
+        return max(0, (chars * 10 + 31) // 32)
+    if content_type == "cjk_heavy":
+        return max(0, (chars * 10 + 17) // 18)
+    return estimate_tokens(chars)
 
 
 class ContextUsageAnalyzer:
@@ -18,12 +40,15 @@ class ContextUsageAnalyzer:
         sections = {}
         for name, section in rendered.items():
             key = "current_request" if name == "current_request" else name
+            text = str(section.rendered)
             chars = int(section.rendered_chars)
+            tokens = estimate_tokens_typed(text, detect_content_type(text))
             if key == "prefix":
                 chars = max(0, chars - tools_chars)
+                tokens = max(0, tokens - estimate_tokens(tools_chars))
             sections[key] = {
                 "chars": chars,
-                "tokens": estimate_tokens(chars),
+                "tokens": tokens,
             }
         sections["tools"] = {
             "chars": tools_chars,

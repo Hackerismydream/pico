@@ -30,7 +30,7 @@ def test_context_usage_is_recorded_for_real_turn_report_and_session_events(tmp_p
     report = json.loads((agent.current_run_dir / "report.json").read_text(encoding="utf-8"))
     usage = report["prompt_metadata"]["context_usage"]
 
-    assert usage["estimation_method"] == "chars_div_4"
+    assert usage["estimation_method"] == "typed_content_heuristic_v1"
     assert usage["sections"]["prefix"]["chars"] > 0
     assert usage["sections"]["tools"]["chars"] > 0
     assert usage["sections"]["current_request"]["chars"] == len("Current user request:\nhi")

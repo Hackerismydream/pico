@@ -58,12 +58,14 @@ class TurnHistoryBuilder:
             return "Transcript:\n- empty"
         return "\n".join(["Transcript:", *self._render_turn_lines(history, line_limit=2000)])
 
-    def render_section(self, budget):
+    def render_section(self, budget, pressure=None):
         history = list(getattr(self.agent, "session", {}).get("history", []))
         raw = self.raw_text(history)
         if not history:
             return raw, {
                 "rendered_entries": [],
+                "recent_window": 0,
+                "old_turn_line_limit": 80,
                 "older_entries_count": 0,
                 "collapsed_duplicate_reads": 0,
                 "reused_file_summary_count": 0,
@@ -72,9 +74,9 @@ class TurnHistoryBuilder:
             }
 
         turns = self._group_turns(history)
-        recent_window = 3
+        recent_window, old_turn_line_limit = self._pressure_limits(pressure)
         recent_turns = set(list(turns)[-recent_window:])
-        entries, details = self._compressed_turn_entries(turns, recent_turns)
+        entries, details = self._compressed_turn_entries(turns, recent_turns, old_turn_line_limit)
         rendered_entries = []
         for entry in reversed(entries):
             candidate = entry["lines"] + rendered_entries
@@ -100,7 +102,7 @@ class TurnHistoryBuilder:
             turns.setdefault(turn_id, []).append(item)
         return turns
 
-    def _compressed_turn_entries(self, turns, recent_turns):
+    def _compressed_turn_entries(self, turns, recent_turns, old_turn_line_limit=80):
         entries = []
         seen_older_reads = set()
         history_items = [item for items in turns.values() for item in items]
@@ -116,6 +118,7 @@ class TurnHistoryBuilder:
         )
         details = {
             "recent_window": len(recent_turns),
+            "old_turn_line_limit": old_turn_line_limit,
             "older_entries_count": 0,
             "collapsed_duplicate_reads": 0,
             "reused_file_summary_count": 0,
@@ -165,11 +168,21 @@ class TurnHistoryBuilder:
                             0, len(str(item.get("content", ""))) - len(summary)
                         )
                     continue
-                lines.extend(self._render_item(item, 900 if recent else 80))
+                lines.extend(self._render_item(item, 900 if recent else old_turn_line_limit))
             if not recent:
                 details["older_entries_count"] += 1
             entries.append({"turn_id": turn_id, "lines": lines})
         return entries, details
+
+    def _pressure_limits(self, pressure):
+        tier = str(getattr(pressure, "tier", "") or "tier0_observe")
+        if tier == "tier1_snip":
+            return 2, 60
+        if tier == "tier2_prune":
+            return 2, 40
+        if tier == "tier3_summary":
+            return 1, 20
+        return 3, 80
 
     def _render_turn_lines(self, history, line_limit):
         lines = []

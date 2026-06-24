@@ -3,6 +3,7 @@ import pytest
 
 from pico.testing import ScriptedModelClient
 from pico import Pico, SessionStore, WorkspaceContext
+from pico.core.context_usage import detect_content_type, estimate_tokens, estimate_tokens_typed
 
 
 def build_agent(tmp_path, outputs=None, **kwargs):
@@ -109,3 +110,31 @@ def test_session_store_rejects_path_traversal_ids(tmp_path):
 
     with pytest.raises(ValueError, match="invalid session id"):
         store.load("../outside")
+
+
+def test_detect_content_type_english():
+    assert detect_content_type("plain English text with normal words") == "mixed"
+
+
+def test_detect_content_type_chinese():
+    assert detect_content_type("这是中文上下文。" * 20) == "cjk_heavy"
+
+
+def test_detect_content_type_code():
+    assert detect_content_type("{\"path\":\"/tmp/demo\",\"items\":[{\"id\":1}]}") == "code"
+
+
+def test_estimate_tokens_typed_cjk():
+    assert estimate_tokens_typed("你" * 1000, "cjk_heavy") == 556
+
+
+def test_estimate_tokens_typed_code():
+    assert estimate_tokens_typed("{" * 500 + "/" * 500, "code") == 313
+
+
+def test_estimate_tokens_typed_english():
+    assert estimate_tokens_typed("a" * 1000, "mixed") == 250
+
+
+def test_original_estimate_tokens_unchanged():
+    assert estimate_tokens(1000) == 250

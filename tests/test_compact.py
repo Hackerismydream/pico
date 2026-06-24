@@ -99,6 +99,24 @@ def test_compact_summary_extracts_bilingual_constraints_errors_and_artifacts():
     assert "artifact://tool/test-1" in summary
 
 
+def test_compact_summary_splits_constraints_on_newlines_and_tracks_didnt_work():
+    summary = summary_text(
+        [
+            {
+                "role": "user",
+                "content": "修复上下文问题\nonly touch compact internals",
+            },
+            {
+                "role": "assistant",
+                "content": "Tried stateful parsing but it didn't work, reverted to stateless rules.",
+            },
+        ]
+    )
+
+    assert "only touch compact internals" in summary
+    assert "Tried stateful parsing but it didn't work" in summary
+
+
 def test_compact_summary_is_capped_at_2000_chars():
     summary = summary_text(
         [

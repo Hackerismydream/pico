@@ -105,14 +105,14 @@ def test_context_manager_renders_top_three_episodic_notes_per_note_under_budget(
     ]
     assert len(metadata["relevant_memory"]["rendered_notes"]) == 3
     assert metadata["relevant_memory"]["rendered_count"] == 3
-    assert metadata["relevant_memory"]["rendered_notes"][0].startswith("gamma episodi")
-    assert metadata["relevant_memory"]["rendered_notes"][1].startswith("alpha episodi")
-    assert metadata["relevant_memory"]["rendered_notes"][2].startswith("beta episodi")
+    assert metadata["relevant_memory"]["rendered_notes"][0].startswith("gamma")
+    assert metadata["relevant_memory"]["rendered_notes"][1].startswith("alpha")
+    assert metadata["relevant_memory"]["rendered_notes"][2].startswith("beta")
     relevant_section = prompt.split("Relevant memory:\n", 1)[1].split("\n\nTranscript:", 1)[0]
     assert len([line for line in relevant_section.splitlines() if line.startswith("- ")]) == 3
-    assert "alpha episodi" in relevant_section
-    assert "beta episodic" in relevant_section
-    assert "gamma episodi" in relevant_section
+    assert "alpha" in relevant_section
+    assert "beta" in relevant_section
+    assert "gamma" in relevant_section
     assert "older unmatched note" not in relevant_section
 
 

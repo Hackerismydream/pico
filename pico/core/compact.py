@@ -113,7 +113,7 @@ class CompactManager:
 
     def _summary_text(self, items):
         def sentences(text):
-            parts = re.split(r"[。！？!?]+|\.(?:\s+|$)", str(text))
+            parts = re.split(r"[。！？!?]+|\n+|\.(?:\s+|$)", str(text))
             return [part.strip(" \t\r\n:;,.，；、") for part in parts if part.strip()]
 
         def matches(text, patterns):
@@ -131,6 +131,7 @@ class CompactManager:
             "不行",
             "reverted",
             "doesn't work",
+            "didn't work",
             "does not work",
         )
         files_read = []
@@ -187,7 +188,7 @@ class CompactManager:
                 f"- Key decisions: {joined(key_decisions)}",
                 f"- Rejected paths: {joined(rejected_paths)}",
                 f"- Last error context: {last_error_context}",
-                f"- Critical artifacts: {joined(critical_artifacts)}",
+                f"- Critical artifacts: {', '.join(critical_artifacts) if critical_artifacts else '-'}",
                 f"- Current progress: compacted {len(items)} history items",
                 "- Next step: continue from the latest preserved turn",
             ]
