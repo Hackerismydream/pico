@@ -8,6 +8,7 @@ from pico.features.memory import (
     append_to_daily_log,
     build_dream_prompt,
     build_memory_system_section,
+    compute_anchor_hash,
     daily_log_path,
     ensure_memory_dir,
     extract_memory_tags,
@@ -120,6 +121,22 @@ def test_workspace_fingerprint_uses_resolved_path_for_non_git_dir(tmp_path):
     expected = hashlib.sha256(str(tmp_path.resolve()).encode("utf-8")).hexdigest()[:12]
 
     assert workspace_fingerprint(tmp_path) == expected
+
+
+def test_anchor_hash_returns_hash_for_files_at_or_below_size_limit(tmp_path):
+    path = tmp_path / "nine-mib.bin"
+    payload = b"a" * (9 * 1024 * 1024)
+    path.write_bytes(payload)
+
+    assert compute_anchor_hash(path) == hashlib.sha256(payload).hexdigest()
+
+
+def test_anchor_hash_returns_none_for_large_or_missing_files(tmp_path):
+    large_path = tmp_path / "eleven-mib.bin"
+    large_path.write_bytes(b"a" * (11 * 1024 * 1024))
+
+    assert compute_anchor_hash(large_path) is None
+    assert compute_anchor_hash(tmp_path / "missing.txt") is None
 
 
 def test_process_notes_keep_kind_and_latest_duplicate_wins():

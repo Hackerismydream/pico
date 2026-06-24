@@ -30,6 +30,7 @@ DREAM_SESSION_CAP = 30
 # dream 任务需要更多输出 token（要写多个 topic 文件 + 更新索引）。
 DREAM_MIN_NEW_TOKENS = 4096
 _WORKSPACE_FINGERPRINT_CACHE = {}
+MAX_ANCHOR_HASH_BYTES = 10 * 1024 * 1024
 
 DURABLE_MEMORY_INTENT_PATTERN = re.compile(r"(?i)\b(capture|remember|save|store|persist|note)\b")
 DURABLE_MEMORY_INTENT_ZH_PATTERN = re.compile(r"(记住|保存|记录|沉淀|长期记忆|持久记忆)")
@@ -934,6 +935,15 @@ def file_freshness(raw_path, workspace_root=None):
     if resolved is None or not resolved.exists() or not resolved.is_file():
         return None
     return hashlib.sha256(resolved.read_bytes()).hexdigest()
+
+
+def compute_anchor_hash(path):
+    path = Path(path)
+    if not path.exists() or not path.is_file():
+        return None
+    if path.stat().st_size > MAX_ANCHOR_HASH_BYTES:
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def workspace_fingerprint(workspace_root):
