@@ -859,6 +859,57 @@ def _parse_timestamp(value):
         return 0.0
 
 
+def _query_hash(query):
+    return hashlib.sha256(str(query).encode("utf-8")).hexdigest()[:12]
+
+
+def _note_id_for(topic_slug, note_text):
+    return hashlib.sha256(f"{topic_slug}\n{note_text}".encode("utf-8")).hexdigest()[:12]
+
+
+def _note_layer(note):
+    kind = str(note.get("kind", "")).strip()
+    if kind == "durable":
+        return "durable"
+    if kind:
+        return kind
+    return "episodic"
+
+
+def _retrieval_note_id(note):
+    explicit = str(note.get("note_id", "")).strip()
+    if explicit:
+        return explicit
+    source = str(note.get("source", "")).strip() or _note_layer(note)
+    return _note_id_for(source, str(note.get("text", "")))
+
+
+def _retrieval_reject_reason(note, workspace_root=None):
+    status = str(note.get("status", "active")).strip() or "active"
+    if status == "quarantined":
+        return "quarantined"
+    if status == "superseded":
+        return "superseded"
+    if bool(note.get("stale_evidence")):
+        return "stale_evidence"
+    scope = str(note.get("scope", "")).strip()
+    if scope and scope not in {"workspace_fingerprint", "global"}:
+        return "scope_mismatch"
+    if bool(note.get("scope_mismatch")):
+        return "scope_mismatch"
+    return ""
+
+
+def _retrieval_record(note, score, reject_reason=""):
+    enriched = dict(note)
+    enriched["note_id"] = _retrieval_note_id(enriched)
+    enriched["layer"] = _note_layer(enriched)
+    enriched["score"] = float(score)
+    if reject_reason:
+        enriched["reject_reason"] = reject_reason
+    return enriched
+
+
 def _normalize_note(note, index):
     if isinstance(note, str):
         text = clip(note.strip(), 500)
@@ -888,7 +939,7 @@ def _normalize_note(note, index):
     created_at = str(note.get("created_at", "")).strip() or now()
     note_index = int(note.get("note_index", index))
     kind = str(note.get("kind", "episodic")).strip() or "episodic"
-    return {
+    normalized = {
         "text": text,
         "tags": _dedupe_preserve_order(tags),
         "source": source,
@@ -896,6 +947,10 @@ def _normalize_note(note, index):
         "note_index": note_index,
         "kind": kind,
     }
+    for key in ("note_id", "status", "supersedes", "evidence", "scope", "stale_evidence", "scope_mismatch"):
+        if key in note:
+            normalized[key] = note[key]
+    return normalized
 
 
 def normalize_memory_state(state, workspace_root=None):
@@ -1083,11 +1138,21 @@ def summarize_read_result(result, limit=180):
     return clip(summary, limit)
 
 
-def retrieval_candidates(state, query, limit=3, workspace_root=None):
+def _iter_retrieval_notes(state, workspace_root=None):
+    for note in state["episodic_notes"]:
+        yield dict(note)
+    if workspace_root is not None:
+        durable_store = DurableMemoryStore(Path(workspace_root) / ".pico" / "memory")
+        for topic in durable_store.load_index():
+            for note in durable_store.load_topic_notes(topic["topic"]):
+                yield dict(note)
+
+
+def _ranked_retrieval_notes(state, query, workspace_root=None):
     state = normalize_memory_state(state, workspace_root)
     query_tokens = _tokenize(query)
     ranked = []
-    for note in state["episodic_notes"]:
+    for note in _iter_retrieval_notes(state, workspace_root):
         # 召回逻辑故意保持简单透明：先看 tag 精确命中，
         # 再看关键词重叠，最后看新旧程度。这里不引入 embedding。
         note_tags = {tag.lower() for tag in note.get("tags", [])}
@@ -1098,24 +1163,36 @@ def retrieval_candidates(state, query, limit=3, workspace_root=None):
             continue
         recency = _parse_timestamp(note.get("created_at"))
         note_index = int(note.get("note_index", 0))
-        ranked.append(((exact_tag_match, keyword_overlap, recency, note_index), note))
-
-    if workspace_root is not None:
-        durable_store = DurableMemoryStore(Path(workspace_root) / ".pico" / "memory")
-        for note in durable_store.retrieval_candidates(query, limit=limit):
-            note_tags = {tag.lower() for tag in note.get("tags", [])}
-            note_tokens = _tokenize(note.get("text", "")) | _tokenize(note.get("source", "")) | note_tags
-            exact_tag_match = int(bool(query_tokens & note_tags))
-            keyword_overlap = len(query_tokens & note_tokens)
-            recency = _parse_timestamp(note.get("created_at"))
-            ranked.append(((exact_tag_match, keyword_overlap, recency, -1), note))
+        score = exact_tag_match * 1000 + keyword_overlap * 10 + recency / 1_000_000 + note_index / 1_000_000_000
+        ranked.append(((exact_tag_match, keyword_overlap, recency, note_index), score, note))
 
     ranked.sort(key=lambda item: item[0], reverse=True)
-    return [note for _, note in ranked[:limit]]
+    return ranked
+
+
+def retrieval_view_structured(state, query, limit=3, workspace_root=None):
+    selected = []
+    rejected = []
+    for _, score, note in _ranked_retrieval_notes(state, query, workspace_root):
+        reject_reason = _retrieval_reject_reason(note, workspace_root)
+        if reject_reason:
+            rejected.append(_retrieval_record(note, score, reject_reason=reject_reason))
+            continue
+        if len(selected) < int(limit):
+            selected.append(_retrieval_record(note, score))
+        else:
+            rejected.append(_retrieval_record(note, score, reject_reason="below_limit"))
+    return {"selected": selected, "rejected": rejected, "query_hash": _query_hash(query)}
+
+
+def retrieval_candidates(state, query, limit=3, workspace_root=None):
+    structured = retrieval_view_structured(state, query, limit=limit, workspace_root=workspace_root)
+    return structured["selected"]
 
 
 def retrieval_view(state, query, limit=3, workspace_root=None):
-    candidates = retrieval_candidates(state, query, limit=limit, workspace_root=workspace_root)
+    structured = retrieval_view_structured(state, query, limit=limit, workspace_root=workspace_root)
+    candidates = structured["selected"]
     lines = ["Relevant memory:"]
     if not candidates:
         lines.append("- none")
@@ -1210,6 +1287,9 @@ class LayeredMemory:
 
     def retrieval_candidates(self, query, limit=3):
         return retrieval_candidates(self.state, query, limit=limit, workspace_root=self.workspace_root)
+
+    def retrieval_view_structured(self, query, limit=3):
+        return retrieval_view_structured(self.state, query, limit=limit, workspace_root=self.workspace_root)
 
     def retrieval_view(self, query, limit=3):
         return retrieval_view(self.state, query, limit=limit, workspace_root=self.workspace_root)

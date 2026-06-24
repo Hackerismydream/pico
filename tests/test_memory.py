@@ -11,6 +11,7 @@ from pico.features.memory import (
     list_sessions_since,
     load_memory_index_text,
     release_lock,
+    retrieval_view_structured,
     try_acquire_lock,
 )
 
@@ -58,6 +59,28 @@ def test_episodic_notes_append_and_retrieve_deterministically():
         "- Exact tag note",
         "- Keyword overlap note about memory",
     ]
+
+
+def test_retrieval_view_structured_reports_selected_and_rejected_reasons():
+    memory = LayeredMemory()
+
+    memory.append_note("alpha selected note", tags=("alpha",), created_at="2026-04-07T10:04:00+00:00")
+    memory.append_note("alpha below limit note", tags=("alpha",), created_at="2026-04-07T10:03:00+00:00")
+    memory.append_note("alpha quarantined note", tags=("alpha",), created_at="2026-04-07T10:02:00+00:00")
+    memory.append_note("alpha superseded note", tags=("alpha",), created_at="2026-04-07T10:01:00+00:00")
+    memory.state["episodic_notes"][2]["status"] = "quarantined"
+    memory.state["episodic_notes"][3]["status"] = "superseded"
+
+    structured = retrieval_view_structured(memory.state, "alpha", limit=1)
+
+    assert set(structured) == {"selected", "rejected", "query_hash"}
+    assert len(structured["query_hash"]) == 12
+    assert [note["text"] for note in structured["selected"]] == ["alpha selected note"]
+    reject_reasons = {note["reject_reason"] for note in structured["rejected"]}
+    assert reject_reasons >= {"below_limit", "quarantined", "superseded"}
+    for note in structured["rejected"]:
+        assert set(note) >= {"note_id", "layer", "score", "reject_reason"}
+    assert "alpha below limit note" not in memory.retrieval_view("alpha", limit=1)
 
 
 def test_file_summaries_use_canonical_paths_and_freshness(tmp_path):
