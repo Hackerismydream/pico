@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import csv
 import json
 import shutil
@@ -13,7 +14,7 @@ from pathlib import Path
 from types import MethodType
 
 from pico import Pico, SessionStore, WorkspaceContext
-from pico.config import resolve_provider_config
+from pico.config import default_max_tokens_for_provider, resolve_provider_config
 from pico.core.run_store import RunStore
 from pico.providers import AnthropicCompatibleModelClient, OpenAICompatibleModelClient
 from pico.testing import ScriptedModelClient
@@ -839,15 +840,23 @@ def _run_long_session_task(
             "context_reduction": bool(EXPERIMENT_VARIANTS[variant]["context_orchestrator_enabled"])
         },
         max_steps=int(task.get("step_budget", 12)),
-        max_new_tokens=256,
+        max_new_tokens=default_max_tokens_for_provider(provider),
         allowed_tools=task["allowed_tools"],
     )
+    if task.get("context_window_override") and mode == "live":
+        model_client.context_window = int(task["context_window_override"])
     _seed_long_session_history(agent)
     _force_compact_summary_mode(agent, EXPERIMENT_VARIANTS[variant].get("compact_summary_mode", "deterministic"))
 
-    agent.ask(task["prompt"])
-    report_path = agent.current_run_dir / "report.json"
-    trace_path = agent.current_run_dir / "trace.jsonl"
+    row_timeout = int(task.get("row_timeout", 300))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(agent.ask, task["prompt"])
+        try:
+            future.result(timeout=row_timeout)
+        except concurrent.futures.TimeoutError:
+            pass
+    report_path = agent.current_run_dir / "report.json" if agent.current_run_dir else None
+    trace_path = agent.current_run_dir / "trace.jsonl" if agent.current_run_dir else None
     verifier = subprocess.run(
         task["verifier"],
         cwd=workspace,

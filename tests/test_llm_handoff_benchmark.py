@@ -37,7 +37,7 @@ def test_long_session_tasks_define_five_fixture_backed_tasks():
     }
     for task in tasks:
         assert (ROOT / task["fixture_repo"]).is_dir()
-        assert 8 <= int(task["step_budget"]) <= 16
+        assert 8 <= int(task["step_budget"]) <= 24
         assert len(task["scripted_outputs"]) == expected_scripted_counts[task["id"]]
 
 

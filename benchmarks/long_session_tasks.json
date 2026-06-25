@@ -18,8 +18,9 @@
         "<tool>{\"name\":\"run_shell\",\"args\":{\"command\":\"python3 -m pytest tests/test_profile.py -q\"}}</tool>",
         "<final>Renamed getUserName to get_user_name and verified the focused test.</final>"
       ],
-      "allowed_tools": ["read_file", "patch_file", "run_shell"],
-      "step_budget": 16,
+      "allowed_tools": ["read_file", "patch_file", "run_shell", "search", "list_files"],
+      "step_budget": 24,
+      "context_window_override": 8000,
       "expected_artifact": "src/main.py imports and calls get_user_name, with no getUserName left under src",
       "verifier": "grep -r \"getUserName\" src/ && exit 1 || grep \"get_user_name\" src/main.py",
       "category": "long_session"
@@ -38,8 +39,9 @@
         "<tool>{\"name\":\"read_file\",\"args\":{\"path\":\"error.log\",\"start\":1,\"end\":80}}</tool>",
         "<final>Fixed the off-by-one loop so process includes the last item.</final>"
       ],
-      "allowed_tools": ["read_file", "patch_file", "run_shell"],
-      "step_budget": 8,
+      "allowed_tools": ["read_file", "patch_file", "run_shell", "search", "list_files"],
+      "step_budget": 14,
+      "context_window_override": 8000,
       "expected_artifact": "src/handler.py sums every item in the input list",
       "verifier": "python3 -c \"from src.handler import process; assert process([1,2,3]) == 6\"",
       "category": "long_session"
@@ -62,8 +64,9 @@
         "<tool>{\"name\":\"run_shell\",\"args\":{\"command\":\"python3 -c \\\"from app import app; assert app.test_client().get('/health').status_code == 200\\\"\"}}</tool>",
         "<final>Added /health and verified test_health.</final>"
       ],
-      "allowed_tools": ["read_file", "patch_file", "run_shell"],
-      "step_budget": 12,
+      "allowed_tools": ["read_file", "patch_file", "run_shell", "search", "list_files"],
+      "step_budget": 20,
+      "context_window_override": 8000,
       "expected_artifact": "app.py exposes /health and tests/test_app.py contains test_health",
       "verifier": "python3 -m pytest tests/test_app.py::test_health -q",
       "category": "long_session"
@@ -84,8 +87,9 @@
         "<tool>{\"name\":\"run_shell\",\"args\":{\"command\":\"python3 -c \\\"import yaml; [yaml.safe_load(open(f'services/{s}/config.yaml'))['schema_version'] == 2 for s in ['auth','api','worker','gateway']]\\\"\"}}</tool>",
         "<final>Migrated all service configs to schema_version 2.</final>"
       ],
-      "allowed_tools": ["read_file", "patch_file", "run_shell"],
-      "step_budget": 10,
+      "allowed_tools": ["read_file", "patch_file", "run_shell", "search", "list_files"],
+      "step_budget": 18,
+      "context_window_override": 8000,
       "expected_artifact": "All four service config.yaml files have schema_version 2",
       "verifier": "python3 -c \"import yaml; assert all(yaml.safe_load(open(f'services/{s}/config.yaml'))['schema_version'] == 2 for s in ['auth','api','worker','gateway'])\"",
       "category": "long_session"
@@ -108,8 +112,9 @@
         "<tool>{\"name\":\"read_file\",\"args\":{\"path\":\"src/api.py\",\"start\":1,\"end\":120}}</tool>",
         "<final>Upgraded requests and fixed the three call sites.</final>"
       ],
-      "allowed_tools": ["read_file", "patch_file", "run_shell"],
-      "step_budget": 12,
+      "allowed_tools": ["read_file", "patch_file", "run_shell", "search", "list_files"],
+      "step_budget": 20,
+      "context_window_override": 8000,
       "expected_artifact": "requirements.txt pins requests==2.31 and all three source files parse",
       "verifier": "grep \"requests==2.31\" requirements.txt && python3 -c \"import ast; [ast.parse(open(f).read()) for f in ['src/client.py','src/api.py','src/fetcher.py']]\"",
       "category": "long_session"
