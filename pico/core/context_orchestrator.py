@@ -107,7 +107,7 @@ class ContextOrchestrator:
         )
         if delta_count < 4:
             return None, "deterministic", "delta_too_small_for_tier3_compaction"
-        return "auto_tier3_summary", "llm", ""
+        return "auto_pressure_compact", "llm", ""
 
     @staticmethod
     def _count_delta_events(history, last_boundary_event_id):

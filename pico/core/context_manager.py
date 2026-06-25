@@ -13,10 +13,11 @@ from ..features import memory as memorylib, skills as skillslib
 from .context_report import ContextReportBuilder, RELEVANT_MEMORY_LIMIT
 from .context_sections import (
     CURRENT_REQUEST_SECTION,
-    DEFAULT_SECTION_BUDGETS,
     MIN_SECTION_BUDGETS,
     REDUCTION_ORDER,
     SECTION_ORDER,
+    compute_budget_chars,
+    compute_section_budgets,
 )
 from .turn_history import TurnHistoryBuilder, tail_clip
 
@@ -24,12 +25,12 @@ DEFAULT_TOTAL_BUDGET = 60000
 DEFAULT_SECTION_FLOORS = MIN_SECTION_BUDGETS
 DEFAULT_REDUCTION_ORDER = REDUCTION_ORDER
 
-PROMPT_PRESSURE_TIERS = (
-    (0.60, "tier0_observe"),
-    (0.80, "tier1_snip"),
-    (0.95, "tier2_prune"),
-)
 
+@dataclass(frozen=True)
+class _PromptPressure:
+    ratio: float
+    tier: str
+    source: str = "char_estimate"
 
 @dataclass
 class SectionRender:
@@ -47,25 +48,24 @@ class SectionRender:
         return len(self.rendered)
 
 
-@dataclass(frozen=True)
-class PromptPressure:
-    ratio: float
-    tier: str
-    source: str = "char_estimate"
-
-
 class ContextManager:
     def __init__(
         self,
         agent,
-        total_budget=DEFAULT_TOTAL_BUDGET,
+        total_budget=None,
+        context_window=None,
         section_budgets=None,
         section_floors=None,
         reduction_order=None,
     ):
         self.agent = agent
-        self.total_budget = int(total_budget)
-        self.section_budgets = dict(DEFAULT_SECTION_BUDGETS)
+        if total_budget is not None:
+            self.total_budget = int(total_budget)
+        elif context_window:
+            self.total_budget = compute_budget_chars(int(context_window))
+        else:
+            self.total_budget = DEFAULT_TOTAL_BUDGET
+        self.section_budgets = compute_section_budgets(self.total_budget)
         if section_budgets:
             self.section_budgets.update({str(key): int(value) for key, value in section_budgets.items()})
         self._section_floor_overrides = {str(key): int(value) for key, value in (section_floors or {}).items()}
@@ -127,7 +127,6 @@ class ContextManager:
         if not context_reduction_enabled:
             rendered = self._render_sections_without_reduction(section_texts, selected_notes=selected_notes)
             prompt = self._assemble_prompt(rendered)
-            pressure = self._prompt_pressure(len(prompt))
             metadata = self._metadata(
                 prompt=prompt,
                 rendered=rendered,
@@ -136,7 +135,6 @@ class ContextManager:
                 selected_notes=selected_notes,
                 user_message=user_message,
                 section_texts=section_texts,
-                pressure=pressure,
             )
             return prompt, metadata
 
@@ -150,10 +148,6 @@ class ContextManager:
             prompt = self._assemble_prompt(rendered)
         reduction_log = []
 
-        # 如果 prompt 超预算，就按固定顺序不断压缩。
-        # 这里的顺序体现了平台偏好：
-        # 先牺牲 relevant_memory，再牺牲 history，然后才动 memory 和 prefix。
-        # 最新用户请求永远不裁剪，因为那是本轮最重要的输入。
         while len(prompt) > self.total_budget:
             overflow = len(prompt) - self.total_budget
             reduced = False
@@ -229,13 +223,10 @@ class ContextManager:
         }
 
     def _compute_section_floors(self):
-        if self.section_budgets == DEFAULT_SECTION_BUDGETS:
-            floors = dict(MIN_SECTION_BUDGETS)
-        else:
-            floors = {
-                section: max(20, int(budget) // 4)
-                for section, budget in self.section_budgets.items()
-            }
+        floors = dict(MIN_SECTION_BUDGETS)
+        for section, budget in self.section_budgets.items():
+            if section not in floors:
+                floors[section] = max(20, int(budget) // 4)
         floors.update(self._section_floor_overrides)
         return floors
 
@@ -258,8 +249,15 @@ class ContextManager:
 
     def _prompt_pressure(self, prompt_chars):
         ratio = int(prompt_chars) / max(1, self.total_budget)
-        tier = next((name for threshold, name in PROMPT_PRESSURE_TIERS if ratio < threshold), "tier3_summary")
-        return PromptPressure(ratio=round(ratio, 4), tier=tier)
+        if ratio >= 0.95:
+            tier = "tier3_summary"
+        elif ratio >= 0.80:
+            tier = "tier2_prune"
+        elif ratio >= 0.60:
+            tier = "tier1_snip"
+        else:
+            tier = "tier0_observe"
+        return _PromptPressure(ratio=round(ratio, 4), tier=tier)
 
     def _pressure_adjusted_budgets(self, budgets, pressure):
         adjusted = dict(budgets)
@@ -356,7 +354,7 @@ class ContextManager:
         # 顺序是刻意设计的：稳定规则放前面，最新请求放最后。
         return "\n\n".join(rendered[section].rendered for section in SECTION_ORDER).strip()
 
-    def _metadata(self, prompt, rendered, budgets, reduction_log, selected_notes, user_message, section_texts, pressure):
+    def _metadata(self, prompt, rendered, budgets, reduction_log, selected_notes, user_message, section_texts, pressure=None):
         metadata = ContextReportBuilder(
             self.agent,
             total_budget=self.total_budget,
@@ -370,9 +368,16 @@ class ContextManager:
             user_message=user_message,
             section_texts=section_texts,
         )
-        metadata["pressure"] = {
-            "ratio": pressure.ratio,
-            "tier": pressure.tier,
-            "source": pressure.source,
-        }
+        if pressure:
+            metadata["pressure"] = {
+                "ratio": pressure.ratio,
+                "tier": pressure.tier,
+                "source": pressure.source,
+            }
+        else:
+            metadata["pressure"] = {
+                "ratio": 0.0,
+                "tier": "tier0_observe",
+                "source": "no_reduction",
+            }
         return metadata

@@ -87,10 +87,10 @@ def test_missing_metadata_falls_back_to_estimate():
 
 
 def test_pressure_tier_boundaries():
-    assert ContextPressure(599, 1000).pressure_tier == "tier0_observe"
-    assert ContextPressure(600, 1000).pressure_tier == "tier1_snip"
-    assert ContextPressure(800, 1000).pressure_tier == "tier2_prune"
-    assert ContextPressure(950, 1000).pressure_tier == "tier3_summary"
+    assert ContextPressure(599, 1000, 1000).pressure_tier == "tier0_observe"
+    assert ContextPressure(600, 1000, 1000).pressure_tier == "tier1_snip"
+    assert ContextPressure(800, 1000, 1000).pressure_tier == "tier2_prune"
+    assert ContextPressure(950, 1000, 1000).pressure_tier == "tier3_summary"
 
 
 def test_cache_tokens_are_passed_through_when_present():

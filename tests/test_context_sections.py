@@ -79,14 +79,14 @@ def test_context_manager_exports_legacy_section_policy_names():
     from pico.core.context_manager import (
         DEFAULT_REDUCTION_ORDER,
         DEFAULT_SECTION_FLOORS,
-        DEFAULT_SECTION_BUDGETS as LEGACY_BUDGETS,
-        SECTION_ORDER as LEGACY_ORDER,
+        DEFAULT_TOTAL_BUDGET,
     )
+    from pico.core.context_sections import SECTION_ORDER as LEGACY_ORDER
 
-    assert LEGACY_BUDGETS == DEFAULT_SECTION_BUDGETS
     assert DEFAULT_SECTION_FLOORS == MIN_SECTION_BUDGETS
     assert DEFAULT_REDUCTION_ORDER == REDUCTION_ORDER
     assert LEGACY_ORDER == SECTION_ORDER
+    assert DEFAULT_TOTAL_BUDGET == 60000
 
 
 def test_context_manager_default_floors_match_section_registry():
@@ -97,11 +97,11 @@ def test_context_manager_default_floors_match_section_registry():
 
 def test_context_manager_recomputes_floors_for_mutated_custom_budgets():
     manager = ContextManager(agent=object())
-    manager.section_budgets = {"prefix": 120, "memory": 120, "relevant_memory": 120, "history": 160}
+    manager.section_budgets = {"prefix": 120, "memory": 120, "relevant_memory": 120, "history": 160, "extra": 80}
 
-    assert manager._compute_section_floors() == {
-        "prefix": 30,
-        "memory": 30,
-        "relevant_memory": 30,
-        "history": 40,
-    }
+    floors = manager._compute_section_floors()
+    assert floors["prefix"] == MIN_SECTION_BUDGETS["prefix"]
+    assert floors["memory"] == MIN_SECTION_BUDGETS["memory"]
+    assert floors["relevant_memory"] == MIN_SECTION_BUDGETS["relevant_memory"]
+    assert floors["history"] == MIN_SECTION_BUDGETS["history"]
+    assert floors["extra"] == 20

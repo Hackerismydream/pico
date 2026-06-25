@@ -76,7 +76,7 @@ Continue after compaction.
     orchestrator = report["prompt_metadata"]["context_orchestrator"]
     summary = report["evidence_summaries"]["context_budget_summary"]
 
-    assert orchestrator["compact_trigger"] == "auto_tier3_summary"
+    assert orchestrator["compact_trigger"] == "auto_pressure_compact"
     assert orchestrator["summary_mode"] == "llm"
     assert orchestrator["compact_call_usage"]["total_tokens"] == 100
     assert summary["compact_call_usage"]["provider"] == "openai"

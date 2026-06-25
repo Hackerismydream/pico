@@ -200,7 +200,10 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.turn_history = TurnHistoryBuilder(self)
         self.compact_manager = CompactManager(self)
         self.runtime_consumers = default_runtime_consumers()
-        self.context_manager = ContextManager(self)
+        self.context_manager = ContextManager(
+            self,
+            context_window=int(getattr(self.model_client, "context_window", 0) or 0),
+        )
         self.context_orchestrator = ContextOrchestrator(self)
         self.resume_state = self.evaluate_resume_state()
         self.session_path = self.session_store.save(self.session)

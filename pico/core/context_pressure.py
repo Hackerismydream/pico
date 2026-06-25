@@ -28,6 +28,7 @@ def _optional_int(value):
 class ContextPressure:
     input_tokens: int
     context_window: int
+    budget_tokens: int
     actual_input_tokens: int | None = None
     last_actual_input_tokens: int | None = None
     usage_source: str = "estimated"
@@ -36,6 +37,11 @@ class ContextPressure:
 
     @property
     def pressure_ratio(self):
+        budget = max(1, int(self.budget_tokens or 0))
+        return round(max(0, int(self.input_tokens or 0)) / budget, 6)
+
+    @property
+    def window_ratio(self):
         window = max(1, int(self.context_window or 0))
         return round(max(0, int(self.input_tokens or 0)) / window, 6)
 
@@ -53,7 +59,9 @@ class ContextPressure:
     def to_context_usage_fields(self):
         return {
             "pressure_ratio": self.pressure_ratio,
+            "window_ratio": self.window_ratio,
             "pressure_tier": self.pressure_tier,
+            "budget_tokens": self.budget_tokens,
             "usage_source": self.usage_source,
             "actual_input_tokens": self.actual_input_tokens,
             "last_actual_input_tokens": self.last_actual_input_tokens,
@@ -68,12 +76,14 @@ class ContextPressureController:
         *,
         estimated_input_tokens,
         context_window,
+        budget_tokens=None,
         current_identity,
         last_completion_metadata=None,
         last_identity=None,
     ):
         estimated = max(0, int(estimated_input_tokens or 0))
         window = max(1, int(context_window or 0))
+        budget = int(budget_tokens or 0) or window
         metadata = dict(last_completion_metadata or {})
         last_actual = _optional_int(metadata.get("input_tokens"))
         cached = None
@@ -97,6 +107,7 @@ class ContextPressureController:
         return ContextPressure(
             input_tokens=input_tokens,
             context_window=window,
+            budget_tokens=budget,
             actual_input_tokens=actual,
             last_actual_input_tokens=last_actual,
             usage_source=usage_source,

@@ -21,7 +21,7 @@ from scripts.validate_llm_handoff import (
 def test_tier3_triggers_llm_handoff(tmp_path):
     result = scenario_tier3_triggers_llm_handoff(tmp_path)
 
-    assert result["compact_trigger"] == "auto_tier3_summary"
+    assert result["compact_trigger"] == "auto_pressure_compact"
     assert result["summary_mode"] == "llm"
     assert result["history_summary_kind"] == "compact_summary"
     assert result["structured_summary"] is True
@@ -33,7 +33,7 @@ def test_tier3_triggers_llm_handoff(tmp_path):
 def test_llm_failure_falls_back_to_deterministic(tmp_path):
     result = scenario_llm_failure_falls_back_to_deterministic(tmp_path)
 
-    assert result["compact_trigger"] == "auto_tier3_summary"
+    assert result["compact_trigger"] == "auto_pressure_compact"
     assert result["summary_mode"] == "deterministic_fallback"
     assert result["summary_text"].startswith("Compacted session summary:")
     assert result["final_answer"] == "fallback completed"

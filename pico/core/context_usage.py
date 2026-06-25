@@ -4,6 +4,7 @@ import hashlib
 
 from ..providers.errors import sanitize_url
 from .context_pressure import ContextPressureController
+from .context_sections import compute_budget_tokens
 
 DEFAULT_CONTEXT_WINDOW = 200_000
 TOKEN_ESTIMATION_METHOD = "typed_content_heuristic_v1"
@@ -38,18 +39,24 @@ class ContextUsageAnalyzer:
     def analyze(self, rendered):
         tools_chars = self._tools_chars()
         sections = {}
+        raw_total = 0
         for name, section in rendered.items():
             key = "current_request" if name == "current_request" else name
             text = str(section.rendered)
             chars = int(section.rendered_chars)
             tokens = estimate_tokens_typed(text, detect_content_type(text))
+            raw_tokens = estimate_tokens_typed(str(section.raw), detect_content_type(str(section.raw)))
             if key == "prefix":
                 chars = max(0, chars - tools_chars)
                 tokens = max(0, tokens - estimate_tokens(tools_chars))
+                raw_tokens = max(0, raw_tokens - estimate_tokens(tools_chars))
             sections[key] = {"chars": chars, "tokens": tokens}
+            raw_total += raw_tokens
         sections["tools"] = {"chars": tools_chars, "tokens": estimate_tokens(tools_chars)}
+        raw_total += estimate_tokens(tools_chars)
         total = sum(section["tokens"] for section in sections.values())
         window = self._context_window()
+        budget = compute_budget_tokens(window)
         reserved = int(getattr(self.agent, "max_new_tokens", 0) or 0)
         prompt_hash = self._prompt_hash(rendered)
         current_identity = {
@@ -61,8 +68,9 @@ class ContextUsageAnalyzer:
             "prompt_hash": prompt_hash,
         }
         pressure = ContextPressureController().evaluate(
-            estimated_input_tokens=total,
+            estimated_input_tokens=max(total, raw_total),
             context_window=window,
+            budget_tokens=budget,
             current_identity=current_identity,
             last_completion_metadata=getattr(self.agent, "last_completion_metadata", {}) or {},
             last_identity=self._last_identity(),
@@ -71,11 +79,11 @@ class ContextUsageAnalyzer:
             "estimation_method": TOKEN_ESTIMATION_METHOD,
             "model": current_identity["model"],
             "context_window": window,
+            "budget_tokens": budget,
             "reserved_output_tokens": reserved,
             "total_estimated_tokens": total,
             "sections": sections,
-            "free_tokens": window - total - reserved,
-            "auto_compact_threshold": int(window * 0.8),
+            "free_tokens": budget - total,
             "current_identity": current_identity,
             **pressure.to_context_usage_fields(),
         }

@@ -199,7 +199,9 @@ class Engine:
                         "trigger": "workspace_mismatch",
                     },
                 )
-            if prompt_metadata.get("budget_reductions"):
+            if prompt_metadata.get("budget_reductions") or (
+                prompt_metadata.get("pressure", {}).get("tier", "tier0_observe") != "tier0_observe"
+            ):
                 checkpoint = agent.create_checkpoint(
                     task_state, user_message, trigger="context_reduction"
                 )

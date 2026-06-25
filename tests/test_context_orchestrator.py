@@ -93,7 +93,7 @@ Continue the large task.
     assert result.metadata["prompt_over_budget"] is False
     assert result.metadata["context_usage"]["pressure_tier"] == "tier3_summary"
     assert result.should_compact is True
-    assert result.compact_trigger == "auto_tier3_summary"
+    assert result.compact_trigger == "auto_pressure_compact"
     assert result.metadata["auto_compaction_summary"]["summary_mode"] == "llm"
     assert result.metadata["context_orchestrator"]["compact_call_usage"]["total_tokens"] == 100
     assert context_budget_summary(result.metadata)["compact_call_usage"]["provider"] == "openai"

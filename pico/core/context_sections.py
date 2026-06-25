@@ -18,13 +18,14 @@ class ContextSectionPolicy:
 SECTION_ORDER = ("prefix", "memory", "skills", "relevant_memory", "history", "current_request")
 REDUCTION_ORDER = ("relevant_memory", "skills", "history", "memory", "prefix")
 
-DEFAULT_SECTION_BUDGETS = {
-    "prefix": 12000,
-    "memory": 8000,
-    "skills": 4000,
-    "relevant_memory": 6000,
-    "history": 30000,
+SECTION_RATIOS = {
+    "prefix": 0.20,
+    "memory": 0.13,
+    "skills": 0.07,
+    "relevant_memory": 0.10,
+    "history": 0.50,
 }
+
 MIN_SECTION_BUDGETS = {
     "prefix": 4000,
     "memory": 1200,
@@ -32,6 +33,66 @@ MIN_SECTION_BUDGETS = {
     "relevant_memory": 1000,
     "history": 6000,
 }
+
+DEFAULT_SECTION_BUDGETS = {
+    "prefix": 12000,
+    "memory": 8000,
+    "skills": 4000,
+    "relevant_memory": 6000,
+    "history": 30000,
+}
+
+
+DEFAULT_UTILIZATION_RATIO = 0.50
+OUTPUT_RESERVE_TOKENS = 16384
+MIN_BUDGET_CHARS = 60000
+MAX_BUDGET_CHARS = 800000
+
+
+def compute_budget_chars(context_window_tokens, utilization_ratio=None):
+    """Compute prompt budget in chars from model context window."""
+    if not context_window_tokens or int(context_window_tokens) <= 0:
+        return MIN_BUDGET_CHARS
+    window = int(context_window_tokens)
+    ratio = utilization_ratio if utilization_ratio is not None else DEFAULT_UTILIZATION_RATIO
+    effective_tokens = max(0, window - OUTPUT_RESERVE_TOKENS)
+    budget = int(effective_tokens * ratio * 4)
+    if effective_tokens <= 0:
+        budget = int(window * ratio * 4)
+    return max(min(MIN_BUDGET_CHARS, window * 4), min(MAX_BUDGET_CHARS, budget))
+
+
+def compute_budget_tokens(context_window_tokens, utilization_ratio=None):
+    """Compute prompt budget in tokens from model context window."""
+    if not context_window_tokens or int(context_window_tokens) <= 0:
+        return MIN_BUDGET_CHARS // 4
+    window = int(context_window_tokens)
+    ratio = utilization_ratio if utilization_ratio is not None else DEFAULT_UTILIZATION_RATIO
+    effective_tokens = max(0, window - OUTPUT_RESERVE_TOKENS)
+    budget = int(effective_tokens * ratio)
+    if effective_tokens <= 0:
+        budget = int(window * ratio)
+    return max(min(MIN_BUDGET_CHARS // 4, window), min(window, budget))
+
+
+def compute_section_budgets(total_budget_chars, ratios=None):
+    """Compute per-section budgets from total budget and ratios.
+
+    Each section gets at least its MIN_SECTION_BUDGETS floor, unless
+    the total budget is smaller than the sum of all floors — in that case
+    budgets are purely ratio-based without floor enforcement.
+    """
+    ratios = ratios or SECTION_RATIOS
+    floor_sum = sum(MIN_SECTION_BUDGETS.get(s, 0) for s in ratios)
+    budgets = {}
+    if total_budget_chars < floor_sum:
+        for section, ratio in ratios.items():
+            budgets[section] = int(total_budget_chars * ratio)
+    else:
+        for section, ratio in ratios.items():
+            floor = MIN_SECTION_BUDGETS.get(section, 0)
+            budgets[section] = max(floor, int(total_budget_chars * ratio))
+    return budgets
 
 _REDUCTION_RANKS = {name: rank for rank, name in enumerate(REDUCTION_ORDER)}
 
@@ -94,8 +155,10 @@ def section_order():
     return SECTION_ORDER
 
 
-def section_budgets():
-    return dict(DEFAULT_SECTION_BUDGETS)
+def section_budgets(total_budget_chars=None):
+    if total_budget_chars is None:
+        return dict(DEFAULT_SECTION_BUDGETS)
+    return compute_section_budgets(total_budget_chars)
 
 
 def section_floors():

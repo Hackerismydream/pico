@@ -232,7 +232,7 @@ def main():
 def _validate_result(name, result):
     checks = {
         "scenario_tier3_triggers_llm_handoff": lambda r: (
-            r["compact_trigger"] == "auto_tier3_summary"
+            r["compact_trigger"] == "auto_pressure_compact"
             and r["summary_mode"] == "llm"
             and r["structured_summary"]
             and r["compact_call_usage"]["input_tokens"] > 0
@@ -240,7 +240,7 @@ def _validate_result(name, result):
             and r["final_answer"] == "auth middleware is ready"
         ),
         "scenario_llm_failure_falls_back_to_deterministic": lambda r: (
-            r["compact_trigger"] == "auto_tier3_summary"
+            r["compact_trigger"] == "auto_pressure_compact"
             and r["summary_mode"] == "deterministic_fallback"
             and r["summary_text"].startswith("Compacted session summary:")
             and r["final_answer"] == "fallback completed"
