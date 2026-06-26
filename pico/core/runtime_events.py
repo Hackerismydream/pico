@@ -1,12 +1,21 @@
-"""Structured trace event helpers."""
+"""Structured trace event helpers.
+
+Runtime events are normalized here before they enter the run trace. The helper
+sets stable trace, turn, phase, and span fields but leaves event-specific
+semantics to the caller.
+"""
 
 from .workspace import now
 
 PHASE_BY_EVENT = {
     "run_started": "runtime",
+    "context_orchestrator_decision": "prompt",
     "prompt_built": "prompt",
     "model_requested": "model",
     "model_parsed": "parse",
+    "loop_transition": "loop",
+    "governance_decision": "governance",
+    "final_readiness_decision": "final_gate",
     "tool_executed": "tool",
     "checkpoint_created": "checkpoint",
     "compaction_started": "compact",

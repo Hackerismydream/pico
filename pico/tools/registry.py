@@ -12,6 +12,7 @@ from functools import partial
 from pydantic import ValidationError
 
 from ..core.workspace import IGNORED_PATH_NAMES
+from . import media as media_tools
 from .base import RegisteredTool
 from .agents import (
     AGENT_TOOL_EXAMPLES,
@@ -45,6 +46,7 @@ from .schemas import (
     AskUserArgs,
     EnterPlanModeArgs,
     ExitPlanModeArgs,
+    InspectImageArgs,
     ListFilesArgs,
     PatchFileArgs,
     ReadFileArgs,
@@ -63,6 +65,7 @@ _TOOL_SCHEMAS = {
     "list_files": ListFilesArgs,
     "read_file": ReadFileArgs,
     "search": SearchArgs,
+    "inspect_image": InspectImageArgs,
     "run_shell": RunShellArgs,
     "write_file": WriteFileArgs,
     "patch_file": PatchFileArgs,
@@ -108,6 +111,7 @@ BASE_TOOL_SPECS = {
         "risky": True,
         "description": "Replace one exact text block in a file.",
     },
+    **media_tools.MEDIA_TOOL_SPECS,
     **TODO_TOOL_SPECS,
     **AGENT_TOOL_SPECS,
     **PLAN_TOOL_SPECS,
@@ -121,6 +125,7 @@ TOOL_EXAMPLES = {
     "run_shell": '<tool>{"name":"run_shell","args":{"command":"uv run --with pytest python -m pytest -q","timeout":20}}</tool>',
     "write_file": '<tool name="write_file" path="binary_search.py"><content>def binary_search(nums, target):\n    return -1\n</content></tool>',
     "patch_file": '<tool name="patch_file" path="binary_search.py"><old_text>return -1</old_text><new_text>return mid</new_text></tool>',
+    **media_tools.MEDIA_TOOL_EXAMPLES,
     **TODO_TOOL_EXAMPLES,
     **AGENT_TOOL_EXAMPLES,
     **PLAN_TOOL_EXAMPLES,
@@ -172,6 +177,9 @@ def validate_tool(agent, name, args):
     elif name == "search":
         agent.path(args.get("path", "."))
 
+    elif name in media_tools.MEDIA_TOOL_NAMES:
+        media_tools.validate_media_runtime(agent, name, args)
+
     elif name == "write_file":
         path = agent.path(args["path"])
         if path.exists() and path.is_dir():
@@ -196,18 +204,19 @@ def tool_list_files(agent, args):
     path = agent.path(args.get("path", "."))
     if not path.is_dir():
         raise ValueError("path is not a directory")
-    entries = [
-        item
-        for item in sorted(
-            path.iterdir(), key=lambda item: (item.is_file(), item.name.lower())
-        )
-        if item.name not in IGNORED_PATH_NAMES
-    ]
+    entries = _visible_entries(path)
     lines = []
     for entry in entries[:200]:
         kind = "[D]" if entry.is_dir() else "[F]"
         lines.append(f"{kind} {entry.relative_to(agent.root)}")
+        if entry.is_dir():
+            for child in _visible_entries(entry)[:12]:
+                child_kind = "[D]" if child.is_dir() else "[F]"
+                lines.append(f"  {child_kind} {child.relative_to(agent.root)}")
     return "\n".join(lines) or "(empty)"
+
+def _visible_entries(path):
+    return [item for item in sorted(path.iterdir(), key=lambda item: (item.is_file(), item.name.lower())) if item.name not in IGNORED_PATH_NAMES]
 
 
 def tool_read_file(agent, args):
@@ -347,4 +356,5 @@ _TOOL_RUNNERS = {
     "enter_plan_mode": tool_enter_plan_mode,
     "exit_plan_mode": tool_exit_plan_mode,
     "ask_user": tool_ask_user,
+    **media_tools.MEDIA_TOOL_RUNNERS,
 }

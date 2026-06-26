@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import pytest
 
 from pico.testing import ScriptedModelClient
@@ -40,6 +41,116 @@ def test_usage_command_reports_provider_model_and_last_usage(tmp_path):
     assert "last input tokens: 10" in output
     assert "last output tokens: 5" in output
     assert "last cached tokens: 3" in output
+
+
+def test_usage_command_sanitizes_base_url_host(tmp_path):
+    from pico.cli import handle_repl_command
+
+    agent = build_agent(tmp_path, [])
+    agent.model_client.base_url = "https://user:secret@example.com:8443/v1?api_key=sk-real"
+
+    handled, _, output = handle_repl_command(agent, "/usage")
+
+    assert handled is True
+    assert "base url host: example.com:8443" in output
+    assert "secret" not in output
+    assert "api_key" not in output
+
+
+def test_usage_command_handles_malformed_sanitized_base_url(tmp_path):
+    from pico.cli import handle_repl_command
+
+    agent = build_agent(tmp_path, [])
+    agent.model_client.base_url = "http://user:secret@[::1/v1?api_key=x#frag"
+
+    handled, _, output = handle_repl_command(agent, "/usage")
+
+    assert handled is True
+    assert "base url host: [::1" in output
+    assert "secret" not in output
+    assert "api_key" not in output
+
+
+def test_usage_command_optionally_reports_context_pressure_fields(tmp_path):
+    from pico.cli import handle_repl_command
+
+    agent = build_agent(tmp_path, [])
+    agent.last_prompt_metadata = {
+        "context_usage": {
+            "total_estimated_tokens": 400,
+            "context_window": 1000,
+            "pressure_tier": "medium",
+            "usage_source": "estimated",
+            "cached_tokens": 128,
+        }
+    }
+
+    handled, _, output = handle_repl_command(agent, "/usage")
+
+    assert handled is True
+    assert "context usage: 400/1000" in output
+    assert "context pressure tier: medium" in output
+    assert "context usage source: estimated" in output
+    assert "context cached tokens: 128" in output
+
+
+def test_usage_command_optionally_reports_context_orchestrator_fields(tmp_path):
+    from pico.cli import handle_repl_command
+
+    agent = build_agent(tmp_path, [])
+    agent.last_prompt_metadata = {
+        "context_usage": {
+            "total_estimated_tokens": 400,
+            "context_window": 1000,
+        },
+        "context_orchestrator": {
+            "version": "local-v1",
+            "summary_called": True,
+            "summary_delta_event_count": 3,
+            "replacement_cache_hits": 2,
+        },
+    }
+
+    handled, _, output = handle_repl_command(agent, "/usage")
+
+    assert handled is True
+    assert "context orchestrator: local-v1" in output
+    assert "context summary called: True" in output
+    assert "context summary delta events: 3" in output
+    assert "context replacement cache hits: 2" in output
+
+
+def test_context_command_reports_usage_and_orchestrator_payload(tmp_path):
+    from pico.cli import handle_repl_command
+
+    agent = build_agent(tmp_path, [])
+
+    handled, _, output = handle_repl_command(agent, "/context")
+
+    payload = json.loads(output)
+    assert handled is True
+    assert "context_usage" in payload
+    assert payload["context_orchestrator"]["version"] == "local-v1"
+
+
+def test_usage_command_omits_optional_context_pressure_fields_when_absent(tmp_path):
+    from pico.cli import handle_repl_command
+
+    agent = build_agent(tmp_path, [])
+    agent.last_prompt_metadata = {
+        "context_usage": {
+            "total_estimated_tokens": 400,
+            "context_window": 1000,
+        }
+    }
+
+    handled, _, output = handle_repl_command(agent, "/usage")
+
+    assert handled is True
+    assert "context usage: 400/1000" in output
+    assert "context pressure tier:" not in output
+    assert "context usage source:" not in output
+    assert "context cached tokens:" not in output
 
 
 def test_model_command_updates_current_runtime_only(tmp_path):

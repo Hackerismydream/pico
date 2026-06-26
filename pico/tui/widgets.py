@@ -453,6 +453,15 @@ class StatusBar(Static):
             self.context_text = f"context {used}"
         else:
             self.context_text = "context -"
+        extras = []
+        if usage.get("pressure_tier"):
+            extras.append(f"tier {usage['pressure_tier']}")
+        if usage.get("usage_source"):
+            extras.append(f"source {usage['usage_source']}")
+        if usage.get("cached_tokens") is not None:
+            extras.append(f"cached {usage['cached_tokens']}")
+        if extras:
+            self.context_text = f"{self.context_text} ({', '.join(extras)})"
         self._render_status()
 
     def _render_status(self) -> None:

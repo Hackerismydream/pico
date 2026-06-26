@@ -254,6 +254,18 @@ def test_list_files_hides_internal_agent_state(tmp_path):
     assert "[F] hello.txt" in result
 
 
+def test_list_files_shows_one_level_child_preview(tmp_path):
+    agent = build_agent(tmp_path, [])
+    nested = tmp_path / "fixtures" / "db"
+    nested.mkdir(parents=True)
+    (nested / "deployment_guide.md").write_text("docs\n", encoding="utf-8")
+
+    result = agent.run_tool("list_files", {"path": "fixtures"})
+
+    assert "[D] fixtures/db" in result
+    assert "  [F] fixtures/db/deployment_guide.md" in result
+
+
 def test_repeated_identical_tool_call_is_rejected(tmp_path):
     agent = build_agent(tmp_path, [])
     agent.record({"role": "tool", "name": "list_files", "args": {}, "content": "(empty)", "created_at": "1"})
@@ -688,6 +700,48 @@ def test_anthropic_compatible_client_extracts_first_text_block():
         result = client.complete("hello", 42)
 
     assert result == "<final>ok</final>"
+
+
+def test_anthropic_compatible_client_records_usage_metadata():
+    class FakeResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "content": [{"type": "text", "text": "<final>ok</final>"}],
+                    "usage": {
+                        "input_tokens": 1234,
+                        "output_tokens": 56,
+                        "cache_read_input_tokens": 100,
+                    },
+                }
+            ).encode("utf-8")
+
+    client = AnthropicCompatibleModelClient(
+        model="claude-sonnet-4-5-20250929",
+        base_url="https://www.right.codes/claude-aws/v1",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+    )
+
+    with patch("urllib.request.urlopen", return_value=FakeResponse()):
+        result = client.complete("hello", 42)
+
+    assert result == "<final>ok</final>"
+    assert client.last_completion_metadata["provider_protocol"] == "anthropic"
+    assert client.last_completion_metadata["provider_model"] == "claude-sonnet-4-5-20250929"
+    assert client.last_completion_metadata["input_tokens"] == 1234
+    assert client.last_completion_metadata["output_tokens"] == 56
+    assert client.last_completion_metadata["cached_tokens"] == 100
+    assert client.last_completion_metadata["cache_hit"] is True
 
 
 def test_build_agent_uses_openai_provider_and_model_override(tmp_path):

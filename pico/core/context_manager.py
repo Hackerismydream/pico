@@ -1,7 +1,8 @@
-"""Prompt 组装与上下文预算控制。
+"""Prompt assembly and context budget control.
 
-这个模块负责决定：每一轮到底把多少 prefix、memory、相关笔记、历史
-以及当前用户请求送进模型。
+ContextManager decides how much prefix, memory, relevant notes, transcript
+history, and current user input reach the model for one turn. It reports
+budget evidence but does not mutate session history or compact the conversation.
 """
 
 from __future__ import annotations
@@ -9,30 +10,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..features import memory as memorylib, skills as skillslib
-from .context_usage import ContextUsageAnalyzer
+from .context_report import ContextReportBuilder, RELEVANT_MEMORY_LIMIT
+from .context_sections import (
+    CURRENT_REQUEST_SECTION,
+    MIN_SECTION_BUDGETS,
+    REDUCTION_ORDER,
+    SECTION_ORDER,
+    compute_budget_chars,
+    compute_section_budgets,
+)
 from .turn_history import TurnHistoryBuilder, tail_clip
 
 DEFAULT_TOTAL_BUDGET = 60000
-DEFAULT_SECTION_BUDGETS = {
-    "prefix": 12000,
-    "memory": 8000,
-    "skills": 4000,
-    "relevant_memory": 6000,
-    "history": 30000,
-}
-DEFAULT_SECTION_FLOORS = {
-    "prefix": 4000,
-    "memory": 1200,
-    "skills": 600,
-    "relevant_memory": 1000,
-    "history": 6000,
-}
-# 当 prompt 超预算时，会优先压缩这些 section。
-DEFAULT_REDUCTION_ORDER = ("relevant_memory", "skills", "history", "memory", "prefix")
-SECTION_ORDER = ("prefix", "memory", "skills", "relevant_memory", "history", "current_request")
-CURRENT_REQUEST_SECTION = "current_request"
-RELEVANT_MEMORY_LIMIT = 3
+DEFAULT_SECTION_FLOORS = MIN_SECTION_BUDGETS
+DEFAULT_REDUCTION_ORDER = REDUCTION_ORDER
 
+
+@dataclass(frozen=True)
+class _PromptPressure:
+    ratio: float
+    tier: str
+    source: str = "char_estimate"
 
 @dataclass
 class SectionRender:
@@ -54,19 +52,25 @@ class ContextManager:
     def __init__(
         self,
         agent,
-        total_budget=DEFAULT_TOTAL_BUDGET,
+        total_budget=None,
+        context_window=None,
         section_budgets=None,
         section_floors=None,
         reduction_order=None,
     ):
         self.agent = agent
-        self.total_budget = int(total_budget)
-        self.section_budgets = dict(DEFAULT_SECTION_BUDGETS)
+        if total_budget is not None:
+            self.total_budget = int(total_budget)
+        elif context_window:
+            self.total_budget = compute_budget_chars(int(context_window))
+        else:
+            self.total_budget = DEFAULT_TOTAL_BUDGET
+        self.section_budgets = compute_section_budgets(self.total_budget)
         if section_budgets:
             self.section_budgets.update({str(key): int(value) for key, value in section_budgets.items()})
         self._section_floor_overrides = {str(key): int(value) for key, value in (section_floors or {}).items()}
         self.section_floors = self._compute_section_floors()
-        self.reduction_order = tuple(reduction_order or DEFAULT_REDUCTION_ORDER)
+        self.reduction_order = tuple(reduction_order or REDUCTION_ORDER)
         self.history_builder = TurnHistoryBuilder(agent)
 
     def build(self, user_message):
@@ -137,12 +141,13 @@ class ContextManager:
         budgets = dict(self.section_budgets)
         rendered = self._render_sections(section_texts, budgets, selected_notes=selected_notes)
         prompt = self._assemble_prompt(rendered)
+        pressure = self._prompt_pressure(len(prompt))
+        if pressure.tier != "tier0_observe":
+            budgets = self._pressure_adjusted_budgets(budgets, pressure)
+            rendered = self._render_sections(section_texts, budgets, selected_notes=selected_notes, pressure=pressure)
+            prompt = self._assemble_prompt(rendered)
         reduction_log = []
 
-        # 如果 prompt 超预算，就按固定顺序不断压缩。
-        # 这里的顺序体现了平台偏好：
-        # 先牺牲 relevant_memory，再牺牲 history，然后才动 memory 和 prefix。
-        # 最新用户请求永远不裁剪，因为那是本轮最重要的输入。
         while len(prompt) > self.total_budget:
             overflow = len(prompt) - self.total_budget
             reduced = False
@@ -163,7 +168,7 @@ class ContextManager:
                     }
                 )
                 budgets[section] = new_budget
-                rendered = self._render_sections(section_texts, budgets, selected_notes=selected_notes)
+                rendered = self._render_sections(section_texts, budgets, selected_notes=selected_notes, pressure=pressure)
                 prompt = self._assemble_prompt(rendered)
                 reduced = True
                 break
@@ -178,6 +183,7 @@ class ContextManager:
             selected_notes=selected_notes,
             user_message=user_message,
             section_texts=section_texts,
+            pressure=pressure,
         )
         return prompt, metadata
 
@@ -217,14 +223,14 @@ class ContextManager:
         }
 
     def _compute_section_floors(self):
-        floors = {
-            section: max(20, int(budget) // 4)
-            for section, budget in self.section_budgets.items()
-        }
+        floors = dict(MIN_SECTION_BUDGETS)
+        for section, budget in self.section_budgets.items():
+            if section not in floors:
+                floors[section] = max(20, int(budget) // 4)
         floors.update(self._section_floor_overrides)
         return floors
 
-    def _render_sections(self, section_texts, budgets, selected_notes=None):
+    def _render_sections(self, section_texts, budgets, selected_notes=None, pressure=None):
         rendered = {}
         for section in SECTION_ORDER:
             budget = budgets.get(section)
@@ -234,12 +240,33 @@ class ContextManager:
             elif section == "relevant_memory":
                 rendered[section] = self._render_relevant_memory(selected_notes or [], int(budget or 0))
             elif section == "history":
-                rendered[section] = self._render_history_section(int(budget or 0))
+                rendered[section] = self._render_history_section(int(budget or 0), pressure=pressure)
             else:
                 raw = section_texts[section]
                 rendered_text = tail_clip(raw, int(budget)) if budget is not None else raw
                 rendered[section] = SectionRender(raw=raw, budget=int(budget) if budget is not None else 0, rendered=rendered_text, details={})
         return rendered
+
+    def _prompt_pressure(self, prompt_chars):
+        ratio = int(prompt_chars) / max(1, self.total_budget)
+        if ratio >= 0.95:
+            tier = "tier3_summary"
+        elif ratio >= 0.80:
+            tier = "tier2_prune"
+        elif ratio >= 0.60:
+            tier = "tier1_snip"
+        else:
+            tier = "tier0_observe"
+        return _PromptPressure(ratio=round(ratio, 4), tier=tier)
+
+    def _pressure_adjusted_budgets(self, budgets, pressure):
+        adjusted = dict(budgets)
+        tier = str(getattr(pressure, "tier", ""))
+        if tier in {"tier1_snip", "tier2_prune"}:
+            adjusted["relevant_memory"] = max(80, int(adjusted.get("relevant_memory", 0) * 0.7))
+        if tier == "tier2_prune":
+            adjusted["skills"] = int(adjusted.get("skills", 0) * 0.5)
+        return adjusted
 
     def _render_relevant_memory(self, selected_notes, budget):
         header = "Relevant memory:"
@@ -295,7 +322,7 @@ class ContextManager:
         usable = max(0, budget - overhead)
         return max(1, usable // note_count)
 
-    def _render_history_section(self, budget):
+    def _render_history_section(self, budget, pressure=None):
         history = list(getattr(self.agent, "session", {}).get("history", []))
         raw = self.history_builder.raw_text(history)
         if not history:
@@ -314,7 +341,7 @@ class ContextManager:
                 },
             )
 
-        rendered, history_details = self.history_builder.render_section(budget)
+        rendered, history_details = self.history_builder.render_section(budget, pressure=pressure)
 
         return SectionRender(
             raw=raw,
@@ -327,69 +354,30 @@ class ContextManager:
         # 顺序是刻意设计的：稳定规则放前面，最新请求放最后。
         return "\n\n".join(rendered[section].rendered for section in SECTION_ORDER).strip()
 
-    def _metadata(self, prompt, rendered, budgets, reduction_log, selected_notes, user_message, section_texts):
-        section_metadata = {}
-        for section in SECTION_ORDER[:-1]:
-            section_metadata[section] = {
-                "raw_chars": rendered[section].raw_chars,
-                "budget_chars": int(budgets.get(section, 0)),
-                "rendered_chars": rendered[section].rendered_chars,
+    def _metadata(self, prompt, rendered, budgets, reduction_log, selected_notes, user_message, section_texts, pressure=None):
+        metadata = ContextReportBuilder(
+            self.agent,
+            total_budget=self.total_budget,
+            reduction_order=self.reduction_order,
+        ).build(
+            prompt=prompt,
+            rendered=rendered,
+            budgets=budgets,
+            reduction_log=reduction_log,
+            selected_notes=selected_notes,
+            user_message=user_message,
+            section_texts=section_texts,
+        )
+        if pressure:
+            metadata["pressure"] = {
+                "ratio": pressure.ratio,
+                "tier": pressure.tier,
+                "source": pressure.source,
             }
-        section_metadata[CURRENT_REQUEST_SECTION] = {
-            "raw_chars": len(section_texts[CURRENT_REQUEST_SECTION]),
-            "budget_chars": None,
-            "rendered_chars": len(rendered[CURRENT_REQUEST_SECTION].rendered),
-        }
-        return {
-            "prompt_chars": len(prompt),
-            "prompt_budget_chars": self.total_budget,
-            "prompt_over_budget": len(prompt) > self.total_budget,
-            "section_order": list(SECTION_ORDER),
-            "section_budgets": {
-                section: (None if section == CURRENT_REQUEST_SECTION else int(budgets.get(section, 0)))
-                for section in SECTION_ORDER
-            },
-            "sections": section_metadata,
-            "budget_reductions": reduction_log,
-            "reduction_order": list(self.reduction_order),
-            "relevant_memory": {
-                "limit": RELEVANT_MEMORY_LIMIT,
-                "selected_count": len(selected_notes),
-                "selected_notes": [note["text"] for note in selected_notes],
-                "selected_sources": [str(note.get("source", "")).strip() for note in selected_notes],
-                "selected_kinds": [str(note.get("kind", "episodic")).strip() or "episodic" for note in selected_notes],
-                "selected_durable_count": sum(
-                    1 for note in selected_notes if (str(note.get("kind", "episodic")).strip() or "episodic") == "durable"
-                ),
-                "raw_chars": rendered["relevant_memory"].raw_chars,
-                "rendered_chars": rendered["relevant_memory"].rendered_chars,
-                "rendered_notes": list(rendered["relevant_memory"].details.get("rendered_notes", [])),
-                "rendered_count": int(rendered["relevant_memory"].details.get("rendered_count", 0)),
-            },
-            "history": {
-                "raw_chars": rendered["history"].raw_chars,
-                "rendered_chars": rendered["history"].rendered_chars,
-                "older_entries_count": int(rendered["history"].details.get("older_entries_count", 0)),
-                "collapsed_duplicate_reads": int(rendered["history"].details.get("collapsed_duplicate_reads", 0)),
-                "reused_file_summary_count": int(rendered["history"].details.get("reused_file_summary_count", 0)),
-                "summarized_tool_count": int(rendered["history"].details.get("summarized_tool_count", 0)),
-                "rendered_turns": int(rendered["history"].details.get("rendered_turns", 0)),
-            },
-            "skills": self._skills_metadata(),
-            "current_request": {
-                "text": user_message,
-                "raw_chars": len(user_message),
-                "rendered_chars": len(user_message),
-                "section_chars": len(rendered[CURRENT_REQUEST_SECTION].rendered),
-            },
-            "context_usage": ContextUsageAnalyzer(self.agent).analyze(rendered),
-        }
-
-    def _skills_metadata(self):
-        skills = getattr(self.agent, "skills", {})
-        items = [skill.metadata() for skill in skillslib.list_skills(skills, user_invocable_only=False)]
-        return {
-            "available_count": len(items),
-            "user_invocable_count": sum(1 for item in items if item["user_invocable"]),
-            "items": items,
-        }
+        else:
+            metadata["pressure"] = {
+                "ratio": 0.0,
+                "tier": "tier0_observe",
+                "source": "no_reduction",
+            }
+        return metadata

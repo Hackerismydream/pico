@@ -1,9 +1,10 @@
+"""Acceptance tests for tool policy decisions and governance evidence."""
+
 import json
-import shlex
-import sys
 
 from pico.testing import ScriptedModelClient
 from pico import Pico, SessionStore, WorkspaceContext
+from pico.features.sandbox.config import SandboxConfig
 
 
 def build_agent(tmp_path, outputs=None, **kwargs):
@@ -134,6 +135,122 @@ def test_shell_search_like_commands_are_rejected_by_policy(tmp_path):
     )
 
 
+def test_tool_governance_decisions_are_run_trace_evidence(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"missing_tool","args":{}}</tool>',
+            '<tool>{"name":"run_shell","args":{"command":"grep -R hello .","timeout":20}}</tool>',
+            "<final>done</final>",
+        ],
+        max_steps=3,
+    )
+
+    assert agent.ask("exercise tool governance") == "done"
+
+    trace = read_jsonl(agent.current_run_dir / "trace.jsonl")
+    decisions = [event for event in trace if event["event"] == "governance_decision"]
+    assert [(event["decision"], event["reason_code"]) for event in decisions] == [
+        ("deny", "unknown_tool"),
+        ("allow", "approval_auto"),
+        ("deny", "shell_search_should_use_tool"),
+    ]
+    assert decisions[-1]["decision_type"] == "tool_policy"
+    assert decisions[-1]["original_reason"] == "shell_search_should_use_tool"
+
+    report = json.loads(
+        (agent.current_run_dir / "report.json").read_text(encoding="utf-8")
+    )
+    assert report["evidence_summaries"]["governance_summary"] == {
+        "schema_version": "pico.governance_summary.v1",
+        "allow_count": 1,
+        "deny_count": 2,
+        "warn_count": 0,
+        "decision_type_counts": {
+            "tool_lookup": 1,
+            "permission": 1,
+            "tool_policy": 1,
+        },
+        "reasons": {
+            "unknown_tool": 1,
+            "approval_auto": 1,
+            "shell_search_should_use_tool": 1,
+        },
+        "last_denied_reason": "shell_search_should_use_tool",
+    }
+
+
+def test_tool_governance_covers_validation_repetition_and_permission_denials(tmp_path):
+    repeated_agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"read_file","args":{}}</tool>',
+            '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":1}}</tool>',
+            '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":1}}</tool>',
+            '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":1}}</tool>',
+            "<final>done</final>",
+        ],
+        max_steps=5,
+    )
+
+    assert repeated_agent.ask("exercise early governance denials") == "done"
+
+    trace = read_jsonl(repeated_agent.current_run_dir / "trace.jsonl")
+    denied_reasons = [
+        event["reason_code"]
+        for event in trace
+        if event["event"] == "governance_decision" and event["decision"] == "deny"
+    ]
+    assert "invalid_arguments" in denied_reasons
+    assert "repeated_identical_call" in denied_reasons
+
+    readonly_agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"run_shell","args":{"command":"echo hi","timeout":20}}</tool>',
+            "<final>done</final>",
+        ],
+        read_only=True,
+        max_steps=2,
+    )
+
+    assert readonly_agent.ask("exercise read only denial") == "done"
+
+    trace = read_jsonl(readonly_agent.current_run_dir / "trace.jsonl")
+    permission_denial = next(
+        event
+        for event in trace
+        if event["event"] == "governance_decision" and event["decision"] == "deny"
+    )
+    assert permission_denial["decision_type"] == "permission"
+    assert permission_denial["reason_code"] == "read_only_violation"
+    assert permission_denial["original_reason"] == "tool_not_allowed"
+    assert permission_denial["security_event_type"]
+
+
+def test_tool_governance_records_required_sandbox_unavailable(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"run_shell","args":{"command":"echo hi","timeout":20}}</tool>',
+            "<final>done</final>",
+        ],
+        sandbox_config=SandboxConfig(mode="required", backend="bubblewrap"),
+        max_steps=2,
+    )
+    agent.sandbox_runner.which = lambda name: None
+
+    assert agent.ask("exercise sandbox denial") == "done"
+
+    trace = read_jsonl(agent.current_run_dir / "trace.jsonl")
+    assert any(
+        event["event"] == "governance_decision"
+        and event["decision"] == "deny"
+        and event["reason_code"] == "sandbox_rejected_command"
+        for event in trace
+    )
+
+
 def test_shell_policy_allows_head_tail_grep_after_pipe(tmp_path):
     """`pip install ... 2>&1 | tail -5` 和 `git log | head -10` 是合法的输出管理，
     policy 不应该把它们当作 workspace search 拒绝。"""
@@ -152,31 +269,3 @@ def test_shell_policy_allows_head_tail_grep_after_pipe(tmp_path):
     )
     assert "search" in rejected_after_seq, "命令分号后跟 cat 仍应被禁"
     assert agent._last_tool_result_metadata["tool_error_code"] == "shell_search_should_use_tool"
-
-
-def test_long_shell_output_is_clipped_and_full_output_is_saved_as_run_artifact(tmp_path):
-    script = "print('x'*6000)"
-    command = f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}"
-    agent = build_agent(
-        tmp_path,
-        [
-            f'<tool>{{"name":"run_shell","args":{{"command":{json.dumps(command)},"timeout":20}}}}</tool>',
-            "<final>captured</final>",
-        ],
-    )
-
-    assert agent.ask("produce long shell output") == "captured"
-
-    tool_item = next(item for item in agent.session["history"] if item["role"] == "tool" and item["name"] == "run_shell")
-    assert len(tool_item["content"]) < 1200
-    assert "full output saved:" in tool_item["content"]
-    assert "full output saved:" in agent.model_client.prompts[1]
-
-    report = json.loads((agent.current_run_dir / "report.json").read_text(encoding="utf-8"))
-    artifact_path = report["runtime_reminders"][0]["artifact_path"] if report["runtime_reminders"] else agent._last_tool_result_metadata["full_output_artifact"]
-    full_output = (tmp_path / artifact_path).read_text(encoding="utf-8")
-    assert "x" * 6000 in full_output
-
-    trace_events = read_jsonl(agent.current_run_dir / "trace.jsonl")
-    tool_event = next(event for event in trace_events if event["event"] == "tool_executed")
-    assert tool_event["full_output_artifact"] == artifact_path

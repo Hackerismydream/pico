@@ -1,3 +1,5 @@
+"""Acceptance tests for todo ledger evidence in run reports."""
+
 import json
 
 from pico.testing import ScriptedModelClient
@@ -73,3 +75,27 @@ def test_todo_changes_are_written_to_task_state_and_report(tmp_path):
     assert report["todos"]["items"][0]["status"] == "done"
     assert [change["action"] for change in report["todo_changes"]] == ["add", "update"]
     assert task_state["todo_changes"] == report["todo_changes"]
+
+
+def test_soft_final_readiness_reminds_for_current_run_high_priority_todo(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"todo_add","args":{"content":"Ship Gate6","priority":"high"}}</tool>',
+            "<final>Gate6 is ready.</final>",
+            "<final>Gate6 is ready.</final>",
+        ],
+        final_readiness_mode="soft",
+        max_steps=3,
+    )
+
+    events = list(agent.engine.run_turn("track Gate6"))
+
+    assert [event["type"] for event in events if event["type"] == "runtime_notice"] == [
+        "runtime_notice"
+    ]
+    assert events[-2]["content"] == "Gate6 is ready."
+
+    trace = read_jsonl(agent.current_run_dir / "trace.jsonl")
+    readiness = [event for event in trace if event["event"] == "final_readiness_decision"]
+    assert readiness[0]["reasons"] == ["unresolved_high_priority_todo"]

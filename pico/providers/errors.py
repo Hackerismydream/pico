@@ -67,10 +67,16 @@ def sanitize_url(value):
     text = str(value or "")
     if not text:
         return ""
+    if "://" not in text and "@" in text:
+        return text.rsplit("@", 1)[1].split("?", 1)[0].split("#", 1)[0]
     try:
         parsed = urlsplit(text)
     except ValueError:
-        return text.split("?", 1)[0].split("#", 1)[0]
+        safe = text.split("?", 1)[0].split("#", 1)[0]
+        scheme, sep, rest = safe.partition("://")
+        if "@" in rest:
+            rest = rest.rsplit("@", 1)[1]
+        return f"{scheme}{sep}{rest}" if sep else rest
     hostname = parsed.hostname or ""
     if not hostname:
         return urlunsplit((parsed.scheme, "", parsed.path, "", ""))

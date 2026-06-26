@@ -31,7 +31,11 @@ htmlcov/
 tmp/
 .worktrees/
 .pico/
+.mini-pico/
+_local/
 artifacts/
+.kami-output/
+release/
 readme_intro_locked/
 
 # Local secrets and provider configuration
@@ -54,3 +58,4 @@ docs/**
 
 # Packaging metadata
 pico.egg-info/
+.gstack/

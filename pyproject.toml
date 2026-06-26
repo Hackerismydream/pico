@@ -28,10 +28,16 @@ dev = [
 include = ["pico*"]
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 norecursedirs = [
   ".git",
+  ".pico",
   ".venv",
+  ".worktrees",
+  "_local",
   "artifacts",
   "build",
   "dist",
+  "examples",
+  "fixtures",
 ]

@@ -1,4 +1,9 @@
-"""Helper routines for Engine control-loop side effects."""
+"""Control-loop tool and retry helpers shared by Engine.
+
+These helpers execute tool payloads and handle retry summaries while Engine
+keeps the turn loop shape visible. Terminal-state policy lives in
+completion_governance.
+"""
 
 import time
 
@@ -33,15 +38,28 @@ def execute_tool_payload(engine, task_state, user_message, payload):
             "duration_ms": tool_duration_ms,
         },
     )
-    agent.record(
-        {
-            "role": "tool",
-            "name": name,
-            "args": args,
-            "content": tool_result,
-            "created_at": now(),
-        }
-    )
+    history_item = {
+        "role": "tool",
+        "name": name,
+        "args": args,
+        "content": tool_result,
+        "created_at": now(),
+        "tool_status": str(tool_metadata.get("tool_status", "")),
+        "tool_error_code": str(tool_metadata.get("tool_error_code", "")),
+        "workspace_changed": bool(tool_metadata.get("workspace_changed", False)),
+        "affected_paths": list(tool_metadata.get("affected_paths", []) or []),
+    }
+    if tool_metadata.get("full_output_artifact"):
+        history_item.update(
+            {
+                "artifact_ref": tool_metadata["full_output_artifact"],
+                "original_chars": int(tool_metadata.get("original_chars", 0) or 0),
+                "content_sha256": str(tool_metadata.get("content_sha256", "")),
+            }
+        )
+    if tool_metadata.get("media_refs"):
+        history_item["media_refs"] = list(tool_metadata.get("media_refs", []) or [])
+    agent.record(history_item)
     for notification in engine.drain_worker_notifications():
         yield {
             "type": "worker_notification",
@@ -78,111 +96,6 @@ def execute_tool_payload(engine, task_state, user_message, payload):
     }
 
 
-def finish_stopped_run(
-    engine, task_state, user_message, final, stop_reason, run_started_at
-):
-    agent = engine.runtime
-    task_state.stop(stop_reason, final_answer=final)
-    agent.abort_requested = False
-    agent.record({"role": "assistant", "content": final, "created_at": now()})
-    agent.session_event_bus.emit(
-        "assistant_message",
-        {"run_id": task_state.run_id, "kind": "stop", "content": clip(final, 500)},
-    )
-    agent.run_store.write_task_state(task_state)
-    checkpoint = agent.create_checkpoint(task_state, user_message, trigger=stop_reason)
-    agent.emit_trace(
-        task_state,
-        "checkpoint_created",
-        {"checkpoint_id": checkpoint["checkpoint_id"], "trigger": stop_reason},
-    )
-    agent.emit_trace(
-        task_state,
-        "run_finished",
-        {
-            "status": task_state.status,
-            "stop_reason": task_state.stop_reason,
-            "final_answer": final,
-            "run_duration_ms": int((time.monotonic() - run_started_at) * 1000),
-        },
-    )
-    agent.session_event_bus.emit(
-        "turn_finished",
-        {
-            "run_id": task_state.run_id,
-            "status": task_state.status,
-            "stop_reason": task_state.stop_reason,
-            "duration_ms": int((time.monotonic() - run_started_at) * 1000),
-        },
-    )
-    agent.run_store.write_report(
-        task_state, agent.redact_artifact(agent.build_report(task_state))
-    )
-    agent.current_turn_id = ""
-    agent.current_run_id = ""
-    yield {"type": "stop", "run_id": task_state.run_id, "content": final}
-    yield {
-        "type": "turn_finished",
-        "run_id": task_state.run_id,
-        "status": task_state.status,
-        "stop_reason": task_state.stop_reason,
-    }
-
-
-def finish_limited_run(engine, task_state, user_message, final, run_started_at):
-    agent = engine.runtime
-    agent.record({"role": "assistant", "content": final, "created_at": now()})
-    agent.session_event_bus.emit(
-        "assistant_message",
-        {"run_id": task_state.run_id, "kind": "stop", "content": clip(final, 500)},
-    )
-    agent.promote_durable_memory(user_message, final)
-    maintain_memory_safely(agent, task_state, final)
-    agent.run_store.write_task_state(task_state)
-    checkpoint = agent.create_checkpoint(
-        task_state, user_message, trigger=task_state.stop_reason or "run_stopped"
-    )
-    agent.emit_trace(
-        task_state,
-        "checkpoint_created",
-        {
-            "checkpoint_id": checkpoint["checkpoint_id"],
-            "trigger": task_state.stop_reason or "run_stopped",
-        },
-    )
-    agent.emit_trace(
-        task_state,
-        "run_finished",
-        {
-            "status": task_state.status,
-            "stop_reason": task_state.stop_reason,
-            "final_answer": final,
-            "run_duration_ms": int((time.monotonic() - run_started_at) * 1000),
-        },
-    )
-    agent.session_event_bus.emit(
-        "turn_finished",
-        {
-            "run_id": task_state.run_id,
-            "status": task_state.status,
-            "stop_reason": task_state.stop_reason,
-            "duration_ms": int((time.monotonic() - run_started_at) * 1000),
-        },
-    )
-    agent.run_store.write_report(
-        task_state, agent.redact_artifact(agent.build_report(task_state))
-    )
-    agent.current_turn_id = ""
-    agent.current_run_id = ""
-    yield {"type": "stop", "run_id": task_state.run_id, "content": final}
-    yield {
-        "type": "turn_finished",
-        "run_id": task_state.run_id,
-        "status": task_state.status,
-        "stop_reason": task_state.stop_reason,
-    }
-
-
 def should_retry_model_error(exc, provider_retries):
     if not isinstance(exc, ProviderError):
         return False
@@ -190,23 +103,6 @@ def should_retry_model_error(exc, provider_retries):
     if code not in {"empty_response"}:
         return False
     return provider_retries.get(code, 0) < 1
-
-
-def maintain_memory_safely(agent, task_state, final_answer):
-    try:
-        agent.maintain_memory_after_turn(final_answer)
-    except Exception as exc:
-        audit = getattr(agent, "last_memory_maintenance", {"errors": []})
-        errors = audit.setdefault("errors", [])
-        errors.append(str(exc))
-        agent.last_memory_maintenance = audit
-        agent.session_event_bus.emit(
-            "memory_maintenance_failed",
-            {"run_id": task_state.run_id, "error": clip(str(exc), 300)},
-        )
-        agent.emit_trace(
-            task_state, "memory_maintenance_failed", {"error": clip(str(exc), 300)}
-        )
 
 
 _STEP_LIMIT_SUMMARY_NOTICE = (

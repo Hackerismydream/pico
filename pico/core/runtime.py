@@ -18,8 +18,10 @@ from ..features import memory as memorylib, skills as skillslib
 from ..features.sandbox import SandboxConfig, SandboxRunner
 from .compact import CompactManager
 from .context_manager import ContextManager
+from .context_orchestrator import ContextOrchestrator
 from .engine import Engine
 from . import model_output, tool_executor
+from .model_router import ModelClientRouter
 from .plan_mode import PlanModeController
 from .permissions import PermissionChecker
 from .run_store import RunStore
@@ -53,19 +55,13 @@ DEFAULT_SHELL_ENV_ALLOWLIST = (
     "TEMP",
     "USER",
 )
-DEFAULT_FEATURE_FLAGS = {
-    "memory": True,
-    "relevant_memory": True,
-    "context_reduction": True,
-    "prompt_cache": True,
-}
+DEFAULT_FEATURE_FLAGS = dict(memory=True, relevant_memory=True, context_reduction=True, prompt_cache=True)
 CHECKPOINT_SCHEMA_VERSION = "phase1-v1"
 CHECKPOINT_NONE_STATUS = "no-checkpoint"
 CHECKPOINT_FULL_VALID_STATUS = "full-valid"
 CHECKPOINT_PARTIAL_STALE_STATUS = "partial-stale"
 CHECKPOINT_WORKSPACE_MISMATCH_STATUS = "workspace-mismatch"
 CHECKPOINT_SCHEMA_MISMATCH_STATUS = "schema-mismatch"
-
 
 @dataclass
 class PromptPrefix:
@@ -101,12 +97,16 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         dream_interval_hours=24.0,
         dream_min_sessions=5,
         model_client_factory=None,
+        model_client_router=None,
         sandbox_config=None,
         ask_user_callback=None,
         allowed_tools=None,
+        final_readiness_mode="warn",
+        before_final_hooks=None,
     ):
         self.model_client = model_client
         self.model_client_factory = model_client_factory
+        self.model_client_router = model_client_router or ModelClientRouter(model_client)
         self.abort_requested = False
         self.ask_user_callback = ask_user_callback
         self.sandbox_config = sandbox_config or SandboxConfig()
@@ -145,6 +145,8 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.dream_interval_hours = float(dream_interval_hours)
         self.dream_min_sessions = int(dream_min_sessions)
         self.allowed_tools = self._normalize_allowed_tools(allowed_tools)
+        self.final_readiness_mode = str(final_readiness_mode or "warn")
+        self.before_final_hooks = tuple(before_final_hooks or ())
         self.run_store = run_store or RunStore(
             Path(workspace.repo_root) / ".pico" / "runs"
         )
@@ -198,7 +200,11 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.turn_history = TurnHistoryBuilder(self)
         self.compact_manager = CompactManager(self)
         self.runtime_consumers = default_runtime_consumers()
-        self.context_manager = ContextManager(self)
+        self.context_manager = ContextManager(
+            self,
+            context_window=int(getattr(self.model_client, "context_window", 0) or 0),
+        )
+        self.context_orchestrator = ContextOrchestrator(self)
         self.resume_state = self.evaluate_resume_state()
         self.session_path = self.session_store.save(self.session)
         self.current_task_state = None
@@ -214,6 +220,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.last_dream_changed_files = []
         self._memory_maintenance_thread = None
         self._last_tool_result_metadata = {}
+        self._pending_tool_result_metadata = {}
         self._last_prefix_refresh = {
             "workspace_changed": False,
             "prefix_changed": False,
@@ -484,7 +491,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
 
             Rules:
             - Use tools instead of guessing about the workspace.
-            - Return exactly one <tool>...</tool> or one <final>...</final>.
+            - Return one or more <tool>...</tool> calls, or one <final>...</final>.
             - Tool calls must look like:
               <tool>{{"name":"tool_name","args":{{...}}}}</tool>
             - For write_file and patch_file with multi-line text, prefer XML style:
@@ -493,7 +500,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
               <final>your answer</final>
             - Never invent tool results.
             - Keep answers concise and concrete.
-            - If the user asks you to create or update a specific file and the path is clear, use write_file or patch_file instead of repeatedly listing files.
+            - If the path is clear, write or patch directly; for multi-file deliverables, batch related writes in one response or one shell script and do not read back files you just wrote.
             - Before writing tests for existing code, read the implementation first.
             - When writing tests, match the current implementation unless the user explicitly asked you to change the code.
             - New files should be complete and runnable, including obvious imports.
@@ -621,58 +628,13 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
     def _build_prompt_and_metadata(self, user_message):
         refresh = self.refresh_prefix()
         self.resume_state = self.evaluate_resume_state()
-        prompt, metadata = self.context_manager.build(user_message)
-        if (
-            metadata.get("prompt_over_budget")
-            and len(self.session.get("history", [])) > 4
-        ):
-            self.compact_history(trigger="auto_prompt_over_budget")
-            prompt, metadata = self.context_manager.build(user_message)
-            metadata["auto_compacted"] = True
-        # 这里把“这轮 prompt 是怎么拼出来的”连同缓存相关状态一起记下来，
-        # 后面 trace/report 才能解释清楚：为什么这一轮 prefix 变了、缓存有没有命中。
-        metadata.update(
-            {
-                "prefix_chars": len(self.prefix),
-                "workspace_chars": len(self.workspace.text()),
-                "memory_chars": len(self.memory_text()),
-                "history_chars": len(self.history_text()),
-                "request_chars": len(user_message),
-                "tool_count": len(self.tools),
-                "workspace_docs": len(self.workspace.project_docs),
-                "recent_commits": len(self.workspace.recent_commits),
-                "prefix_hash": self.prefix_state.hash,
-                "prompt_cache_key": self.prefix_state.hash,
-                "workspace_fingerprint": self.prefix_state.workspace_fingerprint,
-                "tool_signature": self.prefix_state.tool_signature,
-                "workspace_changed": refresh["workspace_changed"],
-                "prefix_changed": refresh["prefix_changed"],
-                "prompt_cache_supported": bool(
-                    getattr(self.model_client, "supports_prompt_cache", False)
-                ),
-                "resume_status": self.resume_state.get(
-                    "status", CHECKPOINT_NONE_STATUS
-                ),
-                "stale_summary_invalidations": int(
-                    self.resume_state.get("stale_summary_invalidations", 0)
-                ),
-                "stale_paths": list(self.resume_state.get("stale_paths", [])),
-                "runtime_identity_mismatch_fields": list(
-                    self.resume_state.get("runtime_identity_mismatch_fields", [])
-                ),
-            }
-        )
-        metadata.update(self.detected_secret_env_summary())
-        usage_payload = {
-            "run_id": getattr(getattr(self, "current_task_state", None), "run_id", ""),
-            "context_usage": metadata.get("context_usage", {}),
-        }
-        self.session_event_bus.emit("context_usage_recorded", usage_payload)
-        return prompt, metadata
+        snapshot = self.context_orchestrator.snapshot(user_message, prefix_refresh=refresh)
+        result = self.context_orchestrator.build(snapshot)
+        return result.prompt, result.metadata
 
-    def compact_history(self, trigger="manual", keep_recent_turns=2):
+    def compact_history(self, trigger="manual", keep_recent_turns=2, summary_mode="deterministic"):
         return self.compact_manager.compact(
-            trigger=trigger, keep_recent_turns=keep_recent_turns
+            trigger=trigger, keep_recent_turns=keep_recent_turns, summary_mode=summary_mode
         )
 
     def durable_memory_index_text(self):
@@ -720,11 +682,19 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         for consumer in self.runtime_consumers:
             try:
                 consumer.handle(self, task_state, payload)
-            except Exception:
-                continue
+            except Exception as exc:
+                error = {
+                    "consumer": consumer.__class__.__name__,
+                    "event": str(event),
+                    "span_id": str(payload.get("span_id", "")),
+                    "message": clip(str(exc), 200),
+                    "critical": bool(getattr(consumer, "critical", False)),
+                }
+                task_state.evidence_summaries.setdefault("runtime_consumer_errors", []).append(error)
+                if error["critical"]:
+                    task_state.evidence_summaries.setdefault("consumer_errors", []).append(error)
         self.run_store.write_task_state(task_state)
         return payload
-
     def infer_next_step(self, task_state):
         if task_state.status == "completed":
             return "No next step recorded."
@@ -883,6 +853,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
             "runtime_reminders": list(task_state.runtime_reminders),
             "todos": self.todo_ledger.to_dict(),
             "todo_changes": list(task_state.todo_changes),
+            "evidence_summaries": dict(task_state.evidence_summaries),
             "workers": self.worker_manager.to_dict(),
         }
 

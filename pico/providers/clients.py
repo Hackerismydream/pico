@@ -12,6 +12,7 @@ from http.client import RemoteDisconnected
 import urllib.error
 import urllib.request
 
+from ..core.content_blocks import ensure_model_input
 from .errors import ProviderError, sanitize_url
 
 OPENAI_COMPATIBLE_USER_AGENT = "pico/0.1"
@@ -143,6 +144,37 @@ def _extract_openai_response_from_sse(body_text):
     return "", {}
 
 
+def _openai_input_content(prompt):
+    model_input = ensure_model_input(prompt)
+    content = [{"type": "input_text", "text": model_input.text}]
+    for image in model_input.images:
+        content.append(
+            {
+                "type": "input_image",
+                "image_url": image.data_url(),
+            }
+        )
+    return content, model_input.image_count
+
+
+def _anthropic_input_content(prompt):
+    model_input = ensure_model_input(prompt)
+    content = []
+    for image in model_input.images:
+        content.append(
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": image.mime_type,
+                    "data": image.base64_data(),
+                },
+            }
+        )
+    content.append({"type": "text", "text": model_input.text})
+    return content, model_input.image_count
+
+
 def _extract_usage_cache_details(data):
     # 把不同 OpenAI-compatible 返回里的 usage 字段整理成统一结构，
     # 让 runtime/trace/report 不需要关心 provider 细节。
@@ -150,7 +182,11 @@ def _extract_usage_cache_details(data):
     input_tokens = usage.get("input_tokens", usage.get("prompt_tokens"))
     output_tokens = usage.get("output_tokens", usage.get("completion_tokens"))
     input_details = usage.get("input_tokens_details") or usage.get("prompt_tokens_details") or {}
-    cached_tokens = int(input_details.get("cached_tokens") or 0)
+    cached_tokens = int(
+        usage.get("cache_read_input_tokens")
+        or input_details.get("cached_tokens")
+        or 0
+    )
     return {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
@@ -309,17 +345,13 @@ class OpenAICompatibleModelClient:
         落到 provider API 的地方。
         """
         self.last_completion_metadata = {}
+        content, image_input_count = _openai_input_content(prompt)
         payload = {
             "model": self.model,
             "input": [
                 {
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": prompt,
-                        }
-                    ],
+                    "content": content,
                 }
             ],
             "max_output_tokens": max_new_tokens,
@@ -371,6 +403,7 @@ class OpenAICompatibleModelClient:
                     "prompt_cache_supported": self.supports_prompt_cache,
                     "prompt_cache_key": prompt_cache_key,
                     "prompt_cache_retention": prompt_cache_retention,
+                    "image_input_count": image_input_count,
                     **request_metadata,
                     **_extract_usage_cache_details(response_data),
                 }
@@ -416,6 +449,7 @@ class OpenAICompatibleModelClient:
             "prompt_cache_supported": self.supports_prompt_cache,
             "prompt_cache_key": prompt_cache_key,
             "prompt_cache_retention": prompt_cache_retention,
+            "image_input_count": image_input_count,
             **request_metadata,
             **_extract_usage_cache_details(data),
         }
@@ -458,17 +492,13 @@ class AnthropicCompatibleModelClient:
         # 这里只是显式丢弃，因为当前 Anthropic-compatible 路径没有接缓存复用。
         del prompt_cache_key, prompt_cache_retention
         self.last_completion_metadata = {}
+        content, image_input_count = _anthropic_input_content(prompt)
         payload = {
             "model": self.model,
             "messages": [
                 {
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": prompt,
-                        }
-                    ],
+                    "content": content,
                 }
             ],
             "max_tokens": max_new_tokens,
@@ -528,7 +558,11 @@ class AnthropicCompatibleModelClient:
             raise error
         text = _extract_anthropic_text(data)
         if text:
-            self.last_completion_metadata = dict(request_metadata)
+            self.last_completion_metadata = {
+                "image_input_count": image_input_count,
+                **request_metadata,
+                **_extract_usage_cache_details(data),
+            }
             return text
         error = _provider_failure(
             "anthropic",
