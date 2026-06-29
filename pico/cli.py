@@ -31,6 +31,7 @@ from .runtime_kernel import (
     project_trace,
     runtime_event_to_dict,
 )
+from .security import redact_artifact
 from .workspace import WorkspaceContext, middle
 
 DEFAULT_SECRET_ENV_NAMES = (
@@ -87,12 +88,13 @@ def _effective_provider(args):
     # 1. 用户显式传入 --provider
     # 2. 项目 .env / shell 里的 PICO_PROVIDER
     # 3. 代码里的默认 provider
-    provider = getattr(args, "provider", None) or provider_env(
-        "PICO_PROVIDER", default=DEFAULT_PROVIDER
-    )
+    explicit_provider = getattr(args, "provider", None)
+    provider = explicit_provider or provider_env("PICO_PROVIDER", default=DEFAULT_PROVIDER)
     if provider not in PROVIDER_CHOICES:
         choices = ", ".join(PROVIDER_CHOICES)
         raise ValueError(f"unknown provider: {provider}. expected one of: {choices}")
+    if provider == "fake" and explicit_provider != "fake":
+        raise ValueError("fake provider must be selected explicitly with --provider fake")
     return provider
 
 
@@ -361,6 +363,7 @@ def run_kernel_once(args):
 
     workspace = WorkspaceContext.build(args.cwd)
     load_project_env(workspace.repo_root)
+    configured_secret_names = _configured_secret_names(args)
     model = _build_model_client(args)
     runner = RuntimeRunner(
         model_client=model,
@@ -380,9 +383,15 @@ def run_kernel_once(args):
     store = _kernel_run_store(workspace)
     run_id = project_report(result.events)["run_id"]
     if run_id:
-        store.write_runtime_events(run_id, result.events)
-        store.write_trace(run_id, project_trace(result.events))
-        store.write_report(run_id, project_report(result.events))
+        store.write_runtime_events(run_id, result.events, secret_env_names=configured_secret_names)
+        store.write_trace(
+            run_id,
+            redact_artifact(project_trace(result.events), secret_env_names=configured_secret_names),
+        )
+        store.write_report(
+            run_id,
+            redact_artifact(project_report(result.events), secret_env_names=configured_secret_names),
+        )
     if getattr(args, "show_runtime_events", False):
         summary = project_cli_runtime_events(result.events)
         if summary:

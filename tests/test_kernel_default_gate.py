@@ -43,6 +43,9 @@ def _valid_live_acceptance():
 
 
 def _valid_projection_inspection():
+    runtime_events_path = "/fixture/runtime_events.jsonl"
+    trace_path = "/fixture/trace.jsonl"
+    report_path = "/fixture/report.json"
     ledger = [
         {"type": "invocation_start", "payload": {"invocation_id": "run_fixture"}},
         {"type": "user_input", "payload": {"invocation_id": "run_fixture", "text": "hello"}},
@@ -57,9 +60,9 @@ def _valid_projection_inspection():
         "report": {"run_id": "run_fixture", "status": "completed"},
         "export": {"run_id": "run_fixture", "status": "completed"},
         "artifacts": {
-            "runtime_events": {"path": "/fixture/runtime_events.jsonl", "exists": True},
-            "trace": {"path": "/fixture/trace.jsonl", "exists": True},
-            "report": {"path": "/fixture/report.json", "exists": True},
+            "runtime_events": {"path": runtime_events_path, "exists": True},
+            "trace": {"path": trace_path, "exists": True},
+            "report": {"path": report_path, "exists": True},
         },
     }
 
@@ -111,11 +114,22 @@ def _write_release_candidate(root, *, live_acceptance=None):
         gate_dir / "live-acceptance.json",
         _valid_live_acceptance() if live_acceptance is None else live_acceptance,
     )
-    projection_path = _write_json(gate_dir / "projection-inspection.json", _valid_projection_inspection())
-    headless_path = _write_json(gate_dir / "task_run_export.json", _valid_headless_task_export())
-    runtime_events_path = gate_dir / "workspace" / ".pico" / "runs" / "run_fixture" / "runtime_events.jsonl"
+    runtime_events_path = root / ".pico" / "runs" / "run_fixture" / "runtime_events.jsonl"
+    trace_path = root / ".pico" / "runs" / "run_fixture" / "trace.jsonl"
+    report_path = root / ".pico" / "runs" / "run_fixture" / "report.json"
     runtime_events_path.parent.mkdir(parents=True, exist_ok=True)
     runtime_events_path.write_text('{"type":"terminal_status","payload":{"status":"completed"}}\n', encoding="utf-8")
+    trace_path.write_text('{"event":"terminal_status","payload":{"status":"completed"}}\n', encoding="utf-8")
+    report_path.write_text('{"status":"completed"}\n', encoding="utf-8")
+    projection = _valid_projection_inspection()
+    projection["artifacts"]["runtime_events"]["path"] = str(runtime_events_path)
+    projection["artifacts"]["trace"]["path"] = str(trace_path)
+    projection["artifacts"]["report"]["path"] = str(report_path)
+    projection_path = _write_json(gate_dir / "projection-inspection.json", projection)
+    headless_path = _write_json(gate_dir / "task_run_export.json", _valid_headless_task_export())
+    headless_runtime_events_path = gate_dir / "workspace" / ".pico" / "runs" / "run_fixture" / "runtime_events.jsonl"
+    headless_runtime_events_path.parent.mkdir(parents=True, exist_ok=True)
+    headless_runtime_events_path.write_text('{"type":"terminal_status","payload":{"status":"completed"}}\n', encoding="utf-8")
 
     return _write_json(
         root / ".pico" / "kernel-release-candidate.json",
@@ -162,6 +176,33 @@ def test_kernel_release_candidate_gate_requires_both_live_scenarios(tmp_path):
 
     assert result.passed is False
     assert any("read-only-tool" in failure for failure in result.failures)
+
+
+def test_kernel_release_candidate_gate_rejects_missing_projection_artifacts(tmp_path):
+    manifest = _write_release_candidate(tmp_path)
+    projection_path = tmp_path / ".pico" / "kernel-gates" / "projection-inspection.json"
+    projection = json.loads(projection_path.read_text(encoding="utf-8"))
+    missing = tmp_path / ".pico" / "runs" / "run_fixture" / "runtime_events.jsonl"
+    missing.unlink()
+    projection["artifacts"]["runtime_events"]["exists"] = True
+    projection_path.write_text(json.dumps(projection), encoding="utf-8")
+
+    result = evaluate_kernel_release_candidate(manifest, workspace_root=tmp_path)
+
+    assert result.passed is False
+    assert any("runtime_events path must exist" in failure for failure in result.failures)
+
+
+def test_kernel_release_candidate_gate_rejects_manifest_artifact_escape(tmp_path):
+    manifest = _write_release_candidate(tmp_path)
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["gates"]["live_provider_acceptance"] = {"artifact": "../live-acceptance.json"}
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = evaluate_kernel_release_candidate(manifest, workspace_root=tmp_path)
+
+    assert result.passed is False
+    assert any("escapes workspace" in failure for failure in result.failures)
 
 
 def test_default_runtime_uses_kernel_after_release_candidate_gate_passes(tmp_path, capsys, monkeypatch):

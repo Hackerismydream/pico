@@ -16,11 +16,18 @@ OPENAI_COMPATIBLE_USER_AGENT = "pico/0.1"
 
 class FakeModelClient:
     def __init__(self, outputs, metadata=None):
+        self._metadata_generation = 0
+        self._last_returned_metadata_generation = -1
         self.outputs = list(outputs)
         self.metadata = list(metadata or [])
         self.prompts = []
         self.supports_prompt_cache = False
         self.last_completion_metadata = {}
+
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, value)
+        if name == "last_completion_metadata" and "_metadata_generation" in self.__dict__:
+            object.__setattr__(self, "_metadata_generation", self._metadata_generation + 1)
 
     def complete(self, prompt, max_new_tokens, **kwargs):
         self.prompts.append(prompt)
@@ -28,9 +35,11 @@ class FakeModelClient:
             raise RuntimeError("fake model ran out of outputs")
         if self.metadata:
             self.last_completion_metadata = dict(self.metadata.pop(0))
-        elif not getattr(self, "last_completion_metadata", None):
+        elif self._metadata_generation == self._last_returned_metadata_generation:
             self.last_completion_metadata = {}
-        return self.outputs.pop(0)
+        output = self.outputs.pop(0)
+        self._last_returned_metadata_generation = self._metadata_generation
+        return output
 
 
 class OllamaModelClient:

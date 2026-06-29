@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 from .runtime_kernel import runtime_event_from_dict, runtime_event_to_dict
+from .security import redact_artifact
 
 RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
@@ -95,10 +96,17 @@ class RunStore:
         self._write_json_atomic(path, report)
         return path
 
-    def write_runtime_events(self, run_id, events):
+    def write_runtime_events(self, run_id, events, *, secret_env_names=None):
         path = self.runtime_events_path(run_id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        lines = [json.dumps(runtime_event_to_dict(event), sort_keys=True, ensure_ascii=True) for event in events]
+        lines = [
+            json.dumps(
+                redact_artifact(runtime_event_to_dict(event), secret_env_names=secret_env_names),
+                sort_keys=True,
+                ensure_ascii=True,
+            )
+            for event in events
+        ]
         self._write_text_atomic(path, "\n".join(lines) + ("\n" if lines else ""))
         return path
 

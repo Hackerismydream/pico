@@ -591,7 +591,12 @@ class RuntimeRunner:
         )
         tool_runtime = self.tool_runtime
         if tool_runtime is None:
-            tool_runtime = ToolRuntime(context.workspace_root)
+            tool_runtime = ToolRuntime(
+                context.workspace_root,
+                permission_policy=ToolPermissionPolicy.deny_all(
+                    "kernel runtime requires an explicit tool permission policy"
+                ),
+            )
         AgentFlow(self.model_adapter, tool_runtime=tool_runtime).run(context, ledger)
         return RuntimeResult(events=ledger.events)
 

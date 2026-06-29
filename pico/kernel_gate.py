@@ -142,13 +142,42 @@ def _artifact_paths(gate, workspace_root, failures, *, label):
         raw_paths.extend(raw_artifacts)
     paths = []
     for raw_path in raw_paths:
-        path = Path(str(raw_path))
-        if not path.is_absolute():
-            path = workspace_root / path
-        paths.append(path.resolve())
+        path = _resolve_workspace_artifact_path(raw_path, workspace_root, failures, label=label)
+        if path is not None:
+            paths.append(path)
     if not paths:
         failures.append(f"gate {label} must reference at least one artifact")
     return paths
+
+
+def _resolve_workspace_artifact_path(raw_path, workspace_root, failures, *, label):
+    path = Path(str(raw_path))
+    if path.is_absolute():
+        failures.append(f"gate {label} artifact path must be relative: {raw_path}")
+        return None
+    resolved = (workspace_root / path).resolve()
+    try:
+        resolved.relative_to(workspace_root)
+    except ValueError:
+        failures.append(f"gate {label} artifact path escapes workspace: {raw_path}")
+        return None
+    return resolved
+
+
+def _resolve_referenced_artifact_path(raw_path, base_dir, workspace_root, failures, *, label):
+    path = Path(str(raw_path))
+    if path.is_absolute():
+        resolved = path.resolve()
+        boundary = workspace_root
+    else:
+        resolved = (base_dir / path).resolve()
+        boundary = base_dir.resolve()
+    try:
+        resolved.relative_to(boundary)
+    except ValueError:
+        failures.append(f"{label} path escapes artifact boundary: {raw_path}")
+        return None
+    return resolved
 
 
 def _validate_fake_provider_tests(gate, failures):
@@ -248,8 +277,20 @@ def _validate_projection_inspection(gate, workspace_root, failures):
             artifact = artifacts.get(name)
             if not isinstance(artifact, dict):
                 failures.append(f"projection_inspection artifacts.{name} must be a JSON object")
-            elif artifact.get("exists") is not True:
-                failures.append(f"projection_inspection artifacts.{name} must exist")
+                continue
+            raw_path = str(artifact.get("path", "")).strip()
+            if not raw_path:
+                failures.append(f"projection_inspection artifacts.{name}.path must be recorded")
+                continue
+            artifact_path = _resolve_referenced_artifact_path(
+                raw_path,
+                path.parent,
+                workspace_root,
+                failures,
+                label=f"projection_inspection artifacts.{name}",
+            )
+            if artifact_path is not None and not artifact_path.exists():
+                failures.append(f"projection_inspection artifacts.{name} path must exist")
 
 
 def _validate_headless_single_task(gate, workspace_root, failures):
@@ -286,8 +327,16 @@ def _validate_headless_single_task(gate, workspace_root, failures):
         relpath = str(runtime.get("runtime_events_relpath", "")).strip()
         if not relpath:
             failures.append("headless_single_task runtime_events_relpath must be recorded")
-        elif not (path.parent / relpath).exists():
-            failures.append("headless_single_task runtime_events_relpath must exist")
+        else:
+            runtime_events_path = _resolve_referenced_artifact_path(
+                relpath,
+                path.parent,
+                workspace_root,
+                failures,
+                label="headless_single_task runtime_events_relpath",
+            )
+            if runtime_events_path is not None and not runtime_events_path.exists():
+                failures.append("headless_single_task runtime_events_relpath must exist")
 
     verifier = payload.get("verifier")
     if not isinstance(verifier, dict):

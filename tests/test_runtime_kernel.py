@@ -17,6 +17,22 @@ from pico.runtime_kernel import (
 from pico.tools import BASE_TOOL_SPECS
 
 
+def _allow_readonly_tool_runtime(root):
+    return ToolRuntime(root, permission_policy=ToolPermissionPolicy.allow_readonly())
+
+
+def test_fake_model_client_clears_metadata_between_calls():
+    client = FakeModelClient(
+        ["first", "second"],
+        metadata=[{"finish_reason": "tool_calls"}],
+    )
+
+    assert client.complete("prompt one", 128) == "first"
+    assert client.last_completion_metadata == {"finish_reason": "tool_calls"}
+    assert client.complete("prompt two", 128) == "second"
+    assert client.last_completion_metadata == {}
+
+
 def test_kernel_runner_records_no_tool_final_answer_from_events(tmp_path):
     runner = RuntimeRunner(model_client=FakeModelClient(["Kernel answer."]))
 
@@ -49,7 +65,7 @@ def test_kernel_runner_executes_readonly_tool_and_projects_result_to_next_model_
             "<final>The project fact is alpha.</final>",
         ]
     )
-    runner = RuntimeRunner(model_client=client)
+    runner = RuntimeRunner(model_client=client, tool_runtime=_allow_readonly_tool_runtime(tmp_path))
 
     result = runner.run(
         InvocationContext(
@@ -187,7 +203,7 @@ def test_kernel_tool_runtime_exposes_list_files_and_search_surfaces(tmp_path):
         ]
     )
 
-    result = RuntimeRunner(model_client=client).run(
+    result = RuntimeRunner(model_client=client, tool_runtime=_allow_readonly_tool_runtime(tmp_path)).run(
         InvocationContext(
             user_message="List and search.",
             workspace_root=str(tmp_path),
@@ -211,7 +227,7 @@ def test_kernel_tool_runtime_records_invalid_arguments(tmp_path):
         ]
     )
 
-    result = RuntimeRunner(model_client=client).run(
+    result = RuntimeRunner(model_client=client, tool_runtime=_allow_readonly_tool_runtime(tmp_path)).run(
         InvocationContext(
             user_message="Read a file.",
             workspace_root=str(tmp_path),
@@ -236,7 +252,7 @@ def test_kernel_tool_runtime_records_missing_file_case(tmp_path):
         ]
     )
 
-    result = RuntimeRunner(model_client=client).run(
+    result = RuntimeRunner(model_client=client, tool_runtime=_allow_readonly_tool_runtime(tmp_path)).run(
         InvocationContext(
             user_message="Read the file.",
             workspace_root=str(tmp_path),
@@ -260,7 +276,7 @@ def test_kernel_tool_runtime_records_missing_search_path_case(tmp_path):
         ]
     )
 
-    result = RuntimeRunner(model_client=client).run(
+    result = RuntimeRunner(model_client=client, tool_runtime=_allow_readonly_tool_runtime(tmp_path)).run(
         InvocationContext(
             user_message="Search missing path.",
             workspace_root=str(tmp_path),
@@ -339,6 +355,32 @@ def test_kernel_tool_runtime_keeps_write_and_shell_tools_unavailable(tmp_path):
     assert not (tmp_path / "x.txt").exists()
 
 
+def test_kernel_runner_default_tool_policy_denies_read_tools(tmp_path):
+    (tmp_path / "README.md").write_text("project fact: alpha\n", encoding="utf-8")
+    client = FakeModelClient(
+        [
+            '<tool>{"name":"read_file","args":{"path":"README.md"}}</tool>',
+            "<final>The default runtime denies implicit tools.</final>",
+        ]
+    )
+
+    result = RuntimeRunner(model_client=client).run(
+        InvocationContext(
+            user_message="Read README.",
+            workspace_root=str(tmp_path),
+            max_new_tokens=128,
+        )
+    )
+
+    assert result.status == "completed"
+    permission = next(event for event in result.events if event.type == "tool_permission_decision")
+    assert permission.payload["decision"] == "deny"
+    assert permission.payload["failure_classification"] == "permission_denied"
+    tool_result = next(event for event in result.events if event.type == "tool_result")
+    assert tool_result.payload["status"] == "denied"
+    assert "requires an explicit tool permission policy" in tool_result.payload["content"]
+
+
 def test_kernel_trace_and_report_projection_include_tool_call_and_final_answer(tmp_path):
     (tmp_path / "README.md").write_text("project fact: alpha\n", encoding="utf-8")
     result = RuntimeRunner(
@@ -347,7 +389,8 @@ def test_kernel_trace_and_report_projection_include_tool_call_and_final_answer(t
                 '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":1}}</tool>',
                 "<final>The project fact is alpha.</final>",
             ]
-        )
+        ),
+        tool_runtime=_allow_readonly_tool_runtime(tmp_path),
     ).run(
         InvocationContext(
             user_message="Read the project fact.",
@@ -597,6 +640,37 @@ def test_cli_kernel_runtime_persists_and_inspects_runtime_event_views(tmp_path, 
     assert report["run_id"] == run_id
     assert report["tool_calls"][0]["name"] == "read_file"
     assert report["permission_decisions"][0]["decision"] == "allow"
+
+
+def test_cli_kernel_runtime_redacts_persisted_artifacts(tmp_path, capsys, monkeypatch):
+    secret = "sk-kernel-secret-123"
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+    (tmp_path / ".env").write_text(f"OPENAI_API_KEY={secret}\n", encoding="utf-8")
+    monkeypatch.setenv("OPENAI_API_KEY", secret)
+    monkeypatch.setattr(
+        "pico.cli._build_model_client",
+        lambda args: FakeModelClient(
+            [
+                '<tool>{"name":"read_file","args":{"path":".env"}}</tool>',
+                f"<final>Read the secret {secret}.</final>",
+            ]
+        ),
+    )
+
+    status = main(["--runtime", "kernel", "--approval", "auto", "--cwd", str(tmp_path), "hello"])
+
+    assert status == 0
+    capsys.readouterr()
+    run_dir = next((tmp_path / ".pico" / "runs").iterdir())
+    persisted_text = "\n".join(
+        [
+            (run_dir / "runtime_events.jsonl").read_text(encoding="utf-8"),
+            (run_dir / "trace.jsonl").read_text(encoding="utf-8"),
+            (run_dir / "report.json").read_text(encoding="utf-8"),
+        ]
+    )
+    assert secret not in persisted_text
+    assert "<redacted>" in persisted_text
 
 
 def test_cli_kernel_runtime_maps_approval_never_to_permission_denied(tmp_path, capsys, monkeypatch):
