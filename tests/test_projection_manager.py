@@ -124,6 +124,33 @@ def test_projection_manager_manifest_contract(tmp_path):
     assert _read_jsonl(artifacts.runtime_events_path)[0]["type"] == "invocation_start"
 
 
+def test_projection_manager_redacts_manifest_terminal_status(tmp_path, monkeypatch):
+    secret = "sk-terminal-secret-123"
+    monkeypatch.setenv("TERMINAL_SECRET", secret)
+    store = RunStore(tmp_path / ".pico" / "runs")
+    events = [
+        RuntimeEvent(type="invocation_start", payload={"invocation_id": "run_terminal_secret"}),
+        RuntimeEvent(
+            type="terminal_status",
+            payload={
+                "invocation_id": "run_terminal_secret",
+                "status": "failed",
+                "error_type": "provider_error",
+                "error_message": f"provider returned {secret}",
+            },
+        ),
+    ]
+
+    artifacts = ProjectionManager(store, secret_env_names={"TERMINAL_SECRET"}).capture(events)
+    manifest = store.load_manifest("run_terminal_secret")
+
+    assert artifacts.status == "failed"
+    assert artifacts.terminal_status["error_message"] == "provider returned <redacted>"
+    assert manifest["terminal_status"]["error_message"] == "provider returned <redacted>"
+    assert secret not in json.dumps(artifacts.terminal_status, sort_keys=True)
+    assert secret not in artifacts.manifest_path.read_text(encoding="utf-8")
+
+
 def test_projection_manager_records_diagnostics_for_missing_terminal_and_bad_events(tmp_path):
     store = RunStore(tmp_path / ".pico" / "runs")
     events = [

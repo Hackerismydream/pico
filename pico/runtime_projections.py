@@ -56,8 +56,8 @@ class ProjectionManager:
             raise ProjectionCaptureError("cannot capture runtime artifacts without a run id")
 
         terminal = _last_event(normalized_events, "terminal_status")
-        terminal_status = {} if terminal is None else dict(terminal.payload)
-        status = "unknown" if terminal is None else str(terminal_status.get("status") or "unknown")
+        raw_terminal_status = {} if terminal is None else dict(terminal.payload)
+        status = "unknown" if terminal is None else str(raw_terminal_status.get("status") or "unknown")
         if terminal is None:
             diagnostics.append(
                 _diagnostic(
@@ -65,7 +65,7 @@ class ProjectionManager:
                     "runtime event history has no terminal_status event; status projected as unknown",
                 )
             )
-        elif "status" not in terminal_status:
+        elif "status" not in raw_terminal_status:
             diagnostics.append(
                 _diagnostic(
                     "missing_terminal_status_value",
@@ -82,6 +82,7 @@ class ProjectionManager:
             report = redact_artifact(project_report(normalized_events), secret_env_names=self.secret_env_names)
             session = redact_artifact(project_session(normalized_events), secret_env_names=self.secret_env_names)
             export = redact_artifact(project_export(normalized_events), secret_env_names=self.secret_env_names)
+            terminal_status = redact_artifact(raw_terminal_status, secret_env_names=self.secret_env_names)
         except Exception as exc:
             raise ProjectionCaptureError(f"redaction failed while capturing runtime artifacts: {exc}") from exc
 
