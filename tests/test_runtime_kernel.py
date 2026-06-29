@@ -1,12 +1,17 @@
+import json
+
 from pico.cli import main
 from pico.providers.clients import FakeModelClient
 from pico.runtime_kernel import (
     InvocationContext,
+    RuntimeEvent,
     ToolPermissionPolicy,
     RuntimeRunner,
     ToolRuntime,
+    project_export,
     project_final_answer,
     project_report,
+    project_session,
     project_trace,
 )
 from pico.tools import BASE_TOOL_SPECS
@@ -366,6 +371,111 @@ def test_kernel_trace_and_report_projection_include_tool_call_and_final_answer(t
     ]
 
 
+def test_kernel_projection_consistency_from_fixture_runtime_events():
+    events = [
+        RuntimeEvent(type="invocation_start", payload={"invocation_id": "run_fixture", "workspace_root": "/repo"}),
+        RuntimeEvent(type="user_input", payload={"invocation_id": "run_fixture", "text": "Read README."}),
+        RuntimeEvent(
+            type="model_output",
+            payload={
+                "invocation_id": "run_fixture",
+                "text": '<tool>{"name":"read_file","args":{"path":"README.md"}}</tool>',
+                "provider": "FakeModelClient:fake",
+                "metadata": {"model": "fake", "finish_reason": "tool_calls"},
+                "step": 1,
+            },
+        ),
+        RuntimeEvent(
+            type="tool_call_requested",
+            payload={
+                "invocation_id": "run_fixture",
+                "tool_call_id": "tool_1",
+                "name": "read_file",
+                "args": {"path": "README.md"},
+                "read_only": True,
+            },
+        ),
+        RuntimeEvent(
+            type="tool_permission_decision",
+            payload={
+                "invocation_id": "run_fixture",
+                "tool_call_id": "tool_1",
+                "name": "read_file",
+                "args": {"path": "README.md"},
+                "decision": "allow",
+                "reason": "read-only tools are allowed",
+                "policy_name": "allow_readonly",
+                "failure_classification": "",
+                "read_only": True,
+                "available": True,
+            },
+        ),
+        RuntimeEvent(
+            type="tool_result",
+            payload={
+                "invocation_id": "run_fixture",
+                "tool_call_id": "tool_1",
+                "name": "read_file",
+                "args": {"path": "README.md"},
+                "status": "ok",
+                "content": "# README.md\n   1: alpha",
+                "failure_classification": "",
+                "read_only": True,
+            },
+        ),
+        RuntimeEvent(
+            type="model_output",
+            payload={
+                "invocation_id": "run_fixture",
+                "text": "<final>Alpha.</final>",
+                "provider": "FakeModelClient:fake",
+                "metadata": {"model": "fake", "finish_reason": "stop"},
+                "step": 2,
+            },
+        ),
+        RuntimeEvent(type="final_answer", payload={"invocation_id": "run_fixture", "text": "Alpha."}),
+        RuntimeEvent(type="terminal_status", payload={"invocation_id": "run_fixture", "status": "completed"}),
+    ]
+
+    session = project_session(events)
+    trace = project_trace(events)
+    report = project_report(events)
+    export = project_export(events)
+
+    assert session["run_id"] == trace[0]["payload"]["invocation_id"] == report["run_id"] == export["run_id"]
+    assert session["status"] == report["status"] == export["status"] == "completed"
+    assert session["history"][-1]["content"] == report["final_answer"] == export["final_answer"] == "Alpha."
+    assert session["tool_calls"][0]["tool_call_id"] == "tool_1"
+    assert session["tool_calls"][0]["permission"]["decision"] == "allow"
+    assert report["permission_decisions"][0]["decision"] == "allow"
+    assert export["tool_calls"][0]["permission"]["reason"] == "read-only tools are allowed"
+    assert report["provider_calls"][0]["metadata"]["finish_reason"] == "tool_calls"
+    assert export["provider_calls"][1]["metadata"]["finish_reason"] == "stop"
+    assert report["terminal_status"]["status"] == export["terminal_status"]["status"] == "completed"
+
+
+def test_kernel_projections_handle_incomplete_runtime_event_history():
+    events = [
+        RuntimeEvent(type="invocation_start", payload={"invocation_id": "run_incomplete", "workspace_root": "/repo"}),
+        RuntimeEvent(type="user_input", payload={"invocation_id": "run_incomplete", "text": "Start."}),
+        RuntimeEvent(
+            type="tool_call_requested",
+            payload={
+                "invocation_id": "run_incomplete",
+                "tool_call_id": "tool_1",
+                "name": "read_file",
+                "args": {"path": "README.md"},
+                "read_only": True,
+            },
+        ),
+    ]
+
+    assert project_session(events)["status"] == "unknown"
+    assert project_report(events)["status"] == "unknown"
+    assert project_export(events)["terminal_status"] == {}
+    assert project_trace(events)[-1]["event"] == "tool_call_requested"
+
+
 def test_kernel_runner_normalizes_provider_failure(tmp_path):
     class BrokenModelClient:
         def complete(self, prompt, max_new_tokens, **kwargs):
@@ -447,6 +557,46 @@ def test_cli_kernel_runtime_can_show_tool_event_summary(tmp_path, capsys, monkey
     assert "tool read_file permission allow" in captured.err
     assert "tool read_file ok" in captured.err
     assert "final The project fact is alpha." in captured.err
+
+
+def test_cli_kernel_runtime_persists_and_inspects_runtime_event_views(tmp_path, capsys, monkeypatch):
+    (tmp_path / "README.md").write_text("project fact: alpha\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "pico.cli._build_model_client",
+        lambda args: FakeModelClient(
+            [
+                '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":1}}</tool>',
+                "<final>The project fact is alpha.</final>",
+            ]
+        ),
+    )
+
+    status = main(["--runtime", "kernel", "--approval", "auto", "--cwd", str(tmp_path), "hello"])
+    assert status == 0
+    capsys.readouterr()
+    run_dirs = sorted((tmp_path / ".pico" / "runs").iterdir())
+    run_id = run_dirs[0].name
+    assert (run_dirs[0] / "runtime_events.jsonl").exists()
+    assert (run_dirs[0] / "trace.jsonl").exists()
+    assert (run_dirs[0] / "report.json").exists()
+
+    assert main(["--cwd", str(tmp_path), "--inspect-run", run_id, "--inspect-view", "ledger"]) == 0
+    ledger_output = capsys.readouterr().out
+    ledger_events = [json.loads(line) for line in ledger_output.splitlines()]
+    assert [event["type"] for event in ledger_events][:2] == ["invocation_start", "user_input"]
+    assert any(event["type"] == "tool_permission_decision" for event in ledger_events)
+
+    assert main(["--cwd", str(tmp_path), "--inspect-run", run_id, "--inspect-view", "session"]) == 0
+    session = json.loads(capsys.readouterr().out)
+    assert session["run_id"] == run_id
+    assert session["tool_calls"][0]["permission"]["decision"] == "allow"
+    assert session["history"][-1]["content"] == "The project fact is alpha."
+
+    assert main(["--cwd", str(tmp_path), "--inspect-run", run_id, "--inspect-view", "report"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["run_id"] == run_id
+    assert report["tool_calls"][0]["name"] == "read_file"
+    assert report["permission_decisions"][0]["decision"] == "allow"
 
 
 def test_cli_kernel_runtime_maps_approval_never_to_permission_denied(tmp_path, capsys, monkeypatch):

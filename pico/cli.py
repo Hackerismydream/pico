@@ -6,6 +6,7 @@
 """
 
 import argparse
+import json
 import os
 import shutil
 import sys
@@ -13,15 +14,21 @@ import textwrap
 
 from .config import load_project_env, provider_env
 from .providers.clients import AnthropicCompatibleModelClient, FakeModelClient, OllamaModelClient, OpenAICompatibleModelClient
+from .run_store import RunStore
 from .runtime import Pico, SessionStore
 from .runtime_kernel import (
     InvocationContext,
     RuntimeRunner,
     ToolPermissionPolicy,
     ToolRuntime,
+    project_export,
     project_cli_runtime_events,
     project_final_answer,
+    project_report,
+    project_session,
     project_terminal_error,
+    project_trace,
+    runtime_event_to_dict,
 )
 from .workspace import WorkspaceContext, middle
 
@@ -326,7 +333,18 @@ def build_arg_parser():
         action="store_true",
         help="Print a kernel runtime event summary to stderr.",
     )
+    parser.add_argument("--inspect-run", default=None, help="Inspect a persisted kernel runtime run id.")
+    parser.add_argument(
+        "--inspect-view",
+        choices=("ledger", "session", "trace", "report", "export", "artifacts", "all"),
+        default="ledger",
+        help="Projection to display for --inspect-run.",
+    )
     return parser
+
+
+def _kernel_run_store(workspace):
+    return RunStore(workspace.repo_root + "/.pico/runs")
 
 
 def run_kernel_once(args):
@@ -353,6 +371,12 @@ def run_kernel_once(args):
             max_steps=args.max_steps,
         )
     )
+    store = _kernel_run_store(workspace)
+    run_id = project_report(result.events)["run_id"]
+    if run_id:
+        store.write_runtime_events(run_id, result.events)
+        store.write_trace(run_id, project_trace(result.events))
+        store.write_report(run_id, project_report(result.events))
     if getattr(args, "show_runtime_events", False):
         summary = project_cli_runtime_events(result.events)
         if summary:
@@ -362,6 +386,64 @@ def run_kernel_once(args):
         return 1
     print(project_final_answer(result.events))
     return 0
+
+
+def inspect_kernel_run(args):
+    workspace = WorkspaceContext.build(args.cwd)
+    store = _kernel_run_store(workspace)
+    try:
+        events = store.load_runtime_events(args.inspect_run)
+    except FileNotFoundError:
+        print(f"kernel runtime events not found for run id: {args.inspect_run}", file=sys.stderr)
+        return 1
+
+    view = args.inspect_view
+    if view == "ledger":
+        for event in events:
+            print(json.dumps(runtime_event_to_dict(event), sort_keys=True, ensure_ascii=True))
+        return 0
+    if view == "trace":
+        for event in project_trace(events):
+            print(json.dumps(event, sort_keys=True, ensure_ascii=True))
+        return 0
+
+    payload = _kernel_inspection_payload(view, store, args.inspect_run, events)
+    print(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True))
+    return 0
+
+
+def _kernel_inspection_payload(view, store, run_id, events):
+    if view == "session":
+        return project_session(events)
+    if view == "report":
+        return project_report(events)
+    if view == "export":
+        return project_export(events)
+    if view == "artifacts":
+        return _kernel_artifact_projection(store, run_id)
+    return {
+        "ledger": [runtime_event_to_dict(event) for event in events],
+        "session": project_session(events),
+        "trace": project_trace(events),
+        "report": project_report(events),
+        "export": project_export(events),
+        "artifacts": _kernel_artifact_projection(store, run_id),
+    }
+
+
+def _kernel_artifact_projection(store, run_id):
+    paths = {
+        "runtime_events": store.runtime_events_path(run_id),
+        "trace": store.trace_path(run_id),
+        "report": store.report_path(run_id),
+    }
+    return {
+        name: {
+            "path": str(path),
+            "exists": path.exists(),
+        }
+        for name, path in paths.items()
+    }
 
 
 def _kernel_tool_permission_policy(args):
@@ -374,6 +456,8 @@ def _kernel_tool_permission_policy(args):
 
 def main(argv=None):
     args = build_arg_parser().parse_args(argv)
+    if args.inspect_run:
+        return inspect_kernel_run(args)
     if args.runtime == "kernel":
         return run_kernel_once(args)
 

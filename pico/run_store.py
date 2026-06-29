@@ -8,6 +8,8 @@ import json
 import tempfile
 from pathlib import Path
 
+from .runtime_kernel import runtime_event_from_dict, runtime_event_to_dict
+
 
 def _run_id(value):
     if hasattr(value, "run_id"):
@@ -31,6 +33,9 @@ class RunStore:
 
     def report_path(self, run_id):
         return self.run_dir(run_id) / "report.json"
+
+    def runtime_events_path(self, run_id):
+        return self.run_dir(run_id) / "runtime_events.jsonl"
 
     def start_run(self, task_state):
         # 每次 ask() 都会生成一个 run 目录。
@@ -56,10 +61,24 @@ class RunStore:
             handle.write("\n")
         return path
 
+    def write_trace(self, run_id, events):
+        path = self.trace_path(run_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = [json.dumps(event, sort_keys=True, ensure_ascii=True) for event in events]
+        self._write_text_atomic(path, "\n".join(lines) + ("\n" if lines else ""))
+        return path
+
     def write_report(self, task_state, report):
         path = self.report_path(task_state)
         path.parent.mkdir(parents=True, exist_ok=True)
         self._write_json_atomic(path, report)
+        return path
+
+    def write_runtime_events(self, run_id, events):
+        path = self.runtime_events_path(run_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = [json.dumps(runtime_event_to_dict(event), sort_keys=True, ensure_ascii=True) for event in events]
+        self._write_text_atomic(path, "\n".join(lines) + ("\n" if lines else ""))
         return path
 
     def load_task_state(self, task_id):
@@ -67,6 +86,14 @@ class RunStore:
 
     def load_report(self, task_id):
         return json.loads(self.report_path(task_id).read_text(encoding="utf-8"))
+
+    def load_runtime_events(self, run_id):
+        path = self.runtime_events_path(run_id)
+        return [
+            runtime_event_from_dict(json.loads(line))
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
 
     def _write_json_atomic(self, path, payload):
         # 原子写：先写临时文件，再 replace。
@@ -81,5 +108,18 @@ class RunStore:
         ) as handle:
             json.dump(payload, handle, indent=2, sort_keys=True)
             handle.write("\n")
+            temp_name = handle.name
+        Path(temp_name).replace(path)
+
+    def _write_text_atomic(self, path, text):
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            delete=False,
+            dir=str(path.parent),
+            prefix=path.name + ".",
+            suffix=".tmp",
+        ) as handle:
+            handle.write(text)
             temp_name = handle.name
         Path(temp_name).replace(path)
