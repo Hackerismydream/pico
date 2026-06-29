@@ -14,6 +14,8 @@ from pico.runtime_kernel import (
     project_session,
     project_trace,
 )
+from pico.runtime_projections import project_report as project_report_from_read_model
+from pico.runtime_projections import project_trace as project_trace_from_read_model
 from pico.tools import BASE_TOOL_SPECS
 
 
@@ -412,6 +414,17 @@ def test_kernel_trace_and_report_projection_include_tool_call_and_final_answer(t
             "content": "# README.md\n   1: project fact: alpha",
         }
     ]
+
+
+def test_runtime_kernel_reexports_projection_helpers_for_compatibility():
+    events = [
+        RuntimeEvent(type="invocation_start", payload={"invocation_id": "run_compat"}),
+        RuntimeEvent(type="terminal_status", payload={"invocation_id": "run_compat", "status": "completed"}),
+    ]
+
+    assert project_trace(events) == project_trace_from_read_model(events)
+    assert project_report(events) == project_report_from_read_model(events)
+    assert project_report(events)["run_id"] == "run_compat"
 
 
 def test_kernel_projection_consistency_from_fixture_runtime_events():
