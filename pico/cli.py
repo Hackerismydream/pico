@@ -17,6 +17,8 @@ from .runtime import Pico, SessionStore
 from .runtime_kernel import (
     InvocationContext,
     RuntimeRunner,
+    ToolPermissionPolicy,
+    ToolRuntime,
     project_cli_runtime_events,
     project_final_answer,
     project_terminal_error,
@@ -336,7 +338,13 @@ def run_kernel_once(args):
     workspace = WorkspaceContext.build(args.cwd)
     load_project_env(workspace.repo_root)
     model = _build_model_client(args)
-    runner = RuntimeRunner(model_client=model)
+    runner = RuntimeRunner(
+        model_client=model,
+        tool_runtime=ToolRuntime(
+            workspace.repo_root,
+            permission_policy=_kernel_tool_permission_policy(args),
+        ),
+    )
     result = runner.run(
         InvocationContext(
             user_message=prompt,
@@ -354,6 +362,14 @@ def run_kernel_once(args):
         return 1
     print(project_final_answer(result.events))
     return 0
+
+
+def _kernel_tool_permission_policy(args):
+    if args.approval == "auto":
+        return ToolPermissionPolicy.allow_readonly()
+    if args.approval == "never":
+        return ToolPermissionPolicy.deny_all("CLI approval policy 'never' denies tool execution")
+    return ToolPermissionPolicy.require_decision("CLI approval policy 'ask' requires an external permission decision")
 
 
 def main(argv=None):

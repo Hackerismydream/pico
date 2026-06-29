@@ -2,6 +2,7 @@ from pico.cli import main
 from pico.providers.clients import FakeModelClient
 from pico.runtime_kernel import (
     InvocationContext,
+    ToolPermissionPolicy,
     RuntimeRunner,
     ToolRuntime,
     project_final_answer,
@@ -61,12 +62,16 @@ def test_kernel_runner_executes_readonly_tool_and_projects_result_to_next_model_
         "user_input",
         "model_output",
         "tool_call_requested",
+        "tool_permission_decision",
         "tool_argument_validation",
         "tool_result",
         "model_output",
         "final_answer",
         "terminal_status",
     ]
+    permission = next(event for event in result.events if event.type == "tool_permission_decision")
+    assert permission.payload["decision"] == "allow"
+    assert permission.payload["reason"] == "read-only tools are allowed"
     validation = next(event for event in result.events if event.type == "tool_argument_validation")
     assert validation.payload["status"] == "ok"
     tool_result = next(event for event in result.events if event.type == "tool_result")
@@ -78,6 +83,91 @@ def test_kernel_runner_executes_readonly_tool_and_projects_result_to_next_model_
     assert "Runtime tool results" in client.prompts[1]
     assert '"name": "read_file"' in client.prompts[1]
     assert "project fact: alpha" in client.prompts[1]
+
+
+def test_kernel_tool_runtime_records_denied_permission_result(tmp_path):
+    (tmp_path / "README.md").write_text("project fact: alpha\n", encoding="utf-8")
+    client = FakeModelClient(
+        [
+            '<tool>{"name":"read_file","args":{"path":"README.md"}}</tool>',
+            "<final>The read was denied.</final>",
+        ]
+    )
+    tool_runtime = ToolRuntime(
+        tmp_path,
+        permission_policy=ToolPermissionPolicy.deny_all("headless sandbox denies tools"),
+    )
+
+    result = RuntimeRunner(model_client=client, tool_runtime=tool_runtime).run(
+        InvocationContext(
+            user_message="Read README.",
+            workspace_root=str(tmp_path),
+            max_new_tokens=128,
+        )
+    )
+
+    event_types = [event.type for event in result.events]
+    assert "tool_argument_validation" not in event_types
+    assert event_types[:5] == [
+        "invocation_start",
+        "user_input",
+        "model_output",
+        "tool_call_requested",
+        "tool_permission_decision",
+    ]
+    permission = next(event for event in result.events if event.type == "tool_permission_decision")
+    assert permission.payload["decision"] == "deny"
+    assert permission.payload["reason"] == "headless sandbox denies tools"
+    tool_result = next(event for event in result.events if event.type == "tool_result")
+    assert tool_result.payload["status"] == "denied"
+    assert tool_result.payload["failure_classification"] == "permission_denied"
+    assert "headless sandbox denies tools" in tool_result.payload["content"]
+    assert '"status": "denied"' in client.prompts[1]
+    assert "headless sandbox denies tools" in client.prompts[1]
+
+
+def test_kernel_tool_runtime_records_parked_permission_result(tmp_path):
+    (tmp_path / "README.md").write_text("project fact: alpha\n", encoding="utf-8")
+    client = FakeModelClient(
+        [
+            '<tool>{"name":"read_file","args":{"path":"README.md"}}</tool>',
+            "<final>The read needs a permission decision.</final>",
+        ]
+    )
+
+    def must_not_run(args):
+        raise AssertionError(f"parked tool call executed with {args}")
+
+    tool_runtime = ToolRuntime(
+        tmp_path,
+        tool_registry={
+            "read_file": {
+                **BASE_TOOL_SPECS["read_file"],
+                "run": must_not_run,
+            }
+        },
+        permission_policy=ToolPermissionPolicy.require_decision("approval required"),
+    )
+
+    result = RuntimeRunner(model_client=client, tool_runtime=tool_runtime).run(
+        InvocationContext(
+            user_message="Read README.",
+            workspace_root=str(tmp_path),
+            max_new_tokens=128,
+        )
+    )
+
+    event_types = [event.type for event in result.events]
+    assert "tool_argument_validation" not in event_types
+    permission = next(event for event in result.events if event.type == "tool_permission_decision")
+    assert permission.payload["decision"] == "requires_decision"
+    assert permission.payload["reason"] == "approval required"
+    tool_result = next(event for event in result.events if event.type == "tool_result")
+    assert tool_result.payload["status"] == "requires_decision"
+    assert tool_result.payload["failure_classification"] == "permission_required"
+    assert "approval required" in tool_result.payload["content"]
+    assert '"status": "requires_decision"' in client.prompts[1]
+    assert "approval required" in client.prompts[1]
 
 
 def test_kernel_tool_runtime_exposes_list_files_and_search_surfaces(tmp_path):
@@ -235,8 +325,11 @@ def test_kernel_tool_runtime_keeps_write_and_shell_tools_unavailable(tmp_path):
         )
     )
 
+    permission = next(event for event in result.events if event.type == "tool_permission_decision")
+    assert permission.payload["decision"] == "deny"
+    assert permission.payload["failure_classification"] == "tool_not_allowed"
     tool_result = next(event for event in result.events if event.type == "tool_result")
-    assert tool_result.payload["status"] == "error"
+    assert tool_result.payload["status"] == "denied"
     assert tool_result.payload["failure_classification"] == "tool_not_allowed"
     assert not (tmp_path / "x.txt").exists()
 
@@ -334,14 +427,79 @@ def test_cli_kernel_runtime_can_show_tool_event_summary(tmp_path, capsys, monkey
         ),
     )
 
-    status = main(["--runtime", "kernel", "--show-runtime-events", "--cwd", str(tmp_path), "hello"])
+    status = main(
+        [
+            "--runtime",
+            "kernel",
+            "--approval",
+            "auto",
+            "--show-runtime-events",
+            "--cwd",
+            str(tmp_path),
+            "hello",
+        ]
+    )
 
     captured = capsys.readouterr()
     assert status == 0
     assert captured.out.strip() == "The project fact is alpha."
     assert "tool read_file requested" in captured.err
+    assert "tool read_file permission allow" in captured.err
     assert "tool read_file ok" in captured.err
     assert "final The project fact is alpha." in captured.err
+
+
+def test_cli_kernel_runtime_maps_approval_never_to_permission_denied(tmp_path, capsys, monkeypatch):
+    (tmp_path / "README.md").write_text("project fact: alpha\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "pico.cli._build_model_client",
+        lambda args: FakeModelClient(
+            [
+                '<tool>{"name":"read_file","args":{"path":"README.md"}}</tool>',
+                "<final>The tool result was denied.</final>",
+            ]
+        ),
+    )
+
+    status = main(
+        [
+            "--runtime",
+            "kernel",
+            "--approval",
+            "never",
+            "--show-runtime-events",
+            "--cwd",
+            str(tmp_path),
+            "hello",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert status == 0
+    assert captured.out.strip() == "The tool result was denied."
+    assert "tool read_file permission deny: CLI approval policy 'never' denies tool execution" in captured.err
+    assert "tool read_file denied (permission_denied)" in captured.err
+
+
+def test_cli_kernel_runtime_default_approval_ask_parks_tool_call(tmp_path, capsys, monkeypatch):
+    (tmp_path / "README.md").write_text("project fact: alpha\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "pico.cli._build_model_client",
+        lambda args: FakeModelClient(
+            [
+                '<tool>{"name":"read_file","args":{"path":"README.md"}}</tool>',
+                "<final>The tool result requires a decision.</final>",
+            ]
+        ),
+    )
+
+    status = main(["--runtime", "kernel", "--show-runtime-events", "--cwd", str(tmp_path), "hello"])
+
+    captured = capsys.readouterr()
+    assert status == 0
+    assert captured.out.strip() == "The tool result requires a decision."
+    assert "tool read_file permission requires_decision" in captured.err
+    assert "tool read_file requires_decision (permission_required)" in captured.err
 
 
 def test_cli_legacy_runtime_path_remains_explicit(tmp_path, monkeypatch):

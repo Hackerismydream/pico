@@ -112,6 +112,63 @@ class ParsedRetry:
     message: str
 
 
+@dataclass(frozen=True)
+class ToolPermissionDecision:
+    decision: str
+    reason: str
+    policy_name: str
+    failure_classification: str = ""
+
+
+class ToolPermissionPolicy:
+    def __init__(self, mode, reason):
+        self.mode = str(mode)
+        self.reason = str(reason)
+        if self.mode not in {"allow", "deny", "requires_decision"}:
+            raise ValueError(f"unknown tool permission policy mode: {self.mode}")
+
+    @classmethod
+    def allow_readonly(cls, reason="read-only tools are allowed"):
+        return cls("allow", reason)
+
+    @classmethod
+    def deny_all(cls, reason="tool use is denied by policy"):
+        return cls("deny", reason)
+
+    @classmethod
+    def require_decision(cls, reason="tool use requires an explicit permission decision"):
+        return cls("requires_decision", reason)
+
+    def decide(self, name, args, *, read_only, available):
+        del args
+        if not available or not read_only:
+            return ToolPermissionDecision(
+                decision="deny",
+                reason=f"tool '{name}' is not available in the kernel read-only runtime",
+                policy_name="kernel_readonly_tool_policy",
+                failure_classification="tool_not_allowed",
+            )
+        if self.mode == "allow":
+            return ToolPermissionDecision(
+                decision="allow",
+                reason=self.reason,
+                policy_name="allow_readonly",
+            )
+        if self.mode == "deny":
+            return ToolPermissionDecision(
+                decision="deny",
+                reason=self.reason,
+                policy_name="deny_all",
+                failure_classification="permission_denied",
+            )
+        return ToolPermissionDecision(
+            decision="requires_decision",
+            reason=self.reason,
+            policy_name="requires_decision",
+            failure_classification="permission_required",
+        )
+
+
 def parse_model_message(raw):
     raw = str(raw)
     tool_match = re.search(r"<tool>(?P<body>.*?)</tool>", raw, re.S)
@@ -185,9 +242,10 @@ class ModelHistoryProjector:
 class ToolRuntime:
     READ_ONLY_TOOL_NAMES = frozenset({"list_files", "read_file", "search"})
 
-    def __init__(self, workspace_root, tool_registry=None):
+    def __init__(self, workspace_root, tool_registry=None, permission_policy=None):
         self.root = Path(workspace_root).resolve()
         self.tool_registry = dict(tool_registry or self._build_readonly_registry())
+        self.permission_policy = permission_policy or ToolPermissionPolicy.allow_readonly()
 
     def _build_readonly_registry(self):
         context = self._tool_context()
@@ -218,25 +276,53 @@ class ToolRuntime:
         tool_call_id = _new_id("tool")
         name = str(tool_call.name)
         args = dict(tool_call.args)
+        tool = self.tool_registry.get(name)
+        is_read_only = name in self.READ_ONLY_TOOL_NAMES
         ledger.append(
             "tool_call_requested",
             invocation_id=context.invocation_id,
             tool_call_id=tool_call_id,
             name=name,
             args=args,
-            read_only=True,
+            read_only=is_read_only,
         )
 
-        tool = self.tool_registry.get(name)
-        if tool is None or name not in self.READ_ONLY_TOOL_NAMES:
-            self._record_rejection(
+        decision = self.permission_policy.decide(
+            name,
+            args,
+            read_only=is_read_only,
+            available=tool is not None,
+        )
+        self._record_permission_decision(
+            context,
+            ledger,
+            tool_call_id,
+            name,
+            args,
+            is_read_only,
+            tool is not None,
+            decision,
+        )
+        if decision.decision == "deny":
+            self._record_permission_result(
                 context,
                 ledger,
                 tool_call_id,
                 name,
                 args,
-                failure_classification="tool_not_allowed",
-                message=f"tool '{name}' is not available in the kernel read-only runtime",
+                status="denied",
+                decision=decision,
+            )
+            return
+        if decision.decision == "requires_decision":
+            self._record_permission_result(
+                context,
+                ledger,
+                tool_call_id,
+                name,
+                args,
+                status="requires_decision",
+                decision=decision,
             )
             return
 
@@ -290,6 +376,35 @@ class ToolRuntime:
             content=content,
             failure_classification="",
             read_only=True,
+        )
+
+    def _record_permission_decision(self, context, ledger, tool_call_id, name, args, read_only, available, decision):
+        ledger.append(
+            "tool_permission_decision",
+            invocation_id=context.invocation_id,
+            tool_call_id=tool_call_id,
+            name=name,
+            args=args,
+            decision=decision.decision,
+            reason=decision.reason,
+            policy_name=decision.policy_name,
+            failure_classification=decision.failure_classification,
+            read_only=read_only,
+            available=available,
+        )
+
+    def _record_permission_result(self, context, ledger, tool_call_id, name, args, status, decision):
+        ledger.append(
+            "tool_result",
+            invocation_id=context.invocation_id,
+            tool_call_id=tool_call_id,
+            name=name,
+            args=args,
+            status=status,
+            content=f"permission {status}: {decision.reason}",
+            error_message=decision.reason,
+            failure_classification=decision.failure_classification,
+            read_only=name in self.READ_ONLY_TOOL_NAMES,
         )
 
     def _validate_tool_args(self, name, args):
@@ -489,6 +604,11 @@ def project_cli_runtime_events(events):
     for event in events:
         if event.type == "tool_call_requested":
             lines.append(f"tool {event.payload.get('name')} requested")
+        elif event.type == "tool_permission_decision":
+            name = event.payload.get("name", "")
+            decision = event.payload.get("decision", "")
+            reason = event.payload.get("reason", "")
+            lines.append(f"tool {name} permission {decision}: {reason}")
         elif event.type == "tool_result":
             status = event.payload.get("status", "")
             name = event.payload.get("name", "")
