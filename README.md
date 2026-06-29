@@ -307,6 +307,31 @@ uv run python scripts/run_kernel_acceptance.py --provider deepseek --scenario re
 
 输出是 JSON，包含 `provider`、`model`、每个 scenario 的 `run_id`、`runtime_status`、`finish_reason` / `provider_status`、可用 token usage，以及最终答案。缺少真实 provider key 时命令返回非 0，并输出 `status: "skipped"`，不会把未运行的 live acceptance 当成通过。
 
+## Kernel default gate
+
+`pico` 的默认 runtime 是 `--runtime auto`。auto 不会因为代码里存在 kernel runtime 就直接切过去；它只读取本地 release-candidate manifest，确认验收 artifact 通过后才默认使用 kernel。manifest 缺失或 gate 失败时，CLI 会回退到 legacy runtime。显式 `--runtime legacy` 会一直保留，显式 `--runtime kernel` 可用于开发调试。
+
+默认 manifest 路径：
+
+```bash
+.pico/kernel-release-candidate.json
+```
+
+也可以显式指定：
+
+```bash
+uv run pico --kernel-release-candidate .pico/kernel-release-candidate.json "summarize this repo"
+```
+
+一个 kernel-runtime release candidate 必须同时证明四类 gate：
+
+- `fake_provider_tests`：记录通过的 fake-provider 回归命令，并覆盖 `tests/test_runtime_kernel.py`、`tests/test_kernel_acceptance.py` 和 `tests/test_headless_task.py`。
+- `live_provider_acceptance`：引用真实 provider 的 live acceptance JSON artifact，且 `no-tool` 和 `read-only-tool` scenario 都为 passed。
+- `projection_inspection`：引用 `uv run pico --runtime kernel --inspect-run <run_id> --inspect-view all` 产出的本地 inspection JSON，证明 ledger、session、trace、report、export 和 artifact projection 都可重放。
+- `headless_single_task`：引用 `pico headless task run` 的 `task_run_export.json`，证明 headless 单任务在 kernel runtime 下通过、verifier 边界受保护、默认工具策略 fail-closed。
+
+legacy fallback 仍用于三种情况：没有 release-candidate manifest；manifest 指向的 artifact 失败、缺失或格式不对；以及迁移窗口里需要显式比较旧 runtime 行为的场景。
+
 ## 常用交互命令
 
 - `/help`：查看内置命令

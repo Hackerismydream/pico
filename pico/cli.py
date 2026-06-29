@@ -13,6 +13,7 @@ import sys
 import textwrap
 
 from .config import load_project_env, provider_env
+from .kernel_gate import evaluate_kernel_release_candidate
 from .providers.clients import AnthropicCompatibleModelClient, FakeModelClient, OllamaModelClient, OpenAICompatibleModelClient
 from .run_store import RunStore
 from .runtime import Pico, SessionStore
@@ -324,9 +325,14 @@ def build_arg_parser():
     parser.add_argument("--top-p", type=float, default=0.9, help="Top-p sampling value sent to Ollama.")
     parser.add_argument(
         "--runtime",
-        choices=("legacy", "kernel"),
-        default="legacy",
-        help="Runtime implementation to use during the kernel rollout.",
+        choices=("auto", "legacy", "kernel"),
+        default="auto",
+        help="Runtime implementation to use. auto uses kernel only after the release-candidate gate passes.",
+    )
+    parser.add_argument(
+        "--kernel-release-candidate",
+        default=None,
+        help="Path to the kernel release-candidate manifest used by --runtime auto.",
     )
     parser.add_argument(
         "--show-runtime-events",
@@ -454,6 +460,24 @@ def _kernel_tool_permission_policy(args):
     return ToolPermissionPolicy.require_decision("CLI approval policy 'ask' requires an external permission decision")
 
 
+def _selected_runtime(args):
+    if args.runtime != "auto":
+        return args.runtime
+    workspace = WorkspaceContext.build(args.cwd)
+    evaluation = evaluate_kernel_release_candidate(
+        args.kernel_release_candidate,
+        workspace_root=workspace.repo_root,
+    )
+    if evaluation.passed:
+        return "kernel"
+    if evaluation.manifest_exists or args.kernel_release_candidate:
+        print(
+            f"kernel default gate failed: {evaluation.reason}; using legacy runtime",
+            file=sys.stderr,
+        )
+    return "legacy"
+
+
 def main(argv=None):
     raw_argv = sys.argv[1:] if argv is None else list(argv)
     if raw_argv[:3] == ["headless", "task", "run"]:
@@ -467,7 +491,7 @@ def main(argv=None):
     args = build_arg_parser().parse_args(raw_argv)
     if args.inspect_run:
         return inspect_kernel_run(args)
-    if args.runtime == "kernel":
+    if _selected_runtime(args) == "kernel":
         return run_kernel_once(args)
 
     agent = build_agent(args)
