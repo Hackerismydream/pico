@@ -17,13 +17,12 @@ from .providers.clients import FakeModelClient
 from .run_store import RunStore
 from .runtime_kernel import (
     InvocationContext,
+    ProjectionCaptureError,
+    ProjectionManager,
     RuntimeRunner,
     ToolPermissionPolicy,
     ToolRuntime,
-    project_final_answer,
-    project_report,
     project_terminal_error,
-    project_trace,
 )
 from .workspace import IGNORED_PATH_NAMES
 
@@ -88,6 +87,13 @@ class HeadlessTaskSpec:
 class HeadlessTaskRunResult:
     exit_code: int
     export: dict
+
+
+@dataclass(frozen=True)
+class HeadlessRuntimeOutcome:
+    runtime_info: dict
+    runtime_result: object
+    capture_error: str = ""
 
 
 def load_headless_task_spec(path):
@@ -200,7 +206,24 @@ class HeadlessTaskRunner:
                 source_workspace=str(spec.workspace),
                 isolated_workspace=str(isolated_workspace),
             )
-            runtime_info, runtime_result = self._run_runtime(spec, task_run_id, run_dir, isolated_workspace)
+            runtime_outcome = self._run_runtime(spec, task_run_id, run_dir, isolated_workspace)
+            runtime_info = runtime_outcome.runtime_info
+            runtime_result = runtime_outcome.runtime_result
+            if runtime_outcome.capture_error:
+                export = self._build_export(
+                    spec,
+                    task_run_id,
+                    run_dir,
+                    isolated_workspace,
+                    status="infra_fail",
+                    failure_kind="infrastructure",
+                    failure_category="runtime_artifact_capture_failed",
+                    runtime_info=runtime_info,
+                    verifier_info=verifier_info,
+                    infrastructure_error=runtime_outcome.capture_error,
+                )
+                self._finish(task_run_id, export)
+                return HeadlessTaskRunResult(exit_code=1, export=export)
             if runtime_result.status != "completed":
                 export = self._build_export(
                     spec,
@@ -328,37 +351,51 @@ class HeadlessTaskRunner:
             tool_runtime=runtime,
         ).run(context)
         runtime_store = RunStore(isolated_workspace / ".pico" / "runs")
-        report = project_report(result.events)
-        runtime_run_id = report["run_id"] or context.invocation_id
-        runtime_events_path = runtime_store.write_runtime_events(runtime_run_id, result.events)
-        trace_path = runtime_store.write_trace(runtime_run_id, project_trace(result.events))
-        report_path = runtime_store.write_report(runtime_run_id, report)
-        provider_calls = list(report.get("provider_calls", []))
+        try:
+            artifacts = ProjectionManager(runtime_store).capture(result.events, run_id=context.invocation_id)
+            capture_error = ""
+        except ProjectionCaptureError as exc:
+            artifacts = None
+            capture_error = str(exc)
+
+        terminal_status = dict(artifacts.terminal_status if artifacts is not None else {})
+        provider_calls = list(
+            (artifacts.export_projection if artifacts is not None else {}).get("provider_calls", [])
+        )
+        runtime_status = artifacts.status if artifacts is not None else result.status
         runtime_info = {
-            "run_id": runtime_run_id,
-            "status": result.status,
-            "error_type": result.error_type,
-            "error_message": result.error_message,
-            "terminal_error": "" if result.status == "completed" else project_terminal_error(result.events),
-            "final_answer": project_final_answer(result.events),
+            "run_id": artifacts.run_id if artifacts is not None else context.invocation_id,
+            "status": runtime_status,
+            "error_type": str(terminal_status.get("error_type", result.error_type)),
+            "error_message": str(terminal_status.get("error_message", result.error_message)),
+            "terminal_error": "" if runtime_status == "completed" else project_terminal_error(result.events),
+            "final_answer": str(
+                (artifacts.export_projection if artifacts is not None else {}).get("final_answer", "")
+            ),
             "event_count": len(result.events),
             "event_type_counts": dict(Counter(event.type for event in result.events)),
             "provider_calls": provider_calls,
             "usage": _summarize_provider_usage(provider_calls),
             "cost": _summarize_provider_cost(provider_calls),
-            "runtime_events_relpath": _relative(runtime_events_path, run_dir),
-            "trace_relpath": _relative(trace_path, run_dir),
-            "report_relpath": _relative(report_path, run_dir),
+            "runtime_events_relpath": _relative(artifacts.runtime_events_path, run_dir) if artifacts else "",
+            "trace_relpath": _relative(artifacts.trace_path, run_dir) if artifacts else "",
+            "report_relpath": _relative(artifacts.report_path, run_dir) if artifacts else "",
+            "manifest_relpath": _relative(artifacts.manifest_path, run_dir) if artifacts else "",
+            "artifact_capture_error": capture_error,
         }
         self._wal(
             task_run_id,
             "runtime_finished",
-            runtime_run_id=runtime_run_id,
-            status=result.status,
+            runtime_run_id=runtime_info["run_id"],
+            status=runtime_status,
             event_count=len(result.events),
             runtime_events_relpath=runtime_info["runtime_events_relpath"],
+            trace_relpath=runtime_info["trace_relpath"],
+            report_relpath=runtime_info["report_relpath"],
+            manifest_relpath=runtime_info["manifest_relpath"],
+            artifact_capture_error=capture_error,
         )
-        return runtime_info, result
+        return HeadlessRuntimeOutcome(runtime_info=runtime_info, runtime_result=result, capture_error=capture_error)
 
     def _build_tool_runtime(self, spec, isolated_workspace):
         base_runtime = ToolRuntime(isolated_workspace)
@@ -483,6 +520,8 @@ class HeadlessTaskRunner:
             "runtime_events_relpath": "",
             "trace_relpath": "",
             "report_relpath": "",
+            "manifest_relpath": "",
+            "artifact_capture_error": "",
         }
 
     @staticmethod

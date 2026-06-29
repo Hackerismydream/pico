@@ -2,6 +2,7 @@ import json
 import shlex
 import sys
 
+import pico.headless as headless
 from pico.cli import main
 
 
@@ -50,6 +51,10 @@ def test_headless_task_run_persists_kernel_backed_pass(tmp_path, capsys, monkeyp
     assert payload["runtime"]["status"] == "completed"
     assert payload["runtime"]["run_id"]
     assert payload["runtime"]["runtime_events_relpath"].endswith("runtime_events.jsonl")
+    assert payload["runtime"]["trace_relpath"].endswith("trace.jsonl")
+    assert payload["runtime"]["report_relpath"].endswith("report.json")
+    assert payload["runtime"]["manifest_relpath"].endswith("runtime_manifest.json")
+    assert payload["runtime"]["artifact_capture_error"] == ""
     assert payload["verifier"]["exit_code"] == 0
     assert payload["verifier"]["protected_boundary"] is True
     assert payload["boundaries"]["isolated_workspace"] != str(fixture.resolve())
@@ -65,14 +70,24 @@ def test_headless_task_run_persists_kernel_backed_pass(tmp_path, capsys, monkeyp
     runtime_finished = next(event for event in wal_events if event["event"] == "runtime_finished")
     assert runtime_finished["runtime_run_id"] == payload["runtime"]["run_id"]
     assert runtime_finished["runtime_events_relpath"] == payload["runtime"]["runtime_events_relpath"]
+    for artifact_key in ("runtime_events_relpath", "trace_relpath", "report_relpath", "manifest_relpath"):
+        assert (run_dir / payload["runtime"][artifact_key]).exists()
     runtime_events = run_dir / payload["runtime"]["runtime_events_relpath"]
-    assert runtime_events.exists()
     event_lines = [json.loads(line) for line in runtime_events.read_text(encoding="utf-8").splitlines()]
     assert [event["type"] for event in event_lines][:2] == ["invocation_start", "user_input"]
     prompt_text = next(event["payload"]["text"] for event in event_lines if event["type"] == "user_input")
     assert "PICO_FINAL_ANSWER" not in prompt_text
     assert payload["verifier"]["command"] not in prompt_text
     assert "Read README" in prompt_text
+    manifest = json.loads((run_dir / payload["runtime"]["manifest_relpath"]).read_text(encoding="utf-8"))
+    assert manifest["run_id"] == payload["runtime"]["run_id"]
+    assert manifest["status"] == "completed"
+    assert manifest["artifacts"] == {
+        "runtime_events": {"path": "runtime_events.jsonl"},
+        "trace": {"path": "trace.jsonl"},
+        "report": {"path": "report.json"},
+        "manifest": {"path": "runtime_manifest.json"},
+    }
 
 
 def test_headless_task_verifier_failure_is_valid_benchmark_data(tmp_path, capsys):
@@ -230,3 +245,42 @@ def test_headless_task_runtime_failure_exits_nonzero(tmp_path, capsys):
     assert payload["verifier"]["exit_code"] is None
     assert "provider_error" in captured.err
     assert (tmp_path / "runs" / payload["task_run_id"] / "task_run_export.json").exists()
+
+
+def test_headless_task_projection_capture_failure_is_infrastructure_failure(tmp_path, capsys, monkeypatch):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    (fixture / "README.md").write_text("project fact: delta\n", encoding="utf-8")
+    spec = _write_spec(
+        tmp_path / "task.json",
+        {
+            "id": "capture_fail",
+            "workspace": str(fixture),
+            "prompt": "Answer directly.",
+            "fake_model_outputs": ["<final>The project fact is delta.</final>"],
+            "verifier": _python_check("False"),
+        },
+    )
+
+    def fail_capture(self, events, *, run_id=None):
+        raise headless.ProjectionCaptureError("manifest write failed")
+
+    monkeypatch.setattr(headless.ProjectionManager, "capture", fail_capture)
+
+    status = main(["headless", "task", "run", str(spec), "--runs-root", str(tmp_path / "runs")])
+
+    captured = capsys.readouterr()
+    assert status == 1
+    payload = json.loads(captured.out)
+    assert payload["status"] == "infra_fail"
+    assert payload["failure_kind"] == "infrastructure"
+    assert payload["failure_category"] == "runtime_artifact_capture_failed"
+    assert payload["infrastructure_error"] == "manifest write failed"
+    assert payload["runtime"]["status"] == "completed"
+    assert payload["runtime"]["artifact_capture_error"] == "manifest write failed"
+    assert payload["runtime"]["runtime_events_relpath"] == ""
+    assert payload["runtime"]["trace_relpath"] == ""
+    assert payload["runtime"]["report_relpath"] == ""
+    assert payload["runtime"]["manifest_relpath"] == ""
+    assert payload["verifier"]["exit_code"] is None
+    assert "manifest write failed" in captured.err
