@@ -36,6 +36,50 @@ The policy layer that turns runtime events into the next model input. It decides
 which user, model, tool, permission, artifact, and diagnostic facts are exposed to
 the model, instead of rebuilding prompts directly from session history.
 
+### ProjectionManager
+
+The runtime boundary that derives user-visible and machine-readable artifacts
+from runtime events. CLI output, session views, traces, reports, task exports,
+artifact manifests, and redaction should be coordinated here instead of being
+assembled separately by entrypoint adapters. It is not the authority for runtime
+execution, verifier execution, task-run WAL, or provider normalization. CLI and
+headless evaluation should consume the same projection/capture boundary. Runtime
+projection helpers belong with this boundary, not inside the kernel runner
+module; legacy imports may be re-exported during migration.
+
+### RuntimeArtifactSet
+
+The capture result for one runtime invocation. It identifies the run and the
+artifacts derived from its runtime events, including runtime-event ledger, trace,
+report, manifest, session projection, export projection, and projection
+diagnostics. It is a read-model result, not a separate source of truth. Artifact
+paths are owned by `RunStore`; projection/capture code should coordinate writes
+through that store instead of inventing paths.
+
+### Runtime artifact manifest
+
+The stable contract that names the files and projections captured for one
+runtime invocation. It records schema version, run id, terminal status, artifact
+paths, session/export projections, and projection diagnostics so CLI, headless
+evaluation, and inspection code can agree on what was produced. The first slice
+captures session/export projection snapshots in the manifest without requiring
+every inspection path to read from the manifest immediately.
+
+### Projection diagnostic
+
+A machine-readable warning or error produced while deriving read models from
+runtime events. Storage and redaction failures are capture failures; unsupported
+event shapes, missing terminal status, and incomplete read-model facts should be
+visible diagnostics unless they make the artifact contract unsafe to trust.
+
+### RuntimeEvent v2
+
+The future schema-aligned runtime event contract with explicit identity,
+role/author/status, content, actions, and projection refs. It should not block
+the first ProjectionManager slice; the first slice should adapt Pico's current
+`type`, `payload`, and `created_at` events and surface schema gaps as projection
+diagnostics.
+
 ### ModelAdapter
 
 The provider normalization boundary. It turns a Pico model request into a
@@ -89,6 +133,13 @@ rebuilt aggressively, but user-visible behavior should keep a way to run or
 compare the legacy runtime and the new kernel runtime until the kernel covers
 one-shot, REPL, and headless task runs.
 
+### Projection rollout boundary
+
+The first ProjectionManager slice applies to the new kernel runtime path and
+kernel-backed headless evaluation only. Legacy `pico/runtime.py` trace, report,
+session, and memory behavior remains a compatibility path until the kernel
+runtime replaces it deliberately.
+
 ### Runtime spine slice
 
 An implementation slice that moves one thin path through the full runtime spine
@@ -102,6 +153,14 @@ Runtime replacement work has two acceptance layers. Fake-provider tests are the
 automated regression gate for CI and fast local checks. Live-provider runs are
 the real acceptance gate for proving the agent path works with a real model,
 normalized provider metadata, runtime events, and report artifacts.
+
+### Projection acceptance gates
+
+Projection/capture work has two acceptance layers. Fake-provider tests are the
+automated regression gate for manifest contracts, projection diagnostics, and
+shared CLI/headless capture behavior. Live-provider runs are the real acceptance
+gate for proving the same artifact contract with a real model and provider
+metadata.
 
 ### First runtime slice
 
@@ -156,3 +215,11 @@ fake-provider tests and live-provider acceptance for a no-tool final-answer case
 a read-only tool case, runtime-event-driven projections, normalized provider
 metadata, and a headless single-task run. Only then should `pico` default to the
 kernel runtime, with legacy kept temporarily as an explicit fallback.
+
+### Projection follow-up sequence
+
+After the first ProjectionManager and runtime artifact manifest slice, the next
+runtime work should prioritize RuntimeEvent v2 schema alignment before desktop
+or broader tool expansion. The intended order is ProjectionManager, RuntimeEvent
+v2, ModelHistoryProjector over v2 events, expanded ToolRuntime permissions and
+write/shell tools, then desktop/session UI.
