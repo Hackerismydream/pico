@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from pico.run_store import RunStore
 from pico.runtime_kernel import RuntimeEvent
 from pico.task_state import STOP_REASON_FINAL_ANSWER_RETURNED, TaskState
@@ -95,3 +97,10 @@ def test_run_store_writes_headless_task_artifacts(tmp_path):
     assert json.loads(facts_path.read_text(encoding="utf-8"))["task_run_id"] == "taskrun_001"
     assert json.loads(wal_path.read_text(encoding="utf-8").strip())["event"] == "task_run_started"
     assert json.loads(export_path.read_text(encoding="utf-8"))["status"] == "pass"
+
+
+def test_run_store_rejects_run_id_path_traversal(tmp_path):
+    store = RunStore(tmp_path / ".pico" / "runs")
+
+    with pytest.raises(ValueError, match="invalid run id"):
+        store.runtime_events_path("../outside")

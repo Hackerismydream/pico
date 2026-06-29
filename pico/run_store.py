@@ -5,16 +5,22 @@ session.json 负责保存“可恢复的会话状态”；RunStore 负责保存�
 """
 
 import json
+import re
 import tempfile
 from pathlib import Path
 
 from .runtime_kernel import runtime_event_from_dict, runtime_event_to_dict
 
+RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
 
 def _run_id(value):
     if hasattr(value, "run_id"):
-        return value.run_id
-    return str(value)
+        value = value.run_id
+    run_id = str(value)
+    if not RUN_ID_PATTERN.fullmatch(run_id):
+        raise ValueError(f"invalid run id: {run_id}")
+    return run_id
 
 
 class RunStore:
