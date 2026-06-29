@@ -20,6 +20,8 @@ from .runtime_kernel import (
     RuntimeRunner,
     ToolPermissionPolicy,
     ToolRuntime,
+)
+from .runtime_projections import (
     project_final_answer,
     project_report,
     project_terminal_error,

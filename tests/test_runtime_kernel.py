@@ -1,5 +1,6 @@
 import json
 
+from pico import runtime_kernel, runtime_projections
 from pico.cli import main
 from pico.providers.clients import FakeModelClient
 from pico.runtime_kernel import (
@@ -8,6 +9,7 @@ from pico.runtime_kernel import (
     ToolPermissionPolicy,
     RuntimeRunner,
     ToolRuntime,
+    project_cli_runtime_events,
     project_export,
     project_final_answer,
     project_report,
@@ -495,6 +497,26 @@ def test_kernel_projection_consistency_from_fixture_runtime_events():
     assert report["provider_calls"][0]["metadata"]["finish_reason"] == "tool_calls"
     assert export["provider_calls"][1]["metadata"]["finish_reason"] == "stop"
     assert report["terminal_status"]["status"] == export["terminal_status"]["status"] == "completed"
+
+
+def test_runtime_kernel_reexports_projection_helpers_from_read_model_module():
+    events = [
+        RuntimeEvent(type="user_input", payload={"invocation_id": "run_reexport", "text": "Hello."}),
+        RuntimeEvent(type="final_answer", payload={"invocation_id": "run_reexport", "text": "Hi."}),
+        RuntimeEvent(type="terminal_status", payload={"invocation_id": "run_reexport", "status": "completed"}),
+    ]
+
+    assert runtime_kernel.project_trace is runtime_projections.project_trace
+    assert runtime_kernel.project_report is runtime_projections.project_report
+    assert runtime_kernel.project_session is runtime_projections.project_session
+    assert runtime_kernel.project_export is runtime_projections.project_export
+    assert runtime_kernel.project_final_answer is runtime_projections.project_final_answer
+    assert runtime_kernel.project_terminal_error is runtime_projections.project_terminal_error
+    assert runtime_kernel.project_cli_runtime_events is runtime_projections.project_cli_runtime_events
+    assert runtime_kernel.project_run_id is runtime_projections.project_run_id
+    assert project_final_answer(events) == runtime_projections.project_final_answer(events) == "Hi."
+    assert project_trace(events) == runtime_projections.project_trace(events)
+    assert project_cli_runtime_events(events) == "final Hi."
 
 
 def test_kernel_projections_handle_incomplete_runtime_event_history():

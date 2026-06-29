@@ -44,6 +44,9 @@ class RunStore:
     def runtime_events_path(self, run_id):
         return self.run_dir(run_id) / "runtime_events.jsonl"
 
+    def manifest_path(self, run_id):
+        return self.run_dir(run_id) / "manifest.json"
+
     def task_run_facts_path(self, run_id):
         return self.run_dir(run_id) / "task_run.json"
 
@@ -110,6 +113,12 @@ class RunStore:
         self._write_text_atomic(path, "\n".join(lines) + ("\n" if lines else ""))
         return path
 
+    def write_manifest(self, run_id, payload):
+        path = self.manifest_path(run_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._write_json_atomic(path, payload)
+        return path
+
     def write_task_run_facts(self, run_id, payload):
         path = self.task_run_facts_path(run_id)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -155,6 +164,9 @@ class RunStore:
             for line in path.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
+
+    def load_manifest(self, run_id):
+        return json.loads(self.manifest_path(run_id).read_text(encoding="utf-8"))
 
     def _write_json_atomic(self, path, payload):
         # 原子写：先写临时文件，再 replace。

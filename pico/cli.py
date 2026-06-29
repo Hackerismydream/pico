@@ -22,6 +22,9 @@ from .runtime_kernel import (
     RuntimeRunner,
     ToolPermissionPolicy,
     ToolRuntime,
+    runtime_event_to_dict,
+)
+from .runtime_projections import (
     project_export,
     project_cli_runtime_events,
     project_final_answer,
@@ -29,7 +32,6 @@ from .runtime_kernel import (
     project_session,
     project_terminal_error,
     project_trace,
-    runtime_event_to_dict,
 )
 from .security import redact_artifact
 from .workspace import WorkspaceContext, middle
@@ -451,6 +453,7 @@ def _kernel_artifact_projection(store, run_id):
         "runtime_events": store.runtime_events_path(run_id),
         "trace": store.trace_path(run_id),
         "report": store.report_path(run_id),
+        "manifest": store.manifest_path(run_id),
     }
     return {
         name: {
