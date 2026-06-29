@@ -12,8 +12,9 @@ import sys
 import textwrap
 
 from .config import load_project_env, provider_env
-from .providers.clients import AnthropicCompatibleModelClient, OllamaModelClient, OpenAICompatibleModelClient
+from .providers.clients import AnthropicCompatibleModelClient, FakeModelClient, OllamaModelClient, OpenAICompatibleModelClient
 from .runtime import Pico, SessionStore
+from .runtime_kernel import InvocationContext, RuntimeRunner, project_final_answer, project_terminal_error
 from .workspace import WorkspaceContext, middle
 
 DEFAULT_SECRET_ENV_NAMES = (
@@ -61,7 +62,7 @@ DEFAULT_ANTHROPIC_BASE_URL = "https://www.right.codes/claude/v1"
 DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro"
 DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com/anthropic"
 DEFAULT_PROVIDER = "deepseek"
-PROVIDER_CHOICES = ("ollama", "openai", "anthropic", "deepseek")
+PROVIDER_CHOICES = ("ollama", "openai", "anthropic", "deepseek", "fake")
 SECRET_ENV_NAMES_VAR = "PICO_SECRET_ENV_NAMES"
 
 
@@ -102,6 +103,8 @@ def _effective_model(args, provider):
         if model:
             return model
         return DEFAULT_DEEPSEEK_MODEL
+    if provider == "fake":
+        return "fake"
     return DEFAULT_OLLAMA_MODEL
 
 
@@ -161,6 +164,9 @@ def _build_model_client(args):
             temperature=args.temperature,
             timeout=getattr(args, "openai_timeout", getattr(args, "ollama_timeout", 300)),
         )
+    if provider == "fake":
+        output = provider_env("PICO_FAKE_MODEL_OUTPUT", default="fake response")
+        return FakeModelClient([output])
 
     model = _effective_model(args, provider)
     host = getattr(args, "host", DEFAULT_OLLAMA_HOST)
@@ -301,11 +307,44 @@ def build_arg_parser():
     parser.add_argument("--max-new-tokens", type=int, default=512, help="Maximum model output tokens per step.")
     parser.add_argument("--temperature", type=float, default=0.2, help="Sampling temperature sent to Ollama.")
     parser.add_argument("--top-p", type=float, default=0.9, help="Top-p sampling value sent to Ollama.")
+    parser.add_argument(
+        "--runtime",
+        choices=("legacy", "kernel"),
+        default="legacy",
+        help="Runtime implementation to use during the kernel rollout.",
+    )
     return parser
+
+
+def run_kernel_once(args):
+    prompt = " ".join(args.prompt).strip()
+    if not prompt:
+        print("kernel runtime currently supports one-shot prompts only", file=sys.stderr)
+        return 2
+
+    workspace = WorkspaceContext.build(args.cwd)
+    load_project_env(workspace.repo_root)
+    model = _build_model_client(args)
+    runner = RuntimeRunner(model_client=model)
+    result = runner.run(
+        InvocationContext(
+            user_message=prompt,
+            workspace_root=workspace.repo_root,
+            max_new_tokens=args.max_new_tokens,
+        )
+    )
+    if result.status != "completed":
+        print(project_terminal_error(result.events), file=sys.stderr)
+        return 1
+    print(project_final_answer(result.events))
+    return 0
 
 
 def main(argv=None):
     args = build_arg_parser().parse_args(argv)
+    if args.runtime == "kernel":
+        return run_kernel_once(args)
+
     agent = build_agent(args)
 
     model = getattr(agent.model_client, "model", getattr(args, "model", DEFAULT_OLLAMA_MODEL))
