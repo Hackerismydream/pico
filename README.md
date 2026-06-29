@@ -291,21 +291,42 @@ uv run pico headless eval grid run grid.json --runs-root .pico/headless/eval-gri
 
 ## Kernel live acceptance
 
-新 kernel runtime 的真实 provider 验收不在默认测试里跑。CI 继续使用 fake provider；需要真实 key 时，手动运行下面两个命令。
+新 kernel runtime 的真实 provider 验收不在默认测试里跑。CI/local 自动 gate 继续使用 fake provider：
+
+```bash
+uv run pytest tests/test_runtime_kernel.py tests/test_projection_acceptance.py tests/test_kernel_acceptance.py tests/test_headless_task.py -q
+```
+
+这组 fake-provider 测试覆盖 CLI no-tool、CLI read-only-tool、headless no-tool 和 headless read-only-tool，并只断言外部 `runtime_manifest.json`、`runtime_events.jsonl`、`trace.jsonl`、`report.json` contract。
+
+live-provider 是真实验收 gate，需要 provider key 和网络。它不会被默认测试套件触发；缺少真实 provider key 时命令返回非 0，并输出 `status: "skipped"`，不会把未运行的 live acceptance 当成通过。
 
 No-tool 验收：
 
 ```bash
-uv run python scripts/run_kernel_acceptance.py --provider deepseek --scenario no-tool
+uv run python3 scripts/run_kernel_acceptance.py --provider deepseek --scenario no-tool
 ```
 
 Read-only-tool 验收：
 
 ```bash
-uv run python scripts/run_kernel_acceptance.py --provider deepseek --scenario read-only-tool
+uv run python3 scripts/run_kernel_acceptance.py --provider deepseek --scenario read-only-tool
 ```
 
-输出是 JSON，包含 `provider`、`model`、每个 scenario 的 `run_id`、`runtime_status`、`finish_reason` / `provider_status`、可用 token usage，以及最终答案。缺少真实 provider key 时命令返回非 0，并输出 `status: "skipped"`，不会把未运行的 live acceptance 当成通过。
+一次跑完整 live gate：
+
+```bash
+uv run python3 scripts/run_kernel_acceptance.py --provider deepseek --scenario all --artifacts-root .pico/kernel-acceptance
+```
+
+输出是 JSON，同时会写入 `.pico/kernel-acceptance/<acceptance_run_id>/live_acceptance.json`。每个 scenario 都必须检查：
+
+- `runtime_status: "completed"` 和 `status: "passed"`。
+- `final_answer` 与 `runtime_manifest.json` 里的 export projection 一致。
+- `finish_reason` / `provider_status` / `provider_metadata` 存在。
+- `artifacts.runtime_events`、`artifacts.trace`、`artifacts.report`、`artifacts.manifest` 指向的文件存在。
+- `runtime_events.jsonl` 包含 `invocation_start`、`user_input`、`model_output`、`final_answer`、`terminal_status`。
+- read-only-tool scenario 还必须包含 `tool_call_requested`、`tool_permission_decision`、`tool_result`，并在 manifest export / report 里看到 read-only `read_file` 的 allow + ok 证据。
 
 ## Kernel default gate
 
@@ -325,8 +346,8 @@ uv run pico --kernel-release-candidate .pico/kernel-release-candidate.json "summ
 
 一个 kernel-runtime release candidate 必须同时证明四类 gate：
 
-- `fake_provider_tests`：记录通过的 fake-provider 回归命令，并覆盖 `tests/test_runtime_kernel.py`、`tests/test_kernel_acceptance.py` 和 `tests/test_headless_task.py`。
-- `live_provider_acceptance`：引用真实 provider 的 live acceptance JSON artifact，且 `no-tool` 和 `read-only-tool` scenario 都为 passed。
+- `fake_provider_tests`：记录通过的 fake-provider 回归命令，并覆盖 `tests/test_runtime_kernel.py`、`tests/test_projection_acceptance.py`、`tests/test_kernel_acceptance.py` 和 `tests/test_headless_task.py`。
+- `live_provider_acceptance`：引用真实 provider 的 live acceptance JSON artifact，且 `no-tool` 和 `read-only-tool` scenario 都为 passed；每个 scenario 的 runtime events、trace、report、manifest、final answer、provider metadata 和 tool evidence 都必须能从本地 artifact 重放。
 - `projection_inspection`：引用 `uv run pico --runtime kernel --inspect-run <run_id> --inspect-view all` 产出的本地 inspection JSON，证明 ledger、session、trace、report、export 和 artifact projection 都可重放。
 - `headless_single_task`：引用 `pico headless task run` 的 `task_run_export.json`，证明 headless 单任务在 kernel runtime 下通过、verifier 边界受保护、默认工具策略 fail-closed。
 
