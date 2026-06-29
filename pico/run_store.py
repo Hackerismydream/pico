@@ -106,16 +106,16 @@ class RunStore:
         return path
 
     def write_runtime_events(self, run_id, events, *, secret_env_names=None):
-        path = self.runtime_events_path(run_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        lines = [
-            json.dumps(
-                redact_artifact(runtime_event_to_dict(event), secret_env_names=secret_env_names),
-                sort_keys=True,
-                ensure_ascii=True,
-            )
+        payloads = [
+            redact_artifact(runtime_event_to_dict(event), secret_env_names=secret_env_names)
             for event in events
         ]
+        return self.write_runtime_event_dicts(run_id, payloads)
+
+    def write_runtime_event_dicts(self, run_id, events):
+        path = self.runtime_events_path(run_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = [json.dumps(event, sort_keys=True, ensure_ascii=True) for event in events]
         self._write_text_atomic(path, "\n".join(lines) + ("\n" if lines else ""))
         return path
 
