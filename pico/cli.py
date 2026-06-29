@@ -19,6 +19,8 @@ from .run_store import RunStore
 from .runtime import Pico, SessionStore
 from .runtime_kernel import (
     InvocationContext,
+    ProjectionCaptureError,
+    ProjectionManager,
     RuntimeRunner,
     ToolPermissionPolicy,
     ToolRuntime,
@@ -31,7 +33,6 @@ from .runtime_kernel import (
     project_trace,
     runtime_event_to_dict,
 )
-from .security import redact_artifact
 from .workspace import WorkspaceContext, middle
 
 DEFAULT_SECRET_ENV_NAMES = (
@@ -381,17 +382,12 @@ def run_kernel_once(args):
         )
     )
     store = _kernel_run_store(workspace)
-    run_id = project_report(result.events)["run_id"]
-    if run_id:
-        store.write_runtime_events(run_id, result.events, secret_env_names=configured_secret_names)
-        store.write_trace(
-            run_id,
-            redact_artifact(project_trace(result.events), secret_env_names=configured_secret_names),
-        )
-        store.write_report(
-            run_id,
-            redact_artifact(project_report(result.events), secret_env_names=configured_secret_names),
-        )
+    try:
+        ProjectionManager(store, secret_env_names=configured_secret_names).capture(result.events)
+    except ProjectionCaptureError as exc:
+        print(f"projection_capture_error: {exc}", file=sys.stderr)
+        return 1
+
     if getattr(args, "show_runtime_events", False):
         summary = project_cli_runtime_events(result.events)
         if summary:
@@ -451,6 +447,7 @@ def _kernel_artifact_projection(store, run_id):
         "runtime_events": store.runtime_events_path(run_id),
         "trace": store.trace_path(run_id),
         "report": store.report_path(run_id),
+        "manifest": store.manifest_path(run_id),
     }
     return {
         name: {

@@ -16,11 +16,29 @@ from pico.runtime_kernel import (
 )
 from pico.runtime_projections import project_report as project_report_from_read_model
 from pico.runtime_projections import project_trace as project_trace_from_read_model
+from pico.runtime_projections import ProjectionCaptureError
 from pico.tools import BASE_TOOL_SPECS
 
 
 def _allow_readonly_tool_runtime(root):
     return ToolRuntime(root, permission_policy=ToolPermissionPolicy.allow_readonly())
+
+
+def _single_run_dir(root):
+    run_dirs = sorted((root / ".pico" / "runs").iterdir())
+    assert len(run_dirs) == 1
+    return run_dirs[0]
+
+
+def _assert_kernel_artifact_contract(run_dir):
+    for name in ("runtime_events.jsonl", "trace.jsonl", "report.json", "runtime_manifest.json"):
+        assert (run_dir / name).exists()
+    manifest = json.loads((run_dir / "runtime_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["artifacts"]["runtime_events"]["path"] == "runtime_events.jsonl"
+    assert manifest["artifacts"]["trace"]["path"] == "trace.jsonl"
+    assert manifest["artifacts"]["report"]["path"] == "report.json"
+    assert manifest["artifacts"]["manifest"]["path"] == "runtime_manifest.json"
+    return manifest
 
 
 def test_fake_model_client_clears_metadata_between_calls():
@@ -579,6 +597,11 @@ def test_cli_kernel_runtime_can_use_fake_provider(tmp_path, capsys, monkeypatch)
     captured = capsys.readouterr()
     assert status == 0
     assert captured.out.strip() == "Fake provider answer."
+    run_dir = _single_run_dir(tmp_path)
+    manifest = _assert_kernel_artifact_contract(run_dir)
+    assert manifest["run_id"] == run_dir.name
+    assert manifest["status"] == "completed"
+    assert manifest["projections"]["export"]["final_answer"] == "Fake provider answer."
 
 
 def test_cli_kernel_runtime_can_show_tool_event_summary(tmp_path, capsys, monkeypatch):
@@ -630,11 +653,11 @@ def test_cli_kernel_runtime_persists_and_inspects_runtime_event_views(tmp_path, 
     status = main(["--runtime", "kernel", "--approval", "auto", "--cwd", str(tmp_path), "hello"])
     assert status == 0
     capsys.readouterr()
-    run_dirs = sorted((tmp_path / ".pico" / "runs").iterdir())
-    run_id = run_dirs[0].name
-    assert (run_dirs[0] / "runtime_events.jsonl").exists()
-    assert (run_dirs[0] / "trace.jsonl").exists()
-    assert (run_dirs[0] / "report.json").exists()
+    run_dir = _single_run_dir(tmp_path)
+    run_id = run_dir.name
+    manifest = _assert_kernel_artifact_contract(run_dir)
+    assert manifest["status"] == "completed"
+    assert manifest["projections"]["session"]["tool_calls"][0]["permission"]["decision"] == "allow"
 
     assert main(["--cwd", str(tmp_path), "--inspect-run", run_id, "--inspect-view", "ledger"]) == 0
     ledger_output = capsys.readouterr().out
@@ -653,6 +676,16 @@ def test_cli_kernel_runtime_persists_and_inspects_runtime_event_views(tmp_path, 
     assert report["run_id"] == run_id
     assert report["tool_calls"][0]["name"] == "read_file"
     assert report["permission_decisions"][0]["decision"] == "allow"
+
+    assert main(["--cwd", str(tmp_path), "--inspect-run", run_id, "--inspect-view", "artifacts"]) == 0
+    artifacts = json.loads(capsys.readouterr().out)
+    assert artifacts["manifest"]["path"].endswith("runtime_manifest.json")
+    assert artifacts["manifest"]["exists"] is True
+
+    assert main(["--cwd", str(tmp_path), "--inspect-run", run_id, "--inspect-view", "all"]) == 0
+    all_view = json.loads(capsys.readouterr().out)
+    assert all_view["artifacts"]["manifest"]["exists"] is True
+    assert all_view["report"]["run_id"] == run_id
 
 
 def test_cli_kernel_runtime_redacts_persisted_artifacts(tmp_path, capsys, monkeypatch):
@@ -680,6 +713,7 @@ def test_cli_kernel_runtime_redacts_persisted_artifacts(tmp_path, capsys, monkey
             (run_dir / "runtime_events.jsonl").read_text(encoding="utf-8"),
             (run_dir / "trace.jsonl").read_text(encoding="utf-8"),
             (run_dir / "report.json").read_text(encoding="utf-8"),
+            (run_dir / "runtime_manifest.json").read_text(encoding="utf-8"),
         ]
     )
     assert secret not in persisted_text
@@ -767,3 +801,29 @@ def test_cli_kernel_runtime_reports_provider_failure(tmp_path, capsys, monkeypat
     assert captured.out == ""
     assert "provider_error" in captured.err
     assert "backend unavailable" in captured.err
+    run_dir = _single_run_dir(tmp_path)
+    manifest = _assert_kernel_artifact_contract(run_dir)
+    assert manifest["status"] == "failed"
+    assert manifest["terminal_status"]["error_type"] == "provider_error"
+
+
+def test_cli_kernel_runtime_fails_closed_when_projection_capture_fails(tmp_path, capsys, monkeypatch):
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "pico.cli._build_model_client",
+        lambda args: FakeModelClient(["Projected answer."]),
+    )
+
+    def fail_capture(self, events):
+        raise ProjectionCaptureError("disk full")
+
+    monkeypatch.setattr("pico.cli.ProjectionManager.capture", fail_capture)
+
+    status = main(["--runtime", "kernel", "--cwd", str(tmp_path), "hello"])
+
+    captured = capsys.readouterr()
+    assert status == 1
+    assert captured.out == ""
+    assert "projection_capture_error" in captured.err
+    assert "disk full" in captured.err
+    assert not (tmp_path / ".pico" / "runs").exists() or not list((tmp_path / ".pico" / "runs").iterdir())
