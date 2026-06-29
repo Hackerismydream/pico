@@ -460,6 +460,10 @@ def main(argv=None):
         from .headless import run_headless_task_cli
 
         return run_headless_task_cli(raw_argv[3:])
+    if raw_argv[:4] == ["headless", "eval", "grid", "run"]:
+        from .headless_grid import run_headless_eval_grid_cli
+
+        return run_headless_eval_grid_cli(raw_argv[4:])
     args = build_arg_parser().parse_args(raw_argv)
     if args.inspect_run:
         return inspect_kernel_run(args)

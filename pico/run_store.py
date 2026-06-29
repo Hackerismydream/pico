@@ -46,6 +46,12 @@ class RunStore:
     def task_run_export_path(self, run_id):
         return self.run_dir(run_id) / "task_run_export.json"
 
+    def eval_grid_export_path(self, run_id):
+        return self.run_dir(run_id) / "eval_grid_export.json"
+
+    def eval_grid_report_path(self, run_id):
+        return self.run_dir(run_id) / "eval_grid_report.md"
+
     def start_run(self, task_state):
         # 每次 ask() 都会生成一个 run 目录。
         # 这样一次用户请求对应一组独立工件，后续排查更容易。
@@ -108,6 +114,18 @@ class RunStore:
         path = self.task_run_export_path(run_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         self._write_json_atomic(path, payload)
+        return path
+
+    def write_eval_grid_export(self, run_id, payload):
+        path = self.eval_grid_export_path(run_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._write_json_atomic(path, payload)
+        return path
+
+    def write_eval_grid_report(self, run_id, text):
+        path = self.eval_grid_report_path(run_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._write_text_atomic(path, text)
         return path
 
     def load_task_state(self, task_id):

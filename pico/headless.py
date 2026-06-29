@@ -333,6 +333,7 @@ class HeadlessTaskRunner:
         runtime_events_path = runtime_store.write_runtime_events(runtime_run_id, result.events)
         trace_path = runtime_store.write_trace(runtime_run_id, project_trace(result.events))
         report_path = runtime_store.write_report(runtime_run_id, report)
+        provider_calls = list(report.get("provider_calls", []))
         runtime_info = {
             "run_id": runtime_run_id,
             "status": result.status,
@@ -342,6 +343,9 @@ class HeadlessTaskRunner:
             "final_answer": project_final_answer(result.events),
             "event_count": len(result.events),
             "event_type_counts": dict(Counter(event.type for event in result.events)),
+            "provider_calls": provider_calls,
+            "usage": _summarize_provider_usage(provider_calls),
+            "cost": _summarize_provider_cost(provider_calls),
             "runtime_events_relpath": _relative(runtime_events_path, run_dir),
             "trace_relpath": _relative(trace_path, run_dir),
             "report_relpath": _relative(report_path, run_dir),
@@ -473,6 +477,9 @@ class HeadlessTaskRunner:
             "final_answer": "",
             "event_count": 0,
             "event_type_counts": {},
+            "provider_calls": [],
+            "usage": {},
+            "cost": {},
             "runtime_events_relpath": "",
             "trace_relpath": "",
             "report_relpath": "",
@@ -557,3 +564,36 @@ def run_headless_task_cli(argv):
         if message:
             print(message, file=sys.stderr)
     return result.exit_code
+
+
+def _summarize_provider_usage(provider_calls):
+    totals = {}
+    cache_hits = 0
+    cache_observations = 0
+    for call in provider_calls:
+        metadata = dict(call.get("metadata", {}) or {})
+        for key in ("input_tokens", "output_tokens", "total_tokens", "cached_tokens"):
+            value = metadata.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            totals[key] = totals.get(key, 0) + value
+        if "cache_hit" in metadata:
+            cache_observations += 1
+            if metadata.get("cache_hit") is True:
+                cache_hits += 1
+    if cache_observations:
+        totals["cache_hits"] = cache_hits
+        totals["cache_misses"] = cache_observations - cache_hits
+    return totals
+
+
+def _summarize_provider_cost(provider_calls):
+    totals = {}
+    for call in provider_calls:
+        metadata = dict(call.get("metadata", {}) or {})
+        for key in ("cost_usd", "estimated_cost_usd", "input_cost_usd", "output_cost_usd", "total_cost_usd"):
+            value = metadata.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            totals[key] = totals.get(key, 0.0) + float(value)
+    return totals

@@ -258,6 +258,37 @@ uv run pico headless task run task.json --runs-root .pico/headless/task-runs
 
 输出和 `.pico/headless/task-runs/<task_run_id>/task_run_export.json` 都会区分 `pass`、benchmark `fail` 和 infrastructure `infra_fail`，并引用底层 kernel `runtime_events.jsonl`。
 
+## Headless eval grid
+
+eval grid 是单任务 runner 的薄封装：它读取一个小的 config x task 矩阵，每个 cell 都复用 `pico headless task run` 的 kernel runtime、隔离 workspace、verifier 边界和 task-run export。当前可执行 provider 只支持 fake provider，真实 provider 的 usage/cost 字段会先保留在稳定导出结构里，等后续 acceptance gate 接入。
+
+最小 grid spec：
+
+```json
+{
+  "id": "tiny-grid",
+  "tasks": ["./task-a.json", "./task-b.json"],
+  "configs": [
+    {"id": "fake-default", "provider": "fake"},
+    {
+      "id": "fake-alt",
+      "provider": "fake",
+      "fake_outputs_by_task": {
+        "task-a": ["<final>alternate answer</final>"]
+      }
+    }
+  ]
+}
+```
+
+运行：
+
+```bash
+uv run pico headless eval grid run grid.json --runs-root .pico/headless/eval-grids
+```
+
+输出和 `.pico/headless/eval-grids/<grid_run_id>/eval_grid_export.json` 会包含每个 row 的 task run id、runtime status、verifier status、usage/cost metadata、以及 `runtime_events.jsonl` / trace / report / task-run export 的相对路径。benchmark failure 会以 `status: "fail"` 留在结果里且命令返回 0；infrastructure failure 会以 `status: "infra_fail"` 留在结果里且命令返回非 0。
+
 ## 常用交互命令
 
 - `/help`：查看内置命令
