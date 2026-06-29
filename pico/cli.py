@@ -455,7 +455,12 @@ def _kernel_tool_permission_policy(args):
 
 
 def main(argv=None):
-    args = build_arg_parser().parse_args(argv)
+    raw_argv = sys.argv[1:] if argv is None else list(argv)
+    if raw_argv[:3] == ["headless", "task", "run"]:
+        from .headless import run_headless_task_cli
+
+        return run_headless_task_cli(raw_argv[3:])
+    args = build_arg_parser().parse_args(raw_argv)
     if args.inspect_run:
         return inspect_kernel_run(args)
     if args.runtime == "kernel":

@@ -229,6 +229,35 @@ ollama pull qwen3.5:4b
 uv run pico --provider ollama --model qwen3.5:4b
 ```
 
+## Headless task run
+
+单任务 headless runner 使用同一条 kernel runtime，但运行在隔离 workspace 中。verifier 在 runtime 结束后才执行，不会进入 agent prompt。最小 spec：
+
+```json
+{
+  "id": "read_fact",
+  "workspace": "./fixtures/read_fact",
+  "prompt": "Read README and answer with the project fact.",
+  "fake_model_outputs": [
+    "<tool>{\"name\":\"read_file\",\"args\":{\"path\":\"README.md\"}}</tool>",
+    "<final>The project fact is alpha.</final>"
+  ],
+  "verifier": "python3 -c 'import os; assert os.environ[\"PICO_FINAL_ANSWER\"] == \"The project fact is alpha.\"'",
+  "allowed_tools": ["read_file"],
+  "max_steps": 4
+}
+```
+
+`allowed_tools` 是显式 allowlist；省略时默认不给 runtime 任何工具。
+
+运行：
+
+```bash
+uv run pico headless task run task.json --runs-root .pico/headless/task-runs
+```
+
+输出和 `.pico/headless/task-runs/<task_run_id>/task_run_export.json` 都会区分 `pass`、benchmark `fail` 和 infrastructure `infra_fail`，并引用底层 kernel `runtime_events.jsonl`。
+
 ## 常用交互命令
 
 - `/help`：查看内置命令

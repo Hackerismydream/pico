@@ -260,7 +260,8 @@ class ToolRuntime:
 
     def __init__(self, workspace_root, tool_registry=None, permission_policy=None):
         self.root = Path(workspace_root).resolve()
-        self.tool_registry = dict(tool_registry or self._build_readonly_registry())
+        registry = self._build_readonly_registry() if tool_registry is None else tool_registry
+        self.tool_registry = dict(registry)
         self.permission_policy = permission_policy or ToolPermissionPolicy.allow_readonly()
 
     def _build_readonly_registry(self):

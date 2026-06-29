@@ -80,3 +80,18 @@ def test_run_store_writes_and_loads_runtime_event_ledger(tmp_path):
     assert path == store.runtime_events_path("run_005")
     assert [event.type for event in loaded] == ["invocation_start", "terminal_status"]
     assert loaded[0].payload["invocation_id"] == "run_005"
+
+
+def test_run_store_writes_headless_task_artifacts(tmp_path):
+    store = RunStore(tmp_path / ".pico" / "runs")
+
+    facts_path = store.write_task_run_facts("taskrun_001", {"task_run_id": "taskrun_001"})
+    wal_path = store.append_task_run_wal("taskrun_001", {"event": "task_run_started"})
+    export_path = store.write_task_run_export("taskrun_001", {"status": "pass"})
+
+    assert facts_path == store.task_run_facts_path("taskrun_001")
+    assert wal_path == store.task_run_wal_path("taskrun_001")
+    assert export_path == store.task_run_export_path("taskrun_001")
+    assert json.loads(facts_path.read_text(encoding="utf-8"))["task_run_id"] == "taskrun_001"
+    assert json.loads(wal_path.read_text(encoding="utf-8").strip())["event"] == "task_run_started"
+    assert json.loads(export_path.read_text(encoding="utf-8"))["status"] == "pass"

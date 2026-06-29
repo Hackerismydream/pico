@@ -37,6 +37,15 @@ class RunStore:
     def runtime_events_path(self, run_id):
         return self.run_dir(run_id) / "runtime_events.jsonl"
 
+    def task_run_facts_path(self, run_id):
+        return self.run_dir(run_id) / "task_run.json"
+
+    def task_run_wal_path(self, run_id):
+        return self.run_dir(run_id) / "task_run_wal.jsonl"
+
+    def task_run_export_path(self, run_id):
+        return self.run_dir(run_id) / "task_run_export.json"
+
     def start_run(self, task_state):
         # 每次 ask() 都会生成一个 run 目录。
         # 这样一次用户请求对应一组独立工件，后续排查更容易。
@@ -79,6 +88,26 @@ class RunStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         lines = [json.dumps(runtime_event_to_dict(event), sort_keys=True, ensure_ascii=True) for event in events]
         self._write_text_atomic(path, "\n".join(lines) + ("\n" if lines else ""))
+        return path
+
+    def write_task_run_facts(self, run_id, payload):
+        path = self.task_run_facts_path(run_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._write_json_atomic(path, payload)
+        return path
+
+    def append_task_run_wal(self, run_id, event):
+        path = self.task_run_wal_path(run_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, sort_keys=True, ensure_ascii=True))
+            handle.write("\n")
+        return path
+
+    def write_task_run_export(self, run_id, payload):
+        path = self.task_run_export_path(run_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._write_json_atomic(path, payload)
         return path
 
     def load_task_state(self, task_id):
