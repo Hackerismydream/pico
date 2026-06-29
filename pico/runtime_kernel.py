@@ -16,6 +16,9 @@ import uuid
 
 from . import tools as toolkit
 from .runtime_projections import (
+    ProjectionCaptureError as ProjectionCaptureError,
+    ProjectionManager as ProjectionManager,
+    RuntimeArtifactSet as RuntimeArtifactSet,
     project_cli_runtime_events as project_cli_runtime_events,
     project_export as project_export,
     project_final_answer as project_final_answer,

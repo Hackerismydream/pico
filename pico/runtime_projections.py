@@ -1,5 +1,206 @@
 """Read-model projections derived from kernel runtime events."""
 
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+
+from .security import redact_artifact
+
+
+RUNTIME_ARTIFACT_MANIFEST_SCHEMA_VERSION = 1
+
+
+class ProjectionCaptureError(RuntimeError):
+    """Raised when runtime artifacts cannot be captured safely."""
+
+
+@dataclass(frozen=True)
+class RuntimeArtifactSet:
+    run_id: str
+    status: str
+    terminal_status: dict
+    runtime_events_path: Path
+    trace_path: Path
+    report_path: Path
+    manifest_path: Path
+    session_projection: dict
+    export_projection: dict
+    diagnostics: tuple
+
+    @property
+    def artifact_paths(self):
+        return {
+            "runtime_events": self.runtime_events_path,
+            "trace": self.trace_path,
+            "report": self.report_path,
+            "manifest": self.manifest_path,
+        }
+
+
+@dataclass(frozen=True)
+class _ProjectionRuntimeEvent:
+    type: str
+    payload: dict
+    created_at: str = ""
+
+
+class ProjectionManager:
+    def __init__(self, store, *, secret_env_names=None):
+        self.store = store
+        self.secret_env_names = set(secret_env_names or ())
+
+    def capture(self, events, *, run_id=None):
+        normalized_events, diagnostics = _normalize_events(events)
+        run_id = str(run_id or project_run_id(normalized_events))
+        if not run_id:
+            raise ProjectionCaptureError("cannot capture runtime artifacts without a run id")
+
+        terminal = _last_event(normalized_events, "terminal_status")
+        terminal_status = {} if terminal is None else dict(terminal.payload)
+        status = "unknown" if terminal is None else str(terminal_status.get("status") or "unknown")
+        if terminal is None:
+            diagnostics.append(
+                _diagnostic(
+                    "missing_terminal_status",
+                    "runtime event history has no terminal_status event; status projected as unknown",
+                )
+            )
+        elif "status" not in terminal_status:
+            diagnostics.append(
+                _diagnostic(
+                    "missing_terminal_status_value",
+                    "terminal_status event has no status field; status projected as unknown",
+                )
+            )
+
+        try:
+            runtime_event_dicts = [
+                redact_artifact(_event_to_dict(event), secret_env_names=self.secret_env_names)
+                for event in normalized_events
+            ]
+            trace = redact_artifact(project_trace(normalized_events), secret_env_names=self.secret_env_names)
+            report = redact_artifact(project_report(normalized_events), secret_env_names=self.secret_env_names)
+            session = redact_artifact(project_session(normalized_events), secret_env_names=self.secret_env_names)
+            export = redact_artifact(project_export(normalized_events), secret_env_names=self.secret_env_names)
+        except Exception as exc:
+            raise ProjectionCaptureError(f"redaction failed while capturing runtime artifacts: {exc}") from exc
+
+        try:
+            runtime_events_path = self.store.write_runtime_event_dicts(run_id, runtime_event_dicts)
+            trace_path = self.store.write_trace(run_id, trace)
+            report_path = self.store.write_report(run_id, report)
+            manifest_path = self.store.manifest_path(run_id)
+            manifest = {
+                "schema_version": RUNTIME_ARTIFACT_MANIFEST_SCHEMA_VERSION,
+                "run_id": run_id,
+                "status": status,
+                "terminal_status": terminal_status,
+                "artifacts": {
+                    "runtime_events": {"path": _store_relative_path(self.store, run_id, runtime_events_path)},
+                    "trace": {"path": _store_relative_path(self.store, run_id, trace_path)},
+                    "report": {"path": _store_relative_path(self.store, run_id, report_path)},
+                    "manifest": {"path": _store_relative_path(self.store, run_id, manifest_path)},
+                },
+                "projections": {
+                    "session": session,
+                    "export": export,
+                },
+                "diagnostics": diagnostics,
+            }
+            manifest_path = self.store.write_manifest(run_id, manifest)
+        except Exception as exc:
+            raise ProjectionCaptureError(f"storage failed while capturing runtime artifacts: {exc}") from exc
+
+        return RuntimeArtifactSet(
+            run_id=run_id,
+            status=status,
+            terminal_status=terminal_status,
+            runtime_events_path=Path(runtime_events_path),
+            trace_path=Path(trace_path),
+            report_path=Path(report_path),
+            manifest_path=Path(manifest_path),
+            session_projection=session,
+            export_projection=export,
+            diagnostics=tuple(diagnostics),
+        )
+
+
+def _normalize_events(events):
+    normalized = []
+    diagnostics = []
+    for index, event in enumerate(events or ()):
+        event_type = _event_field(event, "type")
+        payload = _event_field(event, "payload")
+        created_at = _event_field(event, "created_at", "")
+        if not event_type:
+            diagnostics.append(
+                _diagnostic(
+                    "unsupported_event_shape",
+                    "runtime event is missing a type and was skipped",
+                    event_index=index,
+                )
+            )
+            continue
+        if not isinstance(payload, Mapping):
+            diagnostics.append(
+                _diagnostic(
+                    "unsupported_event_shape",
+                    "runtime event payload is not an object and was skipped",
+                    event_index=index,
+                    event_type=str(event_type),
+                )
+            )
+            continue
+        if not created_at:
+            diagnostics.append(
+                _diagnostic(
+                    "incomplete_event_shape",
+                    "runtime event has no created_at timestamp",
+                    event_index=index,
+                    event_type=str(event_type),
+                )
+            )
+        normalized.append(
+            _ProjectionRuntimeEvent(
+                type=str(event_type),
+                payload=dict(payload),
+                created_at=str(created_at or ""),
+            )
+        )
+    return normalized, diagnostics
+
+
+def _event_field(event, name, default=None):
+    if isinstance(event, Mapping):
+        return event.get(name, default)
+    return getattr(event, name, default)
+
+
+def _event_to_dict(event):
+    return {
+        "type": event.type,
+        "created_at": event.created_at,
+        "payload": dict(event.payload),
+    }
+
+
+def _diagnostic(code, message, **details):
+    diagnostic = {
+        "code": code,
+        "severity": "warning",
+        "message": message,
+    }
+    diagnostic.update(details)
+    return diagnostic
+
+
+def _store_relative_path(store, run_id, path):
+    path = Path(path)
+    try:
+        return str(path.relative_to(store.run_dir(run_id)))
+    except ValueError:
+        return str(path)
+
 
 def _last_event(events, event_type):
     for event in reversed(events):
