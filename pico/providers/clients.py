@@ -15,18 +15,21 @@ OPENAI_COMPATIBLE_USER_AGENT = "pico/0.1"
 
 
 class FakeModelClient:
-    def __init__(self, outputs):
+    def __init__(self, outputs, metadata=None):
         self.outputs = list(outputs)
+        self.metadata = list(metadata or [])
         self.prompts = []
         self.supports_prompt_cache = False
         self.last_completion_metadata = {}
 
     def complete(self, prompt, max_new_tokens, **kwargs):
         self.prompts.append(prompt)
-        if not getattr(self, "last_completion_metadata", None):
-            self.last_completion_metadata = {}
         if not self.outputs:
             raise RuntimeError("fake model ran out of outputs")
+        if self.metadata:
+            self.last_completion_metadata = dict(self.metadata.pop(0))
+        elif not getattr(self, "last_completion_metadata", None):
+            self.last_completion_metadata = {}
         return self.outputs.pop(0)
 
 
@@ -223,6 +226,24 @@ def _extract_usage_cache_details(data):
     }
 
 
+def _extract_openai_finish_details(data):
+    choices = data.get("choices") or []
+    finish_reason = ""
+    if choices and isinstance(choices[0], dict):
+        finish_reason = choices[0].get("finish_reason") or ""
+    output = data.get("output") or []
+    output_status = ""
+    if output and isinstance(output[0], dict):
+        output_status = output[0].get("status") or ""
+    incomplete = data.get("incomplete_details") or {}
+    return {
+        "finish_reason": finish_reason or data.get("finish_reason") or incomplete.get("reason") or "",
+        "provider_status": data.get("status") or output_status or "",
+        "response_id": data.get("id") or "",
+        "response_model": data.get("model") or "",
+    }
+
+
 class OpenAICompatibleModelClient:
     def __init__(self, model, base_url, api_key, temperature, timeout):
         self.model = model
@@ -327,6 +348,7 @@ class OpenAICompatibleModelClient:
                     "prompt_cache_supported": self.supports_prompt_cache,
                     "prompt_cache_key": prompt_cache_key,
                     "prompt_cache_retention": prompt_cache_retention,
+                    **_extract_openai_finish_details(response_data),
                     **_extract_usage_cache_details(response_data),
                 }
             if text:
@@ -345,6 +367,7 @@ class OpenAICompatibleModelClient:
             "prompt_cache_supported": self.supports_prompt_cache,
             "prompt_cache_key": prompt_cache_key,
             "prompt_cache_retention": prompt_cache_retention,
+            **_extract_openai_finish_details(data),
             **_extract_usage_cache_details(data),
         }
         return _extract_openai_text(data)
@@ -357,6 +380,27 @@ def _extract_anthropic_text(data):
             if isinstance(text, str) and text:
                 return text
     return ""
+
+
+def _extract_anthropic_metadata(data):
+    usage = data.get("usage") or {}
+    input_tokens = usage.get("input_tokens")
+    output_tokens = usage.get("output_tokens")
+    total_tokens = None
+    if isinstance(input_tokens, int) and isinstance(output_tokens, int):
+        total_tokens = input_tokens + output_tokens
+    return {
+        "finish_reason": data.get("stop_reason") or "",
+        "provider_status": data.get("stop_reason") or "",
+        "stop_sequence": data.get("stop_sequence") or "",
+        "response_id": data.get("id") or "",
+        "response_model": data.get("model") or "",
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "cached_tokens": None,
+        "cache_hit": None,
+    }
 
 
 class AnthropicCompatibleModelClient:
@@ -435,6 +479,7 @@ class AnthropicCompatibleModelClient:
             ) from exc
         if data.get("error"):
             raise RuntimeError(f"Anthropic-compatible error: {data['error']}")
+        self.last_completion_metadata = _extract_anthropic_metadata(data)
         text = _extract_anthropic_text(data)
         if text:
             return text
