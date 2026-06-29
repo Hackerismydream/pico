@@ -1,14 +1,22 @@
 """First narrow runtime-kernel path.
 
-This module is intentionally small. It proves one vertical path:
+This module proves one vertical path:
 CLI adapter -> RuntimeRunner/InvocationContext -> AgentFlow/ModelAdapter ->
-RuntimeEvent ledger -> projection.
+ToolRuntime -> RuntimeEvent ledger -> projection.
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+import re
 from typing import Any
 import uuid
+
+from . import tools as toolkit
+from .tool_context import ToolContext
+from .workspace import clip
 
 
 def _now():
@@ -45,6 +53,7 @@ class InvocationContext:
     user_message: str
     workspace_root: str
     max_new_tokens: int = 512
+    max_steps: int = 6
     invocation_id: str = field(default_factory=lambda: _new_id("invocation"))
 
 
@@ -87,35 +96,309 @@ class ModelAdapter:
         return client_name
 
 
-class AgentFlow:
-    def __init__(self, model_adapter):
-        self.model_adapter = model_adapter
+@dataclass(frozen=True)
+class ParsedToolCall:
+    name: str
+    args: dict[str, Any]
 
-    def run(self, context, ledger):
-        prompt = self._build_no_tool_prompt(context)
-        result = self.model_adapter.complete(prompt, context.max_new_tokens)
-        if isinstance(result, ModelFailure):
-            ledger.append(
-                "terminal_status",
-                invocation_id=context.invocation_id,
-                status="failed",
-                error_type=result.error_type,
-                error_message=result.message,
-                provider=result.provider,
+
+@dataclass(frozen=True)
+class ParsedFinalAnswer:
+    text: str
+
+
+@dataclass(frozen=True)
+class ParsedRetry:
+    message: str
+
+
+def parse_model_message(raw):
+    raw = str(raw)
+    tool_match = re.search(r"<tool>(?P<body>.*?)</tool>", raw, re.S)
+    final_match = re.search(r"<final>(?P<body>.*?)</final>", raw, re.S)
+    if tool_match and (not final_match or tool_match.start() < final_match.start()):
+        try:
+            payload = json.loads(tool_match.group("body"))
+        except Exception:
+            return ParsedRetry("model returned malformed tool JSON")
+        if not isinstance(payload, dict):
+            return ParsedRetry("tool payload must be a JSON object")
+        name = str(payload.get("name", "")).strip()
+        if not name:
+            return ParsedRetry("tool payload is missing a tool name")
+        args = payload.get("args", {})
+        if args is None:
+            args = {}
+        if not isinstance(args, dict):
+            return ParsedRetry("tool args must be a JSON object")
+        return ParsedToolCall(name=name, args=args)
+    if final_match:
+        final = final_match.group("body").strip()
+        if final:
+            return ParsedFinalAnswer(final)
+        return ParsedRetry("model returned an empty <final> answer")
+    text = raw.strip()
+    if text:
+        return ParsedFinalAnswer(text)
+    return ParsedRetry("model returned an empty response")
+
+
+class ModelHistoryProjector:
+    def project(self, context, events):
+        tool_results = [
+            event.payload
+            for event in events
+            if event.type == "tool_result" and event.payload.get("invocation_id") == context.invocation_id
+        ]
+        lines = [
+            context.user_message,
+            "",
+            "Kernel runtime protocol:",
+            '- To inspect the workspace, reply with <tool>{"name":"read_file","args":{"path":"README.md"}}</tool>.',
+            '- Available read-only tools: read_file, list_files, search.',
+            "- To answer, reply with <final>your answer</final>.",
+        ]
+        if not tool_results:
+            return "\n".join(lines)
+
+        lines.extend(["", "Runtime tool results:"])
+        for result in tool_results:
+            normalized = {
+                "tool_call_id": result.get("tool_call_id", ""),
+                "name": result.get("name", ""),
+                "status": result.get("status", ""),
+                "failure_classification": result.get("failure_classification", ""),
+                "result": result.get("content", ""),
+            }
+            if result.get("error_message"):
+                normalized["error_message"] = result["error_message"]
+            lines.append(json.dumps(normalized, ensure_ascii=True, sort_keys=True))
+        lines.extend(
+            [
+                "",
+                "Use the normalized tool result above. Reply with <final>your answer</final>.",
+            ]
+        )
+        return "\n".join(lines)
+
+
+class ToolRuntime:
+    READ_ONLY_TOOL_NAMES = frozenset({"list_files", "read_file", "search"})
+
+    def __init__(self, workspace_root, tool_registry=None):
+        self.root = Path(workspace_root).resolve()
+        self.tool_registry = dict(tool_registry or self._build_readonly_registry())
+
+    def _build_readonly_registry(self):
+        context = self._tool_context()
+        return {
+            "list_files": {
+                **toolkit.BASE_TOOL_SPECS["list_files"],
+                "run": lambda args: toolkit.tool_list_files(context, args),
+            },
+            "read_file": {
+                **toolkit.BASE_TOOL_SPECS["read_file"],
+                "run": lambda args: toolkit.tool_read_file(context, args),
+            },
+            "search": {
+                **toolkit.BASE_TOOL_SPECS["search"],
+                "run": lambda args: toolkit.tool_search(context, args),
+            },
+        }
+
+    def _resolve_workspace_path(self, raw_path):
+        path = Path(raw_path)
+        path = path if path.is_absolute() else self.root / path
+        resolved = path.resolve()
+        if os.path.commonpath([str(self.root), str(resolved)]) != str(self.root):
+            raise ValueError(f"path escapes workspace: {raw_path}")
+        return resolved
+
+    def execute(self, tool_call, context, ledger):
+        tool_call_id = _new_id("tool")
+        name = str(tool_call.name)
+        args = dict(tool_call.args)
+        ledger.append(
+            "tool_call_requested",
+            invocation_id=context.invocation_id,
+            tool_call_id=tool_call_id,
+            name=name,
+            args=args,
+            read_only=True,
+        )
+
+        tool = self.tool_registry.get(name)
+        if tool is None or name not in self.READ_ONLY_TOOL_NAMES:
+            self._record_rejection(
+                context,
+                ledger,
+                tool_call_id,
+                name,
+                args,
+                failure_classification="tool_not_allowed",
+                message=f"tool '{name}' is not available in the kernel read-only runtime",
+            )
+            return
+
+        try:
+            self._validate_tool_args(name, args)
+        except Exception as exc:
+            failure_classification = "path_escape" if "path escapes workspace" in str(exc) else "invalid_arguments"
+            self._record_rejection(
+                context,
+                ledger,
+                tool_call_id,
+                name,
+                args,
+                failure_classification=failure_classification,
+                message=str(exc),
             )
             return
 
         ledger.append(
-            "model_output",
+            "tool_argument_validation",
             invocation_id=context.invocation_id,
-            text=result.text,
-            metadata=result.metadata,
-            provider=self.model_adapter.provider_name(),
+            tool_call_id=tool_call_id,
+            name=name,
+            status="ok",
         )
+        try:
+            content = clip(tool["run"](args))
+        except Exception as exc:
+            failure_classification = "path_escape" if "path escapes workspace" in str(exc) else "tool_failed"
+            ledger.append(
+                "tool_result",
+                invocation_id=context.invocation_id,
+                tool_call_id=tool_call_id,
+                name=name,
+                args=args,
+                status="error",
+                content=f"error: tool {name} failed: {exc}",
+                error_message=str(exc),
+                failure_classification=failure_classification,
+                read_only=True,
+            )
+            return
+
+        ledger.append(
+            "tool_result",
+            invocation_id=context.invocation_id,
+            tool_call_id=tool_call_id,
+            name=name,
+            args=args,
+            status="ok",
+            content=content,
+            failure_classification="",
+            read_only=True,
+        )
+
+    def _validate_tool_args(self, name, args):
+        toolkit.validate_tool(self._tool_context(), name, args)
+        if name == "search" and not self._resolve_workspace_path(args.get("path", ".")).exists():
+            raise ValueError("path does not exist")
+
+    def _tool_context(self):
+        return ToolContext(
+            root=self.root,
+            path_resolver=self._resolve_workspace_path,
+            shell_env_provider=lambda: {"PWD": str(self.root)},
+            depth=0,
+            max_depth=0,
+            spawn_delegate=lambda args: "delegate is unavailable in the kernel read-only runtime",
+        )
+
+    def _record_rejection(self, context, ledger, tool_call_id, name, args, failure_classification, message):
+        ledger.append(
+            "tool_argument_validation",
+            invocation_id=context.invocation_id,
+            tool_call_id=tool_call_id,
+            name=name,
+            status="failed",
+            error_message=message,
+            failure_classification=failure_classification,
+        )
+        ledger.append(
+            "tool_result",
+            invocation_id=context.invocation_id,
+            tool_call_id=tool_call_id,
+            name=name,
+            args=args,
+            status="error",
+            content=f"error: {message}",
+            error_message=message,
+            failure_classification=failure_classification,
+            read_only=True,
+        )
+
+
+class AgentFlow:
+    def __init__(self, model_adapter, tool_runtime=None, history_projector=None):
+        self.model_adapter = model_adapter
+        self.tool_runtime = tool_runtime
+        self.history_projector = history_projector or ModelHistoryProjector()
+
+    def run(self, context, ledger):
+        for step in range(max(1, int(context.max_steps))):
+            prompt = self.history_projector.project(context, ledger.events)
+            result = self.model_adapter.complete(prompt, context.max_new_tokens)
+            if isinstance(result, ModelFailure):
+                ledger.append(
+                    "terminal_status",
+                    invocation_id=context.invocation_id,
+                    status="failed",
+                    error_type=result.error_type,
+                    error_message=result.message,
+                    provider=result.provider,
+                )
+                return
+
+            ledger.append(
+                "model_output",
+                invocation_id=context.invocation_id,
+                text=result.text,
+                metadata=result.metadata,
+                provider=self.model_adapter.provider_name(),
+                step=step + 1,
+            )
+            parsed = parse_model_message(result.text)
+            if isinstance(parsed, ParsedFinalAnswer):
+                ledger.append(
+                    "final_answer",
+                    invocation_id=context.invocation_id,
+                    text=parsed.text,
+                )
+                ledger.append(
+                    "terminal_status",
+                    invocation_id=context.invocation_id,
+                    status="completed",
+                )
+                return
+            if isinstance(parsed, ParsedRetry):
+                ledger.append(
+                    "runtime_notice",
+                    invocation_id=context.invocation_id,
+                    notice_type="model_parse_error",
+                    message=parsed.message,
+                )
+                continue
+            if self.tool_runtime is None:
+                ledger.append(
+                    "terminal_status",
+                    invocation_id=context.invocation_id,
+                    status="failed",
+                    error_type="tool_runtime_missing",
+                    error_message="model requested a tool but no ToolRuntime is configured",
+                    provider=self.model_adapter.provider_name(),
+                )
+                return
+            self.tool_runtime.execute(parsed, context, ledger)
         ledger.append(
             "terminal_status",
             invocation_id=context.invocation_id,
-            status="completed",
+            status="failed",
+            error_type="step_limit_reached",
+            error_message="kernel runtime reached max_steps before a final answer",
+            provider=self.model_adapter.provider_name(),
         )
 
     @staticmethod
@@ -154,12 +437,13 @@ class RuntimeResult:
 
 
 class RuntimeRunner:
-    def __init__(self, model_client=None, model_adapter=None):
+    def __init__(self, model_client=None, model_adapter=None, tool_runtime=None):
         if model_adapter is None:
             if model_client is None:
                 raise ValueError("model_client or model_adapter is required")
             model_adapter = ModelAdapter(model_client)
-        self.agent_flow = AgentFlow(model_adapter)
+        self.model_adapter = model_adapter
+        self.tool_runtime = tool_runtime
 
     def run(self, context):
         ledger = RuntimeEventLedger()
@@ -173,7 +457,10 @@ class RuntimeRunner:
             invocation_id=context.invocation_id,
             text=context.user_message,
         )
-        self.agent_flow.run(context, ledger)
+        tool_runtime = self.tool_runtime
+        if tool_runtime is None:
+            tool_runtime = ToolRuntime(context.workspace_root)
+        AgentFlow(self.model_adapter, tool_runtime=tool_runtime).run(context, ledger)
         return RuntimeResult(events=ledger.events)
 
 
@@ -188,10 +475,60 @@ def project_final_answer(events):
     terminal = _last_event(events, "terminal_status")
     if terminal is None or terminal.payload.get("status") != "completed":
         return ""
+    final = _last_event(events, "final_answer")
+    if final is not None:
+        return str(final.payload.get("text", ""))
     output = _last_event(events, "model_output")
     if output is None:
         return ""
     return str(output.payload.get("text", ""))
+
+
+def project_cli_runtime_events(events):
+    lines = []
+    for event in events:
+        if event.type == "tool_call_requested":
+            lines.append(f"tool {event.payload.get('name')} requested")
+        elif event.type == "tool_result":
+            status = event.payload.get("status", "")
+            name = event.payload.get("name", "")
+            failure = event.payload.get("failure_classification", "")
+            suffix = f" ({failure})" if failure else ""
+            lines.append(f"tool {name} {status}{suffix}")
+    final_answer = project_final_answer(events)
+    if final_answer:
+        lines.append(f"final {final_answer}")
+    return "\n".join(lines)
+
+
+def project_trace(events):
+    return [
+        {
+            "event": event.type,
+            "created_at": event.created_at,
+            "payload": dict(event.payload),
+        }
+        for event in events
+    ]
+
+
+def project_report(events):
+    terminal = _last_event(events, "terminal_status")
+    tool_results = [
+        {
+            "name": event.payload.get("name", ""),
+            "status": event.payload.get("status", ""),
+            "failure_classification": event.payload.get("failure_classification", ""),
+            "content": event.payload.get("content", ""),
+        }
+        for event in events
+        if event.type == "tool_result"
+    ]
+    return {
+        "status": "" if terminal is None else str(terminal.payload.get("status", "")),
+        "final_answer": project_final_answer(events),
+        "tool_calls": tool_results,
+    }
 
 
 def project_terminal_error(events):

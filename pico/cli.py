@@ -14,7 +14,13 @@ import textwrap
 from .config import load_project_env, provider_env
 from .providers.clients import AnthropicCompatibleModelClient, FakeModelClient, OllamaModelClient, OpenAICompatibleModelClient
 from .runtime import Pico, SessionStore
-from .runtime_kernel import InvocationContext, RuntimeRunner, project_final_answer, project_terminal_error
+from .runtime_kernel import (
+    InvocationContext,
+    RuntimeRunner,
+    project_cli_runtime_events,
+    project_final_answer,
+    project_terminal_error,
+)
 from .workspace import WorkspaceContext, middle
 
 DEFAULT_SECRET_ENV_NAMES = (
@@ -313,6 +319,11 @@ def build_arg_parser():
         default="legacy",
         help="Runtime implementation to use during the kernel rollout.",
     )
+    parser.add_argument(
+        "--show-runtime-events",
+        action="store_true",
+        help="Print a kernel runtime event summary to stderr.",
+    )
     return parser
 
 
@@ -331,8 +342,13 @@ def run_kernel_once(args):
             user_message=prompt,
             workspace_root=workspace.repo_root,
             max_new_tokens=args.max_new_tokens,
+            max_steps=args.max_steps,
         )
     )
+    if getattr(args, "show_runtime_events", False):
+        summary = project_cli_runtime_events(result.events)
+        if summary:
+            print(summary, file=sys.stderr)
     if result.status != "completed":
         print(project_terminal_error(result.events), file=sys.stderr)
         return 1
