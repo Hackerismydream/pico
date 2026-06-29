@@ -15,7 +15,8 @@ def _python_check(expr):
     return f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
 
 
-def test_headless_task_run_persists_kernel_backed_pass(tmp_path, capsys):
+def test_headless_task_run_persists_kernel_backed_pass(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("PICO_SECRET_SHOULD_NOT_REACH_VERIFIER", "secret-value")
     fixture = tmp_path / "fixture"
     fixture.mkdir()
     (fixture / "README.md").write_text("project fact: alpha\n", encoding="utf-8")
@@ -29,7 +30,10 @@ def test_headless_task_run_persists_kernel_backed_pass(tmp_path, capsys):
                 '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":1}}</tool>',
                 "<final>The project fact is alpha.</final>",
             ],
-            "verifier": _python_check("os.environ.get('PICO_FINAL_ANSWER') == 'The project fact is alpha.'"),
+            "verifier": _python_check(
+                "os.environ.get('PICO_FINAL_ANSWER') == 'The project fact is alpha.' "
+                "and 'PICO_SECRET_SHOULD_NOT_REACH_VERIFIER' not in os.environ"
+            ),
             "allowed_tools": ["read_file"],
             "max_steps": 4,
         },

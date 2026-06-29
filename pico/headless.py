@@ -29,6 +29,7 @@ from .workspace import IGNORED_PATH_NAMES
 
 HEADLESS_TASK_SCHEMA_VERSION = 1
 DEFAULT_VERIFIER_TIMEOUT_SECONDS = 30
+VERIFIER_ENV_ALLOWLIST = ("HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "TMPDIR", "TMP", "TEMP")
 
 
 def _now():
@@ -52,6 +53,14 @@ def _sha256_text(text):
 
 def _relative(path, root):
     return str(Path(path).resolve().relative_to(Path(root).resolve()))
+
+
+def _text(value):
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
 
 
 def _resolve_spec_path(raw_path, spec_path):
@@ -226,8 +235,8 @@ class HeadlessTaskRunner:
             verifier_info = {
                 **verifier_info,
                 "timed_out": True,
-                "stdout": exc.stdout or "",
-                "stderr": exc.stderr or "",
+                "stdout": _text(exc.stdout),
+                "stderr": _text(exc.stderr),
             }
             export = self._build_export(
                 spec,
@@ -360,18 +369,7 @@ class HeadlessTaskRunner:
 
     def _run_verifier(self, spec, task_run_id, run_dir, isolated_workspace, runtime_info):
         self._wal(task_run_id, "verifier_started", protected_boundary=True)
-        env = os.environ.copy()
-        env.update(
-            {
-                "PICO_TASK_ID": spec.id,
-                "PICO_TASK_RUN_ID": task_run_id,
-                "PICO_TASK_RUN_DIR": str(run_dir),
-                "PICO_WORKSPACE": str(isolated_workspace),
-                "PICO_FINAL_ANSWER": str(runtime_info.get("final_answer", "")),
-                "PICO_RUNTIME_RUN_ID": str(runtime_info.get("run_id", "")),
-                "PICO_RUNTIME_EVENTS": str(run_dir / runtime_info.get("runtime_events_relpath", "")),
-            }
-        )
+        env = self._verifier_env(spec, task_run_id, run_dir, isolated_workspace, runtime_info)
         completed = subprocess.run(
             spec.verifier_command,
             cwd=isolated_workspace,
@@ -398,6 +396,21 @@ class HeadlessTaskRunner:
             exit_code=completed.returncode,
         )
         return verifier_info
+
+    def _verifier_env(self, spec, task_run_id, run_dir, isolated_workspace, runtime_info):
+        env = {name: os.environ[name] for name in VERIFIER_ENV_ALLOWLIST if name in os.environ}
+        env.update(
+            {
+                "PICO_TASK_ID": spec.id,
+                "PICO_TASK_RUN_ID": task_run_id,
+                "PICO_TASK_RUN_DIR": str(run_dir),
+                "PICO_WORKSPACE": str(isolated_workspace),
+                "PICO_FINAL_ANSWER": str(runtime_info.get("final_answer", "")),
+                "PICO_RUNTIME_RUN_ID": str(runtime_info.get("run_id", "")),
+                "PICO_RUNTIME_EVENTS": str(run_dir / runtime_info.get("runtime_events_relpath", "")),
+            }
+        )
+        return env
 
     def _build_export(
         self,
