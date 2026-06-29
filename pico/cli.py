@@ -6,14 +6,32 @@
 """
 
 import argparse
+import json
 import os
 import shutil
 import sys
 import textwrap
 
 from .config import load_project_env, provider_env
-from .providers.clients import AnthropicCompatibleModelClient, OllamaModelClient, OpenAICompatibleModelClient
+from .kernel_gate import evaluate_kernel_release_candidate
+from .providers.clients import AnthropicCompatibleModelClient, FakeModelClient, OllamaModelClient, OpenAICompatibleModelClient
+from .run_store import RunStore
 from .runtime import Pico, SessionStore
+from .runtime_kernel import (
+    InvocationContext,
+    RuntimeRunner,
+    ToolPermissionPolicy,
+    ToolRuntime,
+    project_export,
+    project_cli_runtime_events,
+    project_final_answer,
+    project_report,
+    project_session,
+    project_terminal_error,
+    project_trace,
+    runtime_event_to_dict,
+)
+from .security import redact_artifact
 from .workspace import WorkspaceContext, middle
 
 DEFAULT_SECRET_ENV_NAMES = (
@@ -61,7 +79,7 @@ DEFAULT_ANTHROPIC_BASE_URL = "https://www.right.codes/claude/v1"
 DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro"
 DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com/anthropic"
 DEFAULT_PROVIDER = "deepseek"
-PROVIDER_CHOICES = ("ollama", "openai", "anthropic", "deepseek")
+PROVIDER_CHOICES = ("ollama", "openai", "anthropic", "deepseek", "fake")
 SECRET_ENV_NAMES_VAR = "PICO_SECRET_ENV_NAMES"
 
 
@@ -70,12 +88,13 @@ def _effective_provider(args):
     # 1. 用户显式传入 --provider
     # 2. 项目 .env / shell 里的 PICO_PROVIDER
     # 3. 代码里的默认 provider
-    provider = getattr(args, "provider", None) or provider_env(
-        "PICO_PROVIDER", default=DEFAULT_PROVIDER
-    )
+    explicit_provider = getattr(args, "provider", None)
+    provider = explicit_provider or provider_env("PICO_PROVIDER", default=DEFAULT_PROVIDER)
     if provider not in PROVIDER_CHOICES:
         choices = ", ".join(PROVIDER_CHOICES)
         raise ValueError(f"unknown provider: {provider}. expected one of: {choices}")
+    if provider == "fake" and explicit_provider != "fake":
+        raise ValueError("fake provider must be selected explicitly with --provider fake")
     return provider
 
 
@@ -102,6 +121,8 @@ def _effective_model(args, provider):
         if model:
             return model
         return DEFAULT_DEEPSEEK_MODEL
+    if provider == "fake":
+        return "fake"
     return DEFAULT_OLLAMA_MODEL
 
 
@@ -161,6 +182,9 @@ def _build_model_client(args):
             temperature=args.temperature,
             timeout=getattr(args, "openai_timeout", getattr(args, "ollama_timeout", 300)),
         )
+    if provider == "fake":
+        output = provider_env("PICO_FAKE_MODEL_OUTPUT", default="fake response")
+        return FakeModelClient([output])
 
     model = _effective_model(args, provider)
     host = getattr(args, "host", DEFAULT_OLLAMA_HOST)
@@ -301,11 +325,184 @@ def build_arg_parser():
     parser.add_argument("--max-new-tokens", type=int, default=512, help="Maximum model output tokens per step.")
     parser.add_argument("--temperature", type=float, default=0.2, help="Sampling temperature sent to Ollama.")
     parser.add_argument("--top-p", type=float, default=0.9, help="Top-p sampling value sent to Ollama.")
+    parser.add_argument(
+        "--runtime",
+        choices=("auto", "legacy", "kernel"),
+        default="auto",
+        help="Runtime implementation to use. auto uses kernel only after the release-candidate gate passes.",
+    )
+    parser.add_argument(
+        "--kernel-release-candidate",
+        default=None,
+        help="Path to the kernel release-candidate manifest used by --runtime auto.",
+    )
+    parser.add_argument(
+        "--show-runtime-events",
+        action="store_true",
+        help="Print a kernel runtime event summary to stderr.",
+    )
+    parser.add_argument("--inspect-run", default=None, help="Inspect a persisted kernel runtime run id.")
+    parser.add_argument(
+        "--inspect-view",
+        choices=("ledger", "session", "trace", "report", "export", "artifacts", "all"),
+        default="ledger",
+        help="Projection to display for --inspect-run.",
+    )
     return parser
 
 
+def _kernel_run_store(workspace):
+    return RunStore(workspace.repo_root + "/.pico/runs")
+
+
+def run_kernel_once(args):
+    prompt = " ".join(args.prompt).strip()
+    if not prompt:
+        print("kernel runtime currently supports one-shot prompts only", file=sys.stderr)
+        return 2
+
+    workspace = WorkspaceContext.build(args.cwd)
+    load_project_env(workspace.repo_root)
+    configured_secret_names = _configured_secret_names(args)
+    model = _build_model_client(args)
+    runner = RuntimeRunner(
+        model_client=model,
+        tool_runtime=ToolRuntime(
+            workspace.repo_root,
+            permission_policy=_kernel_tool_permission_policy(args),
+        ),
+    )
+    result = runner.run(
+        InvocationContext(
+            user_message=prompt,
+            workspace_root=workspace.repo_root,
+            max_new_tokens=args.max_new_tokens,
+            max_steps=args.max_steps,
+        )
+    )
+    store = _kernel_run_store(workspace)
+    run_id = project_report(result.events)["run_id"]
+    if run_id:
+        store.write_runtime_events(run_id, result.events, secret_env_names=configured_secret_names)
+        store.write_trace(
+            run_id,
+            redact_artifact(project_trace(result.events), secret_env_names=configured_secret_names),
+        )
+        store.write_report(
+            run_id,
+            redact_artifact(project_report(result.events), secret_env_names=configured_secret_names),
+        )
+    if getattr(args, "show_runtime_events", False):
+        summary = project_cli_runtime_events(result.events)
+        if summary:
+            print(summary, file=sys.stderr)
+    if result.status != "completed":
+        print(project_terminal_error(result.events), file=sys.stderr)
+        return 1
+    print(project_final_answer(result.events))
+    return 0
+
+
+def inspect_kernel_run(args):
+    workspace = WorkspaceContext.build(args.cwd)
+    store = _kernel_run_store(workspace)
+    try:
+        events = store.load_runtime_events(args.inspect_run)
+    except FileNotFoundError:
+        print(f"kernel runtime events not found for run id: {args.inspect_run}", file=sys.stderr)
+        return 1
+
+    view = args.inspect_view
+    if view == "ledger":
+        for event in events:
+            print(json.dumps(runtime_event_to_dict(event), sort_keys=True, ensure_ascii=True))
+        return 0
+    if view == "trace":
+        for event in project_trace(events):
+            print(json.dumps(event, sort_keys=True, ensure_ascii=True))
+        return 0
+
+    payload = _kernel_inspection_payload(view, store, args.inspect_run, events)
+    print(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True))
+    return 0
+
+
+def _kernel_inspection_payload(view, store, run_id, events):
+    if view == "session":
+        return project_session(events)
+    if view == "report":
+        return project_report(events)
+    if view == "export":
+        return project_export(events)
+    if view == "artifacts":
+        return _kernel_artifact_projection(store, run_id)
+    return {
+        "ledger": [runtime_event_to_dict(event) for event in events],
+        "session": project_session(events),
+        "trace": project_trace(events),
+        "report": project_report(events),
+        "export": project_export(events),
+        "artifacts": _kernel_artifact_projection(store, run_id),
+    }
+
+
+def _kernel_artifact_projection(store, run_id):
+    paths = {
+        "runtime_events": store.runtime_events_path(run_id),
+        "trace": store.trace_path(run_id),
+        "report": store.report_path(run_id),
+    }
+    return {
+        name: {
+            "path": str(path),
+            "exists": path.exists(),
+        }
+        for name, path in paths.items()
+    }
+
+
+def _kernel_tool_permission_policy(args):
+    if args.approval == "auto":
+        return ToolPermissionPolicy.allow_readonly()
+    if args.approval == "never":
+        return ToolPermissionPolicy.deny_all("CLI approval policy 'never' denies tool execution")
+    return ToolPermissionPolicy.require_decision("CLI approval policy 'ask' requires an external permission decision")
+
+
+def _selected_runtime(args):
+    if args.runtime != "auto":
+        return args.runtime
+    workspace = WorkspaceContext.build(args.cwd)
+    evaluation = evaluate_kernel_release_candidate(
+        args.kernel_release_candidate,
+        workspace_root=workspace.repo_root,
+    )
+    if evaluation.passed:
+        return "kernel"
+    if evaluation.manifest_exists or args.kernel_release_candidate:
+        print(
+            f"kernel default gate failed: {evaluation.reason}; using legacy runtime",
+            file=sys.stderr,
+        )
+    return "legacy"
+
+
 def main(argv=None):
-    args = build_arg_parser().parse_args(argv)
+    raw_argv = sys.argv[1:] if argv is None else list(argv)
+    if raw_argv[:3] == ["headless", "task", "run"]:
+        from .headless import run_headless_task_cli
+
+        return run_headless_task_cli(raw_argv[3:])
+    if raw_argv[:4] == ["headless", "eval", "grid", "run"]:
+        from .headless_grid import run_headless_eval_grid_cli
+
+        return run_headless_eval_grid_cli(raw_argv[4:])
+    args = build_arg_parser().parse_args(raw_argv)
+    if args.inspect_run:
+        return inspect_kernel_run(args)
+    if _selected_runtime(args) == "kernel":
+        return run_kernel_once(args)
+
     agent = build_agent(args)
 
     model = getattr(agent.model_client, "model", getattr(args, "model", DEFAULT_OLLAMA_MODEL))

@@ -229,6 +229,109 @@ ollama pull qwen3.5:4b
 uv run pico --provider ollama --model qwen3.5:4b
 ```
 
+## Headless task run
+
+单任务 headless runner 使用同一条 kernel runtime，但运行在隔离 workspace 中。verifier 在 runtime 结束后才执行，不会进入 agent prompt。最小 spec：
+
+```json
+{
+  "id": "read_fact",
+  "workspace": "./fixtures/read_fact",
+  "prompt": "Read README and answer with the project fact.",
+  "fake_model_outputs": [
+    "<tool>{\"name\":\"read_file\",\"args\":{\"path\":\"README.md\"}}</tool>",
+    "<final>The project fact is alpha.</final>"
+  ],
+  "verifier": "python3 -c 'import os; assert os.environ[\"PICO_FINAL_ANSWER\"] == \"The project fact is alpha.\"'",
+  "allowed_tools": ["read_file"],
+  "max_steps": 4
+}
+```
+
+`allowed_tools` 是显式 allowlist；省略时默认不给 runtime 任何工具。
+
+运行：
+
+```bash
+uv run pico headless task run task.json --runs-root .pico/headless/task-runs
+```
+
+输出和 `.pico/headless/task-runs/<task_run_id>/task_run_export.json` 都会区分 `pass`、benchmark `fail` 和 infrastructure `infra_fail`，并引用底层 kernel `runtime_events.jsonl`。
+
+## Headless eval grid
+
+eval grid 是单任务 runner 的薄封装：它读取一个小的 config x task 矩阵，每个 cell 都复用 `pico headless task run` 的 kernel runtime、隔离 workspace、verifier 边界和 task-run export。当前可执行 provider 只支持 fake provider，真实 provider 的 usage/cost 字段会先保留在稳定导出结构里，等后续 acceptance gate 接入。
+
+最小 grid spec：
+
+```json
+{
+  "id": "tiny-grid",
+  "tasks": ["./task-a.json", "./task-b.json"],
+  "configs": [
+    {"id": "fake-default", "provider": "fake"},
+    {
+      "id": "fake-alt",
+      "provider": "fake",
+      "fake_outputs_by_task": {
+        "task-a": ["<final>alternate answer</final>"]
+      }
+    }
+  ]
+}
+```
+
+运行：
+
+```bash
+uv run pico headless eval grid run grid.json --runs-root .pico/headless/eval-grids
+```
+
+输出和 `.pico/headless/eval-grids/<grid_run_id>/eval_grid_export.json` 会包含每个 row 的 task run id、runtime status、verifier status、usage/cost metadata、以及 `runtime_events.jsonl` / trace / report / task-run export 的相对路径。benchmark failure 会以 `status: "fail"` 留在结果里且命令返回 0；infrastructure failure 会以 `status: "infra_fail"` 留在结果里且命令返回非 0。
+
+## Kernel live acceptance
+
+新 kernel runtime 的真实 provider 验收不在默认测试里跑。CI 继续使用 fake provider；需要真实 key 时，手动运行下面两个命令。
+
+No-tool 验收：
+
+```bash
+uv run python scripts/run_kernel_acceptance.py --provider deepseek --scenario no-tool
+```
+
+Read-only-tool 验收：
+
+```bash
+uv run python scripts/run_kernel_acceptance.py --provider deepseek --scenario read-only-tool
+```
+
+输出是 JSON，包含 `provider`、`model`、每个 scenario 的 `run_id`、`runtime_status`、`finish_reason` / `provider_status`、可用 token usage，以及最终答案。缺少真实 provider key 时命令返回非 0，并输出 `status: "skipped"`，不会把未运行的 live acceptance 当成通过。
+
+## Kernel default gate
+
+`pico` 的默认 runtime 是 `--runtime auto`。auto 不会因为代码里存在 kernel runtime 就直接切过去；它只读取本地 release-candidate manifest，确认验收 artifact 通过后才默认使用 kernel。manifest 缺失或 gate 失败时，CLI 会回退到 legacy runtime。显式 `--runtime legacy` 会一直保留，显式 `--runtime kernel` 可用于开发调试。
+
+默认 manifest 路径：
+
+```bash
+.pico/kernel-release-candidate.json
+```
+
+也可以显式指定：
+
+```bash
+uv run pico --kernel-release-candidate .pico/kernel-release-candidate.json "summarize this repo"
+```
+
+一个 kernel-runtime release candidate 必须同时证明四类 gate：
+
+- `fake_provider_tests`：记录通过的 fake-provider 回归命令，并覆盖 `tests/test_runtime_kernel.py`、`tests/test_kernel_acceptance.py` 和 `tests/test_headless_task.py`。
+- `live_provider_acceptance`：引用真实 provider 的 live acceptance JSON artifact，且 `no-tool` 和 `read-only-tool` scenario 都为 passed。
+- `projection_inspection`：引用 `uv run pico --runtime kernel --inspect-run <run_id> --inspect-view all` 产出的本地 inspection JSON，证明 ledger、session、trace、report、export 和 artifact projection 都可重放。
+- `headless_single_task`：引用 `pico headless task run` 的 `task_run_export.json`，证明 headless 单任务在 kernel runtime 下通过、verifier 边界受保护、默认工具策略 fail-closed。
+
+legacy fallback 仍用于三种情况：没有 release-candidate manifest；manifest 指向的 artifact 失败、缺失或格式不对；以及迁移窗口里需要显式比较旧 runtime 行为的场景。
+
 ## 常用交互命令
 
 - `/help`：查看内置命令
