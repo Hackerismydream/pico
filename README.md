@@ -229,6 +229,24 @@ ollama pull qwen3.5:4b
 uv run pico --provider ollama --model qwen3.5:4b
 ```
 
+## Kernel live acceptance
+
+新 kernel runtime 的真实 provider 验收不在默认测试里跑。CI 继续使用 fake provider；需要真实 key 时，手动运行下面两个命令。
+
+No-tool 验收：
+
+```bash
+uv run python scripts/run_kernel_acceptance.py --provider deepseek --scenario no-tool
+```
+
+Read-only-tool 验收：
+
+```bash
+uv run python scripts/run_kernel_acceptance.py --provider deepseek --scenario read-only-tool
+```
+
+输出是 JSON，包含 `provider`、`model`、每个 scenario 的 `run_id`、`runtime_status`、`finish_reason` / `provider_status`、可用 token usage，以及最终答案。缺少真实 provider key 时命令返回非 0，并输出 `status: "skipped"`，不会把未运行的 live acceptance 当成通过。
+
 ## 常用交互命令
 
 - `/help`：查看内置命令
