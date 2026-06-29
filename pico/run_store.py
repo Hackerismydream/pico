@@ -41,6 +41,9 @@ class RunStore:
     def report_path(self, run_id):
         return self.run_dir(run_id) / "report.json"
 
+    def manifest_path(self, run_id):
+        return self.run_dir(run_id) / "runtime_manifest.json"
+
     def runtime_events_path(self, run_id):
         return self.run_dir(run_id) / "runtime_events.jsonl"
 
@@ -96,6 +99,12 @@ class RunStore:
         self._write_json_atomic(path, report)
         return path
 
+    def write_manifest(self, run_id, payload):
+        path = self.manifest_path(run_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._write_json_atomic(path, payload)
+        return path
+
     def write_runtime_events(self, run_id, events, *, secret_env_names=None):
         path = self.runtime_events_path(run_id)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -147,6 +156,9 @@ class RunStore:
 
     def load_report(self, task_id):
         return json.loads(self.report_path(task_id).read_text(encoding="utf-8"))
+
+    def load_manifest(self, run_id):
+        return json.loads(self.manifest_path(run_id).read_text(encoding="utf-8"))
 
     def load_runtime_events(self, run_id):
         path = self.runtime_events_path(run_id)

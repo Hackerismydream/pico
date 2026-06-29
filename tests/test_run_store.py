@@ -84,6 +84,33 @@ def test_run_store_writes_and_loads_runtime_event_ledger(tmp_path):
     assert loaded[0].payload["invocation_id"] == "run_005"
 
 
+def test_run_store_writes_and_loads_runtime_manifest(tmp_path):
+    store = RunStore(tmp_path / ".pico" / "runs")
+    manifest = {
+        "schema_version": 1,
+        "run_id": "run_manifest",
+        "terminal_status": {"status": "completed"},
+        "artifacts": {
+            "runtime_events": {"path": "runtime_events.jsonl"},
+            "trace": {"path": "trace.jsonl"},
+            "report": {"path": "report.json"},
+        },
+        "projections": {
+            "session": {"status": "completed"},
+            "export": {"artifact_type": "kernel-runtime-export"},
+        },
+        "diagnostics": [],
+    }
+
+    path = store.write_manifest("run_manifest", manifest)
+    loaded = store.load_manifest("run_manifest")
+
+    assert path == store.manifest_path("run_manifest")
+    assert path.name == "runtime_manifest.json"
+    assert json.loads(path.read_text(encoding="utf-8")) == manifest
+    assert loaded == manifest
+
+
 def test_run_store_writes_headless_task_artifacts(tmp_path):
     store = RunStore(tmp_path / ".pico" / "runs")
 
@@ -104,3 +131,6 @@ def test_run_store_rejects_run_id_path_traversal(tmp_path):
 
     with pytest.raises(ValueError, match="invalid run id"):
         store.runtime_events_path("../outside")
+
+    with pytest.raises(ValueError, match="invalid run id"):
+        store.manifest_path("../outside")
