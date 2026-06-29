@@ -22,6 +22,7 @@ REQUIRED_GATES = (
 )
 REQUIRED_FAKE_TEST_FILES = (
     "tests/test_runtime_kernel.py",
+    "tests/test_projection_acceptance.py",
     "tests/test_kernel_acceptance.py",
     "tests/test_headless_task.py",
 )
@@ -39,6 +40,17 @@ REQUIRED_HEADLESS_EVENTS = (
     "model_output",
     "final_answer",
     "terminal_status",
+)
+REQUIRED_RUNTIME_ARTIFACTS = (
+    "runtime_events",
+    "trace",
+    "report",
+    "manifest",
+)
+REQUIRED_READONLY_TOOL_EVENTS = (
+    "tool_call_requested",
+    "tool_permission_decision",
+    "tool_result",
 )
 
 
@@ -225,9 +237,128 @@ def _validate_live_provider_acceptance(gate, workspace_root, failures):
                 failures.append(
                     f"live_provider_acceptance scenario {name or '<unknown>'} must include provider metadata"
                 )
+            _validate_live_projection_artifacts(scenario, path.parent, workspace_root, failures)
     missing = [name for name in REQUIRED_LIVE_SCENARIOS if name not in seen_scenarios]
     if missing:
         failures.append("live_provider_acceptance missing scenarios: " + ", ".join(missing))
+
+
+def _validate_live_projection_artifacts(scenario, base_dir, workspace_root, failures):
+    name = str(scenario.get("name", "")).strip() or "<unknown>"
+    artifacts = scenario.get("artifacts")
+    if not isinstance(artifacts, dict):
+        failures.append(f"live_provider_acceptance scenario {name} artifacts must be a JSON object")
+        return
+
+    resolved = {}
+    for artifact_name in REQUIRED_RUNTIME_ARTIFACTS:
+        artifact = artifacts.get(artifact_name)
+        if not isinstance(artifact, dict):
+            failures.append(f"live_provider_acceptance scenario {name} artifacts.{artifact_name} must be a JSON object")
+            continue
+        raw_path = str(artifact.get("path", "")).strip()
+        if not raw_path:
+            failures.append(f"live_provider_acceptance scenario {name} artifacts.{artifact_name}.path must be recorded")
+            continue
+        artifact_path = _resolve_referenced_artifact_path(
+            raw_path,
+            base_dir,
+            workspace_root,
+            failures,
+            label=f"live_provider_acceptance scenario {name} artifacts.{artifact_name}",
+        )
+        if artifact_path is None:
+            continue
+        if not artifact_path.exists():
+            failures.append(f"live_provider_acceptance scenario {name} artifacts.{artifact_name} path must exist")
+            continue
+        resolved[artifact_name] = artifact_path
+
+    runtime_events = _load_runtime_event_jsonl(resolved.get("runtime_events"), failures, name)
+    event_types = [event.get("type") for event in runtime_events if isinstance(event, dict)]
+    missing_events = [event for event in REQUIRED_PROJECTION_EVENTS if event not in event_types]
+    if missing_events:
+        failures.append(
+            f"live_provider_acceptance scenario {name} runtime_events missing events: "
+            + ", ".join(missing_events)
+        )
+    if name == "read-only-tool":
+        missing_tool_events = [event for event in REQUIRED_READONLY_TOOL_EVENTS if event not in event_types]
+        if missing_tool_events:
+            failures.append(
+                f"live_provider_acceptance scenario {name} runtime_events missing tool evidence: "
+                + ", ".join(missing_tool_events)
+            )
+
+    manifest = _load_json(resolved.get("manifest"), f"live_provider_acceptance scenario {name} manifest", failures)
+    report = _load_json(resolved.get("report"), f"live_provider_acceptance scenario {name} report", failures)
+    trace = _load_jsonl(resolved.get("trace"), failures, f"live_provider_acceptance scenario {name} trace")
+    if isinstance(manifest, dict):
+        if manifest.get("schema_version") != 1:
+            failures.append(f"live_provider_acceptance scenario {name} manifest schema_version must be 1")
+        if manifest.get("status") != "completed":
+            failures.append(f"live_provider_acceptance scenario {name} manifest status must be completed")
+        if str(manifest.get("run_id", "")).strip() != str(scenario.get("run_id", "")).strip():
+            failures.append(f"live_provider_acceptance scenario {name} manifest run_id must match scenario")
+        manifest_artifacts = manifest.get("artifacts")
+        if not isinstance(manifest_artifacts, dict):
+            failures.append(f"live_provider_acceptance scenario {name} manifest artifacts must be a JSON object")
+        else:
+            for artifact_name in REQUIRED_RUNTIME_ARTIFACTS:
+                artifact = manifest_artifacts.get(artifact_name)
+                if not isinstance(artifact, dict) or not str(artifact.get("path", "")).strip():
+                    failures.append(
+                        f"live_provider_acceptance scenario {name} manifest artifacts.{artifact_name}.path must be recorded"
+                    )
+        export = manifest.get("projections", {}).get("export") if isinstance(manifest.get("projections"), dict) else None
+        if not isinstance(export, dict):
+            failures.append(f"live_provider_acceptance scenario {name} manifest export projection must be recorded")
+        else:
+            if export.get("final_answer") != scenario.get("final_answer"):
+                failures.append(f"live_provider_acceptance scenario {name} final answer must match manifest export")
+            provider_calls = export.get("provider_calls")
+            if not isinstance(provider_calls, list) or not provider_calls:
+                failures.append(f"live_provider_acceptance scenario {name} manifest export provider_calls must be recorded")
+            elif not any(call.get("metadata") for call in provider_calls if isinstance(call, dict)):
+                failures.append(f"live_provider_acceptance scenario {name} manifest export provider metadata must be recorded")
+            if name == "read-only-tool":
+                tool_calls = export.get("tool_calls")
+                if not isinstance(tool_calls, list) or not tool_calls:
+                    failures.append(f"live_provider_acceptance scenario {name} manifest export tool evidence must be recorded")
+                elif not any(
+                    isinstance(call, dict)
+                    and call.get("read_only") is True
+                    and call.get("permission", {}).get("decision") == "allow"
+                    and call.get("result", {}).get("status") == "ok"
+                    for call in tool_calls
+                ):
+                    failures.append(f"live_provider_acceptance scenario {name} manifest export tool evidence must pass")
+    if isinstance(report, dict):
+        if report.get("final_answer") != scenario.get("final_answer"):
+            failures.append(f"live_provider_acceptance scenario {name} report final_answer must match scenario")
+        provider_calls = report.get("provider_calls")
+        if not isinstance(provider_calls, list) or not provider_calls:
+            failures.append(f"live_provider_acceptance scenario {name} report provider_calls must be recorded")
+    if not trace:
+        failures.append(f"live_provider_acceptance scenario {name} trace must be non-empty")
+
+
+def _load_jsonl(path, failures, label):
+    if path is None:
+        return []
+    try:
+        return [
+            json.loads(line)
+            for line in Path(path).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    except Exception as exc:
+        failures.append(f"{label} could not be read as JSONL: {exc}")
+        return []
+
+
+def _load_runtime_event_jsonl(path, failures, scenario_name):
+    return _load_jsonl(path, failures, f"live_provider_acceptance scenario {scenario_name} runtime_events")
 
 
 def _validate_projection_inspection(gate, workspace_root, failures):

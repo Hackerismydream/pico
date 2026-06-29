@@ -11,9 +11,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from .cli import PROVIDER_CHOICES, _build_model_client, _effective_model
+from .cli import DEFAULT_SECRET_ENV_NAMES, PROVIDER_CHOICES, _build_model_client, _effective_model
 from .config import load_project_env
+from .run_store import RunStore
 from .runtime_kernel import InvocationContext, RuntimeRunner, ToolPermissionPolicy, ToolRuntime
+from .runtime_projections import ProjectionCaptureError, ProjectionManager
 from .workspace import WorkspaceContext
 
 
@@ -65,11 +67,18 @@ def run_kernel_acceptance(
     model_client_factory: Callable[[str], object],
     scenarios=SCENARIOS,
     workspace_root=None,
+    artifacts_root=None,
+    secret_env_names=None,
     max_new_tokens=256,
     max_steps=4,
 ):
     scenario_names = _normalize_scenarios(scenarios)
     base_workspace = Path(workspace_root) if workspace_root is not None else None
+    acceptance_run_id = _new_acceptance_run_id()
+    acceptance_artifacts_root = None
+    if artifacts_root is not None:
+        acceptance_artifacts_root = Path(artifacts_root) / acceptance_run_id
+        acceptance_artifacts_root.mkdir(parents=True, exist_ok=True)
     reports = []
     for scenario in scenario_names:
         with _scenario_workspace(scenario, base_workspace) as scenario_workspace:
@@ -80,22 +89,31 @@ def run_kernel_acceptance(
                     provider=provider,
                     model=model,
                     model_client=model_client_factory(scenario),
+                    artifacts_root=acceptance_artifacts_root,
+                    secret_env_names=secret_env_names,
                     max_new_tokens=max_new_tokens,
                     max_steps=max_steps,
                 )
             )
     status = "passed" if all(report["status"] == "passed" for report in reports) else "failed"
-    return {
+    report = {
+        "artifact_type": "kernel-live-provider-acceptance",
+        "schema_version": 1,
         "status": status,
-        "run_id": _new_acceptance_run_id(),
+        "run_id": acceptance_run_id,
         "provider": provider,
         "model": model,
         "scenarios": reports,
     }
+    if acceptance_artifacts_root is not None:
+        report["artifacts_root"] = str(acceptance_artifacts_root)
+    return report
 
 
 def skipped_report(*, provider, model, reason):
     return {
+        "artifact_type": "kernel-live-provider-acceptance",
+        "schema_version": 1,
         "status": "skipped",
         "run_id": _new_acceptance_run_id(),
         "provider": provider,
@@ -109,7 +127,18 @@ def _new_acceptance_run_id():
     return f"acceptance_{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
 
-def _run_scenario(*, scenario, workspace_root, provider, model, model_client, max_new_tokens, max_steps):
+def _run_scenario(
+    *,
+    scenario,
+    workspace_root,
+    provider,
+    model,
+    model_client,
+    artifacts_root,
+    secret_env_names,
+    max_new_tokens,
+    max_steps,
+):
     context = InvocationContext(
         user_message=_scenario_prompt(scenario),
         workspace_root=str(workspace_root),
@@ -124,9 +153,18 @@ def _run_scenario(*, scenario, workspace_root, provider, model, model_client, ma
         ),
     )
     result = runner.run(context)
+    artifacts, capture_error = _capture_scenario_artifacts(
+        events=result.events,
+        scenario=scenario,
+        run_id=context.invocation_id,
+        artifacts_root=artifacts_root,
+        secret_env_names=secret_env_names,
+    )
     metadata = _last_model_metadata(result.events)
     tool_results = [event.payload for event in result.events if event.type == "tool_result"]
     failure_reason = _scenario_failure_reason(scenario, result, tool_results)
+    if capture_error and not failure_reason:
+        failure_reason = f"projection artifact capture failed: {capture_error}"
     status = "passed" if not failure_reason else "failed"
     return {
         "name": scenario,
@@ -141,10 +179,51 @@ def _run_scenario(*, scenario, workspace_root, provider, model, model_client, ma
         "usage": _usage_from_metadata(metadata),
         "provider_metadata": metadata,
         "tool_result_count": len(tool_results),
+        "tool_evidence": _tool_evidence(tool_results),
         "final_answer": result.final_answer,
         "error_type": result.error_type,
         "error_message": result.error_message,
+        "artifact_capture_error": capture_error,
+        "artifacts": artifacts,
     }
+
+
+def _capture_scenario_artifacts(*, events, scenario, run_id, artifacts_root, secret_env_names):
+    if artifacts_root is None:
+        return {}, ""
+    store = RunStore(Path(artifacts_root) / scenario)
+    try:
+        artifact_set = ProjectionManager(store, secret_env_names=secret_env_names).capture(events, run_id=run_id)
+    except ProjectionCaptureError as exc:
+        return {}, str(exc)
+    return {
+        name: {
+            "path": _relative_path(path, artifacts_root),
+            "exists": Path(path).exists(),
+        }
+        for name, path in artifact_set.artifact_paths.items()
+    }, ""
+
+
+def _relative_path(path, root):
+    try:
+        return str(Path(path).resolve().relative_to(Path(root).resolve()))
+    except ValueError:
+        return str(path)
+
+
+def _tool_evidence(tool_results):
+    evidence = []
+    for payload in tool_results:
+        evidence.append(
+            {
+                "name": str(payload.get("name", "")),
+                "status": str(payload.get("status", "")),
+                "failure_classification": str(payload.get("failure_classification", "")),
+                "content": str(payload.get("content", "")),
+            }
+        )
+    return evidence
 
 
 def _scenario_failure_reason(scenario, result, tool_results):
@@ -242,6 +321,11 @@ def build_arg_parser():
     parser.add_argument("--base-url", default=None, help="Provider API base URL override.")
     parser.add_argument("--host", default="http://127.0.0.1:11434", help="Ollama host.")
     parser.add_argument("--scenario", choices=("all", *SCENARIOS), default="all", help="Acceptance scenario to run.")
+    parser.add_argument(
+        "--artifacts-root",
+        default=".pico/kernel-acceptance",
+        help="Directory where live acceptance runtime artifacts and the report JSON are written.",
+    )
     parser.add_argument("--max-steps", type=int, default=4, help="Maximum kernel model/tool iterations.")
     parser.add_argument("--max-new-tokens", type=int, default=256, help="Maximum model output tokens per step.")
     parser.add_argument("--temperature", type=float, default=0.0, help="Sampling temperature.")
@@ -265,16 +349,30 @@ def main(argv=None, stdout=None, stderr=None):
         print(json.dumps(report, indent=2, sort_keys=True), file=stdout)
         print(credentials.reason, file=stderr)
         return 2
+    artifacts_root = Path(args.artifacts_root)
+    if not artifacts_root.is_absolute():
+        artifacts_root = Path(workspace.repo_root) / artifacts_root
     report = run_kernel_acceptance(
         provider=provider,
         model=model,
         model_client_factory=lambda scenario: _build_model_client(args),
         scenarios=(args.scenario,),
+        artifacts_root=artifacts_root,
+        secret_env_names=DEFAULT_SECRET_ENV_NAMES,
         max_new_tokens=args.max_new_tokens,
         max_steps=args.max_steps,
     )
+    report_path = _write_report(report)
+    report["report_path"] = str(report_path)
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2, sort_keys=True), file=stdout)
     return 0 if report["status"] == "passed" else 1
+
+
+def _write_report(report):
+    artifacts_root = Path(report["artifacts_root"])
+    artifacts_root.mkdir(parents=True, exist_ok=True)
+    return artifacts_root / "live_acceptance.json"
 
 
 if __name__ == "__main__":

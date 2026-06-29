@@ -3,6 +3,9 @@ import json
 from pico.cli import main
 from pico.kernel_gate import evaluate_kernel_release_candidate
 from pico.providers.clients import FakeModelClient
+from pico.run_store import RunStore
+from pico.runtime_kernel import RuntimeEvent
+from pico.runtime_projections import ProjectionManager
 
 
 def _write_json(path, payload):
@@ -13,6 +16,8 @@ def _write_json(path, payload):
 
 def _valid_live_acceptance():
     return {
+        "artifact_type": "kernel-live-provider-acceptance",
+        "schema_version": 1,
         "status": "passed",
         "run_id": "acceptance_fixture",
         "provider": "deepseek",
@@ -27,6 +32,7 @@ def _valid_live_acceptance():
                 "provider_status": "completed",
                 "tool_result_count": 0,
                 "final_answer": "pico kernel no-tool acceptance ok",
+                "provider_metadata": {"finish_reason": "stop"},
             },
             {
                 "name": "read-only-tool",
@@ -36,10 +42,124 @@ def _valid_live_acceptance():
                 "finish_reason": "stop",
                 "provider_status": "completed",
                 "tool_result_count": 1,
+                "tool_evidence": [
+                    {
+                        "name": "read_file",
+                        "status": "ok",
+                        "failure_classification": "",
+                        "content": "# README.md\n   1: pico-kernel-readonly-acceptance-marker",
+                    }
+                ],
                 "final_answer": "Observed pico-kernel-readonly-acceptance-marker.",
+                "provider_metadata": {"finish_reason": "stop"},
             },
         ],
     }
+
+
+def _live_scenario_events(scenario):
+    run_id = scenario["run_id"]
+    if scenario["name"] == "no-tool":
+        return [
+            RuntimeEvent(type="invocation_start", payload={"invocation_id": run_id}),
+            RuntimeEvent(type="user_input", payload={"invocation_id": run_id, "text": "no tool"}),
+            RuntimeEvent(
+                type="model_output",
+                payload={
+                    "invocation_id": run_id,
+                    "text": "<final>pico kernel no-tool acceptance ok</final>",
+                    "provider": "AnthropicCompatibleModelClient:deepseek-v4-pro",
+                    "metadata": {"finish_reason": "stop", "provider_status": "completed"},
+                    "step": 1,
+                },
+            ),
+            RuntimeEvent(
+                type="final_answer",
+                payload={"invocation_id": run_id, "text": "pico kernel no-tool acceptance ok"},
+            ),
+            RuntimeEvent(type="terminal_status", payload={"invocation_id": run_id, "status": "completed"}),
+        ]
+    return [
+        RuntimeEvent(type="invocation_start", payload={"invocation_id": run_id}),
+        RuntimeEvent(type="user_input", payload={"invocation_id": run_id, "text": "read README"}),
+        RuntimeEvent(
+            type="model_output",
+            payload={
+                "invocation_id": run_id,
+                "text": '<tool>{"name":"read_file","args":{"path":"README.md"}}</tool>',
+                "provider": "AnthropicCompatibleModelClient:deepseek-v4-pro",
+                "metadata": {"finish_reason": "tool_use", "provider_status": "in_progress"},
+                "step": 1,
+            },
+        ),
+        RuntimeEvent(
+            type="tool_call_requested",
+            payload={
+                "invocation_id": run_id,
+                "tool_call_id": "tool_1",
+                "name": "read_file",
+                "args": {"path": "README.md"},
+                "read_only": True,
+            },
+        ),
+        RuntimeEvent(
+            type="tool_permission_decision",
+            payload={
+                "invocation_id": run_id,
+                "tool_call_id": "tool_1",
+                "name": "read_file",
+                "decision": "allow",
+                "reason": "kernel acceptance allows read-only tools",
+                "policy_name": "allow_readonly",
+                "failure_classification": "",
+                "available": True,
+            },
+        ),
+        RuntimeEvent(
+            type="tool_result",
+            payload={
+                "invocation_id": run_id,
+                "tool_call_id": "tool_1",
+                "name": "read_file",
+                "status": "ok",
+                "content": "# README.md\n   1: pico-kernel-readonly-acceptance-marker",
+                "failure_classification": "",
+                "read_only": True,
+            },
+        ),
+        RuntimeEvent(
+            type="model_output",
+            payload={
+                "invocation_id": run_id,
+                "text": "<final>Observed pico-kernel-readonly-acceptance-marker.</final>",
+                "provider": "AnthropicCompatibleModelClient:deepseek-v4-pro",
+                "metadata": {"finish_reason": "stop", "provider_status": "completed"},
+                "step": 2,
+            },
+        ),
+        RuntimeEvent(
+            type="final_answer",
+            payload={"invocation_id": run_id, "text": "Observed pico-kernel-readonly-acceptance-marker."},
+        ),
+        RuntimeEvent(type="terminal_status", payload={"invocation_id": run_id, "status": "completed"}),
+    ]
+
+
+def _attach_live_projection_artifacts(gate_dir, live_acceptance):
+    artifacts_root = gate_dir / "live-artifacts"
+    for scenario in live_acceptance["scenarios"]:
+        artifacts = ProjectionManager(RunStore(artifacts_root / scenario["name"])).capture(
+            _live_scenario_events(scenario),
+            run_id=scenario["run_id"],
+        )
+        scenario["artifacts"] = {
+            name: {
+                "path": str(path.relative_to(gate_dir)),
+                "exists": path.exists(),
+            }
+            for name, path in artifacts.artifact_paths.items()
+        }
+    return live_acceptance
 
 
 def _valid_projection_inspection():
@@ -110,9 +230,11 @@ def _valid_headless_task_export():
 
 def _write_release_candidate(root, *, live_acceptance=None):
     gate_dir = root / ".pico" / "kernel-gates"
+    live_acceptance = _valid_live_acceptance() if live_acceptance is None else live_acceptance
+    live_acceptance = _attach_live_projection_artifacts(gate_dir, live_acceptance)
     live_path = _write_json(
         gate_dir / "live-acceptance.json",
-        _valid_live_acceptance() if live_acceptance is None else live_acceptance,
+        live_acceptance,
     )
     runtime_events_path = root / ".pico" / "runs" / "run_fixture" / "runtime_events.jsonl"
     trace_path = root / ".pico" / "runs" / "run_fixture" / "trace.jsonl"
@@ -142,10 +264,12 @@ def _write_release_candidate(root, *, live_acceptance=None):
                     "status": "passed",
                     "command": (
                         "uv run pytest tests/test_runtime_kernel.py "
+                        "tests/test_projection_acceptance.py "
                         "tests/test_kernel_acceptance.py tests/test_headless_task.py -q"
                     ),
                     "test_files": [
                         "tests/test_runtime_kernel.py",
+                        "tests/test_projection_acceptance.py",
                         "tests/test_kernel_acceptance.py",
                         "tests/test_headless_task.py",
                     ],
