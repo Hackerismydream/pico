@@ -499,6 +499,10 @@ def main(argv=None):
         from .headless_experiment import run_headless_experiment_cli
 
         return run_headless_experiment_cli(raw_argv[3:])
+    if raw_argv[:3] == ["headless", "experiment", "gate"]:
+        from .headless_experiment import run_headless_experiment_gate_cli
+
+        return run_headless_experiment_gate_cli(raw_argv[3:])
     args = build_arg_parser().parse_args(raw_argv)
     if args.inspect_run:
         return inspect_kernel_run(args)

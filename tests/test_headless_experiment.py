@@ -219,6 +219,351 @@ def test_headless_experiment_records_candidate_runtime_and_verifier_identity(tmp
     assert "readme-verifier-v1" in report
 
 
+def test_headless_experiment_writes_manifest_and_gate_accepts_fake_evidence(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    (fixture / "README.md").write_text("project fact: gate-alpha\n", encoding="utf-8")
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "read_fact",
+            "workspace": str(fixture),
+            "prompt": "Read README and answer with the project fact.",
+            "fake_model_outputs": [
+                '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":1}}</tool>',
+                "<final>The project fact is gate-alpha.</final>",
+            ],
+            "verifier": _python_check(
+                "os.environ.get('PICO_FINAL_ANSWER') == 'The project fact is gate-alpha.'"
+            ),
+            "allowed_tools": ["read_file"],
+            "max_steps": 4,
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-gate",
+            "task": str(task_spec),
+        },
+    )
+    runs_root = tmp_path / "experiments"
+
+    assert main(["headless", "experiment", "run", str(experiment_spec), "--runs-root", str(runs_root)]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    experiment_dir = runs_root / payload["experiment_run_id"]
+    manifest_path = experiment_dir / payload["artifacts"]["experiment_manifest_relpath"]
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert payload["evidence_kind"] == "deterministic-fake-provider"
+    assert payload["usage"] == {}
+    assert payload["cost"] == {}
+    assert payload["artifacts"]["experiment_manifest_relpath"] == "experiment_manifest.json"
+    assert manifest["artifact_type"] == "headless-experiment-manifest"
+    assert manifest["evidence_kind"] == "deterministic-fake-provider"
+    assert manifest["summary"] == payload["summary"]
+    assert manifest["task_runs"][0]["artifacts"]["task_run_export_relpath"].endswith("task_run_export.json")
+    assert manifest["task_runs"][0]["artifacts"]["runtime_events_relpath"].endswith("runtime_events.jsonl")
+    assert manifest["task_runs"][0]["artifacts"]["trace_relpath"].endswith("trace.jsonl")
+    assert manifest["task_runs"][0]["artifacts"]["runtime_report_relpath"].endswith("report.json")
+
+    report = (experiment_dir / payload["artifacts"]["report_relpath"]).read_text(encoding="utf-8")
+    assert "evidence_kind: deterministic-fake-provider" in report
+    assert "usage:" in report
+    assert "cost:" in report
+    assert "no automatic prompt generation" in report
+    assert "no prompt acceptance policy" in report
+    assert "no runtime-policy A/B claims" in report
+    assert "no broad tool expansion" in report
+
+    assert main(["headless", "experiment", "gate", str(experiment_dir)]) == 0
+    gate_payload = json.loads(capsys.readouterr().out)
+    assert gate_payload["artifact_type"] == "headless-experiment-evidence-gate"
+    assert gate_payload["passed"] is True
+    assert gate_payload["evidence_kind"] == "deterministic-fake-provider"
+    assert gate_payload["checked_experiments"] == 1
+    assert gate_payload["checked_task_runs"] == 1
+    assert gate_payload["errors"] == []
+
+
+def test_headless_experiment_gate_rejects_missing_verifier_result(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "answer_fact",
+            "workspace": str(fixture),
+            "prompt": "Answer directly.",
+            "fake_model_outputs": ["<final>ok</final>"],
+            "verifier": _python_check("True"),
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-incomplete-evidence",
+            "task": str(task_spec),
+        },
+    )
+    runs_root = tmp_path / "experiments"
+
+    assert main(["headless", "experiment", "run", str(experiment_spec), "--runs-root", str(runs_root)]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    experiment_dir = runs_root / payload["experiment_run_id"]
+    task_export_path = experiment_dir / payload["task_run"]["artifacts"]["task_run_export_relpath"]
+    task_export = json.loads(task_export_path.read_text(encoding="utf-8"))
+    task_export["verifier"].pop("exit_code")
+    task_export_path.write_text(json.dumps(task_export), encoding="utf-8")
+
+    assert main(["headless", "experiment", "gate", str(experiment_dir)]) == 1
+    gate_payload = json.loads(capsys.readouterr().out)
+    assert gate_payload["passed"] is False
+    assert any("missing verifier result" in error for error in gate_payload["errors"])
+
+
+def test_headless_experiment_gate_rejects_identity_mismatch(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "answer_fact",
+            "workspace": str(fixture),
+            "prompt": "Answer directly.",
+            "fake_model_outputs": ["<final>ok</final>"],
+            "verifier": _python_check("True"),
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-mismatched-evidence",
+            "task": str(task_spec),
+        },
+    )
+    runs_root = tmp_path / "experiments"
+
+    assert main(["headless", "experiment", "run", str(experiment_spec), "--runs-root", str(runs_root)]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    experiment_dir = runs_root / payload["experiment_run_id"]
+    task_export_path = experiment_dir / payload["task_run"]["artifacts"]["task_run_export_relpath"]
+    task_export = json.loads(task_export_path.read_text(encoding="utf-8"))
+    task_export["policy"]["model_id"] = "fake:other-model"
+    task_export_path.write_text(json.dumps(task_export), encoding="utf-8")
+
+    assert main(["headless", "experiment", "gate", str(experiment_dir)]) == 1
+    gate_payload = json.loads(capsys.readouterr().out)
+    assert gate_payload["passed"] is False
+    assert any("identity mismatch for model_id" in error for error in gate_payload["errors"])
+
+
+def test_headless_experiment_gate_rejects_stale_experiment_manifest(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "answer_fact",
+            "workspace": str(fixture),
+            "prompt": "Answer directly.",
+            "fake_model_outputs": ["<final>ok</final>"],
+            "verifier": _python_check("True"),
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-stale-manifest",
+            "task": str(task_spec),
+        },
+    )
+    runs_root = tmp_path / "experiments"
+
+    assert main(["headless", "experiment", "run", str(experiment_spec), "--runs-root", str(runs_root)]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    experiment_dir = runs_root / payload["experiment_run_id"]
+    manifest_path = experiment_dir / payload["artifacts"]["experiment_manifest_relpath"]
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["task_runs"][0]["artifacts"]["runtime_manifest_relpath"] = "stale-runtime_manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert main(["headless", "experiment", "gate", str(experiment_dir)]) == 1
+    gate_payload = json.loads(capsys.readouterr().out)
+    assert gate_payload["passed"] is False
+    assert any("manifest task-run references" in error for error in gate_payload["errors"])
+
+
+def test_headless_experiment_gate_rejects_export_without_task_runs(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "answer_fact",
+            "workspace": str(fixture),
+            "prompt": "Answer directly.",
+            "fake_model_outputs": ["<final>ok</final>"],
+            "verifier": _python_check("True"),
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-empty-evidence",
+            "task": str(task_spec),
+        },
+    )
+    runs_root = tmp_path / "experiments"
+
+    assert main(["headless", "experiment", "run", str(experiment_spec), "--runs-root", str(runs_root)]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    experiment_dir = runs_root / payload["experiment_run_id"]
+    export_path = experiment_dir / payload["artifacts"]["experiment_export_relpath"]
+    manifest_path = experiment_dir / payload["artifacts"]["experiment_manifest_relpath"]
+    payload["task_runs"] = []
+    payload["task_run"] = {}
+    payload["summary"] = {
+        "total_runs": 0,
+        "passed": 0,
+        "benchmark_failed": 0,
+        "infrastructure_failed": 0,
+        "skipped": 0,
+        "reused": 0,
+        "scored_runs": 0,
+        "benchmark_pass_rate": None,
+        "status_counts": {},
+        "failure_kind_counts": {},
+        "failure_category_counts": {},
+    }
+    payload["evidence_kind"] = "unknown"
+    export_path.write_text(json.dumps(payload), encoding="utf-8")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["summary"] = payload["summary"]
+    manifest["task_runs"] = []
+    manifest["evidence_kind"] = "unknown"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert main(["headless", "experiment", "gate", str(experiment_dir)]) == 1
+    gate_payload = json.loads(capsys.readouterr().out)
+    assert gate_payload["passed"] is False
+    assert "experiment has no task-run evidence" in gate_payload["errors"]
+
+
+def test_headless_experiment_gate_rejects_artifact_path_escape(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "answer_fact",
+            "workspace": str(fixture),
+            "prompt": "Answer directly.",
+            "fake_model_outputs": ["<final>ok</final>"],
+            "verifier": _python_check("True"),
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-escaped-evidence",
+            "task": str(task_spec),
+        },
+    )
+    runs_root = tmp_path / "experiments"
+
+    assert main(["headless", "experiment", "run", str(experiment_spec), "--runs-root", str(runs_root)]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    experiment_dir = runs_root / payload["experiment_run_id"]
+    export_path = experiment_dir / payload["artifacts"]["experiment_export_relpath"]
+    manifest_path = experiment_dir / payload["artifacts"]["experiment_manifest_relpath"]
+    original_manifest_path = experiment_dir / payload["task_runs"][0]["artifacts"]["runtime_manifest_relpath"]
+    escaped_manifest_path = runs_root / "escaped_runtime_manifest.json"
+    escaped_manifest_path.write_text(original_manifest_path.read_text(encoding="utf-8"), encoding="utf-8")
+    escaped_relpath = "../escaped_runtime_manifest.json"
+
+    payload["task_runs"][0]["artifacts"]["runtime_manifest_relpath"] = escaped_relpath
+    payload["task_run"] = payload["task_runs"][0]
+    export_path.write_text(json.dumps(payload), encoding="utf-8")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["task_runs"][0]["artifacts"]["runtime_manifest_relpath"] = escaped_relpath
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert main(["headless", "experiment", "gate", str(experiment_dir)]) == 1
+    gate_payload = json.loads(capsys.readouterr().out)
+    assert gate_payload["passed"] is False
+    assert any("runtime artifact manifest path escapes experiment directory" in error for error in gate_payload["errors"])
+
+
+def test_headless_experiment_gate_accepts_manual_live_provider_acceptance_artifact(
+    tmp_path, capsys, monkeypatch
+):
+    monkeypatch.setenv("PICO_OPENAI_API_KEY", "test-key")
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "live_answer_fact",
+            "workspace": str(fixture),
+            "prompt": "unused; candidate prompt replaces this",
+            "verifier": _python_check("os.environ.get('PICO_FINAL_ANSWER') == 'live ok'"),
+        },
+    )
+    prompt = "Answer with live ok."
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "live-provider-no-tool",
+            "task": str(task_spec),
+            "candidates": [
+                {
+                    "id": "openai-live-candidate",
+                    "prompt": prompt,
+                    "prompt_sha256": _sha256(prompt),
+                    "provider_id": "openai",
+                    "model_id": "gpt-live-acceptance",
+                }
+            ],
+        },
+    )
+
+    def client_factory(spec):
+        assert spec.provider_id == "openai"
+        return FakeModelClient(["<final>live ok</final>"])
+
+    acceptance_root = tmp_path / "live-provider-acceptance"
+    result = HeadlessExperimentRunner(
+        acceptance_root / "experiments",
+        model_client_factory=client_factory,
+    ).run(load_headless_experiment_spec(experiment_spec))
+    acceptance_path = _write_json(
+        acceptance_root / "headless_experiment_acceptance.json",
+        {
+            "artifact_type": "headless-experiment-live-provider-acceptance",
+            "schema_version": 1,
+            "provider": "openai",
+            "model": "gpt-live-acceptance",
+            "summary": result.export["summary"],
+            "experiments": [
+                {
+                    "experiment_run_id": result.export["experiment_run_id"],
+                    "experiment": result.export["experiment"],
+                    "summary": result.export["summary"],
+                    "artifacts": result.export["artifacts"],
+                }
+            ],
+        },
+    )
+
+    assert main(["headless", "experiment", "gate", str(acceptance_path)]) == 0
+    gate_payload = json.loads(capsys.readouterr().out)
+    assert gate_payload["passed"] is True
+    assert gate_payload["evidence_kind"] == "manual-real-provider-acceptance"
+    assert gate_payload["checked_experiments"] == 1
+    assert gate_payload["checked_task_runs"] == 1
+
+
 def test_headless_experiment_counts_only_verifier_failure_as_benchmark_failure(tmp_path, capsys):
     fixture = tmp_path / "fixture"
     fixture.mkdir()

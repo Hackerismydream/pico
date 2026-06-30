@@ -16,7 +16,14 @@ from .run_store import RunStore
 from .runtime_events import RUNTIME_EVENT_SCHEMA_VERSION
 
 HEADLESS_EXPERIMENT_SCHEMA_VERSION = 1
+HEADLESS_EXPERIMENT_MANIFEST_SCHEMA_VERSION = 1
 HEADLESS_EXPERIMENT_PROVIDER_CHOICES = ("fake", "openai", "anthropic", "deepseek", "ollama")
+HEADLESS_EXPERIMENT_MVP_BOUNDARIES = (
+    "no automatic prompt generation",
+    "no prompt acceptance policy",
+    "no runtime-policy A/B claims",
+    "no broad tool expansion",
+)
 
 
 def _now():
@@ -342,14 +349,17 @@ class HeadlessExperimentRunner:
             task_refs.append(_build_reconcile_failure_ref(spec, reconcile_failure))
         summary = summarize_experiment_task_runs(task_refs)
         report_path = Path(report_path).resolve() if report_path else self.store.experiment_report_path(experiment_run_id)
-        export = _build_export(spec, experiment_run_id, experiment_dir, report_path, task_refs, summary)
+        manifest_path = self.store.experiment_manifest_path(experiment_run_id)
+        export = _build_export(spec, experiment_run_id, experiment_dir, report_path, manifest_path, task_refs, summary)
         report = render_headless_experiment_report(export)
+        manifest = build_headless_experiment_manifest(export)
         self.store.write_experiment_export(experiment_run_id, export)
         if report_path == self.store.experiment_report_path(experiment_run_id):
             self.store.write_experiment_report(experiment_run_id, report)
         else:
             report_path.parent.mkdir(parents=True, exist_ok=True)
             report_path.write_text(report, encoding="utf-8")
+        self.store.write_experiment_manifest(experiment_run_id, manifest)
         self._wal(experiment_run_id, "experiment_finished", summary=summary)
 
         exit_code = 1 if summary["infrastructure_failed"] else 0
@@ -725,7 +735,42 @@ def summarize_experiment_task_runs(task_runs):
     }
 
 
-def _build_export(spec, experiment_run_id, experiment_dir, report_path, task_refs, summary):
+def summarize_experiment_usage(task_runs):
+    totals = Counter()
+    for row in task_runs:
+        for key, value in (row.get("runtime", {}).get("usage", {}) or {}).items():
+            if isinstance(value, bool):
+                totals[key] += int(value)
+            elif isinstance(value, (int, float)):
+                totals[key] += value
+    return dict(sorted(totals.items()))
+
+
+def summarize_experiment_cost(task_runs):
+    totals = Counter()
+    for row in task_runs:
+        for key, value in (row.get("runtime", {}).get("cost", {}) or {}).items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                totals[key] += value
+    return dict(sorted(totals.items()))
+
+
+def experiment_evidence_kind(task_runs):
+    providers = {
+        str(row.get("identity", {}).get("provider_id", ""))
+        for row in task_runs
+        if row.get("identity", {}).get("provider_id")
+    }
+    if providers == {"fake"}:
+        return "deterministic-fake-provider"
+    if providers and "fake" not in providers:
+        return "manual-real-provider-acceptance"
+    if providers:
+        return "mixed-provider-evidence"
+    return "unknown"
+
+
+def _build_export(spec, experiment_run_id, experiment_dir, report_path, manifest_path, task_refs, summary):
     first_task_ref = task_refs[0] if task_refs else {}
     return {
         "artifact_type": "headless-experiment-export",
@@ -739,6 +784,10 @@ def _build_export(spec, experiment_run_id, experiment_dir, report_path, task_ref
         },
         "candidates": [_candidate_ref(candidate) for candidate in spec.candidates],
         "summary": summary,
+        "usage": summarize_experiment_usage(task_refs),
+        "cost": summarize_experiment_cost(task_refs),
+        "evidence_kind": experiment_evidence_kind(task_refs),
+        "mvp_boundaries": list(HEADLESS_EXPERIMENT_MVP_BOUNDARIES),
         "runtime_event_schema_version": first_task_ref.get("runtime", {}).get("runtime_event_schema_version", ""),
         "task_run": first_task_ref,
         "task_runs": task_refs,
@@ -746,7 +795,46 @@ def _build_export(spec, experiment_run_id, experiment_dir, report_path, task_ref
             "experiment_wal_relpath": _relpath(Path(experiment_dir) / "experiment_wal.jsonl", experiment_dir),
             "experiment_export_relpath": _relpath(Path(experiment_dir) / "experiment_export.json", experiment_dir),
             "report_relpath": _relpath(report_path, experiment_dir),
+            "experiment_manifest_relpath": _relpath(manifest_path, experiment_dir),
         },
+    }
+
+
+def build_headless_experiment_manifest(export):
+    task_runs = list(export.get("task_runs", []) or [])
+    return {
+        "artifact_type": "headless-experiment-manifest",
+        "schema_version": HEADLESS_EXPERIMENT_MANIFEST_SCHEMA_VERSION,
+        "experiment_run_id": export.get("experiment_run_id", ""),
+        "experiment": dict(export.get("experiment", {}) or {}),
+        "created_at": _now(),
+        "summary": dict(export.get("summary", {}) or {}),
+        "usage": dict(export.get("usage", {}) or {}),
+        "cost": dict(export.get("cost", {}) or {}),
+        "evidence_kind": export.get("evidence_kind", ""),
+        "runtime_event_schema_version": export.get("runtime_event_schema_version", ""),
+        "mvp_boundaries": list(export.get("mvp_boundaries", []) or []),
+        "artifacts": dict(export.get("artifacts", {}) or {}),
+        "task_runs": [
+            {
+                "task_run_id": row.get("task_run_id", ""),
+                "status": row.get("status", ""),
+                "failure_kind": row.get("failure_kind", ""),
+                "failure_category": row.get("failure_category", ""),
+                "identity": dict(row.get("identity", {}) or {}),
+                "task": dict(row.get("task", {}) or {}),
+                "runtime": {
+                    "run_id": row.get("runtime", {}).get("run_id", ""),
+                    "status": row.get("runtime", {}).get("status", ""),
+                    "runtime_event_schema_version": row.get("runtime", {}).get("runtime_event_schema_version", ""),
+                    "usage": dict(row.get("runtime", {}).get("usage", {}) or {}),
+                    "cost": dict(row.get("runtime", {}).get("cost", {}) or {}),
+                },
+                "verifier": dict(row.get("verifier", {}) or {}),
+                "artifacts": dict(row.get("artifacts", {}) or {}),
+            }
+            for row in task_runs
+        ],
     }
 
 
@@ -769,6 +857,13 @@ def render_headless_experiment_report(export):
         f"- scored_runs: {summary.get('scored_runs', 0)}",
         f"- benchmark_pass_rate: {summary.get('benchmark_pass_rate', '')}",
         f"- runtime_event_schema_version: {export.get('runtime_event_schema_version', '')}",
+        f"- evidence_kind: {export.get('evidence_kind', '')}",
+        f"- usage: {json.dumps(export.get('usage', {}) or {}, sort_keys=True)}",
+        f"- cost: {json.dumps(export.get('cost', {}) or {}, sort_keys=True)}",
+        "",
+        "## MVP boundary",
+        "",
+        *[f"- {item}" for item in export.get("mvp_boundaries", []) or []],
         "",
         "| candidate | prompt_sha256 | runtime_policy | provider | model | task | verifier_id | task_run | status | failure_kind | failure_category | runtime | verifier | task_export | runtime_manifest |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
@@ -796,6 +891,202 @@ def render_headless_experiment_report(export):
     return "\n".join(lines) + "\n"
 
 
+def validate_headless_experiment_evidence(path):
+    root = Path(path).resolve()
+    if root.is_dir():
+        experiment_dir = root
+        export_path = experiment_dir / "experiment_export.json"
+    else:
+        payload = json.loads(root.read_text(encoding="utf-8"))
+        if payload.get("artifact_type") == "headless-experiment-live-provider-acceptance":
+            return _validate_live_acceptance_evidence(root, payload)
+        export_path = root
+        experiment_dir = export_path.parent
+    export = json.loads(export_path.read_text(encoding="utf-8"))
+    return _validate_single_experiment_evidence(experiment_dir, export)
+
+
+def _validate_live_acceptance_evidence(path, payload):
+    root = path.parent
+    child_results = []
+    errors = []
+    for item in payload.get("experiments", []) or []:
+        experiment_run_id = item.get("experiment_run_id", "")
+        if not experiment_run_id:
+            errors.append("live acceptance experiment entry is missing experiment_run_id")
+            continue
+        experiment_dir = root / "experiments" / experiment_run_id
+        export_path = experiment_dir / "experiment_export.json"
+        if not export_path.is_file():
+            errors.append(f"live acceptance experiment export is missing: {experiment_run_id}")
+            continue
+        child = _validate_single_experiment_evidence(
+            experiment_dir,
+            json.loads(export_path.read_text(encoding="utf-8")),
+        )
+        child_results.append(child)
+        errors.extend(f"{experiment_run_id}: {error}" for error in child.get("errors", []))
+        if child.get("evidence_kind") != "manual-real-provider-acceptance":
+            errors.append(f"{experiment_run_id}: live acceptance child is not real-provider evidence")
+    return {
+        "artifact_type": "headless-experiment-evidence-gate",
+        "schema_version": 1,
+        "source": str(path),
+        "passed": not errors,
+        "evidence_kind": "manual-real-provider-acceptance",
+        "summary": dict(payload.get("summary", {}) or {}),
+        "checked_experiments": len(child_results),
+        "checked_task_runs": sum(item.get("checked_task_runs", 0) for item in child_results),
+        "errors": errors,
+    }
+
+
+def _validate_single_experiment_evidence(experiment_dir, export):
+    errors = []
+    task_runs = list(export.get("task_runs", []) or [])
+    artifacts = dict(export.get("artifacts", {}) or {})
+    if not task_runs:
+        errors.append("experiment has no task-run evidence")
+    _require_file(errors, experiment_dir, artifacts.get("experiment_wal_relpath", ""), "experiment WAL")
+    _require_file(errors, experiment_dir, artifacts.get("experiment_export_relpath", ""), "experiment export")
+    _require_file(errors, experiment_dir, artifacts.get("report_relpath", ""), "experiment report")
+    manifest_path = _require_file(
+        errors,
+        experiment_dir,
+        artifacts.get("experiment_manifest_relpath", ""),
+        "experiment manifest",
+    )
+    if manifest_path:
+        manifest = _load_json_file(errors, manifest_path, "experiment manifest")
+        if manifest:
+            if manifest.get("artifact_type") != "headless-experiment-manifest":
+                errors.append("experiment manifest artifact_type is not headless-experiment-manifest")
+            if manifest.get("experiment_run_id") != export.get("experiment_run_id"):
+                errors.append("experiment manifest run id does not match export")
+            if manifest.get("summary") != export.get("summary"):
+                errors.append("experiment manifest summary does not match export")
+            if manifest.get("artifacts") != export.get("artifacts"):
+                errors.append("experiment manifest artifacts do not match export")
+            expected_manifest = build_headless_experiment_manifest(export)
+            if manifest.get("task_runs") != expected_manifest.get("task_runs"):
+                errors.append("experiment manifest task-run references do not match export")
+
+    candidate_refs = {
+        str(candidate.get("id", "")): candidate
+        for candidate in export.get("candidates", []) or []
+    }
+    for index, task_run in enumerate(task_runs):
+        _validate_task_run_evidence(errors, experiment_dir, task_run, candidate_refs, index)
+    summary = summarize_experiment_task_runs(task_runs)
+    if summary != export.get("summary", {}):
+        errors.append("experiment summary does not match task-run evidence")
+    if experiment_evidence_kind(task_runs) != export.get("evidence_kind", ""):
+        errors.append("experiment evidence_kind does not match task-run providers")
+    for boundary in HEADLESS_EXPERIMENT_MVP_BOUNDARIES:
+        if boundary not in (export.get("mvp_boundaries", []) or []):
+            errors.append(f"experiment export is missing MVP boundary: {boundary}")
+    return {
+        "artifact_type": "headless-experiment-evidence-gate",
+        "schema_version": 1,
+        "source": str(experiment_dir),
+        "passed": not errors,
+        "evidence_kind": export.get("evidence_kind", ""),
+        "summary": dict(export.get("summary", {}) or {}),
+        "checked_experiments": 1,
+        "checked_task_runs": len(task_runs),
+        "errors": errors,
+    }
+
+
+def _validate_task_run_evidence(errors, experiment_dir, task_run, candidate_refs, index):
+    label = f"task_runs[{index}]"
+    identity = dict(task_run.get("identity", {}) or {})
+    artifacts = dict(task_run.get("artifacts", {}) or {})
+    runtime = dict(task_run.get("runtime", {}) or {})
+    verifier = dict(task_run.get("verifier", {}) or {})
+    for field in ("candidate_id", "prompt_sha256", "runtime_policy_id", "provider_id", "model_id", "task_id", "verifier_id"):
+        if not identity.get(field):
+            errors.append(f"{label} identity is missing {field}")
+    candidate = candidate_refs.get(str(identity.get("candidate_id", "")))
+    if not candidate:
+        errors.append(f"{label} candidate id is not declared")
+    elif any(str(candidate.get(field, "")) != str(identity.get(field, "")) for field in ("prompt_sha256", "runtime_policy_id", "provider_id", "model_id", "verifier_id")):
+        errors.append(f"{label} identity does not match candidate metadata")
+    if runtime.get("runtime_event_schema_version") != RUNTIME_EVENT_SCHEMA_VERSION:
+        errors.append(f"{label} is missing current runtime event schema metadata")
+    task_export_path = _require_file(errors, experiment_dir, artifacts.get("task_run_export_relpath", ""), f"{label} task-run export")
+    _require_file(errors, experiment_dir, artifacts.get("task_run_wal_relpath", ""), f"{label} task-run WAL")
+    _require_file(errors, experiment_dir, artifacts.get("task_run_facts_relpath", ""), f"{label} task facts")
+    _require_file(errors, experiment_dir, artifacts.get("runtime_events_relpath", ""), f"{label} runtime events")
+    _require_file(errors, experiment_dir, artifacts.get("trace_relpath", ""), f"{label} runtime trace")
+    _require_file(errors, experiment_dir, artifacts.get("runtime_report_relpath", ""), f"{label} runtime report")
+    runtime_manifest_path = _require_file(errors, experiment_dir, artifacts.get("runtime_manifest_relpath", ""), f"{label} runtime artifact manifest")
+    if verifier.get("exit_code") is None:
+        errors.append(f"{label} is missing verifier result")
+    if task_export_path:
+        task_export = _load_json_file(errors, task_export_path, f"{label} task-run export")
+        if task_export:
+            _validate_task_export_matches(errors, label, identity, task_run, task_export)
+    if runtime_manifest_path:
+        manifest = _load_json_file(errors, runtime_manifest_path, f"{label} runtime artifact manifest")
+        if manifest:
+            if manifest.get("runtime_event_schema_version") != runtime.get("runtime_event_schema_version"):
+                errors.append(f"{label} runtime manifest schema metadata does not match export")
+            if manifest.get("run_id") != runtime.get("run_id"):
+                errors.append(f"{label} runtime manifest run_id does not match export")
+
+
+def _validate_task_export_matches(errors, label, identity, task_run, task_export):
+    policy = dict(task_export.get("policy", {}) or {})
+    task = dict(task_export.get("task", {}) or {})
+    verifier = dict(task_export.get("verifier", {}) or {})
+    runtime = dict(task_export.get("runtime", {}) or {})
+    if task_export.get("task_run_id") != task_run.get("task_run_id"):
+        errors.append(f"{label} task-run export id does not match experiment export")
+    expected = {
+        "provider_id": policy.get("model_provider", ""),
+        "model_id": policy.get("model_id", ""),
+        "task_id": task.get("id", ""),
+        "prompt_sha256": task.get("prompt_sha256", ""),
+    }
+    for field, actual in expected.items():
+        if str(identity.get(field, "")) != str(actual):
+            errors.append(f"{label} identity mismatch for {field}: {identity.get(field, '')} != {actual}")
+    if verifier.get("exit_code") is None:
+        errors.append(f"{label} task-run export is missing verifier result")
+    if runtime.get("runtime_event_schema_version") != task_run.get("runtime", {}).get("runtime_event_schema_version"):
+        errors.append(f"{label} task-run export runtime schema does not match experiment export")
+
+
+def _require_file(errors, root, relpath, label):
+    if not relpath:
+        errors.append(f"{label} path is missing")
+        return None
+    raw_path = Path(str(relpath))
+    if raw_path.is_absolute():
+        errors.append(f"{label} path must be relative: {relpath}")
+        return None
+    root_path = Path(root).resolve()
+    path = (root_path / raw_path).resolve()
+    try:
+        path.relative_to(root_path)
+    except ValueError:
+        errors.append(f"{label} path escapes experiment directory: {relpath}")
+        return None
+    if not path.is_file():
+        errors.append(f"{label} is missing: {relpath}")
+        return None
+    return path
+
+
+def _load_json_file(errors, path, label):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"{label} is not readable JSON: {exc}")
+        return None
+
+
 def _read_jsonl(path):
     path = Path(path)
     if not path.is_file():
@@ -807,7 +1098,7 @@ def build_headless_experiment_run_parser():
     parser = argparse.ArgumentParser(
         prog="pico headless experiment run",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description="Run one fake-provider headless task and wrap it in experiment-level evidence.",
+        description="Run headless tasks and wrap them in experiment-level evidence.",
     )
     parser.add_argument("spec", help="Path to a headless experiment JSON spec.")
     parser.add_argument(
@@ -829,6 +1120,19 @@ def build_headless_experiment_run_parser():
         "--resume",
         default=None,
         help="Resume an existing experiment by run id or experiment artifact directory.",
+    )
+    return parser
+
+
+def build_headless_experiment_gate_parser():
+    parser = argparse.ArgumentParser(
+        prog="pico headless experiment gate",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description="Validate headless experiment evidence without re-running providers.",
+    )
+    parser.add_argument(
+        "path",
+        help="Experiment directory, experiment_export.json, or headless_experiment_acceptance.json.",
     )
     return parser
 
@@ -865,3 +1169,14 @@ def run_headless_experiment_cli(argv):
         if message:
             print(message, file=sys.stderr)
     return result.exit_code
+
+
+def run_headless_experiment_gate_cli(argv):
+    args = build_headless_experiment_gate_parser().parse_args(argv)
+    try:
+        result = validate_headless_experiment_evidence(args.path)
+    except Exception as exc:
+        print(f"headless_experiment_gate_error: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if result.get("passed") else 1
