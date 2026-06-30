@@ -16,6 +16,7 @@ from .run_store import RunStore
 from .runtime_events import RUNTIME_EVENT_SCHEMA_VERSION
 
 HEADLESS_EXPERIMENT_SCHEMA_VERSION = 1
+HEADLESS_EXPERIMENT_PROVIDER_CHOICES = ("fake", "openai", "anthropic", "deepseek", "ollama")
 
 
 def _now():
@@ -69,9 +70,49 @@ def _normalize_fake_model_id(value):
 
 def _normalize_provider_id(value):
     provider_id = str(value or "fake").strip()
-    if provider_id != "fake":
-        raise ValueError("headless experiment candidates currently support provider_id=fake only")
+    if provider_id not in HEADLESS_EXPERIMENT_PROVIDER_CHOICES:
+        choices = ", ".join(HEADLESS_EXPERIMENT_PROVIDER_CHOICES)
+        raise ValueError(f"headless experiment candidate provider_id must be one of: {choices}")
     return provider_id
+
+
+def _normalize_candidate_model_id(provider_id, value):
+    if provider_id == "fake":
+        return _normalize_fake_model_id(value)
+    model_id = str(value or "").strip()
+    if not model_id:
+        raise ValueError(f"headless experiment candidate provider {provider_id} is missing model_id")
+    return model_id
+
+
+def _candidate_provider_config(raw_candidate):
+    config = {}
+    for source_key, target_key in (
+        ("base_url", "base_url"),
+        ("provider_base_url", "base_url"),
+        ("host", "host"),
+        ("provider_host", "host"),
+    ):
+        if raw_candidate.get(source_key) is not None:
+            config[target_key] = str(raw_candidate[source_key]).strip()
+    for source_key, target_key in (
+        ("temperature", "temperature"),
+        ("top_p", "top_p"),
+    ):
+        if raw_candidate.get(source_key) is not None:
+            config[target_key] = float(raw_candidate[source_key])
+    for source_key, target_key in (
+        ("timeout", "timeout"),
+        ("provider_timeout", "timeout"),
+        ("openai_timeout", "timeout"),
+        ("ollama_timeout", "timeout"),
+    ):
+        if raw_candidate.get(source_key) is not None:
+            value = int(raw_candidate[source_key])
+            if value < 1:
+                raise ValueError(f"headless experiment candidate {source_key} must be positive")
+            config[target_key] = value
+    return config
 
 
 @dataclass(frozen=True)
@@ -83,6 +124,7 @@ class HeadlessExperimentCandidate:
     provider_id: str
     model_id: str
     verifier_id: str
+    provider_config: dict
 
 
 @dataclass(frozen=True)
@@ -132,6 +174,7 @@ def _load_candidates(data, task):
                 provider_id="fake",
                 model_id="fake:default",
                 verifier_id=_default_verifier_id(task),
+                provider_config={},
             )
         ]
     if not isinstance(raw_candidates, list) or not raw_candidates:
@@ -154,15 +197,20 @@ def _load_candidates(data, task):
         prompt_sha256 = str(raw_candidate.get("prompt_sha256", computed_prompt_sha256)).strip()
         if prompt_sha256 != computed_prompt_sha256:
             raise ValueError(f"headless experiment candidate {candidate_id} prompt_sha256 does not match prompt")
+        provider_id = _normalize_provider_id(raw_candidate.get("provider_id", raw_candidate.get("provider", "fake")))
         candidates.append(
             HeadlessExperimentCandidate(
                 id=candidate_id,
                 prompt=prompt,
                 prompt_sha256=prompt_sha256,
                 runtime_policy_id=str(raw_candidate.get("runtime_policy_id", "kernel-readonly-v1")).strip(),
-                provider_id=_normalize_provider_id(raw_candidate.get("provider_id", "fake")),
-                model_id=_normalize_fake_model_id(raw_candidate.get("model_id", "fake:default")),
+                provider_id=provider_id,
+                model_id=_normalize_candidate_model_id(
+                    provider_id,
+                    _candidate_model_value(provider_id, raw_candidate),
+                ),
                 verifier_id=str(raw_candidate.get("verifier_id", _default_verifier_id(task))).strip(),
+                provider_config=_candidate_provider_config(raw_candidate),
             )
         )
         seen_ids.add(candidate_id)
@@ -174,10 +222,18 @@ def _load_candidates(data, task):
     return candidates
 
 
+def _candidate_model_value(provider_id, raw_candidate):
+    value = raw_candidate.get("model_id", raw_candidate.get("model"))
+    if value is None and provider_id == "fake":
+        return "fake:default"
+    return value
+
+
 class HeadlessExperimentRunner:
-    def __init__(self, runs_root):
+    def __init__(self, runs_root, model_client_factory=None):
         self.runs_root = Path(runs_root).resolve()
         self.store = RunStore(self.runs_root)
+        self.model_client_factory = model_client_factory
 
     def run(self, spec, report_path=None, resume=None):
         experiment_run_id, experiment_dir, resumed = self._resolve_experiment_run(spec, resume)
@@ -198,7 +254,10 @@ class HeadlessExperimentRunner:
                 experiment_id=spec.id,
                 spec_path=str(spec.spec_path),
             )
-        task_runner = HeadlessTaskRunner(experiment_dir / "task-runs")
+        task_runner = HeadlessTaskRunner(
+            experiment_dir / "task-runs",
+            model_client_factory=self.model_client_factory,
+        )
         task_refs = []
         reconcile_failure = None
         reusable_refs = {}
@@ -216,7 +275,13 @@ class HeadlessExperimentRunner:
                 )
 
         for candidate in spec.candidates:
-            candidate_task = replace(spec.task, prompt=candidate.prompt)
+            candidate_task = replace(
+                spec.task,
+                prompt=candidate.prompt,
+                provider_id=candidate.provider_id,
+                model_id=candidate.model_id,
+                provider_config=dict(candidate.provider_config),
+            )
             identity = _build_identity(candidate, spec.task)
             identity_key = _identity_key(identity)
             if reconcile_failure is not None:
@@ -356,27 +421,29 @@ class HeadlessExperimentRunner:
         artifact_paths = {
             "task_run_export_relpath": task_ref["artifacts"].get("task_run_export_relpath", ""),
             "task_run_wal_relpath": task_ref["artifacts"].get("task_run_wal_relpath", ""),
-            "runtime_manifest_relpath": task_ref["artifacts"].get("runtime_manifest_relpath", ""),
         }
+        if task_ref["failure_category"] != "missing_credentials":
+            artifact_paths["runtime_manifest_relpath"] = task_ref["artifacts"].get("runtime_manifest_relpath", "")
         for label, relpath in artifact_paths.items():
             if not relpath or not (experiment_dir / relpath).is_file():
                 raise ValueError(f"referenced {label} is missing: {relpath}")
 
-        manifest = json.loads((experiment_dir / artifact_paths["runtime_manifest_relpath"]).read_text(encoding="utf-8"))
-        manifest_schema_version = manifest.get("runtime_event_schema_version")
         task_schema_version = task_ref["runtime"].get("runtime_event_schema_version", "")
-        if manifest_schema_version != task_schema_version:
-            raise ValueError(
-                "runtime manifest schema version disagrees with task-run export: "
-                f"{manifest_schema_version} != {task_schema_version}"
-            )
-        if task_schema_version != event.get("runtime_event_schema_version"):
-            raise ValueError("artifact_captured runtime schema version disagrees with task-run export")
-        if task_schema_version != RUNTIME_EVENT_SCHEMA_VERSION:
-            raise ValueError(
-                "reconciled task-run runtime schema version is incompatible with current runtime: "
-                f"{task_schema_version} != {RUNTIME_EVENT_SCHEMA_VERSION}"
-            )
+        if task_ref["failure_category"] != "missing_credentials":
+            manifest = json.loads((experiment_dir / artifact_paths["runtime_manifest_relpath"]).read_text(encoding="utf-8"))
+            manifest_schema_version = manifest.get("runtime_event_schema_version")
+            if manifest_schema_version != task_schema_version:
+                raise ValueError(
+                    "runtime manifest schema version disagrees with task-run export: "
+                    f"{manifest_schema_version} != {task_schema_version}"
+                )
+            if task_schema_version != event.get("runtime_event_schema_version"):
+                raise ValueError("artifact_captured runtime schema version disagrees with task-run export")
+            if task_schema_version != RUNTIME_EVENT_SCHEMA_VERSION:
+                raise ValueError(
+                    "reconciled task-run runtime schema version is incompatible with current runtime: "
+                    f"{task_schema_version} != {RUNTIME_EVENT_SCHEMA_VERSION}"
+                )
 
         task_identity = {
             "provider_id": str(task_export.get("policy", {}).get("model_provider", "")),
@@ -388,6 +455,7 @@ class HeadlessExperimentRunner:
                 raise ValueError(f"reconciled task-run {field} mismatch: {identity.get(field)} != {actual}")
         verifier = dict(task_export.get("verifier", {}) or {})
         if verifier.get("exit_code") is None and task_ref["failure_category"] not in {
+            "missing_credentials",
             "provider_failed",
             "runtime_failed",
             "setup_failed",
@@ -606,6 +674,8 @@ def _normalize_infrastructure_failure_category(failure_category, runtime, verifi
     if bool(verifier.get("timed_out", False)):
         return "verifier_timeout"
     if failure_category == "runtime_artifact_capture_failed":
+        return failure_category
+    if failure_category == "missing_credentials":
         return failure_category
     if failure_category == "setup_failed":
         return failure_category
