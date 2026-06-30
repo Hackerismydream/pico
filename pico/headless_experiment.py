@@ -924,10 +924,27 @@ def _validate_live_acceptance_evidence(path, payload):
             experiment_dir,
             json.loads(export_path.read_text(encoding="utf-8")),
         )
-        child_results.append(child)
+        child_results.append((experiment_run_id, child))
         errors.extend(f"{experiment_run_id}: {error}" for error in child.get("errors", []))
         if child.get("evidence_kind") != "manual-real-provider-acceptance":
             errors.append(f"{experiment_run_id}: live acceptance child is not real-provider evidence")
+        _validate_live_acceptance_summary(
+            errors,
+            f"{experiment_run_id}: live acceptance child",
+            child.get("summary", {}),
+        )
+    _validate_live_acceptance_summary(
+        errors,
+        "live acceptance aggregate",
+        payload.get("summary", {}),
+    )
+    checked_task_runs = sum(child.get("checked_task_runs", 0) for _, child in child_results)
+    aggregate_total_runs = int((payload.get("summary", {}) or {}).get("total_runs", 0) or 0)
+    if checked_task_runs != aggregate_total_runs:
+        errors.append(
+            "live acceptance aggregate references "
+            f"{aggregate_total_runs} task runs but {checked_task_runs} were checked"
+        )
     return {
         "artifact_type": "headless-experiment-evidence-gate",
         "schema_version": 1,
@@ -936,9 +953,28 @@ def _validate_live_acceptance_evidence(path, payload):
         "evidence_kind": "manual-real-provider-acceptance",
         "summary": dict(payload.get("summary", {}) or {}),
         "checked_experiments": len(child_results),
-        "checked_task_runs": sum(item.get("checked_task_runs", 0) for item in child_results),
+        "checked_task_runs": checked_task_runs,
         "errors": errors,
     }
+
+
+def _validate_live_acceptance_summary(errors, label, summary):
+    summary = dict(summary or {})
+    total_runs = int(summary.get("total_runs", 0) or 0)
+    passed = int(summary.get("passed", 0) or 0)
+    benchmark_failed = int(summary.get("benchmark_failed", 0) or 0)
+    infrastructure_failed = int(summary.get("infrastructure_failed", 0) or 0)
+    skipped = int(summary.get("skipped", 0) or 0)
+    if total_runs <= 0:
+        errors.append(f"{label} has no task runs")
+    if skipped:
+        errors.append(f"{label} has skipped runs: {skipped}")
+    if infrastructure_failed:
+        errors.append(f"{label} has infrastructure failures: {infrastructure_failed}")
+    if benchmark_failed:
+        errors.append(f"{label} has benchmark failures: {benchmark_failed}")
+    if total_runs and passed != total_runs:
+        errors.append(f"{label} passed {passed} of {total_runs} runs")
 
 
 def _validate_single_experiment_evidence(experiment_dir, export):

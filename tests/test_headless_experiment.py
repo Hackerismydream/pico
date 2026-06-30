@@ -564,6 +564,108 @@ def test_headless_experiment_gate_accepts_manual_live_provider_acceptance_artifa
     assert gate_payload["checked_task_runs"] == 1
 
 
+def test_headless_experiment_gate_rejects_live_acceptance_with_benchmark_failure(
+    tmp_path, capsys, monkeypatch
+):
+    monkeypatch.setenv("PICO_OPENAI_API_KEY", "test-key")
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "live_answer_fact",
+            "workspace": str(fixture),
+            "prompt": "unused; candidate prompt replaces this",
+            "verifier": _python_check("os.environ.get('PICO_FINAL_ANSWER') == 'live ok'"),
+        },
+    )
+    prompt = "Answer with live ok."
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "live-provider-no-tool",
+            "task": str(task_spec),
+            "candidates": [
+                {
+                    "id": "openai-live-candidate",
+                    "prompt": prompt,
+                    "prompt_sha256": _sha256(prompt),
+                    "provider_id": "openai",
+                    "model_id": "gpt-live-acceptance",
+                }
+            ],
+        },
+    )
+
+    def client_factory(spec):
+        assert spec.provider_id == "openai"
+        return FakeModelClient(["<final>not live ok</final>"])
+
+    acceptance_root = tmp_path / "live-provider-acceptance"
+    result = HeadlessExperimentRunner(
+        acceptance_root / "experiments",
+        model_client_factory=client_factory,
+    ).run(load_headless_experiment_spec(experiment_spec))
+    acceptance_path = _write_json(
+        acceptance_root / "headless_experiment_acceptance.json",
+        {
+            "artifact_type": "headless-experiment-live-provider-acceptance",
+            "schema_version": 1,
+            "provider": "openai",
+            "model": "gpt-live-acceptance",
+            "summary": result.export["summary"],
+            "experiments": [
+                {
+                    "experiment_run_id": result.export["experiment_run_id"],
+                    "experiment": result.export["experiment"],
+                    "summary": result.export["summary"],
+                    "artifacts": result.export["artifacts"],
+                }
+            ],
+        },
+    )
+
+    assert main(["headless", "experiment", "gate", str(acceptance_path)]) == 1
+    gate_payload = json.loads(capsys.readouterr().out)
+    assert gate_payload["passed"] is False
+    assert gate_payload["evidence_kind"] == "manual-real-provider-acceptance"
+    assert any("benchmark failures: 1" in error for error in gate_payload["errors"])
+    assert any("passed 0 of 1 runs" in error for error in gate_payload["errors"])
+
+
+def test_headless_experiment_gate_rejects_live_acceptance_missing_child_task_runs(
+    tmp_path, capsys
+):
+    acceptance_root = tmp_path / "live-provider-acceptance"
+    acceptance_root.mkdir()
+    acceptance_path = _write_json(
+        acceptance_root / "headless_experiment_acceptance.json",
+        {
+            "artifact_type": "headless-experiment-live-provider-acceptance",
+            "schema_version": 1,
+            "provider": "openai",
+            "model": "gpt-live-acceptance",
+            "summary": {
+                "total_runs": 2,
+                "passed": 2,
+                "benchmark_failed": 0,
+                "infrastructure_failed": 0,
+                "skipped": 0,
+                "reused": 0,
+                "scored_runs": 2,
+                "benchmark_pass_rate": 1.0,
+            },
+            "experiments": [],
+        },
+    )
+
+    assert main(["headless", "experiment", "gate", str(acceptance_path)]) == 1
+    gate_payload = json.loads(capsys.readouterr().out)
+    assert gate_payload["passed"] is False
+    assert gate_payload["checked_task_runs"] == 0
+    assert any("2 task runs but 0 were checked" in error for error in gate_payload["errors"])
+
+
 def test_headless_experiment_counts_only_verifier_failure_as_benchmark_failure(tmp_path, capsys):
     fixture = tmp_path / "fixture"
     fixture.mkdir()

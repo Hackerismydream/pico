@@ -393,8 +393,9 @@ uv run python3 scripts/run_headless_experiment_acceptance.py --provider deepseek
 It writes `.pico/headless/live-provider-acceptance/headless_experiment_acceptance.json`
 plus experiment/task-run artifacts for one no-tool task and one read-only-tool
 task. Exit code `2` means credentials were missing and the run was skipped;
-exit code `1` means infrastructure failed; exit code `0` means both verifier
-checks passed.
+exit code `1` means infrastructure failed; exit code `3` means live verifier
+checks produced benchmark failures; exit code `0` means both verifier checks
+passed.
 
 ## Kernel default gate
 
