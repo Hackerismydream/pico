@@ -9,11 +9,15 @@ import json
 import os
 from pathlib import Path
 import shutil
+from types import SimpleNamespace
 import subprocess
 import sys
 import uuid
 
+from .config import load_project_env
+from .kernel_acceptance import credential_status
 from .providers.clients import FakeModelClient
+from .cli import _build_model_client
 from .run_store import RunStore
 from .runtime_kernel import (
     InvocationContext,
@@ -29,6 +33,7 @@ from .workspace import IGNORED_PATH_NAMES
 HEADLESS_TASK_SCHEMA_VERSION = 1
 DEFAULT_VERIFIER_TIMEOUT_SECONDS = 30
 VERIFIER_ENV_ALLOWLIST = ("HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "TMPDIR", "TMP", "TEMP")
+HEADLESS_PROVIDER_CHOICES = ("fake", "openai", "anthropic", "deepseek", "ollama")
 
 
 def _now():
@@ -91,6 +96,9 @@ class HeadlessTaskSpec:
     allowed_tools: list[str]
     max_steps: int
     max_new_tokens: int
+    provider_id: str
+    model_id: str
+    provider_config: dict
     spec_path: Path
 
 
@@ -155,6 +163,12 @@ def load_headless_task_spec(path):
     max_new_tokens = int(data.get("max_new_tokens", 512))
     if max_new_tokens < 1:
         raise ValueError(f"headless task {task_id} max_new_tokens must be positive")
+    provider_id = _normalize_provider_id(data.get("provider_id", data.get("provider", "fake")))
+    raw_model_id = data.get("model_id", data.get("model"))
+    if raw_model_id is None and provider_id == "fake":
+        raw_model_id = "fake:default"
+    model_id = _normalize_model_id(provider_id, raw_model_id)
+    provider_config = _normalize_provider_config(data)
 
     return HeadlessTaskSpec(
         id=task_id,
@@ -166,6 +180,9 @@ def load_headless_task_spec(path):
         allowed_tools=allowed_tools,
         max_steps=max_steps,
         max_new_tokens=max_new_tokens,
+        provider_id=provider_id,
+        model_id=model_id,
+        provider_config=provider_config,
         spec_path=spec_path,
     )
 
@@ -192,10 +209,58 @@ def _normalize_allowed_tools(value):
     return allowed_tools
 
 
+def _normalize_provider_id(value):
+    provider_id = str(value or "fake").strip()
+    if provider_id not in HEADLESS_PROVIDER_CHOICES:
+        choices = ", ".join(HEADLESS_PROVIDER_CHOICES)
+        raise ValueError(f"headless task provider_id must be one of: {choices}")
+    return provider_id
+
+
+def _normalize_model_id(provider_id, value):
+    model_id = str(value or ("fake:default" if provider_id == "fake" else "")).strip()
+    if not model_id:
+        raise ValueError(f"headless task provider {provider_id} is missing model_id")
+    if provider_id == "fake" and not model_id.startswith("fake:"):
+        raise ValueError("fake-provider headless task model_id must start with fake:")
+    return model_id
+
+
+def _normalize_provider_config(data):
+    config = {}
+    for source_key, target_key in (
+        ("base_url", "base_url"),
+        ("provider_base_url", "base_url"),
+        ("host", "host"),
+        ("provider_host", "host"),
+    ):
+        if data.get(source_key) is not None:
+            config[target_key] = str(data[source_key]).strip()
+    for source_key, target_key in (
+        ("temperature", "temperature"),
+        ("top_p", "top_p"),
+    ):
+        if data.get(source_key) is not None:
+            config[target_key] = float(data[source_key])
+    for source_key, target_key in (
+        ("timeout", "timeout"),
+        ("provider_timeout", "timeout"),
+        ("openai_timeout", "timeout"),
+        ("ollama_timeout", "timeout"),
+    ):
+        if data.get(source_key) is not None:
+            value = int(data[source_key])
+            if value < 1:
+                raise ValueError(f"headless task {source_key} must be positive")
+            config[target_key] = value
+    return config
+
+
 class HeadlessTaskRunner:
-    def __init__(self, runs_root):
+    def __init__(self, runs_root, model_client_factory=None):
         self.runs_root = Path(runs_root).resolve()
         self.store = RunStore(self.runs_root)
+        self.model_client_factory = model_client_factory
 
     def run(self, spec):
         task_run_id = _new_task_run_id(spec.id)
@@ -210,6 +275,30 @@ class HeadlessTaskRunner:
         runtime_info = self._empty_runtime_info()
         verifier_info = self._empty_verifier_info(spec)
         try:
+            credential = self._credential_status(spec)
+            if credential.status != "present":
+                runtime_info = {**runtime_info, "status": "skipped"}
+                export = self._build_export(
+                    spec,
+                    task_run_id,
+                    run_dir,
+                    isolated_workspace,
+                    status="skipped",
+                    failure_kind="infrastructure",
+                    failure_category="missing_credentials",
+                    runtime_info=runtime_info,
+                    verifier_info=verifier_info,
+                    infrastructure_error=credential.reason,
+                )
+                self._wal(
+                    task_run_id,
+                    "provider_credentials_missing",
+                    provider_id=spec.provider_id,
+                    model_id=spec.model_id,
+                    reason=credential.reason,
+                )
+                self._finish(task_run_id, export)
+                return HeadlessTaskRunResult(exit_code=1, export=export)
             self._prepare_workspace(spec.workspace, isolated_workspace)
             self._wal(
                 task_run_id,
@@ -316,7 +405,8 @@ class HeadlessTaskRunner:
                 "spec_path": str(spec.spec_path),
             },
             "model": {
-                "provider": "fake",
+                "provider": spec.provider_id,
+                "model_id": spec.model_id,
                 "fake_output_count": len(spec.fake_model_outputs),
                 "max_steps": spec.max_steps,
                 "max_new_tokens": spec.max_new_tokens,
@@ -359,7 +449,7 @@ class HeadlessTaskRunner:
         self._wal(task_run_id, "runtime_started", runtime_run_id=context.invocation_id)
         runtime = self._build_tool_runtime(spec, isolated_workspace)
         result = RuntimeRunner(
-            model_client=FakeModelClient(spec.fake_model_outputs),
+            model_client=self._build_model_client(spec),
             tool_runtime=runtime,
         ).run(context)
         runtime_store = RunStore(isolated_workspace / ".pico" / "runs")
@@ -507,7 +597,8 @@ class HeadlessTaskRunner:
             },
             "policy": {
                 "runtime": "kernel",
-                "model_provider": "fake",
+                "model_provider": spec.provider_id,
+                "model_id": spec.model_id,
                 "tool_policy": "headless_explicit_readonly_allowlist",
                 "allowed_tools": list(spec.allowed_tools),
                 "fail_closed": True,
@@ -573,6 +664,31 @@ class HeadlessTaskRunner:
             failure_kind=export["failure_kind"],
             failure_category=export["failure_category"],
         )
+
+    def _credential_status(self, spec):
+        if spec.provider_id == "fake" or self.model_client_factory is not None:
+            return SimpleNamespace(status="present", reason="")
+        load_project_env(spec.spec_path)
+        return credential_status(spec.provider_id)
+
+    def _build_model_client(self, spec):
+        if self.model_client_factory is not None:
+            return self.model_client_factory(spec)
+        if spec.provider_id == "fake":
+            return FakeModelClient(spec.fake_model_outputs)
+        config = dict(spec.provider_config or {})
+        timeout = int(config.get("timeout", 300))
+        args = SimpleNamespace(
+            provider=spec.provider_id,
+            model=spec.model_id,
+            base_url=config.get("base_url") or None,
+            host=config.get("host") or "http://127.0.0.1:11434",
+            temperature=config.get("temperature", 0.2),
+            top_p=config.get("top_p", 0.9),
+            ollama_timeout=timeout,
+            openai_timeout=timeout,
+        )
+        return _build_model_client(args)
 
 
 def build_headless_task_run_parser():

@@ -4,6 +4,7 @@ import shlex
 import sys
 
 import pico.headless as headless
+from pico.providers.clients import FakeModelClient
 from pico.cli import main
 from pico.headless_experiment import HeadlessExperimentRunner, load_headless_experiment_spec
 
@@ -511,7 +512,18 @@ def test_headless_experiment_classifies_artifact_capture_failure_as_infrastructu
     assert "manifest write failed" in captured.err
 
 
-def test_headless_experiment_rejects_non_fake_candidate_provider_before_running(tmp_path, capsys):
+def test_headless_experiment_missing_real_provider_credentials_is_skipped_infrastructure(
+    tmp_path, capsys, monkeypatch
+):
+    for name in (
+        "PICO_OPENAI_API_KEY",
+        "OPENAI_API_KEY",
+        "PICO_RIGHT_CODES_API_KEY",
+        "RIGHT_CODES_API_KEY",
+        "PICO_ANTHROPIC_API_KEY",
+        "ANTHROPIC_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
     fixture = tmp_path / "fixture"
     fixture.mkdir()
     task_spec = _write_json(
@@ -520,7 +532,6 @@ def test_headless_experiment_rejects_non_fake_candidate_provider_before_running(
             "id": "read_fact",
             "workspace": str(fixture),
             "prompt": "Read README.",
-            "fake_model_outputs": ["<final>unused</final>"],
             "verifier": _python_check("True"),
         },
     )
@@ -534,8 +545,8 @@ def test_headless_experiment_rejects_non_fake_candidate_provider_before_running(
                     "id": "candidate-a",
                     "prompt": "Read README.",
                     "prompt_sha256": _sha256("Read README."),
-                    "provider_id": "deepseek",
-                    "model_id": "deepseek-chat",
+                    "provider_id": "openai",
+                    "model_id": "gpt-live-acceptance",
                 }
             ],
         },
@@ -554,8 +565,22 @@ def test_headless_experiment_rejects_non_fake_candidate_provider_before_running(
 
     captured = capsys.readouterr()
     assert status == 1
-    assert "provider_id=fake only" in captured.err
-    assert not (tmp_path / "experiments").exists()
+    assert "missing credentials for provider 'openai'" in captured.err
+    payload = json.loads(captured.out)
+    assert payload["summary"]["benchmark_failed"] == 0
+    assert payload["summary"]["infrastructure_failed"] == 1
+    assert payload["summary"]["skipped"] == 1
+    assert payload["summary"]["scored_runs"] == 0
+    task = payload["task_run"]
+    assert task["status"] == "skipped"
+    assert task["failure_kind"] == "infrastructure"
+    assert task["failure_category"] == "missing_credentials"
+    assert task["identity"]["provider_id"] == "openai"
+    assert task["identity"]["model_id"] == "gpt-live-acceptance"
+    assert task["verifier"]["status"] == "skipped"
+    assert task["runtime"]["status"] == "skipped"
+    experiment_dir = tmp_path / "experiments" / payload["experiment_run_id"]
+    assert (experiment_dir / task["artifacts"]["task_run_export_relpath"]).exists()
 
 
 def test_headless_experiment_requires_fake_model_namespace_before_running(tmp_path, capsys):
@@ -603,6 +628,143 @@ def test_headless_experiment_requires_fake_model_namespace_before_running(tmp_pa
     assert status == 1
     assert "model_id must start with fake:" in captured.err
     assert not (tmp_path / "experiments").exists()
+
+
+def test_headless_experiment_requires_real_provider_model_id_before_running(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "read_fact",
+            "workspace": str(fixture),
+            "prompt": "Read README.",
+            "verifier": _python_check("True"),
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-missing-model",
+            "task": str(task_spec),
+            "candidates": [
+                {
+                    "id": "candidate-a",
+                    "prompt": "Read README.",
+                    "prompt_sha256": _sha256("Read README."),
+                    "provider_id": "openai",
+                }
+            ],
+        },
+    )
+
+    status = main(
+        [
+            "headless",
+            "experiment",
+            "run",
+            str(experiment_spec),
+            "--runs-root",
+            str(tmp_path / "experiments"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert status == 1
+    assert "provider openai is missing model_id" in captured.err
+    assert not (tmp_path / "experiments").exists()
+
+
+def test_headless_experiment_real_provider_path_preserves_usage_and_cost_metadata(tmp_path):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    (fixture / "README.md").write_text("project fact: live-alpha\n", encoding="utf-8")
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "read_fact",
+            "workspace": str(fixture),
+            "prompt": "This task prompt should be replaced by the candidate prompt.",
+            "verifier": _python_check(
+                "os.environ.get('PICO_FINAL_ANSWER') == 'The project fact is live-alpha.'"
+            ),
+            "allowed_tools": ["read_file"],
+            "max_steps": 4,
+        },
+    )
+    prompt = "Read README and answer with the project fact."
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-real-provider",
+            "task": str(task_spec),
+            "candidates": [
+                {
+                    "id": "candidate-openai",
+                    "prompt": prompt,
+                    "prompt_sha256": _sha256(prompt),
+                    "provider_id": "openai",
+                    "model_id": "gpt-live-acceptance",
+                }
+            ],
+        },
+    )
+
+    def client_factory(spec):
+        assert spec.provider_id == "openai"
+        assert spec.model_id == "gpt-live-acceptance"
+        return FakeModelClient(
+            [
+                '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":1}}</tool>',
+                "<final>The project fact is live-alpha.</final>",
+            ],
+            metadata=[
+                {
+                    "input_tokens": 11,
+                    "output_tokens": 7,
+                    "total_tokens": 18,
+                    "cached_tokens": 3,
+                    "cache_hit": True,
+                    "estimated_cost_usd": 0.002,
+                },
+                {
+                    "input_tokens": 13,
+                    "output_tokens": 5,
+                    "total_tokens": 18,
+                    "cached_tokens": 0,
+                    "cache_hit": False,
+                    "estimated_cost_usd": 0.003,
+                },
+            ],
+        )
+
+    spec = load_headless_experiment_spec(experiment_spec)
+    result = HeadlessExperimentRunner(
+        tmp_path / "experiments",
+        model_client_factory=client_factory,
+    ).run(spec)
+
+    assert result.exit_code == 0
+    task = result.export["task_run"]
+    assert task["identity"]["provider_id"] == "openai"
+    assert task["identity"]["model_id"] == "gpt-live-acceptance"
+    assert task["status"] == "pass"
+    assert task["runtime"]["usage"] == {
+        "cache_hits": 1,
+        "cache_misses": 1,
+        "cached_tokens": 3,
+        "input_tokens": 24,
+        "output_tokens": 12,
+        "total_tokens": 36,
+    }
+    assert task["runtime"]["cost"] == {"estimated_cost_usd": 0.005}
+    experiment_dir = tmp_path / "experiments" / result.export["experiment_run_id"]
+    task_export_path = experiment_dir / task["artifacts"]["task_run_export_relpath"]
+    task_export = json.loads(task_export_path.read_text(encoding="utf-8"))
+    assert task_export["policy"]["model_provider"] == "openai"
+    assert task_export["policy"]["model_id"] == "gpt-live-acceptance"
+    assert task_export["runtime"]["provider_calls"][0]["metadata"]["estimated_cost_usd"] == 0.002
+    assert task_export["runtime"]["provider_calls"][1]["metadata"]["estimated_cost_usd"] == 0.003
 
 
 def test_headless_experiment_rejects_mismatched_candidate_prompt_hash_before_running(tmp_path, capsys):

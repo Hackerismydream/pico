@@ -291,10 +291,11 @@ experiment controller 是单任务 runner 上方的控制平面 tracer bullet：
 }
 ```
 
-`provider_id` is intentionally restricted to `fake` until live-provider experiment
-acceptance is wired. Candidate `model_id` values must use the `fake:*`
-namespace, so experiment reports cannot look like live-provider evidence while
-the task runner still executes through the deterministic fake provider.
+`provider_id` defaults to `fake`, and fake candidates still require `model_id`
+values in the `fake:*` namespace for deterministic regression runs. Experiment
+candidates may also select `openai`, `anthropic`, `deepseek`, or `ollama` with
+an explicit `model_id`; missing live credentials are reported as skipped
+infrastructure outcomes, not benchmark failures or passes.
 
 运行：
 
@@ -373,6 +374,19 @@ uv run python3 scripts/run_kernel_acceptance.py --provider deepseek --scenario a
 - `artifacts.runtime_events`、`artifacts.trace`、`artifacts.report`、`artifacts.manifest` 指向的文件存在。
 - `runtime_events.jsonl` 包含 `invocation_start`、`user_input`、`model_output`、`final_answer`、`terminal_status`。
 - read-only-tool scenario 还必须包含 `tool_call_requested`、`tool_permission_decision`、`tool_result`，并在 manifest export / report 里看到 read-only `read_file` 的 allow + ok 证据。
+
+Headless experiment live-provider gate uses the experiment controller instead of
+the lower-level kernel acceptance harness:
+
+```bash
+uv run python3 scripts/run_headless_experiment_acceptance.py --provider deepseek --runs-root .pico/headless/live-provider-acceptance
+```
+
+It writes `.pico/headless/live-provider-acceptance/headless_experiment_acceptance.json`
+plus experiment/task-run artifacts for one no-tool task and one read-only-tool
+task. Exit code `2` means credentials were missing and the run was skipped;
+exit code `1` means infrastructure failed; exit code `0` means both verifier
+checks passed.
 
 ## Kernel default gate
 
