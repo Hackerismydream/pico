@@ -145,6 +145,18 @@ def _aggregate(results):
     return summary
 
 
+def _exit_code_for_summary(summary):
+    if int(summary.get("skipped", 0) or 0):
+        return 2
+    if int(summary.get("infrastructure_failed", 0) or 0):
+        return 1
+    total_runs = int(summary.get("total_runs", 0) or 0)
+    passed = int(summary.get("passed", 0) or 0)
+    if total_runs <= 0 or int(summary.get("benchmark_failed", 0) or 0) or passed != total_runs:
+        return 3
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -202,11 +214,7 @@ def main(argv=None):
     report["report_path"] = str(report_path)
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2, sort_keys=True))
-    if report["summary"]["skipped"]:
-        return 2
-    if report["summary"]["infrastructure_failed"]:
-        return 1
-    return 0
+    return _exit_code_for_summary(report["summary"])
 
 
 if __name__ == "__main__":
