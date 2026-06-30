@@ -247,7 +247,7 @@ def test_headless_task_runtime_failure_exits_nonzero(tmp_path, capsys):
     payload = json.loads(captured.out)
     assert payload["status"] == "infra_fail"
     assert payload["failure_kind"] == "infrastructure"
-    assert payload["failure_category"] == "runtime_failed"
+    assert payload["failure_category"] == "provider_failed"
     assert payload["runtime"]["status"] == "failed"
     assert payload["verifier"]["exit_code"] is None
     assert "provider_error" in captured.err

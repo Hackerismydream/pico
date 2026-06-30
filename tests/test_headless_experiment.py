@@ -3,6 +3,7 @@ import hashlib
 import shlex
 import sys
 
+import pico.headless as headless
 from pico.cli import main
 from pico.headless_experiment import HeadlessExperimentRunner, load_headless_experiment_spec
 
@@ -71,7 +72,12 @@ def test_headless_experiment_wraps_one_task_with_wal_and_artifact_refs(tmp_path,
         "passed": 1,
         "benchmark_failed": 0,
         "infrastructure_failed": 0,
+        "skipped": 0,
+        "reused": 0,
+        "scored_runs": 1,
+        "benchmark_pass_rate": 1.0,
         "status_counts": {"pass": 1},
+        "failure_kind_counts": {},
         "failure_category_counts": {},
     }
     assert payload["runtime_event_schema_version"] == 2
@@ -89,6 +95,7 @@ def test_headless_experiment_wraps_one_task_with_wal_and_artifact_refs(tmp_path,
     assert task["identity"]["model_id"] == "fake:default"
     assert task["runtime"]["status"] == "completed"
     assert task["runtime"]["runtime_event_schema_version"] == 2
+    assert task["boundaries"]["verifier_visible_to_runtime"] is False
     assert task["artifacts"]["task_run_export_relpath"].endswith("task_run_export.json")
     assert task["artifacts"]["runtime_manifest_relpath"].endswith("runtime_manifest.json")
     assert (experiment_dir / task["artifacts"]["task_run_export_relpath"]).exists()
@@ -202,6 +209,299 @@ def test_headless_experiment_records_candidate_runtime_and_verifier_identity(tmp
     assert "candidate-a" in report
     assert "fake:identity-model" in report
     assert "readme-verifier-v1" in report
+
+
+def test_headless_experiment_counts_only_verifier_failure_as_benchmark_failure(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "verifier_fail",
+            "workspace": str(fixture),
+            "prompt": "Answer with PASS.",
+            "fake_model_outputs": ["<final>PASS according to the agent.</final>"],
+            "verifier": _python_check("False"),
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-verifier-fail",
+            "task": str(task_spec),
+        },
+    )
+
+    status = main(
+        [
+            "headless",
+            "experiment",
+            "run",
+            str(experiment_spec),
+            "--runs-root",
+            str(tmp_path / "experiments"),
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert status == 0
+    assert payload["summary"]["passed"] == 0
+    assert payload["summary"]["benchmark_failed"] == 1
+    assert payload["summary"]["infrastructure_failed"] == 0
+    assert payload["summary"]["scored_runs"] == 1
+    assert payload["summary"]["benchmark_pass_rate"] == 0.0
+    task = payload["task_run"]
+    assert task["status"] == "fail"
+    assert task["failure_kind"] == "benchmark"
+    assert task["failure_category"] == "verifier_failed"
+    assert task["runtime"]["status"] == "completed"
+    assert task["verifier"]["status"] == "fail"
+    assert task["boundaries"]["verifier_visible_to_runtime"] is False
+
+
+def test_headless_experiment_classifies_provider_failure_as_infrastructure(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "provider_fail",
+            "workspace": str(fixture),
+            "prompt": "Answer directly.",
+            "fake_model_outputs": [],
+            "verifier": _python_check("True"),
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-provider-fail",
+            "task": str(task_spec),
+        },
+    )
+
+    status = main(
+        [
+            "headless",
+            "experiment",
+            "run",
+            str(experiment_spec),
+            "--runs-root",
+            str(tmp_path / "experiments"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert status == 1
+    assert payload["summary"]["benchmark_failed"] == 0
+    assert payload["summary"]["infrastructure_failed"] == 1
+    assert payload["summary"]["scored_runs"] == 0
+    assert payload["summary"]["benchmark_pass_rate"] is None
+    task = payload["task_run"]
+    assert task["status"] == "infra_fail"
+    assert task["failure_kind"] == "infrastructure"
+    assert task["failure_category"] == "provider_failed"
+    assert task["runtime"]["status"] == "failed"
+    assert task["runtime"]["terminal_error"]
+    assert task["verifier"]["status"] == "skipped"
+    assert "provider_error" in captured.err
+
+
+def test_headless_experiment_classifies_runtime_execution_failure_separately(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "runtime_fail",
+            "workspace": str(fixture),
+            "prompt": "Try an invalid tool payload.",
+            "fake_model_outputs": ["<tool>not json</tool>"],
+            "verifier": _python_check("True"),
+            "max_steps": 1,
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-runtime-fail",
+            "task": str(task_spec),
+        },
+    )
+
+    status = main(
+        [
+            "headless",
+            "experiment",
+            "run",
+            str(experiment_spec),
+            "--runs-root",
+            str(tmp_path / "experiments"),
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert status == 1
+    task = payload["task_run"]
+    assert task["status"] == "infra_fail"
+    assert task["failure_kind"] == "infrastructure"
+    assert task["failure_category"] == "runtime_failed"
+    assert task["runtime"]["status"] == "failed"
+    assert task["runtime"]["terminal_error"]
+    assert task["verifier"]["status"] == "skipped"
+
+
+def test_headless_experiment_classifies_workspace_setup_failure(tmp_path, capsys, monkeypatch):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "setup_fail",
+            "workspace": str(fixture),
+            "prompt": "Answer directly.",
+            "fake_model_outputs": ["<final>ok</final>"],
+            "verifier": _python_check("True"),
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-setup-fail",
+            "task": str(task_spec),
+        },
+    )
+
+    def fail_prepare(self, source_workspace, isolated_workspace):
+        raise OSError("workspace copy failed")
+
+    monkeypatch.setattr(headless.HeadlessTaskRunner, "_prepare_workspace", fail_prepare)
+
+    status = main(
+        [
+            "headless",
+            "experiment",
+            "run",
+            str(experiment_spec),
+            "--runs-root",
+            str(tmp_path / "experiments"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert status == 1
+    task = payload["task_run"]
+    assert task["status"] == "infra_fail"
+    assert task["failure_kind"] == "infrastructure"
+    assert task["failure_category"] == "setup_failed"
+    assert task["infrastructure_error"] == "workspace copy failed"
+    assert task["verifier"]["status"] == "skipped"
+    assert "workspace copy failed" in captured.err
+
+
+def test_headless_experiment_classifies_verifier_timeout_as_infrastructure(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    verifier_code = "import time; time.sleep(2)"
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "verifier_timeout",
+            "workspace": str(fixture),
+            "prompt": "Answer directly.",
+            "fake_model_outputs": ["<final>ok</final>"],
+            "verifier": {
+                "command": f"{shlex.quote(sys.executable)} -c {shlex.quote(verifier_code)}",
+                "timeout_seconds": 1,
+            },
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-verifier-timeout",
+            "task": str(task_spec),
+        },
+    )
+
+    status = main(
+        [
+            "headless",
+            "experiment",
+            "run",
+            str(experiment_spec),
+            "--runs-root",
+            str(tmp_path / "experiments"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert status == 1
+    assert payload["summary"]["benchmark_failed"] == 0
+    assert payload["summary"]["infrastructure_failed"] == 1
+    task = payload["task_run"]
+    assert task["status"] == "infra_fail"
+    assert task["failure_kind"] == "infrastructure"
+    assert task["failure_category"] == "verifier_timeout"
+    assert task["runtime"]["status"] == "completed"
+    assert task["verifier"]["status"] == "skipped"
+    assert task["verifier"]["timed_out"] is True
+    assert "verifier timed out" in captured.err
+
+
+def test_headless_experiment_classifies_artifact_capture_failure_as_infrastructure(
+    tmp_path, capsys, monkeypatch
+):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "artifact_fail",
+            "workspace": str(fixture),
+            "prompt": "Answer directly.",
+            "fake_model_outputs": ["<final>ok</final>"],
+            "verifier": _python_check("False"),
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-artifact-fail",
+            "task": str(task_spec),
+        },
+    )
+
+    def fail_capture(self, events, *, run_id=None):
+        raise headless.ProjectionCaptureError("manifest write failed")
+
+    monkeypatch.setattr(headless.ProjectionManager, "capture", fail_capture)
+
+    status = main(
+        [
+            "headless",
+            "experiment",
+            "run",
+            str(experiment_spec),
+            "--runs-root",
+            str(tmp_path / "experiments"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert status == 1
+    task = payload["task_run"]
+    assert task["status"] == "infra_fail"
+    assert task["failure_kind"] == "infrastructure"
+    assert task["failure_category"] == "runtime_artifact_capture_failed"
+    assert task["infrastructure_error"] == "manifest write failed"
+    assert task["runtime"]["status"] == "completed"
+    assert task["verifier"]["status"] == "skipped"
+    assert "manifest write failed" in captured.err
 
 
 def test_headless_experiment_rejects_non_fake_candidate_provider_before_running(tmp_path, capsys):
