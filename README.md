@@ -271,13 +271,38 @@ experiment controller 是单任务 runner 上方的控制平面 tracer bullet：
 }
 ```
 
+显式 candidate spec：
+
+```json
+{
+  "id": "runtime-lab-smoke",
+  "task": "./task.json",
+  "candidates": [
+    {
+      "id": "candidate-a",
+      "prompt": "Read README and answer with the project fact.",
+      "prompt_sha256": "sha256:<hash-of-prompt>",
+      "runtime_policy_id": "kernel-readonly-v1",
+      "provider_id": "fake",
+      "model_id": "fake:default",
+      "verifier_id": "readme-verifier-v1"
+    }
+  ]
+}
+```
+
+`provider_id` is intentionally restricted to `fake` until live-provider experiment
+acceptance is wired. Candidate `model_id` values must use the `fake:*`
+namespace, so experiment reports cannot look like live-provider evidence while
+the task runner still executes through the deterministic fake provider.
+
 运行：
 
 ```bash
 uv run pico headless experiment run experiment.json --runs-root .pico/headless/experiments
 ```
 
-输出和 `.pico/headless/experiments/<experiment_run_id>/experiment_export.json` 会包含 pass、benchmark failure、infrastructure failure、total run count、`task_run_export.json`、`runtime_manifest.json` 和 human-readable report 路径。benchmark failure 仍返回 0；infrastructure failure 返回非 0。
+输出和 `.pico/headless/experiments/<experiment_run_id>/experiment_export.json` 会包含 pass、benchmark failure、infrastructure failure、total run count、candidate/prompt/runtime/provider/model/task/verifier identity、`task_run_export.json`、`runtime_manifest.json` 和 human-readable report 路径。benchmark failure 仍返回 0；infrastructure failure 返回非 0。
 
 ## Headless eval grid
 
