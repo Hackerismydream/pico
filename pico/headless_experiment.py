@@ -13,6 +13,7 @@ import uuid
 
 from .headless import HEADLESS_TASK_SCHEMA_VERSION, HeadlessTaskRunner, HeadlessTaskSpec, load_headless_task_spec
 from .run_store import RunStore
+from .runtime_events import RUNTIME_EVENT_SCHEMA_VERSION
 
 HEADLESS_EXPERIMENT_SCHEMA_VERSION = 1
 
@@ -371,6 +372,11 @@ class HeadlessExperimentRunner:
             )
         if task_schema_version != event.get("runtime_event_schema_version"):
             raise ValueError("artifact_captured runtime schema version disagrees with task-run export")
+        if task_schema_version != RUNTIME_EVENT_SCHEMA_VERSION:
+            raise ValueError(
+                "reconciled task-run runtime schema version is incompatible with current runtime: "
+                f"{task_schema_version} != {RUNTIME_EVENT_SCHEMA_VERSION}"
+            )
 
         task_identity = {
             "provider_id": str(task_export.get("policy", {}).get("model_provider", "")),

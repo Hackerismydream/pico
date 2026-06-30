@@ -1035,3 +1035,69 @@ def test_headless_experiment_resume_rejects_wal_artifact_summary_disagreement(
     assert payload["summary"]["infrastructure_failed"] == 1
     assert payload["task_run"]["failure_category"] == "reconcile_failed"
     assert "summary disagrees" in payload["task_run"]["infrastructure_error"]
+
+
+def test_headless_experiment_resume_rejects_obsolete_runtime_event_schema(
+    tmp_path, capsys
+):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "answer_fact",
+            "workspace": str(fixture),
+            "prompt": "Answer directly.",
+            "fake_model_outputs": ["<final>ok</final>"],
+            "verifier": _python_check("True"),
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-obsolete-schema",
+            "task": str(task_spec),
+        },
+    )
+
+    runs_root = tmp_path / "experiments"
+    assert main(["headless", "experiment", "run", str(experiment_spec), "--runs-root", str(runs_root)]) == 0
+    first_payload = json.loads(capsys.readouterr().out)
+    experiment_dir = runs_root / first_payload["experiment_run_id"]
+    task_run = first_payload["task_run"]
+
+    manifest_path = experiment_dir / task_run["artifacts"]["runtime_manifest_relpath"]
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["runtime_event_schema_version"] = 1
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    task_export_path = experiment_dir / task_run["artifacts"]["task_run_export_relpath"]
+    task_export = json.loads(task_export_path.read_text(encoding="utf-8"))
+    task_export["runtime"]["runtime_event_schema_version"] = 1
+    task_export_path.write_text(json.dumps(task_export), encoding="utf-8")
+
+    wal_path = experiment_dir / "experiment_wal.jsonl"
+    wal_events = _read_experiment_wal(experiment_dir)
+    for event in wal_events:
+        if event["event"] == "artifact_captured":
+            event["runtime_event_schema_version"] = 1
+    wal_path.write_text("\n".join(json.dumps(event) for event in wal_events) + "\n", encoding="utf-8")
+
+    assert main(
+        [
+            "headless",
+            "experiment",
+            "run",
+            str(experiment_spec),
+            "--runs-root",
+            str(runs_root),
+            "--resume",
+            first_payload["experiment_run_id"],
+        ]
+    ) == 1
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["summary"]["benchmark_failed"] == 0
+    assert payload["summary"]["infrastructure_failed"] == 1
+    assert payload["task_run"]["failure_category"] == "reconcile_failed"
+    assert "runtime schema version is incompatible" in payload["task_run"]["infrastructure_error"]
