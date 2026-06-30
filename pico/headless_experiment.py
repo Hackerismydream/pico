@@ -13,6 +13,7 @@ import uuid
 
 from .headless import HEADLESS_TASK_SCHEMA_VERSION, HeadlessTaskRunner, HeadlessTaskSpec, load_headless_task_spec
 from .run_store import RunStore
+from .runtime_events import RUNTIME_EVENT_SCHEMA_VERSION
 
 HEADLESS_EXPERIMENT_SCHEMA_VERSION = 1
 
@@ -178,22 +179,68 @@ class HeadlessExperimentRunner:
         self.runs_root = Path(runs_root).resolve()
         self.store = RunStore(self.runs_root)
 
-    def run(self, spec, report_path=None):
-        experiment_run_id = _new_experiment_run_id(spec.id)
-        experiment_dir = self.store.run_dir(experiment_run_id)
+    def run(self, spec, report_path=None, resume=None):
+        experiment_run_id, experiment_dir, resumed = self._resolve_experiment_run(spec, resume)
         experiment_dir.mkdir(parents=True, exist_ok=True)
 
-        self._wal(
-            experiment_run_id,
-            "experiment_started",
-            experiment_id=spec.id,
-            spec_path=str(spec.spec_path),
-        )
+        if resumed:
+            self._wal(
+                experiment_run_id,
+                "resume_started",
+                experiment_id=spec.id,
+                spec_path=str(spec.spec_path),
+                resume_source=str(resume),
+            )
+        else:
+            self._wal(
+                experiment_run_id,
+                "experiment_started",
+                experiment_id=spec.id,
+                spec_path=str(spec.spec_path),
+            )
         task_runner = HeadlessTaskRunner(experiment_dir / "task-runs")
         task_refs = []
+        reconcile_failure = None
+        reusable_refs = {}
+        if resumed:
+            try:
+                reusable_refs = self._reconcile_existing_task_runs(spec, experiment_run_id, experiment_dir)
+            except ValueError as exc:
+                reconcile_failure = str(exc)
+                self._wal(
+                    experiment_run_id,
+                    "resume_rejected",
+                    failure_kind="infrastructure",
+                    failure_category="reconcile_failed",
+                    reason=reconcile_failure,
+                )
+
         for candidate in spec.candidates:
             candidate_task = replace(spec.task, prompt=candidate.prompt)
             identity = _build_identity(candidate, spec.task)
+            identity_key = _identity_key(identity)
+            if reconcile_failure is not None:
+                continue
+            if identity_key in reusable_refs:
+                task_ref = reusable_refs[identity_key]
+                task_refs.append(task_ref)
+                self._wal(
+                    experiment_run_id,
+                    "resume_reused_task_run",
+                    task_run_id=task_ref["task_run_id"],
+                    status=task_ref["status"],
+                    failure_kind=task_ref["failure_kind"],
+                    failure_category=task_ref["failure_category"],
+                    **identity,
+                )
+                continue
+            if resumed:
+                self._wal(
+                    experiment_run_id,
+                    "resume_rerun_required",
+                    reason="no compatible completed task artifact found for identity",
+                    **identity,
+                )
             self._wal(
                 experiment_run_id,
                 "task_scheduled",
@@ -226,6 +273,8 @@ class HeadlessExperimentRunner:
                 **identity,
             )
 
+        if reconcile_failure is not None:
+            task_refs.append(_build_reconcile_failure_ref(spec, reconcile_failure))
         summary = summarize_experiment_task_runs(task_refs)
         report_path = Path(report_path).resolve() if report_path else self.store.experiment_report_path(experiment_run_id)
         export = _build_export(spec, experiment_run_id, experiment_dir, report_path, task_refs, summary)
@@ -240,6 +289,114 @@ class HeadlessExperimentRunner:
 
         exit_code = 1 if summary["infrastructure_failed"] else 0
         return HeadlessExperimentResult(exit_code=exit_code, export=export, report=report)
+
+    def _resolve_experiment_run(self, spec, resume):
+        if not resume:
+            experiment_run_id = _new_experiment_run_id(spec.id)
+            return experiment_run_id, self.store.run_dir(experiment_run_id), False
+
+        resume_value = Path(str(resume)).expanduser()
+        if resume_value.exists() or resume_value.is_absolute() or len(resume_value.parts) > 1:
+            experiment_dir = resume_value.resolve()
+            if not experiment_dir.is_dir():
+                raise ValueError(f"headless experiment resume directory does not exist: {experiment_dir}")
+            self.runs_root = experiment_dir.parent
+            self.store = RunStore(self.runs_root)
+            return experiment_dir.name, experiment_dir, True
+
+        experiment_run_id = str(resume).strip()
+        if not experiment_run_id:
+            raise ValueError("headless experiment resume id is empty")
+        experiment_dir = self.store.run_dir(experiment_run_id)
+        if not experiment_dir.is_dir():
+            raise ValueError(f"headless experiment resume id does not exist: {experiment_run_id}")
+        return experiment_run_id, experiment_dir, True
+
+    def _reconcile_existing_task_runs(self, spec, experiment_run_id, experiment_dir):
+        wal_events = _read_jsonl(self.store.experiment_wal_path(experiment_run_id))
+        artifact_events = [event for event in wal_events if event.get("event") == "artifact_captured"]
+        if not artifact_events:
+            return {}
+
+        expected_keys = {_identity_key(_build_identity(candidate, spec.task)) for candidate in spec.candidates}
+        reusable_refs = {}
+        for event in artifact_events:
+            identity = _event_identity(event)
+            identity_key = _identity_key(identity)
+            if identity_key not in expected_keys:
+                continue
+            if identity_key in reusable_refs:
+                raise ValueError(f"duplicate reusable task artifact for identity {identity_key}")
+            task_ref = self._reconcile_task_artifact(experiment_dir, event, identity)
+            reusable_refs[identity_key] = task_ref
+
+        export_path = self.store.experiment_export_path(experiment_run_id)
+        if reusable_refs and export_path.exists():
+            export = json.loads(export_path.read_text(encoding="utf-8"))
+            prior_refs = [
+                row for row in export.get("task_runs", []) or []
+                if _identity_key(row.get("identity", {})) in reusable_refs
+            ]
+            prior_summary = summarize_experiment_task_runs(prior_refs)
+            if prior_summary != export.get("summary", {}):
+                raise ValueError("experiment export summary disagrees with reconciled task artifacts")
+
+        return reusable_refs
+
+    def _reconcile_task_artifact(self, experiment_dir, event, identity):
+        task_export_relpath = str(event.get("task_run_export_relpath", ""))
+        if not task_export_relpath:
+            raise ValueError("artifact_captured event is missing task_run_export_relpath")
+        task_export_path = experiment_dir / task_export_relpath
+        if not task_export_path.is_file():
+            raise ValueError(f"referenced task-run export is missing: {task_export_relpath}")
+        task_export = json.loads(task_export_path.read_text(encoding="utf-8"))
+        task_ref = _build_task_run_ref(task_export, identity)
+
+        artifact_paths = {
+            "task_run_export_relpath": task_ref["artifacts"].get("task_run_export_relpath", ""),
+            "task_run_wal_relpath": task_ref["artifacts"].get("task_run_wal_relpath", ""),
+            "runtime_manifest_relpath": task_ref["artifacts"].get("runtime_manifest_relpath", ""),
+        }
+        for label, relpath in artifact_paths.items():
+            if not relpath or not (experiment_dir / relpath).is_file():
+                raise ValueError(f"referenced {label} is missing: {relpath}")
+
+        manifest = json.loads((experiment_dir / artifact_paths["runtime_manifest_relpath"]).read_text(encoding="utf-8"))
+        manifest_schema_version = manifest.get("runtime_event_schema_version")
+        task_schema_version = task_ref["runtime"].get("runtime_event_schema_version", "")
+        if manifest_schema_version != task_schema_version:
+            raise ValueError(
+                "runtime manifest schema version disagrees with task-run export: "
+                f"{manifest_schema_version} != {task_schema_version}"
+            )
+        if task_schema_version != event.get("runtime_event_schema_version"):
+            raise ValueError("artifact_captured runtime schema version disagrees with task-run export")
+        if task_schema_version != RUNTIME_EVENT_SCHEMA_VERSION:
+            raise ValueError(
+                "reconciled task-run runtime schema version is incompatible with current runtime: "
+                f"{task_schema_version} != {RUNTIME_EVENT_SCHEMA_VERSION}"
+            )
+
+        task_identity = {
+            "provider_id": str(task_export.get("policy", {}).get("model_provider", "")),
+            "task_id": str(task_export.get("task", {}).get("id", "")),
+            "prompt_sha256": str(task_export.get("task", {}).get("prompt_sha256", "")),
+        }
+        for field, actual in task_identity.items():
+            if identity.get(field) != actual:
+                raise ValueError(f"reconciled task-run {field} mismatch: {identity.get(field)} != {actual}")
+        verifier = dict(task_export.get("verifier", {}) or {})
+        if verifier.get("exit_code") is None and task_ref["failure_category"] not in {
+            "provider_failed",
+            "runtime_failed",
+            "setup_failed",
+            "runtime_artifact_capture_failed",
+        }:
+            raise ValueError("reconciled task-run is missing verifier result")
+
+        task_ref["reused"] = True
+        return task_ref
 
     def _wal(self, experiment_run_id, event, **payload):
         self.store.append_experiment_wal(
@@ -262,6 +419,33 @@ def _build_identity(candidate, task):
         "model_id": candidate.model_id,
         "task_id": task.id,
         "verifier_id": candidate.verifier_id,
+    }
+
+
+def _identity_key(identity):
+    return tuple(
+        str((identity or {}).get(field, ""))
+        for field in (
+            "candidate_id",
+            "prompt_sha256",
+            "runtime_policy_id",
+            "provider_id",
+            "model_id",
+            "task_id",
+            "verifier_id",
+        )
+    )
+
+
+def _event_identity(event):
+    return {
+        "candidate_id": str(event.get("candidate_id", "")),
+        "prompt_sha256": str(event.get("prompt_sha256", "")),
+        "runtime_policy_id": str(event.get("runtime_policy_id", "")),
+        "provider_id": str(event.get("provider_id", "")),
+        "model_id": str(event.get("model_id", "")),
+        "task_id": str(event.get("task_id", "")),
+        "verifier_id": str(event.get("verifier_id", "")),
     }
 
 
@@ -372,6 +556,52 @@ def _classify_task_export(task_export, runtime, verifier):
     return {"status": status, "failure_kind": failure_kind, "failure_category": failure_category}
 
 
+def _build_reconcile_failure_ref(spec, message):
+    return {
+        "task_run_id": "",
+        "status": "infra_fail",
+        "failure_kind": "infrastructure",
+        "failure_category": "reconcile_failed",
+        "infrastructure_error": message,
+        "identity": {
+            "task_id": spec.task.id,
+        },
+        "task": {
+            "id": spec.task.id,
+            "spec_path": str(spec.task.spec_path),
+        },
+        "runtime": {
+            "status": "",
+            "run_id": "",
+            "runtime_event_schema_version": "",
+            "event_count": 0,
+            "event_type_counts": {},
+            "usage": {},
+            "cost": {},
+            "terminal_error": "",
+        },
+        "verifier": {
+            "status": "skipped",
+            "exit_code": None,
+            "timed_out": False,
+            "protected_boundary": True,
+        },
+        "boundaries": {
+            "verifier_visible_to_runtime": False,
+        },
+        "artifacts": {
+            "task_run_dir_relpath": "",
+            "task_run_export_relpath": "",
+            "task_run_facts_relpath": "",
+            "task_run_wal_relpath": "",
+            "runtime_events_relpath": "",
+            "trace_relpath": "",
+            "runtime_report_relpath": "",
+            "runtime_manifest_relpath": "",
+        },
+    }
+
+
 def _normalize_infrastructure_failure_category(failure_category, runtime, verifier):
     if bool(verifier.get("timed_out", False)):
         return "verifier_timeout"
@@ -416,7 +646,7 @@ def summarize_experiment_task_runs(task_runs):
         "benchmark_failed": benchmark_failed,
         "infrastructure_failed": sum(1 for row in task_runs if row.get("failure_kind") == "infrastructure"),
         "skipped": sum(1 for row in task_runs if row.get("status") == "skipped"),
-        "reused": sum(1 for row in task_runs if row.get("status") == "reused"),
+        "reused": sum(1 for row in task_runs if row.get("status") == "reused" or row.get("reused") is True),
         "scored_runs": scored_runs,
         "benchmark_pass_rate": (passed / scored_runs) if scored_runs else None,
         "status_counts": dict(sorted(status_counts.items())),
@@ -496,6 +726,13 @@ def render_headless_experiment_report(export):
     return "\n".join(lines) + "\n"
 
 
+def _read_jsonl(path):
+    path = Path(path)
+    if not path.is_file():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
 def build_headless_experiment_run_parser():
     parser = argparse.ArgumentParser(
         prog="pico headless experiment run",
@@ -518,6 +755,11 @@ def build_headless_experiment_run_parser():
     )
     parser.add_argument("--max-steps", type=int, default=None, help="Override the task runtime step budget.")
     parser.add_argument("--max-new-tokens", type=int, default=None, help="Override the task model output token budget.")
+    parser.add_argument(
+        "--resume",
+        default=None,
+        help="Resume an existing experiment by run id or experiment artifact directory.",
+    )
     return parser
 
 
@@ -534,7 +776,11 @@ def run_headless_experiment_cli(argv):
             task = replace(task, max_new_tokens=int(args.max_new_tokens))
         if task is not spec.task:
             spec = replace(spec, task=task)
-        result = HeadlessExperimentRunner(args.runs_root).run(spec, report_path=args.report_path)
+        result = HeadlessExperimentRunner(args.runs_root).run(
+            spec,
+            report_path=args.report_path,
+            resume=args.resume,
+        )
     except Exception as exc:
         print(f"headless_experiment_error: {exc}", file=sys.stderr)
         return 1
