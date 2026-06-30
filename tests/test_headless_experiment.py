@@ -3,6 +3,7 @@ import shlex
 import sys
 
 from pico.cli import main
+from pico.headless_experiment import HeadlessExperimentRunner, load_headless_experiment_spec
 
 
 def _write_json(path, payload):
@@ -111,3 +112,60 @@ def test_headless_experiment_wraps_one_task_with_wal_and_artifact_refs(tmp_path,
     assert "# Headless experiment: runtime-lab-smoke" in report
     assert "passed: 1" in report
     assert task["artifacts"]["task_run_export_relpath"] in report
+
+
+def test_headless_experiment_does_not_mark_finished_before_artifacts_are_written(
+    tmp_path, monkeypatch
+):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    (fixture / "README.md").write_text("project fact: experiment-alpha\n", encoding="utf-8")
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "read_fact",
+            "workspace": str(fixture),
+            "prompt": "Read README and answer with the project fact.",
+            "fake_model_outputs": [
+                '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":1}}</tool>',
+                "<final>The project fact is experiment-alpha.</final>",
+            ],
+            "verifier": _python_check(
+                "os.environ.get('PICO_FINAL_ANSWER') == 'The project fact is experiment-alpha.'"
+            ),
+            "allowed_tools": ["read_file"],
+            "max_steps": 4,
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-smoke",
+            "task": str(task_spec),
+        },
+    )
+    spec = load_headless_experiment_spec(experiment_spec)
+    runner = HeadlessExperimentRunner(tmp_path / "experiments")
+
+    def fail_export(*args, **kwargs):
+        raise OSError("simulated export write failure")
+
+    monkeypatch.setattr(runner.store, "write_experiment_export", fail_export)
+
+    try:
+        runner.run(spec)
+    except OSError as exc:
+        assert "simulated export write failure" in str(exc)
+    else:
+        raise AssertionError("expected export write failure")
+
+    experiment_dirs = list((tmp_path / "experiments").glob("experiment_runtime-lab-smoke_*"))
+    assert len(experiment_dirs) == 1
+    wal_events = [
+        json.loads(line)["event"]
+        for line in (experiment_dirs[0] / "experiment_wal.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert "artifact_captured" in wal_events
+    assert "experiment_finished" not in wal_events

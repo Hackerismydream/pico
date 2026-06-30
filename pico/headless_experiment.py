@@ -130,8 +130,6 @@ class HeadlessExperimentRunner:
         )
 
         summary = summarize_experiment_task_runs([task_ref])
-        self._wal(experiment_run_id, "experiment_finished", summary=summary)
-
         report_path = Path(report_path).resolve() if report_path else self.store.experiment_report_path(experiment_run_id)
         export = _build_export(spec, experiment_run_id, experiment_dir, report_path, task_ref, summary)
         report = render_headless_experiment_report(export)
@@ -141,6 +139,7 @@ class HeadlessExperimentRunner:
         else:
             report_path.parent.mkdir(parents=True, exist_ok=True)
             report_path.write_text(report, encoding="utf-8")
+        self._wal(experiment_run_id, "experiment_finished", summary=summary)
 
         exit_code = 1 if summary["infrastructure_failed"] else 0
         return HeadlessExperimentResult(exit_code=exit_code, export=export, report=report)
