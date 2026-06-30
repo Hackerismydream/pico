@@ -22,6 +22,13 @@ def _sha256(value):
     return "sha256:" + hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _read_experiment_wal(experiment_dir):
+    return [
+        json.loads(line)
+        for line in (experiment_dir / "experiment_wal.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+
 def test_headless_experiment_wraps_one_task_with_wal_and_artifact_refs(tmp_path, capsys):
     fixture = tmp_path / "fixture"
     fixture.mkdir()
@@ -698,3 +705,333 @@ def test_headless_experiment_does_not_mark_finished_before_artifacts_are_written
     ]
     assert "artifact_captured" in wal_events
     assert "experiment_finished" not in wal_events
+
+
+def test_headless_experiment_resume_reuses_compatible_completed_task(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    (fixture / "README.md").write_text("project fact: resume-alpha\n", encoding="utf-8")
+    prompt = "Read README and answer with the project fact."
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "read_fact",
+            "workspace": str(fixture),
+            "prompt": "This task prompt should be replaced.",
+            "fake_model_outputs": [
+                '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":1}}</tool>',
+                "<final>The project fact is resume-alpha.</final>",
+            ],
+            "verifier": _python_check(
+                "os.environ.get('PICO_FINAL_ANSWER') == 'The project fact is resume-alpha.'"
+            ),
+            "allowed_tools": ["read_file"],
+            "max_steps": 4,
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-resume",
+            "task": str(task_spec),
+            "candidates": [
+                {
+                    "id": "candidate-a",
+                    "prompt": prompt,
+                    "prompt_sha256": _sha256(prompt),
+                    "model_id": "fake:resume-model",
+                }
+            ],
+        },
+    )
+
+    runs_root = tmp_path / "experiments"
+    assert main(["headless", "experiment", "run", str(experiment_spec), "--runs-root", str(runs_root)]) == 0
+    first_payload = json.loads(capsys.readouterr().out)
+    experiment_dir = runs_root / first_payload["experiment_run_id"]
+    first_task_run_id = first_payload["task_run"]["task_run_id"]
+
+    assert main(
+        [
+            "headless",
+            "experiment",
+            "run",
+            str(experiment_spec),
+            "--runs-root",
+            str(runs_root),
+            "--resume",
+            first_payload["experiment_run_id"],
+        ]
+    ) == 0
+    resumed_payload = json.loads(capsys.readouterr().out)
+
+    assert resumed_payload["experiment_run_id"] == first_payload["experiment_run_id"]
+    assert resumed_payload["task_run"]["task_run_id"] == first_task_run_id
+    assert resumed_payload["task_run"]["reused"] is True
+    assert resumed_payload["summary"]["passed"] == 1
+    assert resumed_payload["summary"]["benchmark_failed"] == 0
+    assert resumed_payload["summary"]["infrastructure_failed"] == 0
+    assert resumed_payload["summary"]["reused"] == 1
+
+    wal_events = _read_experiment_wal(experiment_dir)
+    assert [event["event"] for event in wal_events][-3:] == [
+        "resume_started",
+        "resume_reused_task_run",
+        "experiment_finished",
+    ]
+    assert wal_events[-2]["task_run_id"] == first_task_run_id
+
+
+def test_headless_experiment_resume_reuses_partial_and_runs_missing_candidate(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    prompt_a = "Answer with alpha."
+    prompt_b = "Answer with beta."
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "answer_fact",
+            "workspace": str(fixture),
+            "prompt": "This task prompt should be replaced.",
+            "fake_model_outputs": ["<final>ok</final>"],
+            "verifier": _python_check("os.environ.get('PICO_FINAL_ANSWER') == 'ok'"),
+        },
+    )
+    first_spec = _write_json(
+        tmp_path / "experiment-first.json",
+        {
+            "id": "runtime-lab-partial-resume",
+            "task": str(task_spec),
+            "candidates": [
+                {
+                    "id": "candidate-a",
+                    "prompt": prompt_a,
+                    "prompt_sha256": _sha256(prompt_a),
+                }
+            ],
+        },
+    )
+    second_spec = _write_json(
+        tmp_path / "experiment-second.json",
+        {
+            "id": "runtime-lab-partial-resume",
+            "task": str(task_spec),
+            "candidates": [
+                {
+                    "id": "candidate-a",
+                    "prompt": prompt_a,
+                    "prompt_sha256": _sha256(prompt_a),
+                },
+                {
+                    "id": "candidate-b",
+                    "prompt": prompt_b,
+                    "prompt_sha256": _sha256(prompt_b),
+                },
+            ],
+        },
+    )
+
+    runs_root = tmp_path / "experiments"
+    assert main(["headless", "experiment", "run", str(first_spec), "--runs-root", str(runs_root)]) == 0
+    first_payload = json.loads(capsys.readouterr().out)
+    experiment_dir = runs_root / first_payload["experiment_run_id"]
+
+    assert main(
+        [
+            "headless",
+            "experiment",
+            "run",
+            str(second_spec),
+            "--runs-root",
+            str(runs_root),
+            "--resume",
+            str(experiment_dir),
+        ]
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["summary"]["total_runs"] == 2
+    assert payload["summary"]["passed"] == 2
+    assert payload["summary"]["reused"] == 1
+    assert {row["identity"]["candidate_id"] for row in payload["task_runs"]} == {"candidate-a", "candidate-b"}
+    assert [row["reused"] for row in payload["task_runs"] if row["identity"]["candidate_id"] == "candidate-a"] == [True]
+
+    wal_events = _read_experiment_wal(experiment_dir)
+    assert any(event["event"] == "resume_reused_task_run" and event["candidate_id"] == "candidate-a" for event in wal_events)
+    assert any(event["event"] == "resume_rerun_required" and event["candidate_id"] == "candidate-b" for event in wal_events)
+
+
+def test_headless_experiment_resume_reruns_prompt_mismatch_with_wal_diagnostic(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    first_prompt = "Answer with alpha."
+    second_prompt = "Answer with beta."
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "answer_fact",
+            "workspace": str(fixture),
+            "prompt": "This task prompt should be replaced.",
+            "fake_model_outputs": ["<final>ok</final>"],
+            "verifier": _python_check("os.environ.get('PICO_FINAL_ANSWER') == 'ok'"),
+        },
+    )
+    first_spec = _write_json(
+        tmp_path / "experiment-first.json",
+        {
+            "id": "runtime-lab-rerun",
+            "task": str(task_spec),
+            "candidates": [
+                {
+                    "id": "candidate-a",
+                    "prompt": first_prompt,
+                    "prompt_sha256": _sha256(first_prompt),
+                }
+            ],
+        },
+    )
+    second_spec = _write_json(
+        tmp_path / "experiment-second.json",
+        {
+            "id": "runtime-lab-rerun",
+            "task": str(task_spec),
+            "candidates": [
+                {
+                    "id": "candidate-a",
+                    "prompt": second_prompt,
+                    "prompt_sha256": _sha256(second_prompt),
+                }
+            ],
+        },
+    )
+
+    runs_root = tmp_path / "experiments"
+    assert main(["headless", "experiment", "run", str(first_spec), "--runs-root", str(runs_root)]) == 0
+    first_payload = json.loads(capsys.readouterr().out)
+    experiment_dir = runs_root / first_payload["experiment_run_id"]
+
+    assert main(
+        [
+            "headless",
+            "experiment",
+            "run",
+            str(second_spec),
+            "--runs-root",
+            str(runs_root),
+            "--resume",
+            first_payload["experiment_run_id"],
+        ]
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["task_run"]["task_run_id"] != first_payload["task_run"]["task_run_id"]
+    assert payload["task_run"].get("reused") is not True
+    assert payload["summary"]["passed"] == 1
+    assert payload["summary"]["reused"] == 0
+    wal_events = _read_experiment_wal(experiment_dir)
+    rerun_event = [event for event in wal_events if event["event"] == "resume_rerun_required"][-1]
+    assert rerun_event["candidate_id"] == "candidate-a"
+    assert rerun_event["prompt_sha256"] == _sha256(second_prompt)
+
+
+def test_headless_experiment_resume_missing_referenced_artifact_is_reconcile_failure(
+    tmp_path, capsys
+):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "answer_fact",
+            "workspace": str(fixture),
+            "prompt": "Answer directly.",
+            "fake_model_outputs": ["<final>ok</final>"],
+            "verifier": _python_check("True"),
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-missing-artifact",
+            "task": str(task_spec),
+        },
+    )
+
+    runs_root = tmp_path / "experiments"
+    assert main(["headless", "experiment", "run", str(experiment_spec), "--runs-root", str(runs_root)]) == 0
+    first_payload = json.loads(capsys.readouterr().out)
+    experiment_dir = runs_root / first_payload["experiment_run_id"]
+    (experiment_dir / first_payload["task_run"]["artifacts"]["runtime_manifest_relpath"]).unlink()
+
+    assert main(
+        [
+            "headless",
+            "experiment",
+            "run",
+            str(experiment_spec),
+            "--runs-root",
+            str(runs_root),
+            "--resume",
+            str(experiment_dir),
+        ]
+    ) == 1
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["summary"]["benchmark_failed"] == 0
+    assert payload["summary"]["infrastructure_failed"] == 1
+    assert payload["task_run"]["failure_kind"] == "infrastructure"
+    assert payload["task_run"]["failure_category"] == "reconcile_failed"
+    assert "runtime_manifest_relpath is missing" in payload["task_run"]["infrastructure_error"]
+    assert any(event["event"] == "resume_rejected" for event in _read_experiment_wal(experiment_dir))
+
+
+def test_headless_experiment_resume_rejects_wal_artifact_summary_disagreement(
+    tmp_path, capsys
+):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "answer_fact",
+            "workspace": str(fixture),
+            "prompt": "Answer directly.",
+            "fake_model_outputs": ["<final>ok</final>"],
+            "verifier": _python_check("True"),
+        },
+    )
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-summary-drift",
+            "task": str(task_spec),
+        },
+    )
+
+    runs_root = tmp_path / "experiments"
+    assert main(["headless", "experiment", "run", str(experiment_spec), "--runs-root", str(runs_root)]) == 0
+    first_payload = json.loads(capsys.readouterr().out)
+    experiment_dir = runs_root / first_payload["experiment_run_id"]
+    export_path = experiment_dir / "experiment_export.json"
+    export = json.loads(export_path.read_text(encoding="utf-8"))
+    export["summary"]["passed"] = 0
+    export_path.write_text(json.dumps(export), encoding="utf-8")
+
+    assert main(
+        [
+            "headless",
+            "experiment",
+            "run",
+            str(experiment_spec),
+            "--runs-root",
+            str(runs_root),
+            "--resume",
+            first_payload["experiment_run_id"],
+        ]
+    ) == 1
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["summary"]["benchmark_failed"] == 0
+    assert payload["summary"]["infrastructure_failed"] == 1
+    assert payload["task_run"]["failure_category"] == "reconcile_failed"
+    assert "summary disagrees" in payload["task_run"]["infrastructure_error"]
