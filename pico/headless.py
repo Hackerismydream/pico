@@ -236,6 +236,7 @@ class HeadlessTaskRunner:
                 self._finish(task_run_id, export)
                 return HeadlessTaskRunResult(exit_code=1, export=export)
             if runtime_result.status != "completed":
+                failure_category = _runtime_failure_category(runtime_info)
                 export = self._build_export(
                     spec,
                     task_run_id,
@@ -243,7 +244,7 @@ class HeadlessTaskRunner:
                     isolated_workspace,
                     status="infra_fail",
                     failure_kind="infrastructure",
-                    failure_category="runtime_failed",
+                    failure_category=failure_category,
                     runtime_info=runtime_info,
                     verifier_info=verifier_info,
                 )
@@ -652,3 +653,10 @@ def _summarize_provider_cost(provider_calls):
                 continue
             totals[key] = totals.get(key, 0.0) + float(value)
     return totals
+
+
+def _runtime_failure_category(runtime_info):
+    error_type = str(runtime_info.get("error_type", ""))
+    if error_type == "provider_error":
+        return "provider_failed"
+    return "runtime_failed"

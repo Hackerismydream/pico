@@ -144,7 +144,7 @@ def test_headless_eval_grid_infrastructure_failure_exits_nonzero_and_keeps_rows(
     infra = next(row for row in payload["rows"] if row["config"]["id"] == "fake-empty")
     assert infra["status"] == "infra_fail"
     assert infra["failure_kind"] == "infrastructure"
-    assert infra["failure_category"] == "runtime_failed"
+    assert infra["failure_category"] == "provider_failed"
     assert infra["runtime"]["status"] == "failed"
     assert infra["verifier"]["status"] == "skipped"
     assert "provider_error" in captured.err

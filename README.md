@@ -302,7 +302,7 @@ the task runner still executes through the deterministic fake provider.
 uv run pico headless experiment run experiment.json --runs-root .pico/headless/experiments
 ```
 
-输出和 `.pico/headless/experiments/<experiment_run_id>/experiment_export.json` 会包含 pass、benchmark failure、infrastructure failure、total run count、candidate/prompt/runtime/provider/model/task/verifier identity、`task_run_export.json`、`runtime_manifest.json` 和 human-readable report 路径。benchmark failure 仍返回 0；infrastructure failure 返回非 0。
+输出和 `.pico/headless/experiments/<experiment_run_id>/experiment_export.json` 会包含 pass、benchmark failure、infrastructure failure、skipped/reused、total run count、scored run count、candidate/prompt/runtime/provider/model/task/verifier identity、`task_run_export.json`、`runtime_manifest.json` 和 human-readable report 路径。benchmark score 只用 pass + official verifier failure 计算；provider/API failure、runtime/model execution failure、workspace setup failure、verifier timeout 和 runtime artifact capture failure 都是 infrastructure failure，不计入 benchmark score。benchmark failure 仍返回 0；infrastructure failure 返回非 0。
 
 ## Headless eval grid
 

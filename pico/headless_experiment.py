@@ -283,17 +283,19 @@ def _build_task_run_ref(task_export, identity):
     policy = dict(task_export.get("policy", {}) or {})
     artifacts = dict(task_export.get("artifacts", {}) or {})
     verifier = dict(task_export.get("verifier", {}) or {})
+    boundaries = dict(task_export.get("boundaries", {}) or {})
     actual_provider_id = str(policy.get("model_provider", ""))
     if actual_provider_id and identity.get("provider_id") != actual_provider_id:
         raise ValueError(
             "headless experiment candidate provider_id does not match task-run provider: "
             f"{identity.get('provider_id')} != {actual_provider_id}"
         )
+    classification = _classify_task_export(task_export, runtime, verifier)
     return {
         "task_run_id": task_run_id,
-        "status": str(task_export.get("status", "")),
-        "failure_kind": str(task_export.get("failure_kind", "")),
-        "failure_category": str(task_export.get("failure_category", "")),
+        "status": classification["status"],
+        "failure_kind": classification["failure_kind"],
+        "failure_category": classification["failure_category"],
         "infrastructure_error": str(task_export.get("infrastructure_error", "")),
         "identity": dict(identity),
         "task": dict(task_export.get("task", {}) or {}),
@@ -313,6 +315,9 @@ def _build_task_run_ref(task_export, identity):
             "timed_out": bool(verifier.get("timed_out", False)),
             "protected_boundary": bool(verifier.get("protected_boundary", False)),
         },
+        "boundaries": {
+            "verifier_visible_to_runtime": bool(boundaries.get("verifier_visible_to_runtime", False)),
+        },
         "artifacts": {
             "task_run_dir_relpath": task_run_dir_relpath,
             "task_run_export_relpath": _join_relpath(task_run_dir_relpath, artifacts.get("task_run_export_relpath", "")),
@@ -326,6 +331,61 @@ def _build_task_run_ref(task_export, identity):
     }
 
 
+def _classify_task_export(task_export, runtime, verifier):
+    status = str(task_export.get("status", ""))
+    failure_kind = str(task_export.get("failure_kind", ""))
+    failure_category = str(task_export.get("failure_category", ""))
+    verifier_status = _verifier_status(verifier)
+
+    if status == "pass":
+        if verifier_status == "pass":
+            return {"status": "pass", "failure_kind": "", "failure_category": ""}
+        return {
+            "status": "infra_fail",
+            "failure_kind": "infrastructure",
+            "failure_category": "verifier_boundary_invalid",
+        }
+
+    if failure_kind == "benchmark":
+        if verifier_status == "fail":
+            return {
+                "status": "fail",
+                "failure_kind": "benchmark",
+                "failure_category": failure_category or "verifier_failed",
+            }
+        return {
+            "status": "infra_fail",
+            "failure_kind": "infrastructure",
+            "failure_category": "verifier_boundary_invalid",
+        }
+
+    if failure_kind == "infrastructure":
+        return {
+            "status": status or "infra_fail",
+            "failure_kind": "infrastructure",
+            "failure_category": _normalize_infrastructure_failure_category(failure_category, runtime, verifier),
+        }
+
+    if status in {"skipped", "reused"}:
+        return {"status": status, "failure_kind": failure_kind, "failure_category": failure_category}
+
+    return {"status": status, "failure_kind": failure_kind, "failure_category": failure_category}
+
+
+def _normalize_infrastructure_failure_category(failure_category, runtime, verifier):
+    if bool(verifier.get("timed_out", False)):
+        return "verifier_timeout"
+    if failure_category == "runtime_artifact_capture_failed":
+        return failure_category
+    if failure_category == "setup_failed":
+        return failure_category
+    if failure_category == "runtime_failed":
+        if str(runtime.get("error_type", "")) == "provider_error":
+            return "provider_failed"
+        return "runtime_failed"
+    return failure_category or "infrastructure_failed"
+
+
 def _verifier_status(verifier):
     exit_code = verifier.get("exit_code")
     if exit_code is None:
@@ -337,17 +397,30 @@ def _verifier_status(verifier):
 
 def summarize_experiment_task_runs(task_runs):
     status_counts = Counter(row.get("status", "") for row in task_runs if row.get("status", ""))
+    failure_kind_counts = Counter(
+        row.get("failure_kind", "")
+        for row in task_runs
+        if row.get("failure_kind", "")
+    )
     failure_category_counts = Counter(
         row.get("failure_category", "")
         for row in task_runs
         if row.get("failure_category", "")
     )
+    benchmark_failed = sum(1 for row in task_runs if row.get("failure_kind") == "benchmark")
+    passed = sum(1 for row in task_runs if row.get("status") == "pass")
+    scored_runs = passed + benchmark_failed
     return {
         "total_runs": len(task_runs),
-        "passed": sum(1 for row in task_runs if row.get("status") == "pass"),
-        "benchmark_failed": sum(1 for row in task_runs if row.get("failure_kind") == "benchmark"),
+        "passed": passed,
+        "benchmark_failed": benchmark_failed,
         "infrastructure_failed": sum(1 for row in task_runs if row.get("failure_kind") == "infrastructure"),
+        "skipped": sum(1 for row in task_runs if row.get("status") == "skipped"),
+        "reused": sum(1 for row in task_runs if row.get("status") == "reused"),
+        "scored_runs": scored_runs,
+        "benchmark_pass_rate": (passed / scored_runs) if scored_runs else None,
         "status_counts": dict(sorted(status_counts.items())),
+        "failure_kind_counts": dict(sorted(failure_kind_counts.items())),
         "failure_category_counts": dict(sorted(failure_category_counts.items())),
     }
 
@@ -391,15 +464,19 @@ def render_headless_experiment_report(export):
         f"- passed: {summary.get('passed', 0)}",
         f"- benchmark_failed: {summary.get('benchmark_failed', 0)}",
         f"- infrastructure_failed: {summary.get('infrastructure_failed', 0)}",
+        f"- skipped: {summary.get('skipped', 0)}",
+        f"- reused: {summary.get('reused', 0)}",
+        f"- scored_runs: {summary.get('scored_runs', 0)}",
+        f"- benchmark_pass_rate: {summary.get('benchmark_pass_rate', '')}",
         f"- runtime_event_schema_version: {export.get('runtime_event_schema_version', '')}",
         "",
-        "| candidate | prompt_sha256 | runtime_policy | provider | model | task | verifier_id | task_run | status | runtime | verifier | task_export | runtime_manifest |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| candidate | prompt_sha256 | runtime_policy | provider | model | task | verifier_id | task_run | status | failure_kind | failure_category | runtime | verifier | task_export | runtime_manifest |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for task_run in task_runs:
         identity = task_run.get("identity", {})
         artifacts = task_run.get("artifacts", {})
-        lines.append("| {candidate} | {prompt} | {policy} | {provider} | {model} | {task} | {verifier_id} | {task_run} | {status} | {runtime} | {verifier} | {task_export} | {manifest} |".format(
+        lines.append("| {candidate} | {prompt} | {policy} | {provider} | {model} | {task} | {verifier_id} | {task_run} | {status} | {failure_kind} | {failure_category} | {runtime} | {verifier} | {task_export} | {manifest} |".format(
             candidate=identity.get("candidate_id", ""),
             prompt=identity.get("prompt_sha256", ""),
             policy=identity.get("runtime_policy_id", ""),
@@ -409,6 +486,8 @@ def render_headless_experiment_report(export):
             verifier_id=identity.get("verifier_id", ""),
             task_run=task_run.get("task_run_id", ""),
             status=task_run.get("status", ""),
+            failure_kind=task_run.get("failure_kind", ""),
+            failure_category=task_run.get("failure_category", ""),
             runtime=task_run.get("runtime", {}).get("status", ""),
             verifier=task_run.get("verifier", {}).get("status", ""),
             task_export=artifacts.get("task_run_export_relpath", ""),
