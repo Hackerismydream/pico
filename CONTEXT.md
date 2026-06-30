@@ -80,6 +80,147 @@ the first ProjectionManager slice; the first slice should adapt Pico's current
 `type`, `payload`, and `created_at` events and surface schema gaps as projection
 diagnostics.
 
+RuntimeEvent v2 is the canonical event envelope for new runtime output, not a
+rename of the old event shape. It promotes shared runtime identity and ordering
+facts such as schema version, event id, invocation id, sequence, kind, status,
+actor, and created time into the envelope. Kind-specific data remains in payload.
+Legacy `type`, `payload`, and `created_at` events are compatibility input during
+migration, but they are not the target output contract for new runtime code.
+
+In RuntimeEvent v2, `kind` names the fact that happened, `status` names the
+outcome of that fact, and `actor` names the runtime boundary that produced it.
+Kinds should stay stable, such as `model_output`, `tool_result`, and
+`terminal_status`; outcomes such as `ok`, `denied`, `requires_decision`,
+`malformed`, `timeout`, and `failed` belong in status instead of being encoded
+into separate kind names.
+
+The runtime event ledger is the sequence authority for RuntimeEvent v2. Sequence
+numbers are assigned at append time, increase within one invocation, and are not
+provided by callers. Projections and replay should order v2 events by invocation
+id and sequence. Legacy events without sequence may be adapted in read order
+during migration, but that ordering is compatibility behavior rather than native
+v2 evidence.
+
+`invocation_id` identifies one runtime invocation, such as one CLI request or
+one kernel-backed headless runtime run. It is not a model call id. Provider
+requests within an invocation should use `model_call_id`; tool requests should
+use `tool_call_id`; headless task attempts should use `task_run_id` outside the
+runtime invocation and reference the runtime invocation; individual runtime facts
+should use `event_id`.
+
+`terminal_status` remains a RuntimeEvent kind in v2. The envelope status field
+describes the outcome of one event, while the terminal status event closes the
+whole invocation and is the authority for invocation status in manifests,
+reports, CLI inspection, and headless exports. Projections should not infer run
+completion from the last event's status.
+
+RuntimeEvent v2 does not define a generic top-level content field. The envelope
+contains shared identity, ordering, routing, status, actor, and timestamp facts.
+Kind-specific data such as user text, model text, tool args, tool content,
+provider metadata, errors, and artifact refs belongs in payload. User-visible
+timeline content is a projection concern, not runtime truth.
+
+The first RuntimeEvent v2 slice enforces the envelope strictly and treats most
+payload schemas as soft contracts. Missing or incomplete payload facts should
+become projection diagnostics unless they make the invocation close event or
+artifact contract unsafe to trust. `terminal_status` is the key hard payload
+contract because manifests, reports, CLI inspection, and headless exports depend
+on it for invocation outcome.
+
+RuntimeEvent v2 is the write format for new kernel runs. Legacy runtime event
+artifacts may be read through a compatibility adapter, but inspection and
+projection must not silently rewrite historical `runtime_events.jsonl` files.
+Any historical artifact migration should be an explicit migration command rather
+than a side effect of reading or inspecting a run.
+
+RuntimeEvent v2 may carry kind-specific `artifact_refs` in payload when a runtime
+fact needs to reference large or externalized raw evidence, such as full tool
+output. The v2 envelope should not carry generic projection refs. Projection
+artifacts such as trace, report, session/export snapshots, and manifest paths
+belong to ProjectionManager and the runtime artifact manifest, not to individual
+runtime facts.
+
+RuntimeEvent v2 may reserve optional causality and correlation fields, such as
+`parent_event_id` and `correlation_id`, for future streaming, parallel tools,
+subagents, and lifecycle grouping. The first v2 implementation does not expand
+Pico's execution model: one invocation still has one ledger sequence and the
+kernel runner remains serial. Reserved correlation fields should be captured and
+projected when present, but they should not imply concurrent execution in the
+first slice.
+
+Provider metadata belongs on model boundary events such as `model_output` and
+`model_failure`, not on the invocation envelope or as copied terminal status
+fields. Reports may aggregate provider, model, finish reason, usage, and failure
+facts from model events, but terminal status should remain the invocation close
+event rather than a duplicated provider summary.
+
+The first RuntimeEvent v2 implementation should use one event dataclass plus
+ledger builders and validators rather than a class hierarchy per event kind.
+Kind-specific payload schemas can harden over time through validators and
+projection diagnostics without changing the shared envelope contract.
+
+RuntimeEvent v2 actors are a small controlled vocabulary for new writes:
+`runtime_runner`, `model_adapter`, `agent_flow`, `tool_runtime`,
+`permission_policy`, `projection_manager`, and `headless_lab`. New runtime code
+should not invent actor aliases. Legacy or future unknown actors may be read
+compatibly and surfaced as diagnostics instead of crashing inspection.
+
+RuntimeEvent v2 statuses are a small controlled vocabulary for new writes:
+`started`, `completed`, `ok`, `failed`, `error`, `denied`,
+`requires_decision`, `skipped`, and `unknown`. Status names should describe the
+generic outcome of an event. Specific failure taxonomies such as
+`provider_network_error`, `permission_denied`, or `runtime_artifact_capture_failed`
+belong in payload fields such as `failure_classification`.
+
+The first RuntimeEvent v2 kind vocabulary covers the current kernel spine:
+`invocation_start`, `user_input`, `model_output`, `model_failure`,
+`tool_call_requested`, `tool_permission_decision`, `tool_argument_validation`,
+`tool_result`, `final_answer`, and `terminal_status`. New runtime writes should
+use this controlled vocabulary until a later feature slice deliberately extends
+it. Legacy or future unknown kinds may remain visible in trace projections with
+diagnostics, but read-model projections are not required to understand them.
+
+RuntimeEvent schema version and runtime artifact manifest schema version are
+separate contracts. Moving `runtime_events.jsonl` to RuntimeEvent v2 should add
+explicit event-schema metadata to the manifest, but it should not bump the
+manifest schema version unless the manifest structure itself changes.
+
+The first RuntimeEvent v2 projection migration should make trace output
+v2-native because trace is the closest read model to the runtime ledger. Report,
+session, and export projections should keep their external contracts stable
+while deriving their facts from v2 events internally.
+
+Headless task WAL remains a task-run lifecycle ledger, not a duplicate runtime
+event ledger. It should reference the runtime invocation id, runtime manifest,
+and runtime event schema version when a kernel run finishes. It should not copy
+model, tool, permission, final-answer, or terminal runtime events into the
+headless WAL.
+
+The RuntimeEvent v2 implementation batch should cover event schema, ledger
+compatibility, kernel emission, projection compatibility, manifest event-schema
+metadata, CLI inspection, headless runtime references, and fake/live acceptance
+gates. ModelHistoryProjector policy over v2 events is the next batch after the
+v2 ledger and projection contracts stabilize.
+
+RuntimeEvent v2 acceptance has two layers. Fake-provider tests are the
+deterministic gate for envelope validation, sequence assignment, projection
+compatibility, manifest metadata, CLI inspection, and headless references.
+Live-provider acceptance is required at the end of the batch for no-tool and
+read-only-tool kernel runs, proving real provider metadata and runtime artifacts
+flow through the v2 event contract.
+
+RuntimeEvent v2 should not be bundled with a broad runtime package migration.
+The implementation may introduce a narrow `pico/runtime_events.py` module for
+event types, validators, adapters, and serialization, with `runtime_kernel.py`
+re-exporting compatibility symbols as needed. It should not turn the whole
+kernel into a `pico/runtime/` package in the same batch.
+
+Kernel release-candidate validation should require RuntimeEvent v2 artifacts
+after the v2 producer, projection, and headless reference paths are in place.
+The gate should reject manifests without runtime event schema metadata or with
+runtime ledgers that fail v2 envelope validation. This belongs at the end of the
+v2 batch, not in the first event-model issue.
+
 ### ModelAdapter
 
 The provider normalization boundary. It turns a Pico model request into a
