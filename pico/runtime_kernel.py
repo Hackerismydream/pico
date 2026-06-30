@@ -28,6 +28,12 @@ from .runtime_projections import (
     project_terminal_error as project_terminal_error,
     project_trace as project_trace,
 )
+from .runtime_events import (
+    RuntimeEventLedgerV2,
+    RuntimeEventV2,
+    runtime_event_v2_from_dict,
+    runtime_event_v2_to_dict,
+)
 from .tool_context import ToolContext
 from .workspace import clip
 
@@ -48,20 +54,31 @@ class RuntimeEvent:
 
 
 class RuntimeEventLedger:
-    def __init__(self):
-        self._events = []
+    def __init__(self, invocation_id=None):
+        self._ledger = RuntimeEventLedgerV2(invocation_id or _new_id("invocation"))
 
     def append(self, event_type, **payload):
-        event = RuntimeEvent(type=str(event_type), payload=dict(payload))
-        self._events.append(event)
-        return event
+        payload = dict(payload)
+        payload.pop("invocation_id", None)
+        status = _event_status(event_type, payload)
+        actor = _event_actor(event_type)
+        correlation_id = str(payload.get("tool_call_id") or payload.get("model_call_id") or "")
+        return self._ledger.append(
+            str(event_type),
+            status=status,
+            actor=actor,
+            payload=payload,
+            correlation_id=correlation_id,
+        )
 
     @property
     def events(self):
-        return list(self._events)
+        return self._ledger.events
 
 
 def runtime_event_to_dict(event):
+    if isinstance(event, RuntimeEventV2):
+        return runtime_event_v2_to_dict(event)
     return {
         "type": event.type,
         "created_at": event.created_at,
@@ -70,11 +87,53 @@ def runtime_event_to_dict(event):
 
 
 def runtime_event_from_dict(payload):
+    if payload.get("schema_version") == 2:
+        return runtime_event_v2_from_dict(payload)
     return RuntimeEvent(
         type=str(payload.get("type", "")),
         created_at=str(payload.get("created_at", "")),
         payload=dict(payload.get("payload", {}) or {}),
     )
+
+
+def _event_status(event_type, payload):
+    event_type = str(event_type)
+    if event_type == "invocation_start":
+        return "started"
+    if event_type in {"user_input", "model_output", "final_answer"}:
+        return "completed"
+    if event_type == "model_failure":
+        return "failed"
+    if event_type == "tool_call_requested":
+        return "started"
+    if event_type == "tool_permission_decision":
+        decision = str(payload.get("decision", ""))
+        if decision == "allow":
+            return "ok"
+        if decision == "deny":
+            return "denied"
+        if decision == "requires_decision":
+            return "requires_decision"
+        return "unknown"
+    if event_type in {"tool_argument_validation", "tool_result", "terminal_status"}:
+        status = str(payload.get("status") or "unknown")
+        if status == "deny":
+            return "denied"
+        return status
+    return "unknown"
+
+
+def _event_actor(event_type):
+    event_type = str(event_type)
+    if event_type == "model_output" or event_type == "model_failure":
+        return "model_adapter"
+    if event_type == "tool_permission_decision":
+        return "permission_policy"
+    if event_type.startswith("tool_"):
+        return "tool_runtime"
+    if event_type == "final_answer":
+        return "agent_flow"
+    return "runtime_runner"
 
 
 @dataclass(frozen=True)
@@ -234,7 +293,7 @@ class ModelHistoryProjector:
         tool_results = [
             event.payload
             for event in events
-            if event.type == "tool_result" and event.payload.get("invocation_id") == context.invocation_id
+            if event.type == "tool_result" and _event_invocation_id(event) == context.invocation_id
         ]
         lines = [
             context.user_message,
@@ -485,8 +544,19 @@ class AgentFlow:
     def run(self, context, ledger):
         for step in range(max(1, int(context.max_steps))):
             prompt = self.history_projector.project(context, ledger.events)
+            model_call_id = _new_id("model_call")
             result = self.model_adapter.complete(prompt, context.max_new_tokens)
             if isinstance(result, ModelFailure):
+                ledger.append(
+                    "model_failure",
+                    invocation_id=context.invocation_id,
+                    model_call_id=model_call_id,
+                    error_type=result.error_type,
+                    error_message=result.message,
+                    failure_classification=result.error_type,
+                    provider=result.provider,
+                    step=step + 1,
+                )
                 ledger.append(
                     "terminal_status",
                     invocation_id=context.invocation_id,
@@ -500,6 +570,7 @@ class AgentFlow:
             ledger.append(
                 "model_output",
                 invocation_id=context.invocation_id,
+                model_call_id=model_call_id,
                 text=result.text,
                 metadata=result.metadata,
                 provider=self.model_adapter.provider_name(),
@@ -520,10 +591,14 @@ class AgentFlow:
                 return
             if isinstance(parsed, ParsedRetry):
                 ledger.append(
-                    "runtime_notice",
+                    "model_failure",
                     invocation_id=context.invocation_id,
-                    notice_type="model_parse_error",
-                    message=parsed.message,
+                    model_call_id=model_call_id,
+                    error_type="model_parse_error",
+                    error_message=parsed.message,
+                    failure_classification="model_parse_error",
+                    provider=self.model_adapter.provider_name(),
+                    step=step + 1,
                 )
                 continue
             if self.tool_runtime is None:
@@ -591,7 +666,7 @@ class RuntimeRunner:
         self.tool_runtime = tool_runtime
 
     def run(self, context):
-        ledger = RuntimeEventLedger()
+        ledger = RuntimeEventLedger(context.invocation_id)
         ledger.append(
             "invocation_start",
             invocation_id=context.invocation_id,
@@ -619,3 +694,10 @@ def _last_event(events, event_type):
         if event.type == event_type:
             return event
     return None
+
+
+def _event_invocation_id(event):
+    invocation_id = getattr(event, "invocation_id", "")
+    if invocation_id:
+        return str(invocation_id)
+    return str(event.payload.get("invocation_id", ""))

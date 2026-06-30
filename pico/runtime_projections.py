@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from .runtime_events import RUNTIME_EVENT_SCHEMA_VERSION
 from .security import redact_artifact
 
 
@@ -42,6 +43,14 @@ class _ProjectionRuntimeEvent:
     type: str
     payload: dict
     created_at: str = ""
+    invocation_id: str = ""
+    schema_version: int = 1
+    event_id: str = ""
+    sequence: int = 0
+    status: str = ""
+    actor: str = ""
+    parent_event_id: str = ""
+    correlation_id: str = ""
 
 
 class ProjectionManager:
@@ -93,6 +102,7 @@ class ProjectionManager:
             manifest_path = self.store.manifest_path(run_id)
             manifest = {
                 "schema_version": RUNTIME_ARTIFACT_MANIFEST_SCHEMA_VERSION,
+                "runtime_event_schema_version": _runtime_event_schema_version(normalized_events),
                 "run_id": run_id,
                 "status": status,
                 "terminal_status": terminal_status,
@@ -133,6 +143,14 @@ def _normalize_events(events):
         event_type = _event_field(event, "type")
         payload = _event_field(event, "payload")
         created_at = _event_field(event, "created_at", "")
+        invocation_id = _event_field(event, "invocation_id", "")
+        schema_version = _event_field(event, "schema_version", 1)
+        event_id = _event_field(event, "event_id", "")
+        sequence = _event_field(event, "sequence", 0)
+        status = _event_field(event, "status", "")
+        actor = _event_field(event, "actor", "")
+        parent_event_id = _event_field(event, "parent_event_id", "")
+        correlation_id = _event_field(event, "correlation_id", "")
         if not event_type:
             diagnostics.append(
                 _diagnostic(
@@ -166,23 +184,67 @@ def _normalize_events(events):
                 type=str(event_type),
                 payload=dict(payload),
                 created_at=str(created_at or ""),
+                invocation_id=str(invocation_id or payload.get("invocation_id", "")),
+                schema_version=_coerce_int(schema_version, default=1),
+                event_id=str(event_id or ""),
+                sequence=_coerce_int(sequence, default=0),
+                status=str(status or payload.get("status", "")),
+                actor=str(actor or ""),
+                parent_event_id=str(parent_event_id or ""),
+                correlation_id=str(correlation_id or payload.get("tool_call_id") or payload.get("model_call_id") or ""),
             )
         )
     return normalized, diagnostics
 
 
+def _coerce_int(value, *, default):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _event_field(event, name, default=None):
     if isinstance(event, Mapping):
+        if name == "type":
+            return event.get("type", event.get("kind", default))
         return event.get(name, default)
     return getattr(event, name, default)
 
 
 def _event_to_dict(event):
+    if getattr(event, "schema_version", 1) == RUNTIME_EVENT_SCHEMA_VERSION:
+        payload = {
+            "schema_version": RUNTIME_EVENT_SCHEMA_VERSION,
+            "event_id": event.event_id,
+            "invocation_id": event.invocation_id,
+            "sequence": event.sequence,
+            "kind": event.type,
+            "status": event.status,
+            "actor": event.actor,
+            "created_at": event.created_at,
+            "payload": dict(event.payload),
+        }
+        if event.parent_event_id:
+            payload["parent_event_id"] = event.parent_event_id
+        if event.correlation_id:
+            payload["correlation_id"] = event.correlation_id
+        return payload
+    payload = dict(event.payload)
+    invocation_id = getattr(event, "invocation_id", "")
+    if invocation_id and "invocation_id" not in payload:
+        payload["invocation_id"] = invocation_id
     return {
         "type": event.type,
         "created_at": event.created_at,
-        "payload": dict(event.payload),
+        "payload": payload,
     }
+
+
+def _runtime_event_schema_version(events):
+    if events and all(getattr(event, "schema_version", 1) == RUNTIME_EVENT_SCHEMA_VERSION for event in events):
+        return RUNTIME_EVENT_SCHEMA_VERSION
+    return 1
 
 
 def _diagnostic(code, message, **details):
@@ -212,7 +274,7 @@ def _last_event(events, event_type):
 
 def project_run_id(events):
     for event in events:
-        invocation_id = event.payload.get("invocation_id")
+        invocation_id = getattr(event, "invocation_id", "") or event.payload.get("invocation_id")
         if invocation_id:
             return str(invocation_id)
     return ""
@@ -254,14 +316,19 @@ def project_cli_runtime_events(events):
 
 
 def project_trace(events):
-    return [
-        {
-            "event": event.type,
-            "created_at": event.created_at,
-            "payload": dict(event.payload),
-        }
-        for event in events
-    ]
+    trace = []
+    for event in events:
+        if getattr(event, "schema_version", 1) == RUNTIME_EVENT_SCHEMA_VERSION:
+            trace.append(_event_to_dict(event))
+        else:
+            trace.append(
+                {
+                    "event": event.type,
+                    "created_at": event.created_at,
+                    "payload": dict(event.payload),
+                }
+            )
+    return trace
 
 
 def project_report(events):

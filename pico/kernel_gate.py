@@ -52,6 +52,7 @@ REQUIRED_READONLY_TOOL_EVENTS = (
     "tool_permission_decision",
     "tool_result",
 )
+REQUIRED_RUNTIME_EVENT_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -233,6 +234,10 @@ def _validate_live_provider_acceptance(gate, workspace_root, failures):
                 failures.append(
                     f"live_provider_acceptance scenario {name or '<unknown>'} runtime_status must be completed"
                 )
+            if scenario.get("runtime_event_schema_version") != REQUIRED_RUNTIME_EVENT_SCHEMA_VERSION:
+                failures.append(
+                    f"live_provider_acceptance scenario {name or '<unknown>'} runtime_event_schema_version must be 2"
+                )
             if not (scenario.get("finish_reason") or scenario.get("provider_status")):
                 failures.append(
                     f"live_provider_acceptance scenario {name or '<unknown>'} must include provider metadata"
@@ -275,7 +280,8 @@ def _validate_live_projection_artifacts(scenario, base_dir, workspace_root, fail
         resolved[artifact_name] = artifact_path
 
     runtime_events = _load_runtime_event_jsonl(resolved.get("runtime_events"), failures, name)
-    event_types = [event.get("type") for event in runtime_events if isinstance(event, dict)]
+    _validate_runtime_events_v2(runtime_events, failures, f"live_provider_acceptance scenario {name}")
+    event_types = [_event_kind(event) for event in runtime_events if isinstance(event, dict)]
     missing_events = [event for event in REQUIRED_PROJECTION_EVENTS if event not in event_types]
     if missing_events:
         failures.append(
@@ -296,6 +302,10 @@ def _validate_live_projection_artifacts(scenario, base_dir, workspace_root, fail
     if isinstance(manifest, dict):
         if manifest.get("schema_version") != 1:
             failures.append(f"live_provider_acceptance scenario {name} manifest schema_version must be 1")
+        if manifest.get("runtime_event_schema_version") != REQUIRED_RUNTIME_EVENT_SCHEMA_VERSION:
+            failures.append(
+                f"live_provider_acceptance scenario {name} manifest runtime_event_schema_version must be 2"
+            )
         if manifest.get("status") != "completed":
             failures.append(f"live_provider_acceptance scenario {name} manifest status must be completed")
         if str(manifest.get("run_id", "")).strip() != str(scenario.get("run_id", "")).strip():
@@ -341,6 +351,8 @@ def _validate_live_projection_artifacts(scenario, base_dir, workspace_root, fail
             failures.append(f"live_provider_acceptance scenario {name} report provider_calls must be recorded")
     if not trace:
         failures.append(f"live_provider_acceptance scenario {name} trace must be non-empty")
+    else:
+        _validate_runtime_events_v2(trace, failures, f"live_provider_acceptance scenario {name} trace")
 
 
 def _load_jsonl(path, failures, label):
@@ -361,6 +373,41 @@ def _load_runtime_event_jsonl(path, failures, scenario_name):
     return _load_jsonl(path, failures, f"live_provider_acceptance scenario {scenario_name} runtime_events")
 
 
+def _event_kind(event):
+    if not isinstance(event, dict):
+        return None
+    return event.get("kind") or event.get("type") or event.get("event")
+
+
+def _validate_runtime_events_v2(events, failures, label):
+    if not events:
+        failures.append(f"{label} runtime_events must be non-empty")
+        return
+    for index, event in enumerate(events):
+        if not isinstance(event, dict):
+            failures.append(f"{label} event {index} must be a JSON object")
+            continue
+        if event.get("schema_version") != REQUIRED_RUNTIME_EVENT_SCHEMA_VERSION:
+            failures.append(f"{label} event {index} schema_version must be 2")
+        if not str(event.get("event_id", "")).strip():
+            failures.append(f"{label} event {index} event_id must be recorded")
+        if not str(event.get("invocation_id", "")).strip():
+            failures.append(f"{label} event {index} invocation_id must be recorded")
+        sequence = event.get("sequence")
+        if not isinstance(sequence, int) or sequence < 1:
+            failures.append(f"{label} event {index} sequence must be a positive integer")
+        if not str(event.get("kind", "")).strip():
+            failures.append(f"{label} event {index} kind must be recorded")
+        if not str(event.get("status", "")).strip():
+            failures.append(f"{label} event {index} status must be recorded")
+        if not str(event.get("actor", "")).strip():
+            failures.append(f"{label} event {index} actor must be recorded")
+        if not str(event.get("created_at", "")).strip():
+            failures.append(f"{label} event {index} created_at must be recorded")
+        if not isinstance(event.get("payload"), dict):
+            failures.append(f"{label} event {index} payload must be a JSON object")
+
+
 def _validate_projection_inspection(gate, workspace_root, failures):
     paths = _artifact_paths(gate, workspace_root, failures, label="projection_inspection")
     if not paths:
@@ -375,7 +422,8 @@ def _validate_projection_inspection(gate, workspace_root, failures):
     if not isinstance(ledger, list) or not ledger:
         failures.append("projection_inspection ledger must be a non-empty list")
     else:
-        event_types = {event.get("type") for event in ledger if isinstance(event, dict)}
+        _validate_runtime_events_v2(ledger, failures, "projection_inspection ledger")
+        event_types = {_event_kind(event) for event in ledger if isinstance(event, dict)}
         missing_events = [event for event in REQUIRED_PROJECTION_EVENTS if event not in event_types]
         if missing_events:
             failures.append("projection_inspection ledger missing events: " + ", ".join(missing_events))
@@ -399,6 +447,8 @@ def _validate_projection_inspection(gate, workspace_root, failures):
     trace = payload.get("trace")
     if not isinstance(trace, list) or not trace:
         failures.append("projection_inspection trace must be a non-empty list")
+    else:
+        _validate_runtime_events_v2(trace, failures, "projection_inspection trace")
 
     artifacts = payload.get("artifacts")
     if not isinstance(artifacts, dict):
@@ -446,6 +496,8 @@ def _validate_headless_single_task(gate, workspace_root, failures):
     else:
         if runtime.get("status") != "completed":
             failures.append("headless_single_task runtime.status must be completed")
+        if runtime.get("runtime_event_schema_version") != REQUIRED_RUNTIME_EVENT_SCHEMA_VERSION:
+            failures.append("headless_single_task runtime.runtime_event_schema_version must be 2")
         if not str(runtime.get("run_id", "")).strip():
             failures.append("headless_single_task runtime.run_id must be recorded")
         event_counts = runtime.get("event_type_counts")
@@ -468,6 +520,9 @@ def _validate_headless_single_task(gate, workspace_root, failures):
             )
             if runtime_events_path is not None and not runtime_events_path.exists():
                 failures.append("headless_single_task runtime_events_relpath must exist")
+            elif runtime_events_path is not None:
+                runtime_events = _load_runtime_event_jsonl(runtime_events_path, failures, "headless_single_task")
+                _validate_runtime_events_v2(runtime_events, failures, "headless_single_task runtime_events")
 
     verifier = payload.get("verifier")
     if not isinstance(verifier, dict):

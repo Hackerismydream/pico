@@ -5,6 +5,7 @@ from pico.providers.clients import FakeModelClient
 from pico.runtime_kernel import (
     InvocationContext,
     RuntimeEvent,
+    RuntimeEventLedger,
     ToolPermissionPolicy,
     RuntimeRunner,
     ToolRuntime,
@@ -39,6 +40,19 @@ def _assert_kernel_artifact_contract(run_dir):
     assert manifest["artifacts"]["report"]["path"] == "report.json"
     assert manifest["artifacts"]["manifest"]["path"] == "runtime_manifest.json"
     return manifest
+
+
+def _event_kind(event):
+    return event.get("kind") or event.get("type") or event.get("event")
+
+
+def test_runtime_event_ledger_default_constructor_remains_compatible():
+    ledger = RuntimeEventLedger()
+    event = ledger.append("invocation_start", workspace_root="/tmp/workspace")
+
+    assert event.schema_version == 2
+    assert event.invocation_id
+    assert event.sequence == 1
 
 
 def test_fake_model_client_clears_metadata_between_calls():
@@ -421,7 +435,8 @@ def test_kernel_trace_and_report_projection_include_tool_call_and_final_answer(t
 
     trace = project_trace(result.events)
     report = project_report(result.events)
-    assert any(event["event"] == "tool_result" for event in trace)
+    assert any(_event_kind(event) == "tool_result" for event in trace)
+    assert all(event["schema_version"] == 2 for event in trace)
     assert report["status"] == "completed"
     assert report["final_answer"] == "The project fact is alpha."
     assert report["tool_calls"] == [
@@ -662,8 +677,9 @@ def test_cli_kernel_runtime_persists_and_inspects_runtime_event_views(tmp_path, 
     assert main(["--cwd", str(tmp_path), "--inspect-run", run_id, "--inspect-view", "ledger"]) == 0
     ledger_output = capsys.readouterr().out
     ledger_events = [json.loads(line) for line in ledger_output.splitlines()]
-    assert [event["type"] for event in ledger_events][:2] == ["invocation_start", "user_input"]
-    assert any(event["type"] == "tool_permission_decision" for event in ledger_events)
+    assert [_event_kind(event) for event in ledger_events][:2] == ["invocation_start", "user_input"]
+    assert all(event["schema_version"] == 2 for event in ledger_events)
+    assert any(_event_kind(event) == "tool_permission_decision" for event in ledger_events)
 
     assert main(["--cwd", str(tmp_path), "--inspect-run", run_id, "--inspect-view", "session"]) == 0
     session = json.loads(capsys.readouterr().out)

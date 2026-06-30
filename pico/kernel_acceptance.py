@@ -153,7 +153,7 @@ def _run_scenario(
         ),
     )
     result = runner.run(context)
-    artifacts, capture_error = _capture_scenario_artifacts(
+    artifacts, capture_error, runtime_event_schema_version = _capture_scenario_artifacts(
         events=result.events,
         scenario=scenario,
         run_id=context.invocation_id,
@@ -184,25 +184,31 @@ def _run_scenario(
         "error_type": result.error_type,
         "error_message": result.error_message,
         "artifact_capture_error": capture_error,
+        "runtime_event_schema_version": runtime_event_schema_version,
         "artifacts": artifacts,
     }
 
 
 def _capture_scenario_artifacts(*, events, scenario, run_id, artifacts_root, secret_env_names):
     if artifacts_root is None:
-        return {}, ""
+        return {}, "", ""
     store = RunStore(Path(artifacts_root) / scenario)
     try:
         artifact_set = ProjectionManager(store, secret_env_names=secret_env_names).capture(events, run_id=run_id)
     except ProjectionCaptureError as exc:
-        return {}, str(exc)
+        return {}, str(exc), ""
+    try:
+        manifest = store.load_manifest(run_id)
+        runtime_event_schema_version = manifest.get("runtime_event_schema_version", "")
+    except Exception:
+        runtime_event_schema_version = ""
     return {
         name: {
             "path": _relative_path(path, artifacts_root),
             "exists": Path(path).exists(),
         }
         for name, path in artifact_set.artifact_paths.items()
-    }, ""
+    }, "", runtime_event_schema_version
 
 
 def _relative_path(path, root):
