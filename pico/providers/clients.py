@@ -383,11 +383,29 @@ class OpenAICompatibleModelClient:
 
 
 def _extract_anthropic_text(data):
-    for item in data.get("content", []):
-        if isinstance(item, dict) and item.get("type") == "text":
+    content = data.get("content")
+    if isinstance(content, str) and content:
+        return content
+
+    if isinstance(content, list):
+        for item in content:
+            if isinstance(item, str) and item:
+                return item
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "tool_use":
+                name = item.get("name")
+                if isinstance(name, str) and name:
+                    args = item.get("input")
+                    if not isinstance(args, dict):
+                        args = {}
+                    return f"<tool>{json.dumps({'name': name, 'args': args}, separators=(',', ':'))}</tool>"
             text = item.get("text")
             if isinstance(text, str) and text:
                 return text
+    text = _extract_openai_text(data)
+    if text:
+        return text
     return ""
 
 
@@ -413,12 +431,13 @@ def _extract_anthropic_metadata(data):
 
 
 class AnthropicCompatibleModelClient:
-    def __init__(self, model, base_url, api_key, temperature, timeout):
+    def __init__(self, model, base_url, api_key, temperature, timeout, disable_thinking=False):
         self.model = model
         self.base_url = _normalize_versioned_base_url(base_url)
         self.api_key = api_key
         self.temperature = temperature
         self.timeout = timeout
+        self.disable_thinking = disable_thinking
         self.supports_prompt_cache = False
         self.last_completion_metadata = {}
 
@@ -445,6 +464,8 @@ class AnthropicCompatibleModelClient:
         }
         if self.temperature is not None:
             payload["temperature"] = self.temperature
+        if self.disable_thinking:
+            payload["thinking"] = {"type": "disabled"}
 
         headers = {
             "Content-Type": "application/json",

@@ -87,6 +87,7 @@ def test_kernel_acceptance_writes_projection_artifacts_for_manual_live_gate(tmp_
     assert report["status"] == "passed"
     scenario = report["scenarios"][0]
     assert scenario["artifact_capture_error"] == ""
+    assert scenario["runtime_event_schema_version"] == 2
     assert scenario["tool_evidence"][0]["name"] == "read_file"
     assert scenario["tool_evidence"][0]["status"] == "ok"
     artifacts_root = tmp_path / "acceptance-artifacts" / report["run_id"]

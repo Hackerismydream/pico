@@ -5,6 +5,7 @@ import pytest
 import pico.runtime_projections as projections
 from pico.run_store import RunStore
 from pico.runtime_kernel import RuntimeEvent
+from pico.runtime_events import RuntimeEventLedgerV2, runtime_event_v2_to_dict
 from pico.runtime_projections import ProjectionCaptureError, ProjectionManager
 
 
@@ -122,6 +123,27 @@ def test_projection_manager_manifest_contract(tmp_path):
     assert manifest["diagnostics"] == []
     assert artifacts.manifest_path == store.manifest_path("run_manifest")
     assert _read_jsonl(artifacts.runtime_events_path)[0]["type"] == "invocation_start"
+
+
+def test_projection_manager_accepts_runtime_event_v2_dicts(tmp_path):
+    store = RunStore(tmp_path / ".pico" / "runs")
+    ledger = RuntimeEventLedgerV2("run_v2_dict")
+    ledger.append("invocation_start", status="started", actor="runtime_runner", payload={})
+    ledger.append("final_answer", status="completed", actor="agent_flow", payload={"text": "Ok."})
+    ledger.append(
+        "terminal_status",
+        status="completed",
+        actor="runtime_runner",
+        payload={"status": "completed"},
+    )
+
+    artifacts = ProjectionManager(store).capture([runtime_event_v2_to_dict(event) for event in ledger.events])
+    manifest = store.load_manifest("run_v2_dict")
+
+    assert artifacts.run_id == "run_v2_dict"
+    assert manifest["runtime_event_schema_version"] == 2
+    assert manifest["projections"]["export"]["final_answer"] == "Ok."
+    assert _read_jsonl(artifacts.runtime_events_path)[0]["kind"] == "invocation_start"
 
 
 def test_projection_manager_redacts_manifest_terminal_status(tmp_path, monkeypatch):

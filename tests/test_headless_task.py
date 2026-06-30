@@ -16,6 +16,10 @@ def _python_check(expr):
     return f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
 
 
+def _event_kind(event):
+    return event.get("kind") or event.get("type") or event.get("event")
+
+
 def test_headless_task_run_persists_kernel_backed_pass(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("PICO_SECRET_SHOULD_NOT_REACH_VERIFIER", "secret-value")
     fixture = tmp_path / "fixture"
@@ -69,13 +73,16 @@ def test_headless_task_run_persists_kernel_backed_pass(tmp_path, capsys, monkeyp
     wal_events = [json.loads(line) for line in wal_path.read_text(encoding="utf-8").splitlines()]
     runtime_finished = next(event for event in wal_events if event["event"] == "runtime_finished")
     assert runtime_finished["runtime_run_id"] == payload["runtime"]["run_id"]
+    assert runtime_finished["runtime_event_schema_version"] == 2
+    assert payload["runtime"]["runtime_event_schema_version"] == 2
     assert runtime_finished["runtime_events_relpath"] == payload["runtime"]["runtime_events_relpath"]
     for artifact_key in ("runtime_events_relpath", "trace_relpath", "report_relpath", "manifest_relpath"):
         assert (run_dir / payload["runtime"][artifact_key]).exists()
     runtime_events = run_dir / payload["runtime"]["runtime_events_relpath"]
     event_lines = [json.loads(line) for line in runtime_events.read_text(encoding="utf-8").splitlines()]
-    assert [event["type"] for event in event_lines][:2] == ["invocation_start", "user_input"]
-    prompt_text = next(event["payload"]["text"] for event in event_lines if event["type"] == "user_input")
+    assert [_event_kind(event) for event in event_lines][:2] == ["invocation_start", "user_input"]
+    assert all(event["schema_version"] == 2 for event in event_lines)
+    prompt_text = next(event["payload"]["text"] for event in event_lines if _event_kind(event) == "user_input")
     assert "PICO_FINAL_ANSWER" not in prompt_text
     assert payload["verifier"]["command"] not in prompt_text
     assert "Read README" in prompt_text
@@ -147,7 +154,7 @@ def test_headless_task_defaults_to_no_tools(tmp_path, capsys):
 
     runtime_events = tmp_path / "runs" / payload["task_run_id"] / payload["runtime"]["runtime_events_relpath"]
     events = [json.loads(line) for line in runtime_events.read_text(encoding="utf-8").splitlines()]
-    permission = next(event for event in events if event["type"] == "tool_permission_decision")
+    permission = next(event for event in events if _event_kind(event) == "tool_permission_decision")
     assert permission["payload"]["name"] == "read_file"
     assert permission["payload"]["decision"] == "deny"
     assert permission["payload"]["available"] is False
@@ -179,12 +186,12 @@ def test_headless_task_policy_denies_tools_outside_task_allowlist(tmp_path, caps
     assert status == 0
     runtime_events = tmp_path / "runs" / payload["task_run_id"] / payload["runtime"]["runtime_events_relpath"]
     events = [json.loads(line) for line in runtime_events.read_text(encoding="utf-8").splitlines()]
-    permission = next(event for event in events if event["type"] == "tool_permission_decision")
+    permission = next(event for event in events if _event_kind(event) == "tool_permission_decision")
     assert permission["payload"]["name"] == "list_files"
     assert permission["payload"]["decision"] == "deny"
     assert permission["payload"]["available"] is False
     assert permission["payload"]["failure_classification"] == "tool_not_allowed"
-    tool_result = next(event for event in events if event["type"] == "tool_result")
+    tool_result = next(event for event in events if _event_kind(event) == "tool_result")
     assert tool_result["payload"]["status"] == "denied"
 
 
@@ -212,7 +219,7 @@ def test_headless_task_defaults_to_no_tools_when_allowlist_omitted(tmp_path, cap
     assert status == 0
     runtime_events = tmp_path / "runs" / payload["task_run_id"] / payload["runtime"]["runtime_events_relpath"]
     events = [json.loads(line) for line in runtime_events.read_text(encoding="utf-8").splitlines()]
-    permission = next(event for event in events if event["type"] == "tool_permission_decision")
+    permission = next(event for event in events if _event_kind(event) == "tool_permission_decision")
     assert permission["payload"]["name"] == "read_file"
     assert permission["payload"]["available"] is False
     assert permission["payload"]["decision"] == "deny"

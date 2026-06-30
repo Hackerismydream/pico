@@ -57,14 +57,19 @@ def _load_jsonl(path):
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
+def _event_kind(event):
+    return event.get("kind") or event.get("type") or event.get("event")
+
+
 def _assert_manifest_backed_runtime_contract(run_dir, *, final_answer, expect_readonly_tool):
     manifest = _load_json(run_dir / "runtime_manifest.json")
     report = _load_json(run_dir / "report.json")
     events = _load_jsonl(run_dir / "runtime_events.jsonl")
     trace = _load_jsonl(run_dir / "trace.jsonl")
-    event_types = {event["type"] for event in events}
+    event_types = {_event_kind(event) for event in events}
 
     assert manifest["schema_version"] == 1
+    assert manifest["runtime_event_schema_version"] == 2
     assert manifest["run_id"] == run_dir.name
     assert manifest["status"] == "completed"
     assert manifest["artifacts"] == RUNTIME_MANIFEST_ARTIFACTS
@@ -77,6 +82,9 @@ def _assert_manifest_backed_runtime_contract(run_dir, *, final_answer, expect_re
     assert report["final_answer"] == final_answer
     assert report["provider_calls"]
     assert trace
+    assert all(event["schema_version"] == 2 for event in events)
+    assert all(event["schema_version"] == 2 for event in trace)
+    assert [event["sequence"] for event in events] == list(range(1, len(events) + 1))
     assert BASE_RUNTIME_EVENTS.issubset(event_types)
     for artifact in RUNTIME_MANIFEST_ARTIFACTS.values():
         assert (run_dir / artifact["path"]).exists()
@@ -184,6 +192,7 @@ def test_headless_fake_provider_no_tool_acceptance_uses_same_manifest_contract(t
     assert status == 0
     assert payload["status"] == "pass"
     assert payload["runtime"]["manifest_relpath"].endswith("runtime_manifest.json")
+    assert payload["runtime"]["runtime_event_schema_version"] == 2
     _assert_manifest_backed_runtime_contract(
         _runtime_run_dir_from_headless_payload(tmp_path / "runs" / payload["task_run_id"], payload),
         final_answer="Headless no-tool projection ok.",
@@ -218,6 +227,7 @@ def test_headless_fake_provider_readonly_tool_acceptance_uses_same_manifest_cont
     assert status == 0
     assert payload["status"] == "pass"
     assert payload["runtime"]["manifest_relpath"].endswith("runtime_manifest.json")
+    assert payload["runtime"]["runtime_event_schema_version"] == 2
     _assert_manifest_backed_runtime_contract(
         _runtime_run_dir_from_headless_payload(tmp_path / "runs" / payload["task_run_id"], payload),
         final_answer="Headless read-only projection ok.",

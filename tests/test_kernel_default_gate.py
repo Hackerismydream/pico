@@ -4,7 +4,7 @@ from pico.cli import main
 from pico.kernel_gate import evaluate_kernel_release_candidate
 from pico.providers.clients import FakeModelClient
 from pico.run_store import RunStore
-from pico.runtime_kernel import RuntimeEvent
+from pico.runtime_events import RuntimeEventLedgerV2, runtime_event_v2_to_dict
 from pico.runtime_projections import ProjectionManager
 
 
@@ -28,6 +28,7 @@ def _valid_live_acceptance():
                 "status": "passed",
                 "run_id": "invocation_no_tool",
                 "runtime_status": "completed",
+                "runtime_event_schema_version": 2,
                 "finish_reason": "stop",
                 "provider_status": "completed",
                 "tool_result_count": 0,
@@ -39,6 +40,7 @@ def _valid_live_acceptance():
                 "status": "passed",
                 "run_id": "invocation_readonly",
                 "runtime_status": "completed",
+                "runtime_event_schema_version": 2,
                 "finish_reason": "stop",
                 "provider_status": "completed",
                 "tool_result_count": 1,
@@ -59,90 +61,118 @@ def _valid_live_acceptance():
 
 def _live_scenario_events(scenario):
     run_id = scenario["run_id"]
+    ledger = RuntimeEventLedgerV2(run_id)
     if scenario["name"] == "no-tool":
-        return [
-            RuntimeEvent(type="invocation_start", payload={"invocation_id": run_id}),
-            RuntimeEvent(type="user_input", payload={"invocation_id": run_id, "text": "no tool"}),
-            RuntimeEvent(
-                type="model_output",
-                payload={
-                    "invocation_id": run_id,
-                    "text": "<final>pico kernel no-tool acceptance ok</final>",
-                    "provider": "AnthropicCompatibleModelClient:deepseek-v4-pro",
-                    "metadata": {"finish_reason": "stop", "provider_status": "completed"},
-                    "step": 1,
-                },
-            ),
-            RuntimeEvent(
-                type="final_answer",
-                payload={"invocation_id": run_id, "text": "pico kernel no-tool acceptance ok"},
-            ),
-            RuntimeEvent(type="terminal_status", payload={"invocation_id": run_id, "status": "completed"}),
-        ]
-    return [
-        RuntimeEvent(type="invocation_start", payload={"invocation_id": run_id}),
-        RuntimeEvent(type="user_input", payload={"invocation_id": run_id, "text": "read README"}),
-        RuntimeEvent(
-            type="model_output",
+        ledger.append("invocation_start", status="started", actor="runtime_runner", payload={})
+        ledger.append("user_input", status="completed", actor="runtime_runner", payload={"text": "no tool"})
+        ledger.append(
+            "model_output",
+            status="completed",
+            actor="model_adapter",
             payload={
-                "invocation_id": run_id,
-                "text": '<tool>{"name":"read_file","args":{"path":"README.md"}}</tool>',
-                "provider": "AnthropicCompatibleModelClient:deepseek-v4-pro",
-                "metadata": {"finish_reason": "tool_use", "provider_status": "in_progress"},
-                "step": 1,
-            },
-        ),
-        RuntimeEvent(
-            type="tool_call_requested",
-            payload={
-                "invocation_id": run_id,
-                "tool_call_id": "tool_1",
-                "name": "read_file",
-                "args": {"path": "README.md"},
-                "read_only": True,
-            },
-        ),
-        RuntimeEvent(
-            type="tool_permission_decision",
-            payload={
-                "invocation_id": run_id,
-                "tool_call_id": "tool_1",
-                "name": "read_file",
-                "decision": "allow",
-                "reason": "kernel acceptance allows read-only tools",
-                "policy_name": "allow_readonly",
-                "failure_classification": "",
-                "available": True,
-            },
-        ),
-        RuntimeEvent(
-            type="tool_result",
-            payload={
-                "invocation_id": run_id,
-                "tool_call_id": "tool_1",
-                "name": "read_file",
-                "status": "ok",
-                "content": "# README.md\n   1: pico-kernel-readonly-acceptance-marker",
-                "failure_classification": "",
-                "read_only": True,
-            },
-        ),
-        RuntimeEvent(
-            type="model_output",
-            payload={
-                "invocation_id": run_id,
-                "text": "<final>Observed pico-kernel-readonly-acceptance-marker.</final>",
+                "model_call_id": "model_call_1",
+                "text": "<final>pico kernel no-tool acceptance ok</final>",
                 "provider": "AnthropicCompatibleModelClient:deepseek-v4-pro",
                 "metadata": {"finish_reason": "stop", "provider_status": "completed"},
-                "step": 2,
+                "step": 1,
             },
-        ),
-        RuntimeEvent(
-            type="final_answer",
-            payload={"invocation_id": run_id, "text": "Observed pico-kernel-readonly-acceptance-marker."},
-        ),
-        RuntimeEvent(type="terminal_status", payload={"invocation_id": run_id, "status": "completed"}),
-    ]
+            correlation_id="model_call_1",
+        )
+        ledger.append(
+            "final_answer",
+            status="completed",
+            actor="agent_flow",
+            payload={"text": "pico kernel no-tool acceptance ok"},
+        )
+        ledger.append(
+            "terminal_status",
+            status="completed",
+            actor="runtime_runner",
+            payload={"status": "completed"},
+        )
+        return ledger.events
+    ledger.append("invocation_start", status="started", actor="runtime_runner", payload={})
+    ledger.append("user_input", status="completed", actor="runtime_runner", payload={"text": "read README"})
+    ledger.append(
+        "model_output",
+        status="completed",
+        actor="model_adapter",
+        payload={
+            "model_call_id": "model_call_1",
+            "text": '<tool>{"name":"read_file","args":{"path":"README.md"}}</tool>',
+            "provider": "AnthropicCompatibleModelClient:deepseek-v4-pro",
+            "metadata": {"finish_reason": "tool_use", "provider_status": "in_progress"},
+            "step": 1,
+        },
+        correlation_id="model_call_1",
+    )
+    ledger.append(
+        "tool_call_requested",
+        status="started",
+        actor="tool_runtime",
+        payload={
+            "tool_call_id": "tool_1",
+            "name": "read_file",
+            "args": {"path": "README.md"},
+            "read_only": True,
+        },
+        correlation_id="tool_1",
+    )
+    ledger.append(
+        "tool_permission_decision",
+        status="ok",
+        actor="permission_policy",
+        payload={
+            "tool_call_id": "tool_1",
+            "name": "read_file",
+            "decision": "allow",
+            "reason": "kernel acceptance allows read-only tools",
+            "policy_name": "allow_readonly",
+            "failure_classification": "",
+            "available": True,
+        },
+        correlation_id="tool_1",
+    )
+    ledger.append(
+        "tool_result",
+        status="ok",
+        actor="tool_runtime",
+        payload={
+            "tool_call_id": "tool_1",
+            "name": "read_file",
+            "status": "ok",
+            "content": "# README.md\n   1: pico-kernel-readonly-acceptance-marker",
+            "failure_classification": "",
+            "read_only": True,
+        },
+        correlation_id="tool_1",
+    )
+    ledger.append(
+        "model_output",
+        status="completed",
+        actor="model_adapter",
+        payload={
+            "model_call_id": "model_call_2",
+            "text": "<final>Observed pico-kernel-readonly-acceptance-marker.</final>",
+            "provider": "AnthropicCompatibleModelClient:deepseek-v4-pro",
+            "metadata": {"finish_reason": "stop", "provider_status": "completed"},
+            "step": 2,
+        },
+        correlation_id="model_call_2",
+    )
+    ledger.append(
+        "final_answer",
+        status="completed",
+        actor="agent_flow",
+        payload={"text": "Observed pico-kernel-readonly-acceptance-marker."},
+    )
+    ledger.append(
+        "terminal_status",
+        status="completed",
+        actor="runtime_runner",
+        payload={"status": "completed"},
+    )
+    return ledger.events
 
 
 def _attach_live_projection_artifacts(gate_dir, live_acceptance):
@@ -166,17 +196,11 @@ def _valid_projection_inspection():
     runtime_events_path = "/fixture/runtime_events.jsonl"
     trace_path = "/fixture/trace.jsonl"
     report_path = "/fixture/report.json"
-    ledger = [
-        {"type": "invocation_start", "payload": {"invocation_id": "run_fixture"}},
-        {"type": "user_input", "payload": {"invocation_id": "run_fixture", "text": "hello"}},
-        {"type": "model_output", "payload": {"invocation_id": "run_fixture", "text": "answer"}},
-        {"type": "final_answer", "payload": {"invocation_id": "run_fixture", "text": "answer"}},
-        {"type": "terminal_status", "payload": {"invocation_id": "run_fixture", "status": "completed"}},
-    ]
+    ledger = [runtime_event_v2_to_dict(event) for event in _live_scenario_events({"name": "no-tool", "run_id": "run_fixture"})]
     return {
         "ledger": ledger,
         "session": {"run_id": "run_fixture", "status": "completed"},
-        "trace": [{"event": "invocation_start", "payload": {"invocation_id": "run_fixture"}}],
+        "trace": ledger,
         "report": {"run_id": "run_fixture", "status": "completed"},
         "export": {"run_id": "run_fixture", "status": "completed"},
         "artifacts": {
@@ -198,6 +222,7 @@ def _valid_headless_task_export():
         "runtime": {
             "run_id": "run_fixture",
             "status": "completed",
+            "runtime_event_schema_version": 2,
             "event_count": 5,
             "event_type_counts": {
                 "invocation_start": 1,
@@ -240,8 +265,15 @@ def _write_release_candidate(root, *, live_acceptance=None):
     trace_path = root / ".pico" / "runs" / "run_fixture" / "trace.jsonl"
     report_path = root / ".pico" / "runs" / "run_fixture" / "report.json"
     runtime_events_path.parent.mkdir(parents=True, exist_ok=True)
-    runtime_events_path.write_text('{"type":"terminal_status","payload":{"status":"completed"}}\n', encoding="utf-8")
-    trace_path.write_text('{"event":"terminal_status","payload":{"status":"completed"}}\n', encoding="utf-8")
+    fixture_events = [runtime_event_v2_to_dict(event) for event in _live_scenario_events({"name": "no-tool", "run_id": "run_fixture"})]
+    runtime_events_path.write_text(
+        "\n".join(json.dumps(event, sort_keys=True) for event in fixture_events) + "\n",
+        encoding="utf-8",
+    )
+    trace_path.write_text(
+        "\n".join(json.dumps(event, sort_keys=True) for event in fixture_events) + "\n",
+        encoding="utf-8",
+    )
     report_path.write_text('{"status":"completed"}\n', encoding="utf-8")
     projection = _valid_projection_inspection()
     projection["artifacts"]["runtime_events"]["path"] = str(runtime_events_path)
@@ -251,7 +283,10 @@ def _write_release_candidate(root, *, live_acceptance=None):
     headless_path = _write_json(gate_dir / "task_run_export.json", _valid_headless_task_export())
     headless_runtime_events_path = gate_dir / "workspace" / ".pico" / "runs" / "run_fixture" / "runtime_events.jsonl"
     headless_runtime_events_path.parent.mkdir(parents=True, exist_ok=True)
-    headless_runtime_events_path.write_text('{"type":"terminal_status","payload":{"status":"completed"}}\n', encoding="utf-8")
+    headless_runtime_events_path.write_text(
+        "\n".join(json.dumps(event, sort_keys=True) for event in fixture_events) + "\n",
+        encoding="utf-8",
+    )
 
     return _write_json(
         root / ".pico" / "kernel-release-candidate.json",

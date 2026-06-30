@@ -182,6 +182,7 @@ def _build_model_client(args):
             api_key=api_key,
             temperature=args.temperature,
             timeout=getattr(args, "openai_timeout", getattr(args, "ollama_timeout", 300)),
+            disable_thinking=True,
         )
     if provider == "fake":
         output = provider_env("PICO_FAKE_MODEL_OUTPUT", default="fake response")

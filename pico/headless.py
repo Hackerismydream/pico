@@ -54,6 +54,17 @@ def _relative(path, root):
     return str(Path(path).resolve().relative_to(Path(root).resolve()))
 
 
+def _runtime_event_schema_version(manifest_path):
+    if not manifest_path:
+        return ""
+    try:
+        manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    version = manifest.get("runtime_event_schema_version")
+    return version if isinstance(version, int) else ""
+
+
 def _text(value):
     if value is None:
         return ""
@@ -363,9 +374,11 @@ class HeadlessTaskRunner:
             (artifacts.export_projection if artifacts is not None else {}).get("provider_calls", [])
         )
         runtime_status = artifacts.status if artifacts is not None else result.status
+        runtime_event_schema_version = _runtime_event_schema_version(artifacts.manifest_path if artifacts else None)
         runtime_info = {
             "run_id": artifacts.run_id if artifacts is not None else context.invocation_id,
             "status": runtime_status,
+            "runtime_event_schema_version": runtime_event_schema_version,
             "error_type": str(terminal_status.get("error_type", result.error_type)),
             "error_message": str(terminal_status.get("error_message", result.error_message)),
             "terminal_error": "" if runtime_status == "completed" else project_terminal_error(result.events),
@@ -388,6 +401,7 @@ class HeadlessTaskRunner:
             "runtime_finished",
             runtime_run_id=runtime_info["run_id"],
             status=runtime_status,
+            runtime_event_schema_version=runtime_event_schema_version,
             event_count=len(result.events),
             runtime_events_relpath=runtime_info["runtime_events_relpath"],
             trace_relpath=runtime_info["trace_relpath"],
@@ -449,6 +463,7 @@ class HeadlessTaskRunner:
                 "PICO_FINAL_ANSWER": str(runtime_info.get("final_answer", "")),
                 "PICO_RUNTIME_RUN_ID": str(runtime_info.get("run_id", "")),
                 "PICO_RUNTIME_EVENTS": str(run_dir / runtime_info.get("runtime_events_relpath", "")),
+                "PICO_RUNTIME_EVENT_SCHEMA_VERSION": str(runtime_info.get("runtime_event_schema_version", "")),
             }
         )
         return env
@@ -508,6 +523,7 @@ class HeadlessTaskRunner:
         return {
             "run_id": "",
             "status": "",
+            "runtime_event_schema_version": "",
             "error_type": "",
             "error_message": "",
             "terminal_error": "",
