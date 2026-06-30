@@ -258,6 +258,27 @@ uv run pico headless task run task.json --runs-root .pico/headless/task-runs
 
 输出和 `.pico/headless/task-runs/<task_run_id>/task_run_export.json` 都会区分 `pass`、benchmark `fail` 和 infrastructure `infra_fail`，并引用底层 kernel `runtime_events.jsonl`。
 
+## Headless experiment run
+
+experiment controller 是单任务 runner 上方的控制平面 tracer bullet：它运行一个现有 headless task，并额外写出 experiment id、append-only `experiment_wal.jsonl`、`experiment_export.json` 和 Markdown report。experiment 层只引用 task-run export 和 runtime manifest，不复制底层 RuntimeEvent truth。
+
+最小 experiment spec：
+
+```json
+{
+  "id": "runtime-lab-smoke",
+  "task": "./task.json"
+}
+```
+
+运行：
+
+```bash
+uv run pico headless experiment run experiment.json --runs-root .pico/headless/experiments
+```
+
+输出和 `.pico/headless/experiments/<experiment_run_id>/experiment_export.json` 会包含 pass、benchmark failure、infrastructure failure、total run count、`task_run_export.json`、`runtime_manifest.json` 和 human-readable report 路径。benchmark failure 仍返回 0；infrastructure failure 返回非 0。
+
 ## Headless eval grid
 
 eval grid 是单任务 runner 的薄封装：它读取一个小的 config x task 矩阵，每个 cell 都复用 `pico headless task run` 的 kernel runtime、隔离 workspace、verifier 边界和 task-run export。当前可执行 provider 只支持 fake provider，真实 provider 的 usage/cost 字段会先保留在稳定导出结构里，等后续 acceptance gate 接入。
@@ -294,10 +315,10 @@ uv run pico headless eval grid run grid.json --runs-root .pico/headless/eval-gri
 新 kernel runtime 的真实 provider 验收不在默认测试里跑。CI/local 自动 gate 继续使用 fake provider：
 
 ```bash
-uv run pytest tests/test_runtime_kernel.py tests/test_projection_acceptance.py tests/test_kernel_acceptance.py tests/test_headless_task.py -q
+uv run pytest tests/test_runtime_kernel.py tests/test_projection_acceptance.py tests/test_kernel_acceptance.py tests/test_headless_task.py tests/test_headless_experiment.py -q
 ```
 
-这组 fake-provider 测试覆盖 CLI no-tool、CLI read-only-tool、headless no-tool 和 headless read-only-tool，并只断言外部 `runtime_manifest.json`、`runtime_events.jsonl`、`trace.jsonl`、`report.json` contract。
+这组 fake-provider 测试覆盖 CLI no-tool、CLI read-only-tool、headless no-tool、headless read-only-tool 和 experiment control-plane tracer bullet，并只断言外部 `runtime_manifest.json`、`runtime_events.jsonl`、`trace.jsonl`、`report.json`、task-run export 和 experiment WAL/export/report contract。
 
 live-provider 是真实验收 gate，需要 provider key 和网络。它不会被默认测试套件触发；缺少真实 provider key 时命令返回非 0，并输出 `status: "skipped"`，不会把未运行的 live acceptance 当成通过。
 
