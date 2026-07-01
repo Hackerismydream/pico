@@ -229,6 +229,225 @@ ollama pull qwen3.5:4b
 uv run pico --provider ollama --model qwen3.5:4b
 ```
 
+## Headless task run
+
+单任务 headless runner 使用同一条 kernel runtime，但运行在隔离 workspace 中。verifier 在 runtime 结束后才执行，不会进入 agent prompt。最小 spec：
+
+```json
+{
+  "id": "read_fact",
+  "workspace": "./fixtures/read_fact",
+  "prompt": "Read README and answer with the project fact.",
+  "fake_model_outputs": [
+    "<tool>{\"name\":\"read_file\",\"args\":{\"path\":\"README.md\"}}</tool>",
+    "<final>The project fact is alpha.</final>"
+  ],
+  "verifier": "python3 -c 'import os; assert os.environ[\"PICO_FINAL_ANSWER\"] == \"The project fact is alpha.\"'",
+  "allowed_tools": ["read_file"],
+  "max_steps": 4
+}
+```
+
+`allowed_tools` 是显式 allowlist；省略时默认不给 runtime 任何工具。
+
+运行：
+
+```bash
+uv run pico headless task run task.json --runs-root .pico/headless/task-runs
+```
+
+输出和 `.pico/headless/task-runs/<task_run_id>/task_run_export.json` 都会区分 `pass`、benchmark `fail` 和 infrastructure `infra_fail`，并引用底层 kernel `runtime_events.jsonl`。
+
+## Headless experiment run
+
+experiment controller 是单任务 runner 上方的控制平面 tracer bullet：它运行一个现有 headless task，并额外写出 experiment id、append-only `experiment_wal.jsonl`、`experiment_export.json`、`experiment_manifest.json` 和 Markdown report。experiment 层只引用 task-run export 和 runtime manifest，不复制底层 RuntimeEvent truth。
+
+最小 experiment spec：
+
+```json
+{
+  "id": "runtime-lab-smoke",
+  "task": "./task.json"
+}
+```
+
+显式 candidate spec：
+
+```json
+{
+  "id": "runtime-lab-smoke",
+  "task": "./task.json",
+  "candidates": [
+    {
+      "id": "candidate-a",
+      "prompt": "Read README and answer with the project fact.",
+      "prompt_sha256": "sha256:<hash-of-prompt>",
+      "runtime_policy_id": "kernel-readonly-v1",
+      "provider_id": "fake",
+      "model_id": "fake:default",
+      "fake_model_outputs": ["<final>unknown</final>"],
+      "verifier_id": "readme-verifier-v1"
+    },
+    {
+      "id": "candidate-b",
+      "prompt": "Read README carefully and answer with the project fact.",
+      "prompt_sha256": "sha256:<hash-of-candidate-b-prompt>",
+      "runtime_policy_id": "kernel-readonly-v1",
+      "provider_id": "fake",
+      "model_id": "fake:variant",
+      "fake_model_outputs": ["<final>The project fact is alpha.</final>"],
+      "verifier_id": "readme-verifier-v1"
+    }
+  ],
+  "acceptance_policy": {
+    "type": "benchmark_pass_rate_improvement",
+    "baseline_candidate_id": "candidate-a",
+    "candidate_ids": ["candidate-b"],
+    "min_pass_rate_delta": 0.0,
+    "require_no_infrastructure_failures": true
+  }
+}
+```
+
+`provider_id` defaults to `fake`, and fake candidates still require `model_id`
+values in the `fake:*` namespace for deterministic regression runs. Experiment
+candidates may also select `openai`, `anthropic`, `deepseek`, or `ollama` with
+an explicit `model_id`; missing live credentials are reported as skipped
+infrastructure outcomes, not benchmark failures or passes.
+
+`acceptance_policy` is optional. When present, the current policy type is
+`benchmark_pass_rate_improvement`: Pico compares candidate verifier pass rates
+against a declared baseline candidate and accepts a candidate only when artifact
+evidence shows a verifier-backed improvement. Infrastructure failures, skipped
+runs, missing task-run evidence, or stale acceptance decisions make the policy
+invalid instead of accepted. This is a benchmark-backed prompt acceptance gate,
+not automatic prompt generation.
+
+运行：
+
+```bash
+uv run pico headless experiment run experiment.json --runs-root .pico/headless/experiments
+```
+
+输出和 `.pico/headless/experiments/<experiment_run_id>/experiment_export.json` 会包含 pass、benchmark failure、infrastructure failure、skipped/reused、total run count、scored run count、candidate/prompt/runtime/provider/model/task/verifier identity、acceptance decision、usage/cost metadata when available、`task_run_export.json`、`runtime_manifest.json`、`experiment_manifest.json` 和 human-readable report 路径。benchmark score 只用 pass + official verifier failure 计算；provider/API failure、runtime/model execution failure、workspace setup failure、verifier timeout 和 runtime artifact capture failure 都是 infrastructure failure，不计入 benchmark score。benchmark failure 仍返回 0；infrastructure failure 返回非 0。
+
+默认 fake-provider evidence 是 deterministic gate path；真实 provider evidence 是 manual acceptance gate，必须由本机 credentials/network 明确跑出来，缺少 credentials 只会记录 skipped/infrastructure outcome，不会被当成通过。验证已生成 evidence，不重跑 provider：
+
+```bash
+uv run pico headless experiment gate .pico/headless/experiments/<experiment_run_id>
+```
+
+gate 会读取 `experiment_manifest.json`、experiment WAL、task-run export、task-run facts、runtime events、trace/report、runtime manifest 和 verifier result。它会拒绝缺 runtime event schema metadata、缺 verifier result、缺 task-run export、缺 runtime artifact manifest、candidate/prompt/runtime/provider/model/task/verifier identity 不一致、或 acceptance decision 无法从 task-run evidence 重算的 evidence。当前 MVP 边界仍然是：不做 automatic prompt generation、不做 runtime-policy A/B claims、不扩 broad tool surface。
+
+## Headless eval grid
+
+eval grid 是单任务 runner 的薄封装：它读取一个小的 config x task 矩阵，每个 cell 都复用 `pico headless task run` 的 kernel runtime、隔离 workspace、verifier 边界和 task-run export。当前可执行 provider 只支持 fake provider，真实 provider 的 usage/cost 字段会先保留在稳定导出结构里，等后续 acceptance gate 接入。
+
+最小 grid spec：
+
+```json
+{
+  "id": "tiny-grid",
+  "tasks": ["./task-a.json", "./task-b.json"],
+  "configs": [
+    {"id": "fake-default", "provider": "fake"},
+    {
+      "id": "fake-alt",
+      "provider": "fake",
+      "fake_outputs_by_task": {
+        "task-a": ["<final>alternate answer</final>"]
+      }
+    }
+  ]
+}
+```
+
+运行：
+
+```bash
+uv run pico headless eval grid run grid.json --runs-root .pico/headless/eval-grids
+```
+
+输出和 `.pico/headless/eval-grids/<grid_run_id>/eval_grid_export.json` 会包含每个 row 的 task run id、runtime status、verifier status、usage/cost metadata、以及 `runtime_events.jsonl` / trace / report / task-run export 的相对路径。benchmark failure 会以 `status: "fail"` 留在结果里且命令返回 0；infrastructure failure 会以 `status: "infra_fail"` 留在结果里且命令返回非 0。
+
+## Kernel live acceptance
+
+新 kernel runtime 的真实 provider 验收不在默认测试里跑。CI/local 自动 gate 继续使用 fake provider：
+
+```bash
+uv run pytest tests/test_runtime_kernel.py tests/test_projection_acceptance.py tests/test_kernel_acceptance.py tests/test_headless_task.py tests/test_headless_experiment.py -q
+```
+
+这组 fake-provider 测试覆盖 CLI no-tool、CLI read-only-tool、headless no-tool、headless read-only-tool 和 experiment control-plane tracer bullet，并只断言外部 `runtime_manifest.json`、`runtime_events.jsonl`、`trace.jsonl`、`report.json`、task-run export 和 experiment WAL/export/report contract。
+
+live-provider 是真实验收 gate，需要 provider key 和网络。它不会被默认测试套件触发；缺少真实 provider key 时命令返回非 0，并输出 `status: "skipped"`，不会把未运行的 live acceptance 当成通过。
+
+No-tool 验收：
+
+```bash
+uv run python3 scripts/run_kernel_acceptance.py --provider deepseek --scenario no-tool
+```
+
+Read-only-tool 验收：
+
+```bash
+uv run python3 scripts/run_kernel_acceptance.py --provider deepseek --scenario read-only-tool
+```
+
+一次跑完整 live gate：
+
+```bash
+uv run python3 scripts/run_kernel_acceptance.py --provider deepseek --scenario all --artifacts-root .pico/kernel-acceptance
+```
+
+输出是 JSON，同时会写入 `.pico/kernel-acceptance/<acceptance_run_id>/live_acceptance.json`。每个 scenario 都必须检查：
+
+- `runtime_status: "completed"` 和 `status: "passed"`。
+- `final_answer` 与 `runtime_manifest.json` 里的 export projection 一致。
+- `finish_reason` / `provider_status` / `provider_metadata` 存在。
+- `artifacts.runtime_events`、`artifacts.trace`、`artifacts.report`、`artifacts.manifest` 指向的文件存在。
+- `runtime_events.jsonl` 包含 `invocation_start`、`user_input`、`model_output`、`final_answer`、`terminal_status`。
+- read-only-tool scenario 还必须包含 `tool_call_requested`、`tool_permission_decision`、`tool_result`，并在 manifest export / report 里看到 read-only `read_file` 的 allow + ok 证据。
+
+Headless experiment live-provider gate uses the experiment controller instead of
+the lower-level kernel acceptance harness:
+
+```bash
+uv run python3 scripts/run_headless_experiment_acceptance.py --provider deepseek --runs-root .pico/headless/live-provider-acceptance
+```
+
+It writes `.pico/headless/live-provider-acceptance/headless_experiment_acceptance.json`
+plus experiment/task-run artifacts for one no-tool task and one read-only-tool
+task. Exit code `2` means credentials were missing and the run was skipped;
+exit code `1` means infrastructure failed; exit code `3` means live verifier
+checks produced benchmark failures; exit code `0` means both verifier checks
+passed.
+
+## Kernel default gate
+
+`pico` 的默认 runtime 是 `--runtime auto`。auto 不会因为代码里存在 kernel runtime 就直接切过去；它只读取本地 release-candidate manifest，确认验收 artifact 通过后才默认使用 kernel。manifest 缺失或 gate 失败时，CLI 会回退到 legacy runtime。显式 `--runtime legacy` 会一直保留，显式 `--runtime kernel` 可用于开发调试。
+
+默认 manifest 路径：
+
+```bash
+.pico/kernel-release-candidate.json
+```
+
+也可以显式指定：
+
+```bash
+uv run pico --kernel-release-candidate .pico/kernel-release-candidate.json "summarize this repo"
+```
+
+一个 kernel-runtime release candidate 必须同时证明四类 gate：
+
+- `fake_provider_tests`：记录通过的 fake-provider 回归命令，并覆盖 `tests/test_runtime_kernel.py`、`tests/test_projection_acceptance.py`、`tests/test_kernel_acceptance.py` 和 `tests/test_headless_task.py`。
+- `live_provider_acceptance`：引用真实 provider 的 live acceptance JSON artifact，且 `no-tool` 和 `read-only-tool` scenario 都为 passed；每个 scenario 的 runtime events、trace、report、manifest、final answer、provider metadata 和 tool evidence 都必须能从本地 artifact 重放。
+- `projection_inspection`：引用 `uv run pico --runtime kernel --inspect-run <run_id> --inspect-view all` 产出的本地 inspection JSON，证明 ledger、session、trace、report、export 和 artifact projection 都可重放。
+- `headless_single_task`：引用 `pico headless task run` 的 `task_run_export.json`，证明 headless 单任务在 kernel runtime 下通过、verifier 边界受保护、默认工具策略 fail-closed。
+
+legacy fallback 仍用于三种情况：没有 release-candidate manifest；manifest 指向的 artifact 失败、缺失或格式不对；以及迁移窗口里需要显式比较旧 runtime 行为的场景。
+
 ## 常用交互命令
 
 - `/help`：查看内置命令
