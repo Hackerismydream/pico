@@ -4,11 +4,14 @@ import pytest
 
 from pico.runtime_events import (
     RUNTIME_EVENT_SCHEMA_VERSION,
+    RuntimeEvent,
     RuntimeEventLedgerV2,
     RuntimeEventValidationError,
     RuntimeEventV2,
     normalize_runtime_event,
     normalize_runtime_events,
+    runtime_event_from_dict,
+    runtime_event_to_dict,
     runtime_event_v2_from_dict,
     runtime_event_v2_to_dict,
 )
@@ -43,6 +46,34 @@ def test_runtime_event_v2_ledger_assigns_sequence_and_round_trips():
     assert payload["sequence"] == 2
     assert payload["payload"]["text"] == "<final>ok</final>"
     assert runtime_event_v2_from_dict(payload) == second
+
+
+def test_runtime_event_codec_handles_v2_and_legacy_shapes():
+    ledger = RuntimeEventLedgerV2("invocation_codec")
+    v2 = ledger.append(
+        "terminal_status",
+        status="completed",
+        actor="runtime_runner",
+        payload={"status": "completed"},
+    )
+    legacy = RuntimeEvent(
+        type="terminal_status",
+        payload={"invocation_id": "invocation_legacy", "status": "completed"},
+        created_at="2026-06-30T00:00:00+00:00",
+    )
+
+    v2_payload = runtime_event_to_dict(v2)
+    legacy_payload = runtime_event_to_dict(legacy)
+
+    assert v2_payload["schema_version"] == RUNTIME_EVENT_SCHEMA_VERSION
+    assert v2_payload["kind"] == "terminal_status"
+    assert runtime_event_from_dict(v2_payload) == v2
+    assert legacy_payload == {
+        "type": "terminal_status",
+        "created_at": "2026-06-30T00:00:00+00:00",
+        "payload": {"invocation_id": "invocation_legacy", "status": "completed"},
+    }
+    assert runtime_event_from_dict(legacy_payload) == legacy
 
 
 def test_runtime_event_v2_rejects_invalid_new_writes():

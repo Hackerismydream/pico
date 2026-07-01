@@ -9,7 +9,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from .runtime_kernel import runtime_event_from_dict, runtime_event_to_dict
+from .runtime_events import runtime_event_from_dict, runtime_event_to_dict
 from .security import redact_artifact
 
 RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
