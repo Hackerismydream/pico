@@ -470,6 +470,8 @@ def _kernel_tool_permission_policy(args):
 def _selected_runtime(args):
     if args.runtime != "auto":
         return args.runtime
+    if not args.prompt:
+        return "legacy"
     workspace = WorkspaceContext.build(args.cwd)
     evaluation = evaluate_kernel_release_candidate(
         args.kernel_release_candidate,

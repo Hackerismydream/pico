@@ -18,23 +18,17 @@ REQUIRED_GATES = (
     "fake_provider_tests",
     "live_provider_acceptance",
     "projection_inspection",
-    "headless_single_task",
 )
 REQUIRED_FAKE_TEST_FILES = (
+    "tests/test_runtime_events.py",
     "tests/test_runtime_kernel.py",
+    "tests/test_projection_manager.py",
     "tests/test_projection_acceptance.py",
-    "tests/test_kernel_acceptance.py",
-    "tests/test_headless_task.py",
+    "tests/test_run_store.py",
+    "tests/test_kernel_default_gate.py",
 )
 REQUIRED_LIVE_SCENARIOS = ("no-tool", "read-only-tool")
 REQUIRED_PROJECTION_EVENTS = (
-    "invocation_start",
-    "user_input",
-    "model_output",
-    "final_answer",
-    "terminal_status",
-)
-REQUIRED_HEADLESS_EVENTS = (
     "invocation_start",
     "user_input",
     "model_output",
@@ -111,14 +105,11 @@ def evaluate_kernel_release_candidate(path=None, *, workspace_root="."):
             failures.append(f"candidate manifest is missing gate: {name}")
 
     if isinstance(gates.get("fake_provider_tests"), dict):
-        _validate_fake_provider_tests(gates["fake_provider_tests"], failures)
+        _validate_fake_provider_tests(gates["fake_provider_tests"], workspace_root, failures)
     if isinstance(gates.get("live_provider_acceptance"), dict):
         _validate_live_provider_acceptance(gates["live_provider_acceptance"], workspace_root, failures)
     if isinstance(gates.get("projection_inspection"), dict):
         _validate_projection_inspection(gates["projection_inspection"], workspace_root, failures)
-    if isinstance(gates.get("headless_single_task"), dict):
-        _validate_headless_single_task(gates["headless_single_task"], workspace_root, failures)
-
     for name in REQUIRED_GATES:
         if name in gates and not isinstance(gates.get(name), dict):
             failures.append(f"gate {name} must be a JSON object")
@@ -193,15 +184,54 @@ def _resolve_referenced_artifact_path(raw_path, base_dir, workspace_root, failur
     return resolved
 
 
-def _validate_fake_provider_tests(gate, failures):
-    if gate.get("status") != "passed":
-        failures.append("fake_provider_tests status must be passed")
-    if not str(gate.get("command", "")).strip():
-        failures.append("fake_provider_tests command must be recorded")
-    test_files = set(str(item) for item in gate.get("test_files", []) if str(item).strip())
+def _validate_fake_provider_tests(gate, workspace_root, failures):
+    paths = _artifact_paths(gate, workspace_root, failures, label="fake_provider_tests")
+    for path in paths:
+        payload = _load_json(path, f"fake_provider_tests artifact {path}", failures)
+        if not isinstance(payload, dict):
+            failures.append(f"fake_provider_tests artifact must be a JSON object: {path}")
+            continue
+        if payload.get("artifact_type") != "kernel-fake-provider-test-run":
+            failures.append(f"fake_provider_tests artifact_type must be kernel-fake-provider-test-run: {path}")
+        if payload.get("status") != "passed":
+            failures.append(f"fake_provider_tests artifact status must be passed: {path}")
+        if payload.get("exit_code") != 0:
+            failures.append(f"fake_provider_tests artifact exit_code must be 0: {path}")
+        if not str(payload.get("command", "")).strip():
+            failures.append(f"fake_provider_tests artifact command must be recorded: {path}")
+        if not str(payload.get("commit", "")).strip():
+            failures.append(f"fake_provider_tests artifact commit must be recorded: {path}")
+        output = payload.get("output")
+        if not isinstance(output, dict) or not any(
+            str(output.get(name, "")).strip() for name in ("summary", "stdout", "stderr")
+        ):
+            failures.append(f"fake_provider_tests artifact output must be recorded: {path}")
+        test_files = set(str(item) for item in payload.get("test_files", []) if str(item).strip())
+        _validate_fake_provider_test_files(test_files, workspace_root, failures)
+
+
+def _validate_fake_provider_test_files(test_files, workspace_root, failures):
     missing = [path for path in REQUIRED_FAKE_TEST_FILES if path not in test_files]
     if missing:
         failures.append("fake_provider_tests missing required test files: " + ", ".join(missing))
+    for raw_path in sorted(test_files):
+        path = _resolve_workspace_test_file_path(raw_path, workspace_root, failures)
+        if path is not None and not path.exists():
+            failures.append(f"fake_provider_tests test file must exist: {raw_path}")
+
+
+def _resolve_workspace_test_file_path(raw_path, workspace_root, failures):
+    path = Path(str(raw_path))
+    if path.is_absolute():
+        failures.append(f"fake_provider_tests test file path must be relative: {raw_path}")
+        return None
+    resolved = (workspace_root / path).resolve()
+    try:
+        resolved.relative_to(workspace_root)
+    except ValueError:
+        failures.append(f"fake_provider_tests test file path escapes workspace: {raw_path}")
+        return None
+    return resolved
 
 
 def _validate_live_provider_acceptance(gate, workspace_root, failures):
@@ -472,82 +502,3 @@ def _validate_projection_inspection(gate, workspace_root, failures):
             )
             if artifact_path is not None and not artifact_path.exists():
                 failures.append(f"projection_inspection artifacts.{name} path must exist")
-
-
-def _validate_headless_single_task(gate, workspace_root, failures):
-    paths = _artifact_paths(gate, workspace_root, failures, label="headless_single_task")
-    if not paths:
-        return
-    path = paths[0]
-    payload = _load_json(path, f"headless_single_task artifact {path}", failures)
-    if not isinstance(payload, dict):
-        failures.append(f"headless_single_task artifact must be a JSON object: {path}")
-        return
-    if payload.get("artifact_type") != "headless-task-run-export":
-        failures.append("headless_single_task artifact_type must be headless-task-run-export")
-    if payload.get("status") != "pass":
-        failures.append("headless_single_task status must be pass")
-    if payload.get("failure_kind"):
-        failures.append("headless_single_task failure_kind must be empty")
-
-    runtime = payload.get("runtime")
-    if not isinstance(runtime, dict):
-        failures.append("headless_single_task runtime must be a JSON object")
-    else:
-        if runtime.get("status") != "completed":
-            failures.append("headless_single_task runtime.status must be completed")
-        if runtime.get("runtime_event_schema_version") != REQUIRED_RUNTIME_EVENT_SCHEMA_VERSION:
-            failures.append("headless_single_task runtime.runtime_event_schema_version must be 2")
-        if not str(runtime.get("run_id", "")).strip():
-            failures.append("headless_single_task runtime.run_id must be recorded")
-        event_counts = runtime.get("event_type_counts")
-        if not isinstance(event_counts, dict):
-            failures.append("headless_single_task runtime.event_type_counts must be recorded")
-        else:
-            missing_events = [event for event in REQUIRED_HEADLESS_EVENTS if int(event_counts.get(event, 0) or 0) < 1]
-            if missing_events:
-                failures.append("headless_single_task runtime missing events: " + ", ".join(missing_events))
-        relpath = str(runtime.get("runtime_events_relpath", "")).strip()
-        if not relpath:
-            failures.append("headless_single_task runtime_events_relpath must be recorded")
-        else:
-            runtime_events_path = _resolve_referenced_artifact_path(
-                relpath,
-                path.parent,
-                workspace_root,
-                failures,
-                label="headless_single_task runtime_events_relpath",
-            )
-            if runtime_events_path is not None and not runtime_events_path.exists():
-                failures.append("headless_single_task runtime_events_relpath must exist")
-            elif runtime_events_path is not None:
-                runtime_events = _load_runtime_event_jsonl(runtime_events_path, failures, "headless_single_task")
-                _validate_runtime_events_v2(runtime_events, failures, "headless_single_task runtime_events")
-
-    verifier = payload.get("verifier")
-    if not isinstance(verifier, dict):
-        failures.append("headless_single_task verifier must be a JSON object")
-    else:
-        if verifier.get("exit_code") != 0:
-            failures.append("headless_single_task verifier.exit_code must be 0")
-        if verifier.get("protected_boundary") is not True:
-            failures.append("headless_single_task verifier.protected_boundary must be true")
-        if verifier.get("timed_out") is True:
-            failures.append("headless_single_task verifier must not time out")
-
-    boundaries = payload.get("boundaries")
-    if not isinstance(boundaries, dict):
-        failures.append("headless_single_task boundaries must be a JSON object")
-    elif boundaries.get("verifier_visible_to_runtime") is not False:
-        failures.append("headless_single_task verifier_visible_to_runtime must be false")
-
-    policy = payload.get("policy")
-    if not isinstance(policy, dict):
-        failures.append("headless_single_task policy must be a JSON object")
-    else:
-        if policy.get("runtime") != "kernel":
-            failures.append("headless_single_task policy.runtime must be kernel")
-        if policy.get("model_provider") != "fake":
-            failures.append("headless_single_task policy.model_provider must be fake")
-        if policy.get("fail_closed") is not True:
-            failures.append("headless_single_task policy.fail_closed must be true")

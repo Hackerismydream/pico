@@ -1,7 +1,7 @@
 import json
 
 from pico.cli import main
-from pico.kernel_gate import evaluate_kernel_release_candidate
+from pico.kernel_gate import REQUIRED_FAKE_TEST_FILES, evaluate_kernel_release_candidate
 from pico.providers.clients import FakeModelClient
 from pico.run_store import RunStore
 from pico.runtime_events import RuntimeEventLedgerV2, runtime_event_v2_to_dict
@@ -211,48 +211,6 @@ def _valid_projection_inspection():
     }
 
 
-def _valid_headless_task_export():
-    return {
-        "artifact_type": "headless-task-run-export",
-        "schema_version": 1,
-        "task_run_id": "taskrun_fixture",
-        "status": "pass",
-        "failure_kind": "",
-        "failure_category": "",
-        "runtime": {
-            "run_id": "run_fixture",
-            "status": "completed",
-            "runtime_event_schema_version": 2,
-            "event_count": 5,
-            "event_type_counts": {
-                "invocation_start": 1,
-                "user_input": 1,
-                "model_output": 1,
-                "final_answer": 1,
-                "terminal_status": 1,
-            },
-            "runtime_events_relpath": "workspace/.pico/runs/run_fixture/runtime_events.jsonl",
-        },
-        "verifier": {
-            "exit_code": 0,
-            "protected_boundary": True,
-            "timed_out": False,
-        },
-        "boundaries": {
-            "verifier_visible_to_runtime": False,
-        },
-        "policy": {
-            "runtime": "kernel",
-            "model_provider": "fake",
-            "tool_policy": "headless_explicit_readonly_allowlist",
-            "fail_closed": True,
-        },
-        "artifacts": {
-            "task_run_export_relpath": "task_run_export.json",
-        },
-    }
-
-
 def _write_release_candidate(root, *, live_acceptance=None):
     gate_dir = root / ".pico" / "kernel-gates"
     live_acceptance = _valid_live_acceptance() if live_acceptance is None else live_acceptance
@@ -280,12 +238,26 @@ def _write_release_candidate(root, *, live_acceptance=None):
     projection["artifacts"]["trace"]["path"] = str(trace_path)
     projection["artifacts"]["report"]["path"] = str(report_path)
     projection_path = _write_json(gate_dir / "projection-inspection.json", projection)
-    headless_path = _write_json(gate_dir / "task_run_export.json", _valid_headless_task_export())
-    headless_runtime_events_path = gate_dir / "workspace" / ".pico" / "runs" / "run_fixture" / "runtime_events.jsonl"
-    headless_runtime_events_path.parent.mkdir(parents=True, exist_ok=True)
-    headless_runtime_events_path.write_text(
-        "\n".join(json.dumps(event, sort_keys=True) for event in fixture_events) + "\n",
-        encoding="utf-8",
+    for test_file in REQUIRED_FAKE_TEST_FILES:
+        path = root / test_file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# fixture test file\n", encoding="utf-8")
+    fake_provider_path = _write_json(
+        gate_dir / "fake-provider-tests.json",
+        {
+            "artifact_type": "kernel-fake-provider-test-run",
+            "schema_version": 1,
+            "status": "passed",
+            "exit_code": 0,
+            "commit": "fixture",
+            "command": (
+                "uv run pytest tests/test_runtime_events.py tests/test_runtime_kernel.py "
+                "tests/test_projection_manager.py tests/test_projection_acceptance.py "
+                "tests/test_run_store.py tests/test_kernel_default_gate.py -q"
+            ),
+            "test_files": list(REQUIRED_FAKE_TEST_FILES),
+            "output": {"summary": "fixture fake-provider test run passed"},
+        },
     )
 
     return _write_json(
@@ -295,23 +267,9 @@ def _write_release_candidate(root, *, live_acceptance=None):
             "runtime": "kernel",
             "status": "release_candidate",
             "gates": {
-                "fake_provider_tests": {
-                    "status": "passed",
-                    "command": (
-                        "uv run pytest tests/test_runtime_kernel.py "
-                        "tests/test_projection_acceptance.py "
-                        "tests/test_kernel_acceptance.py tests/test_headless_task.py -q"
-                    ),
-                    "test_files": [
-                        "tests/test_runtime_kernel.py",
-                        "tests/test_projection_acceptance.py",
-                        "tests/test_kernel_acceptance.py",
-                        "tests/test_headless_task.py",
-                    ],
-                },
+                "fake_provider_tests": {"artifact": str(fake_provider_path.relative_to(root))},
                 "live_provider_acceptance": {"artifacts": [str(live_path.relative_to(root))]},
                 "projection_inspection": {"artifact": str(projection_path.relative_to(root))},
-                "headless_single_task": {"artifact": str(headless_path.relative_to(root))},
             },
         },
     )
@@ -362,6 +320,37 @@ def test_kernel_release_candidate_gate_rejects_manifest_artifact_escape(tmp_path
 
     assert result.passed is False
     assert any("escapes workspace" in failure for failure in result.failures)
+
+
+def test_kernel_release_candidate_gate_rejects_missing_fake_test_file(tmp_path):
+    manifest = _write_release_candidate(tmp_path)
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    fake_path = tmp_path / payload["gates"]["fake_provider_tests"]["artifact"]
+    fake_tests = json.loads(fake_path.read_text(encoding="utf-8"))
+    fake_tests["test_files"].append("tests/missing_kernel_test.py")
+    fake_path.write_text(json.dumps(fake_tests), encoding="utf-8")
+
+    result = evaluate_kernel_release_candidate(manifest, workspace_root=tmp_path)
+
+    assert result.passed is False
+    assert any("tests/missing_kernel_test.py" in failure for failure in result.failures)
+
+
+def test_default_runtime_without_prompt_keeps_legacy_repl_after_gate_passes(tmp_path, capsys, monkeypatch):
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+    _write_release_candidate(tmp_path)
+    monkeypatch.setattr(
+        "pico.cli._build_model_client",
+        lambda args: FakeModelClient(["<final>unused</final>"]),
+    )
+    monkeypatch.setattr("builtins.input", lambda prompt="": (_ for _ in ()).throw(EOFError()))
+
+    status = main(["--cwd", str(tmp_path)])
+
+    captured = capsys.readouterr()
+    assert status == 0
+    assert "local coding agent" in captured.out
+    assert "kernel runtime currently supports one-shot prompts only" not in captured.err
 
 
 def test_default_runtime_uses_kernel_after_release_candidate_gate_passes(tmp_path, capsys, monkeypatch):
