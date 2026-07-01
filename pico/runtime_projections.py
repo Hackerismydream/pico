@@ -1,10 +1,9 @@
 """Read-model projections derived from kernel runtime events."""
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from .runtime_events import RUNTIME_EVENT_SCHEMA_VERSION
+from .runtime_events import RUNTIME_EVENT_SCHEMA_VERSION, normalize_runtime_events, runtime_event_to_dict
 from .security import redact_artifact
 
 
@@ -38,28 +37,13 @@ class RuntimeArtifactSet:
         }
 
 
-@dataclass(frozen=True)
-class _ProjectionRuntimeEvent:
-    type: str
-    payload: dict
-    created_at: str = ""
-    invocation_id: str = ""
-    schema_version: int = 1
-    event_id: str = ""
-    sequence: int = 0
-    status: str = ""
-    actor: str = ""
-    parent_event_id: str = ""
-    correlation_id: str = ""
-
-
 class ProjectionManager:
     def __init__(self, store, *, secret_env_names=None):
         self.store = store
         self.secret_env_names = set(secret_env_names or ())
 
     def capture(self, events, *, run_id=None):
-        normalized_events, diagnostics = _normalize_events(events)
+        normalized_events, diagnostics = normalize_runtime_events(events)
         run_id = str(run_id or project_run_id(normalized_events))
         if not run_id:
             raise ProjectionCaptureError("cannot capture runtime artifacts without a run id")
@@ -84,7 +68,7 @@ class ProjectionManager:
 
         try:
             runtime_event_dicts = [
-                redact_artifact(_event_to_dict(event), secret_env_names=self.secret_env_names)
+                redact_artifact(runtime_event_to_dict(event), secret_env_names=self.secret_env_names)
                 for event in normalized_events
             ]
             trace = redact_artifact(project_trace(normalized_events), secret_env_names=self.secret_env_names)
@@ -134,111 +118,6 @@ class ProjectionManager:
             export_projection=export,
             diagnostics=tuple(diagnostics),
         )
-
-
-def _normalize_events(events):
-    normalized = []
-    diagnostics = []
-    for index, event in enumerate(events or ()):
-        event_type = _event_field(event, "type")
-        payload = _event_field(event, "payload")
-        created_at = _event_field(event, "created_at", "")
-        invocation_id = _event_field(event, "invocation_id", "")
-        schema_version = _event_field(event, "schema_version", 1)
-        event_id = _event_field(event, "event_id", "")
-        sequence = _event_field(event, "sequence", 0)
-        status = _event_field(event, "status", "")
-        actor = _event_field(event, "actor", "")
-        parent_event_id = _event_field(event, "parent_event_id", "")
-        correlation_id = _event_field(event, "correlation_id", "")
-        if not event_type:
-            diagnostics.append(
-                _diagnostic(
-                    "unsupported_event_shape",
-                    "runtime event is missing a type and was skipped",
-                    event_index=index,
-                )
-            )
-            continue
-        if not isinstance(payload, Mapping):
-            diagnostics.append(
-                _diagnostic(
-                    "unsupported_event_shape",
-                    "runtime event payload is not an object and was skipped",
-                    event_index=index,
-                    event_type=str(event_type),
-                )
-            )
-            continue
-        if not created_at:
-            diagnostics.append(
-                _diagnostic(
-                    "incomplete_event_shape",
-                    "runtime event has no created_at timestamp",
-                    event_index=index,
-                    event_type=str(event_type),
-                )
-            )
-        normalized.append(
-            _ProjectionRuntimeEvent(
-                type=str(event_type),
-                payload=dict(payload),
-                created_at=str(created_at or ""),
-                invocation_id=str(invocation_id or payload.get("invocation_id", "")),
-                schema_version=_coerce_int(schema_version, default=1),
-                event_id=str(event_id or ""),
-                sequence=_coerce_int(sequence, default=0),
-                status=str(status or payload.get("status", "")),
-                actor=str(actor or ""),
-                parent_event_id=str(parent_event_id or ""),
-                correlation_id=str(correlation_id or payload.get("tool_call_id") or payload.get("model_call_id") or ""),
-            )
-        )
-    return normalized, diagnostics
-
-
-def _coerce_int(value, *, default):
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _event_field(event, name, default=None):
-    if isinstance(event, Mapping):
-        if name == "type":
-            return event.get("type", event.get("kind", default))
-        return event.get(name, default)
-    return getattr(event, name, default)
-
-
-def _event_to_dict(event):
-    if getattr(event, "schema_version", 1) == RUNTIME_EVENT_SCHEMA_VERSION:
-        payload = {
-            "schema_version": RUNTIME_EVENT_SCHEMA_VERSION,
-            "event_id": event.event_id,
-            "invocation_id": event.invocation_id,
-            "sequence": event.sequence,
-            "kind": event.type,
-            "status": event.status,
-            "actor": event.actor,
-            "created_at": event.created_at,
-            "payload": dict(event.payload),
-        }
-        if event.parent_event_id:
-            payload["parent_event_id"] = event.parent_event_id
-        if event.correlation_id:
-            payload["correlation_id"] = event.correlation_id
-        return payload
-    payload = dict(event.payload)
-    invocation_id = getattr(event, "invocation_id", "")
-    if invocation_id and "invocation_id" not in payload:
-        payload["invocation_id"] = invocation_id
-    return {
-        "type": event.type,
-        "created_at": event.created_at,
-        "payload": payload,
-    }
 
 
 def _runtime_event_schema_version(events):
@@ -319,7 +198,7 @@ def project_trace(events):
     trace = []
     for event in events:
         if getattr(event, "schema_version", 1) == RUNTIME_EVENT_SCHEMA_VERSION:
-            trace.append(_event_to_dict(event))
+            trace.append(runtime_event_to_dict(event))
         else:
             trace.append(
                 {
