@@ -3,6 +3,8 @@ import shlex
 import sys
 from unittest.mock import patch
 
+import pytest
+
 from pico import FakeModelClient, Pico, SessionStore, WorkspaceContext
 from pico import cli as pico_cli
 from pico.task_state import TaskState
@@ -141,6 +143,16 @@ def test_cli_build_agent_reads_secret_names_from_environment_config(tmp_path):
         args = pico_cli.build_arg_parser().parse_args(["--cwd", str(tmp_path), "--approval", "auto"])
         agent = pico_cli.build_agent(args)
         assert agent.secret_env_summary()["secret_env_names"] == ["PICO_CUSTOM_SECRET"]
+
+
+def test_project_env_cannot_silently_select_fake_provider(tmp_path):
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("PICO_PROVIDER=fake\n", encoding="utf-8")
+
+    with patch.dict(os.environ, {}, clear=True):
+        args = pico_cli.build_arg_parser().parse_args(["--cwd", str(tmp_path)])
+        with pytest.raises(ValueError, match="fake provider must be selected explicitly"):
+            pico_cli.build_agent(args)
 
 
 def test_run_shell_uses_allowlisted_environment_only(tmp_path):
