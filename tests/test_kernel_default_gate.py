@@ -211,6 +211,48 @@ def _valid_projection_inspection():
     }
 
 
+def _valid_headless_task_export():
+    return {
+        "artifact_type": "headless-task-run-export",
+        "schema_version": 1,
+        "task_run_id": "taskrun_fixture",
+        "status": "pass",
+        "failure_kind": "",
+        "failure_category": "",
+        "runtime": {
+            "run_id": "run_fixture",
+            "status": "completed",
+            "runtime_event_schema_version": 2,
+            "event_count": 5,
+            "event_type_counts": {
+                "invocation_start": 1,
+                "user_input": 1,
+                "model_output": 1,
+                "final_answer": 1,
+                "terminal_status": 1,
+            },
+            "runtime_events_relpath": "workspace/.pico/runs/run_fixture/runtime_events.jsonl",
+        },
+        "verifier": {
+            "exit_code": 0,
+            "protected_boundary": True,
+            "timed_out": False,
+        },
+        "boundaries": {
+            "verifier_visible_to_runtime": False,
+        },
+        "policy": {
+            "runtime": "kernel",
+            "model_provider": "fake",
+            "tool_policy": "headless_explicit_readonly_allowlist",
+            "fail_closed": True,
+        },
+        "artifacts": {
+            "task_run_export_relpath": "task_run_export.json",
+        },
+    }
+
+
 def _write_release_candidate(root, *, live_acceptance=None):
     gate_dir = root / ".pico" / "kernel-gates"
     live_acceptance = _valid_live_acceptance() if live_acceptance is None else live_acceptance
@@ -238,6 +280,13 @@ def _write_release_candidate(root, *, live_acceptance=None):
     projection["artifacts"]["trace"]["path"] = str(trace_path)
     projection["artifacts"]["report"]["path"] = str(report_path)
     projection_path = _write_json(gate_dir / "projection-inspection.json", projection)
+    headless_path = _write_json(gate_dir / "task_run_export.json", _valid_headless_task_export())
+    headless_runtime_events_path = gate_dir / "workspace" / ".pico" / "runs" / "run_fixture" / "runtime_events.jsonl"
+    headless_runtime_events_path.parent.mkdir(parents=True, exist_ok=True)
+    headless_runtime_events_path.write_text(
+        "\n".join(json.dumps(event, sort_keys=True) for event in fixture_events) + "\n",
+        encoding="utf-8",
+    )
     for test_file in REQUIRED_FAKE_TEST_FILES:
         path = root / test_file
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -270,6 +319,7 @@ def _write_release_candidate(root, *, live_acceptance=None):
                 "fake_provider_tests": {"artifact": str(fake_provider_path.relative_to(root))},
                 "live_provider_acceptance": {"artifacts": [str(live_path.relative_to(root))]},
                 "projection_inspection": {"artifact": str(projection_path.relative_to(root))},
+                "headless_single_task": {"artifact": str(headless_path.relative_to(root))},
             },
         },
     )
