@@ -272,7 +272,6 @@ def test_headless_experiment_writes_manifest_and_gate_accepts_fake_evidence(tmp_
     assert "usage:" in report
     assert "cost:" in report
     assert "no automatic prompt generation" in report
-    assert "no prompt acceptance policy" in report
     assert "no runtime-policy A/B claims" in report
     assert "no broad tool expansion" in report
 
@@ -284,6 +283,276 @@ def test_headless_experiment_writes_manifest_and_gate_accepts_fake_evidence(tmp_
     assert gate_payload["checked_experiments"] == 1
     assert gate_payload["checked_task_runs"] == 1
     assert gate_payload["errors"] == []
+
+
+def test_headless_experiment_acceptance_policy_accepts_verifier_improvement(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "answer_fact",
+            "workspace": str(fixture),
+            "prompt": "unused; candidate prompt replaces this",
+            "verifier": _python_check("os.environ.get('PICO_FINAL_ANSWER') == 'correct answer'"),
+        },
+    )
+    baseline_prompt = "Answer incorrectly."
+    challenger_prompt = "Answer correctly."
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-acceptance",
+            "task": str(task_spec),
+            "candidates": [
+                {
+                    "id": "baseline",
+                    "prompt": baseline_prompt,
+                    "prompt_sha256": _sha256(baseline_prompt),
+                    "provider_id": "fake",
+                    "model_id": "fake:baseline",
+                    "fake_model_outputs": ["<final>wrong answer</final>"],
+                },
+                {
+                    "id": "candidate-b",
+                    "prompt": challenger_prompt,
+                    "prompt_sha256": _sha256(challenger_prompt),
+                    "provider_id": "fake",
+                    "model_id": "fake:candidate-b",
+                    "fake_model_outputs": ["<final>correct answer</final>"],
+                },
+            ],
+            "acceptance_policy": {
+                "type": "benchmark_pass_rate_improvement",
+                "baseline_candidate_id": "baseline",
+                "candidate_ids": ["candidate-b"],
+            },
+        },
+    )
+
+    status = main(
+        [
+            "headless",
+            "experiment",
+            "run",
+            str(experiment_spec),
+            "--runs-root",
+            str(tmp_path / "experiments"),
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert status == 0
+    assert payload["summary"]["passed"] == 1
+    assert payload["summary"]["benchmark_failed"] == 1
+    assert payload["summary"]["infrastructure_failed"] == 0
+    decision = payload["acceptance_decision"]
+    assert decision["status"] == "accepted"
+    assert decision["accepted_candidate_id"] == "candidate-b"
+    assert decision["scores"]["baseline"]["benchmark_pass_rate"] == 0.0
+    assert decision["scores"]["candidate-b"]["benchmark_pass_rate"] == 1.0
+    assert decision["deltas"] == {"candidate-b": 1.0}
+
+    experiment_dir = tmp_path / "experiments" / payload["experiment_run_id"]
+    report = (experiment_dir / payload["artifacts"]["report_relpath"]).read_text(encoding="utf-8")
+    assert "policy_type: benchmark_pass_rate_improvement" in report
+    assert "accepted_candidate_id: candidate-b" in report
+    assert "status: accepted" in report
+
+    assert main(["headless", "experiment", "gate", str(experiment_dir)]) == 0
+    gate_payload = json.loads(capsys.readouterr().out)
+    assert gate_payload["passed"] is True
+
+
+def test_headless_experiment_acceptance_policy_rejects_without_improvement(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "answer_fact",
+            "workspace": str(fixture),
+            "prompt": "unused; candidate prompt replaces this",
+            "verifier": _python_check("os.environ.get('PICO_FINAL_ANSWER') == 'correct answer'"),
+        },
+    )
+    baseline_prompt = "Answer correctly."
+    challenger_prompt = "Also answer correctly."
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-reject-no-improvement",
+            "task": str(task_spec),
+            "candidates": [
+                {
+                    "id": "baseline",
+                    "prompt": baseline_prompt,
+                    "prompt_sha256": _sha256(baseline_prompt),
+                    "provider_id": "fake",
+                    "model_id": "fake:baseline",
+                    "fake_model_outputs": ["<final>correct answer</final>"],
+                },
+                {
+                    "id": "candidate-b",
+                    "prompt": challenger_prompt,
+                    "prompt_sha256": _sha256(challenger_prompt),
+                    "provider_id": "fake",
+                    "model_id": "fake:candidate-b",
+                    "fake_model_outputs": ["<final>correct answer</final>"],
+                },
+            ],
+            "acceptance_policy": {
+                "baseline_candidate_id": "baseline",
+                "candidate_ids": ["candidate-b"],
+            },
+        },
+    )
+
+    status = main(
+        [
+            "headless",
+            "experiment",
+            "run",
+            str(experiment_spec),
+            "--runs-root",
+            str(tmp_path / "experiments"),
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert status == 0
+    assert payload["summary"]["passed"] == 2
+    decision = payload["acceptance_decision"]
+    assert decision["status"] == "rejected"
+    assert decision["accepted_candidate_id"] == ""
+    assert decision["deltas"] == {"candidate-b": 0.0}
+
+
+def test_headless_experiment_gate_rejects_stale_acceptance_decision(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "answer_fact",
+            "workspace": str(fixture),
+            "prompt": "unused; candidate prompt replaces this",
+            "verifier": _python_check("os.environ.get('PICO_FINAL_ANSWER') == 'correct answer'"),
+        },
+    )
+    baseline_prompt = "Answer correctly."
+    challenger_prompt = "Also answer correctly."
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-stale-acceptance",
+            "task": str(task_spec),
+            "candidates": [
+                {
+                    "id": "baseline",
+                    "prompt": baseline_prompt,
+                    "prompt_sha256": _sha256(baseline_prompt),
+                    "provider_id": "fake",
+                    "model_id": "fake:baseline",
+                    "fake_model_outputs": ["<final>correct answer</final>"],
+                },
+                {
+                    "id": "candidate-b",
+                    "prompt": challenger_prompt,
+                    "prompt_sha256": _sha256(challenger_prompt),
+                    "provider_id": "fake",
+                    "model_id": "fake:candidate-b",
+                    "fake_model_outputs": ["<final>correct answer</final>"],
+                },
+            ],
+            "acceptance_policy": {
+                "baseline_candidate_id": "baseline",
+                "candidate_ids": ["candidate-b"],
+            },
+        },
+    )
+    runs_root = tmp_path / "experiments"
+
+    assert main(["headless", "experiment", "run", str(experiment_spec), "--runs-root", str(runs_root)]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    experiment_dir = runs_root / payload["experiment_run_id"]
+    export_path = experiment_dir / payload["artifacts"]["experiment_export_relpath"]
+    manifest_path = experiment_dir / payload["artifacts"]["experiment_manifest_relpath"]
+    payload["acceptance_decision"]["status"] = "accepted"
+    payload["acceptance_decision"]["accepted_candidate_id"] = "candidate-b"
+    export_path.write_text(json.dumps(payload), encoding="utf-8")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["acceptance_decision"] = payload["acceptance_decision"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert main(["headless", "experiment", "gate", str(experiment_dir)]) == 1
+    gate_payload = json.loads(capsys.readouterr().out)
+    assert gate_payload["passed"] is False
+    assert "experiment acceptance decision does not match task-run evidence" in gate_payload["errors"]
+
+
+def test_headless_experiment_gate_rejects_malformed_acceptance_policy_without_crashing(
+    tmp_path, capsys
+):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    task_spec = _write_json(
+        tmp_path / "task.json",
+        {
+            "id": "answer_fact",
+            "workspace": str(fixture),
+            "prompt": "unused; candidate prompt replaces this",
+            "verifier": _python_check("os.environ.get('PICO_FINAL_ANSWER') == 'correct answer'"),
+        },
+    )
+    baseline_prompt = "Answer incorrectly."
+    challenger_prompt = "Answer correctly."
+    experiment_spec = _write_json(
+        tmp_path / "experiment.json",
+        {
+            "id": "runtime-lab-malformed-acceptance",
+            "task": str(task_spec),
+            "candidates": [
+                {
+                    "id": "baseline",
+                    "prompt": baseline_prompt,
+                    "prompt_sha256": _sha256(baseline_prompt),
+                    "provider_id": "fake",
+                    "model_id": "fake:baseline",
+                    "fake_model_outputs": ["<final>wrong answer</final>"],
+                },
+                {
+                    "id": "candidate-b",
+                    "prompt": challenger_prompt,
+                    "prompt_sha256": _sha256(challenger_prompt),
+                    "provider_id": "fake",
+                    "model_id": "fake:candidate-b",
+                    "fake_model_outputs": ["<final>correct answer</final>"],
+                },
+            ],
+            "acceptance_policy": {
+                "baseline_candidate_id": "baseline",
+                "candidate_ids": ["candidate-b"],
+            },
+        },
+    )
+    runs_root = tmp_path / "experiments"
+
+    assert main(["headless", "experiment", "run", str(experiment_spec), "--runs-root", str(runs_root)]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    experiment_dir = runs_root / payload["experiment_run_id"]
+    export_path = experiment_dir / payload["artifacts"]["experiment_export_relpath"]
+    manifest_path = experiment_dir / payload["artifacts"]["experiment_manifest_relpath"]
+    payload["acceptance_policy"]["candidate_ids"] = []
+    export_path.write_text(json.dumps(payload), encoding="utf-8")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["acceptance_policy"] = payload["acceptance_policy"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert main(["headless", "experiment", "gate", str(experiment_dir)]) == 1
+    gate_payload = json.loads(capsys.readouterr().out)
+    assert gate_payload["passed"] is False
+    assert "experiment acceptance decision does not match task-run evidence" in gate_payload["errors"]
 
 
 def test_headless_experiment_gate_rejects_missing_verifier_result(tmp_path, capsys):

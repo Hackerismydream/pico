@@ -14,6 +14,75 @@ The built-in non-UI evaluation surface for running tasks, verifiers, runtime
 policy A/B tests, and prompt optimization against the shared local code-agent
 runtime.
 
+### Runtime Lab Trust Hardening
+
+The next planning slice after the first headless experiment scaffold: work that
+makes Pico's experiment evidence trustworthy enough to support later prompt
+optimization, runtime-policy A/B, and tool-use evaluation. It is limited to
+evidence contracts such as durable runtime journals, candidate and policy
+identity, prompt and tool-schema hashes, strict live-provider gates, verifier
+boundaries, resume/reconcile identity, and artifact-backed acceptance.
+
+### Trustworthy experiment result
+
+A headless-lab result Pico is allowed to claim only when artifacts prove the
+provider, candidate or policy identity, prompt and tool-schema identity, runtime
+journal, verifier outcome, failure classification, and gate decision. Results
+with missing, ambiguous, stale, or fake evidence must be rejected or marked
+invalid instead of counted as success.
+
+### Prompt acceptance policy
+
+A headless-lab rule that accepts or rejects a prompt candidate from verifier
+evidence rather than model self-judgment. The first supported policy is
+benchmark pass-rate improvement over a declared baseline candidate. It can only
+accept when task-run artifacts prove the candidate identity, verifier outcome,
+and absence of infrastructure/skipped evidence required by the policy.
+
+### Runtime Lab Supervisor
+
+The control role for Pico's Maka-like runtime campaign. It maintains the current
+goal, gap ledger, evidence matrix, revalidation triggers, and milestone grill
+decisions; it must not treat an empty issue queue as proof that the runtime lab
+goal is complete.
+
+### Runtime Lab Implementer
+
+The delivery role for one scoped runtime-lab issue or pull request. It produces
+code, tests, artifacts, and a reviewable PR, but does not decide that Pico has
+become Maka-like enough for future experiments.
+
+### Maka-like runtime motivation
+
+Pico moved away from v3 because the original v3 runtime was too weak for the two
+capabilities the project actually wanted to prove: usable tool execution and
+system-prompt optimization. Better prompts, benchmark scripts, or UI polish could
+not fix a runtime substrate that did not produce trustworthy execution facts,
+resume-safe experiments, or verifier-backed acceptance evidence.
+
+The Maka-like direction was adopted after reviewing Maka's evaluation-heavy PRs
+and experiments. Maka PR #340 showed the target discipline for runtime-policy
+work: active tool-result pruning was justified with A/B evidence, cost/token
+accounting, continuation recovery, failure classification, and regression tests
+instead of hand-wavy claims. Jakevin's tweet about Maka PR #67-#70 showed the
+target discipline for prompt optimization: append-only fixed-prompt WAL,
+candidate generation, Harbor/Terminal Bench evaluation, benchmark-backed
+acceptance policy, prompt hash verification, and independent verifier reward.
+
+For future work, "copy Maka" means translating that architecture and evaluation
+discipline into Python-native Pico. It does not mean attaching Maka as an
+external harness, copying its UI, or continuing to patch v3. The core goal is a
+single shared runtime kernel that can make tool use inspectable and prompt or
+runtime-policy changes measurable.
+
+This ordering is a hard planning constraint. Do not start by adding prettier
+experiments, benchmark dashboards, prompt loops, or desktop polish on top of the
+current weak substrate. First replicate the Maka-like runtime/control-plane
+minimum: shared kernel, append-only run and experiment logs, artifact manifests,
+resume/reconcile behavior, verifier boundaries, and honest infra-vs-benchmark
+failure separation. Otherwise the new experiments will have the same failure
+mode as Pico v3: lots of output, little trustworthy evidence.
+
 ### RuntimeEvent
 
 The canonical runtime fact emitted by Pico's execution kernel and the source of

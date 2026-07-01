@@ -285,9 +285,27 @@ experiment controller 是单任务 runner 上方的控制平面 tracer bullet：
       "runtime_policy_id": "kernel-readonly-v1",
       "provider_id": "fake",
       "model_id": "fake:default",
+      "fake_model_outputs": ["<final>unknown</final>"],
+      "verifier_id": "readme-verifier-v1"
+    },
+    {
+      "id": "candidate-b",
+      "prompt": "Read README carefully and answer with the project fact.",
+      "prompt_sha256": "sha256:<hash-of-candidate-b-prompt>",
+      "runtime_policy_id": "kernel-readonly-v1",
+      "provider_id": "fake",
+      "model_id": "fake:variant",
+      "fake_model_outputs": ["<final>The project fact is alpha.</final>"],
       "verifier_id": "readme-verifier-v1"
     }
-  ]
+  ],
+  "acceptance_policy": {
+    "type": "benchmark_pass_rate_improvement",
+    "baseline_candidate_id": "candidate-a",
+    "candidate_ids": ["candidate-b"],
+    "min_pass_rate_delta": 0.0,
+    "require_no_infrastructure_failures": true
+  }
 }
 ```
 
@@ -297,13 +315,21 @@ candidates may also select `openai`, `anthropic`, `deepseek`, or `ollama` with
 an explicit `model_id`; missing live credentials are reported as skipped
 infrastructure outcomes, not benchmark failures or passes.
 
+`acceptance_policy` is optional. When present, the current policy type is
+`benchmark_pass_rate_improvement`: Pico compares candidate verifier pass rates
+against a declared baseline candidate and accepts a candidate only when artifact
+evidence shows a verifier-backed improvement. Infrastructure failures, skipped
+runs, missing task-run evidence, or stale acceptance decisions make the policy
+invalid instead of accepted. This is a benchmark-backed prompt acceptance gate,
+not automatic prompt generation.
+
 运行：
 
 ```bash
 uv run pico headless experiment run experiment.json --runs-root .pico/headless/experiments
 ```
 
-输出和 `.pico/headless/experiments/<experiment_run_id>/experiment_export.json` 会包含 pass、benchmark failure、infrastructure failure、skipped/reused、total run count、scored run count、candidate/prompt/runtime/provider/model/task/verifier identity、usage/cost metadata when available、`task_run_export.json`、`runtime_manifest.json`、`experiment_manifest.json` 和 human-readable report 路径。benchmark score 只用 pass + official verifier failure 计算；provider/API failure、runtime/model execution failure、workspace setup failure、verifier timeout 和 runtime artifact capture failure 都是 infrastructure failure，不计入 benchmark score。benchmark failure 仍返回 0；infrastructure failure 返回非 0。
+输出和 `.pico/headless/experiments/<experiment_run_id>/experiment_export.json` 会包含 pass、benchmark failure、infrastructure failure、skipped/reused、total run count、scored run count、candidate/prompt/runtime/provider/model/task/verifier identity、acceptance decision、usage/cost metadata when available、`task_run_export.json`、`runtime_manifest.json`、`experiment_manifest.json` 和 human-readable report 路径。benchmark score 只用 pass + official verifier failure 计算；provider/API failure、runtime/model execution failure、workspace setup failure、verifier timeout 和 runtime artifact capture failure 都是 infrastructure failure，不计入 benchmark score。benchmark failure 仍返回 0；infrastructure failure 返回非 0。
 
 默认 fake-provider evidence 是 deterministic gate path；真实 provider evidence 是 manual acceptance gate，必须由本机 credentials/network 明确跑出来，缺少 credentials 只会记录 skipped/infrastructure outcome，不会被当成通过。验证已生成 evidence，不重跑 provider：
 
@@ -311,7 +337,7 @@ uv run pico headless experiment run experiment.json --runs-root .pico/headless/e
 uv run pico headless experiment gate .pico/headless/experiments/<experiment_run_id>
 ```
 
-gate 会读取 `experiment_manifest.json`、experiment WAL、task-run export、task-run facts、runtime events、trace/report、runtime manifest 和 verifier result。它会拒绝缺 runtime event schema metadata、缺 verifier result、缺 task-run export、缺 runtime artifact manifest、或 candidate/prompt/runtime/provider/model/task/verifier identity 不一致的 evidence。当前 MVP 边界仍然是：不做 automatic prompt generation、不做 prompt acceptance policy、不做 runtime-policy A/B claims、不扩 broad tool surface。
+gate 会读取 `experiment_manifest.json`、experiment WAL、task-run export、task-run facts、runtime events、trace/report、runtime manifest 和 verifier result。它会拒绝缺 runtime event schema metadata、缺 verifier result、缺 task-run export、缺 runtime artifact manifest、candidate/prompt/runtime/provider/model/task/verifier identity 不一致、或 acceptance decision 无法从 task-run evidence 重算的 evidence。当前 MVP 边界仍然是：不做 automatic prompt generation、不做 runtime-policy A/B claims、不扩 broad tool surface。
 
 ## Headless eval grid
 

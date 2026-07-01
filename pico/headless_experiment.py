@@ -18,9 +18,9 @@ from .runtime_events import RUNTIME_EVENT_SCHEMA_VERSION
 HEADLESS_EXPERIMENT_SCHEMA_VERSION = 1
 HEADLESS_EXPERIMENT_MANIFEST_SCHEMA_VERSION = 1
 HEADLESS_EXPERIMENT_PROVIDER_CHOICES = ("fake", "openai", "anthropic", "deepseek", "ollama")
+HEADLESS_EXPERIMENT_ACCEPTANCE_POLICY_TYPES = ("benchmark_pass_rate_improvement",)
 HEADLESS_EXPERIMENT_MVP_BOUNDARIES = (
     "no automatic prompt generation",
-    "no prompt acceptance policy",
     "no runtime-policy A/B claims",
     "no broad tool expansion",
 )
@@ -132,6 +132,16 @@ class HeadlessExperimentCandidate:
     model_id: str
     verifier_id: str
     provider_config: dict
+    fake_model_outputs: list[str] | None = None
+
+
+@dataclass(frozen=True)
+class HeadlessExperimentAcceptancePolicy:
+    type: str
+    baseline_candidate_id: str
+    candidate_ids: list[str]
+    min_pass_rate_delta: float
+    require_no_infrastructure_failures: bool
 
 
 @dataclass(frozen=True)
@@ -140,6 +150,7 @@ class HeadlessExperimentSpec:
     spec_path: Path
     task: HeadlessTaskSpec
     candidates: list[HeadlessExperimentCandidate]
+    acceptance_policy: HeadlessExperimentAcceptancePolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -166,7 +177,14 @@ def load_headless_experiment_spec(path):
         raise ValueError(f"headless experiment {experiment_id} is missing task")
     task = load_headless_task_spec(_resolve_spec_path(task_value, spec_path))
     candidates = _load_candidates(data, task)
-    return HeadlessExperimentSpec(id=experiment_id, spec_path=spec_path, task=task, candidates=candidates)
+    acceptance_policy = _load_acceptance_policy(data, candidates)
+    return HeadlessExperimentSpec(
+        id=experiment_id,
+        spec_path=spec_path,
+        task=task,
+        candidates=candidates,
+        acceptance_policy=acceptance_policy,
+    )
 
 
 def _load_candidates(data, task):
@@ -182,6 +200,7 @@ def _load_candidates(data, task):
                 model_id="fake:default",
                 verifier_id=_default_verifier_id(task),
                 provider_config={},
+                fake_model_outputs=None,
             )
         ]
     if not isinstance(raw_candidates, list) or not raw_candidates:
@@ -205,6 +224,7 @@ def _load_candidates(data, task):
         if prompt_sha256 != computed_prompt_sha256:
             raise ValueError(f"headless experiment candidate {candidate_id} prompt_sha256 does not match prompt")
         provider_id = _normalize_provider_id(raw_candidate.get("provider_id", raw_candidate.get("provider", "fake")))
+        fake_model_outputs = _candidate_fake_model_outputs(raw_candidate, provider_id, candidate_id)
         candidates.append(
             HeadlessExperimentCandidate(
                 id=candidate_id,
@@ -218,6 +238,7 @@ def _load_candidates(data, task):
                 ),
                 verifier_id=str(raw_candidate.get("verifier_id", _default_verifier_id(task))).strip(),
                 provider_config=_candidate_provider_config(raw_candidate),
+                fake_model_outputs=fake_model_outputs,
             )
         )
         seen_ids.add(candidate_id)
@@ -229,11 +250,89 @@ def _load_candidates(data, task):
     return candidates
 
 
+def _candidate_fake_model_outputs(raw_candidate, provider_id, candidate_id):
+    if "fake_model_outputs" not in raw_candidate and "model_outputs" not in raw_candidate:
+        return None
+    if provider_id != "fake":
+        raise ValueError(
+            f"headless experiment candidate {candidate_id} fake_model_outputs are only valid for fake provider"
+        )
+    value = raw_candidate.get("fake_model_outputs", raw_candidate.get("model_outputs"))
+    if not isinstance(value, list):
+        raise ValueError(f"headless experiment candidate {candidate_id} fake_model_outputs must be a list")
+    return [str(item) for item in value]
+
+
 def _candidate_model_value(provider_id, raw_candidate):
     value = raw_candidate.get("model_id", raw_candidate.get("model"))
     if value is None and provider_id == "fake":
         return "fake:default"
     return value
+
+
+def _load_acceptance_policy(data, candidates):
+    raw_policy = data.get("acceptance_policy", data.get("acceptance"))
+    if raw_policy is None:
+        return None
+    if not isinstance(raw_policy, dict):
+        raise ValueError("headless experiment acceptance_policy must be a JSON object")
+
+    policy_type = str(raw_policy.get("type", "benchmark_pass_rate_improvement")).strip()
+    if policy_type not in HEADLESS_EXPERIMENT_ACCEPTANCE_POLICY_TYPES:
+        choices = ", ".join(HEADLESS_EXPERIMENT_ACCEPTANCE_POLICY_TYPES)
+        raise ValueError(f"headless experiment acceptance_policy type must be one of: {choices}")
+
+    baseline_candidate_id = str(
+        raw_policy.get("baseline_candidate_id", raw_policy.get("baseline", ""))
+    ).strip()
+    candidate_ids = [candidate.id for candidate in candidates]
+    candidate_id_set = set(candidate_ids)
+    if not baseline_candidate_id:
+        raise ValueError("headless experiment acceptance_policy is missing baseline_candidate_id")
+    if baseline_candidate_id not in candidate_id_set:
+        raise ValueError(f"headless experiment acceptance_policy baseline candidate is unknown: {baseline_candidate_id}")
+
+    raw_candidate_ids = raw_policy.get("candidate_ids")
+    if raw_candidate_ids is None:
+        raw_candidate_id = raw_policy.get("challenger_candidate_id", raw_policy.get("candidate_id"))
+        if raw_candidate_id is None:
+            selected_candidate_ids = [candidate_id for candidate_id in candidate_ids if candidate_id != baseline_candidate_id]
+        else:
+            selected_candidate_ids = [str(raw_candidate_id).strip()]
+    else:
+        if not isinstance(raw_candidate_ids, list):
+            raise ValueError("headless experiment acceptance_policy candidate_ids must be a list")
+        selected_candidate_ids = [str(candidate_id).strip() for candidate_id in raw_candidate_ids]
+
+    if not selected_candidate_ids:
+        raise ValueError("headless experiment acceptance_policy must compare at least one candidate")
+    if len(set(selected_candidate_ids)) != len(selected_candidate_ids):
+        raise ValueError("headless experiment acceptance_policy candidate_ids contain duplicates")
+    if baseline_candidate_id in selected_candidate_ids:
+        raise ValueError("headless experiment acceptance_policy candidate_ids must not include baseline_candidate_id")
+    for candidate_id in selected_candidate_ids:
+        if not candidate_id:
+            raise ValueError("headless experiment acceptance_policy candidate_ids contain an empty candidate id")
+        if candidate_id not in candidate_id_set:
+            raise ValueError(f"headless experiment acceptance_policy candidate is unknown: {candidate_id}")
+
+    min_delta = float(
+        raw_policy.get("min_pass_rate_delta", raw_policy.get("minimum_pass_rate_delta", 0.0))
+    )
+    if min_delta < 0:
+        raise ValueError("headless experiment acceptance_policy min_pass_rate_delta must be non-negative")
+    require_no_infrastructure = raw_policy.get("require_no_infrastructure_failures", True)
+    if not isinstance(require_no_infrastructure, bool):
+        raise ValueError(
+            "headless experiment acceptance_policy require_no_infrastructure_failures must be a boolean"
+        )
+    return HeadlessExperimentAcceptancePolicy(
+        type=policy_type,
+        baseline_candidate_id=baseline_candidate_id,
+        candidate_ids=selected_candidate_ids,
+        min_pass_rate_delta=min_delta,
+        require_no_infrastructure_failures=require_no_infrastructure,
+    )
 
 
 class HeadlessExperimentRunner:
@@ -288,6 +387,11 @@ class HeadlessExperimentRunner:
                 provider_id=candidate.provider_id,
                 model_id=candidate.model_id,
                 provider_config=dict(candidate.provider_config),
+                fake_model_outputs=(
+                    list(candidate.fake_model_outputs)
+                    if candidate.fake_model_outputs is not None
+                    else list(spec.task.fake_model_outputs)
+                ),
             )
             identity = _build_identity(candidate, spec.task)
             identity_key = _identity_key(identity)
@@ -348,9 +452,19 @@ class HeadlessExperimentRunner:
         if reconcile_failure is not None:
             task_refs.append(_build_reconcile_failure_ref(spec, reconcile_failure))
         summary = summarize_experiment_task_runs(task_refs)
+        acceptance_decision = decide_headless_experiment_acceptance(spec.acceptance_policy, task_refs)
         report_path = Path(report_path).resolve() if report_path else self.store.experiment_report_path(experiment_run_id)
         manifest_path = self.store.experiment_manifest_path(experiment_run_id)
-        export = _build_export(spec, experiment_run_id, experiment_dir, report_path, manifest_path, task_refs, summary)
+        export = _build_export(
+            spec,
+            experiment_run_id,
+            experiment_dir,
+            report_path,
+            manifest_path,
+            task_refs,
+            summary,
+            acceptance_decision,
+        )
         report = render_headless_experiment_report(export)
         manifest = build_headless_experiment_manifest(export)
         self.store.write_experiment_export(experiment_run_id, export)
@@ -755,6 +869,192 @@ def summarize_experiment_cost(task_runs):
     return dict(sorted(totals.items()))
 
 
+def _acceptance_policy_ref(policy):
+    if not policy:
+        return {}
+    if isinstance(policy, dict):
+        if not policy:
+            return {}
+        min_pass_rate_delta = policy.get("min_pass_rate_delta", 0.0)
+        try:
+            min_pass_rate_delta = float(min_pass_rate_delta)
+        except (TypeError, ValueError):
+            min_pass_rate_delta = None
+        require_no_infrastructure = policy.get("require_no_infrastructure_failures", True)
+        if not isinstance(require_no_infrastructure, bool):
+            require_no_infrastructure = None
+        return {
+            "type": str(policy.get("type", "")),
+            "baseline_candidate_id": str(policy.get("baseline_candidate_id", "")),
+            "candidate_ids": [str(candidate_id) for candidate_id in policy.get("candidate_ids", []) or []],
+            "min_pass_rate_delta": min_pass_rate_delta,
+            "require_no_infrastructure_failures": require_no_infrastructure,
+        }
+    return {
+        "type": policy.type,
+        "baseline_candidate_id": policy.baseline_candidate_id,
+        "candidate_ids": list(policy.candidate_ids),
+        "min_pass_rate_delta": policy.min_pass_rate_delta,
+        "require_no_infrastructure_failures": policy.require_no_infrastructure_failures,
+    }
+
+
+def _not_configured_acceptance_decision():
+    return {
+        "status": "not_configured",
+        "accepted_candidate_id": "",
+        "baseline_candidate_id": "",
+        "reason": "no acceptance_policy declared",
+        "metric": "benchmark_pass_rate",
+        "min_pass_rate_delta": 0.0,
+        "scores": {},
+        "deltas": {},
+    }
+
+
+def _candidate_score(task_runs):
+    summary = summarize_experiment_task_runs(task_runs)
+    return {
+        "total_runs": summary["total_runs"],
+        "passed": summary["passed"],
+        "benchmark_failed": summary["benchmark_failed"],
+        "infrastructure_failed": summary["infrastructure_failed"],
+        "skipped": summary["skipped"],
+        "reused": summary["reused"],
+        "scored_runs": summary["scored_runs"],
+        "benchmark_pass_rate": summary["benchmark_pass_rate"],
+    }
+
+
+def _acceptance_scores(task_runs, candidate_ids):
+    by_candidate = {candidate_id: [] for candidate_id in candidate_ids}
+    for row in task_runs:
+        candidate_id = str(row.get("identity", {}).get("candidate_id", ""))
+        if candidate_id in by_candidate:
+            by_candidate[candidate_id].append(row)
+    return {
+        candidate_id: _candidate_score(rows)
+        for candidate_id, rows in by_candidate.items()
+    }
+
+
+def decide_headless_experiment_acceptance(policy, task_runs):
+    policy_ref = _acceptance_policy_ref(policy)
+    if not policy_ref:
+        return _not_configured_acceptance_decision()
+
+    baseline_candidate_id = policy_ref["baseline_candidate_id"]
+    candidate_ids = list(policy_ref["candidate_ids"])
+    base_decision = {
+        "accepted_candidate_id": "",
+        "baseline_candidate_id": baseline_candidate_id,
+        "metric": "benchmark_pass_rate",
+        "min_pass_rate_delta": policy_ref["min_pass_rate_delta"],
+        "scores": {},
+        "deltas": {},
+    }
+    if policy_ref["type"] not in HEADLESS_EXPERIMENT_ACCEPTANCE_POLICY_TYPES:
+        return {
+            **base_decision,
+            "status": "invalid",
+            "reason": "acceptance_policy type is unsupported: " + policy_ref["type"],
+        }
+    if not baseline_candidate_id:
+        return {
+            **base_decision,
+            "status": "invalid",
+            "reason": "acceptance_policy is missing baseline_candidate_id",
+        }
+    if not candidate_ids:
+        return {
+            **base_decision,
+            "status": "invalid",
+            "reason": "acceptance_policy must compare at least one candidate",
+        }
+    min_delta = policy_ref["min_pass_rate_delta"]
+    if min_delta is None or min_delta < 0:
+        return {
+            **base_decision,
+            "status": "invalid",
+            "reason": "acceptance_policy min_pass_rate_delta must be non-negative",
+        }
+    if policy_ref["require_no_infrastructure_failures"] is None:
+        return {
+            **base_decision,
+            "status": "invalid",
+            "reason": "acceptance_policy require_no_infrastructure_failures must be a boolean",
+        }
+
+    required_candidate_ids = [baseline_candidate_id, *candidate_ids]
+    scores = _acceptance_scores(task_runs, required_candidate_ids)
+    base_decision = {**base_decision, "scores": scores}
+
+    missing = [
+        candidate_id
+        for candidate_id in required_candidate_ids
+        if scores[candidate_id]["total_runs"] == 0
+    ]
+    if missing:
+        return {
+            **base_decision,
+            "status": "invalid",
+            "reason": "missing task-run evidence for candidate(s): " + ", ".join(missing),
+        }
+
+    if policy_ref["require_no_infrastructure_failures"]:
+        blocked = [
+            candidate_id
+            for candidate_id in required_candidate_ids
+            if scores[candidate_id]["infrastructure_failed"] or scores[candidate_id]["skipped"]
+        ]
+        if blocked:
+            return {
+                **base_decision,
+                "status": "invalid",
+                "reason": "candidate evidence has infrastructure failures or skipped runs: " + ", ".join(blocked),
+            }
+
+    baseline_rate = scores[baseline_candidate_id]["benchmark_pass_rate"]
+    if baseline_rate is None:
+        return {
+            **base_decision,
+            "status": "invalid",
+            "reason": f"baseline candidate has no scored verifier runs: {baseline_candidate_id}",
+        }
+
+    deltas = {}
+    eligible = []
+    for candidate_id in candidate_ids:
+        candidate_rate = scores[candidate_id]["benchmark_pass_rate"]
+        if candidate_rate is None:
+            return {
+                **base_decision,
+                "status": "invalid",
+                "reason": f"candidate has no scored verifier runs: {candidate_id}",
+            }
+        delta = candidate_rate - baseline_rate
+        deltas[candidate_id] = delta
+        eligible.append((delta, candidate_rate, candidate_id))
+
+    best_delta, _best_rate, best_candidate_id = max(eligible)
+    decision = {**base_decision, "deltas": deltas}
+    if best_delta > 0 and best_delta >= min_delta:
+        return {
+            **decision,
+            "status": "accepted",
+            "accepted_candidate_id": best_candidate_id,
+            "reason": (
+                f"{best_candidate_id} improved benchmark_pass_rate over "
+                f"{baseline_candidate_id} by {best_delta:.6g}"
+            ),
+        }
+    return {
+        **decision,
+        "status": "rejected",
+        "reason": "no candidate improved benchmark_pass_rate over baseline by the required margin",
+    }
+
+
 def experiment_evidence_kind(task_runs):
     providers = {
         str(row.get("identity", {}).get("provider_id", ""))
@@ -770,7 +1070,16 @@ def experiment_evidence_kind(task_runs):
     return "unknown"
 
 
-def _build_export(spec, experiment_run_id, experiment_dir, report_path, manifest_path, task_refs, summary):
+def _build_export(
+    spec,
+    experiment_run_id,
+    experiment_dir,
+    report_path,
+    manifest_path,
+    task_refs,
+    summary,
+    acceptance_decision,
+):
     first_task_ref = task_refs[0] if task_refs else {}
     return {
         "artifact_type": "headless-experiment-export",
@@ -783,6 +1092,8 @@ def _build_export(spec, experiment_run_id, experiment_dir, report_path, manifest
             "spec_path": str(spec.spec_path),
         },
         "candidates": [_candidate_ref(candidate) for candidate in spec.candidates],
+        "acceptance_policy": _acceptance_policy_ref(spec.acceptance_policy),
+        "acceptance_decision": acceptance_decision,
         "summary": summary,
         "usage": summarize_experiment_usage(task_refs),
         "cost": summarize_experiment_cost(task_refs),
@@ -812,6 +1123,8 @@ def build_headless_experiment_manifest(export):
         "usage": dict(export.get("usage", {}) or {}),
         "cost": dict(export.get("cost", {}) or {}),
         "evidence_kind": export.get("evidence_kind", ""),
+        "acceptance_policy": dict(export.get("acceptance_policy", {}) or {}),
+        "acceptance_decision": dict(export.get("acceptance_decision", {}) or {}),
         "runtime_event_schema_version": export.get("runtime_event_schema_version", ""),
         "mvp_boundaries": list(export.get("mvp_boundaries", []) or []),
         "artifacts": dict(export.get("artifacts", {}) or {}),
@@ -844,6 +1157,8 @@ def render_headless_experiment_report(export):
     task_runs = list(export.get("task_runs", []) or [])
     if not task_runs and export.get("task_run"):
         task_runs = [export.get("task_run", {})]
+    acceptance_policy = dict(export.get("acceptance_policy", {}) or {})
+    acceptance_decision = dict(export.get("acceptance_decision", {}) or {})
     lines = [
         f"# Headless experiment: {experiment_id}",
         "",
@@ -860,6 +1175,14 @@ def render_headless_experiment_report(export):
         f"- evidence_kind: {export.get('evidence_kind', '')}",
         f"- usage: {json.dumps(export.get('usage', {}) or {}, sort_keys=True)}",
         f"- cost: {json.dumps(export.get('cost', {}) or {}, sort_keys=True)}",
+        "",
+        "## Acceptance",
+        "",
+        f"- policy_type: {acceptance_policy.get('type', 'none') or 'none'}",
+        f"- baseline_candidate_id: {acceptance_decision.get('baseline_candidate_id', '')}",
+        f"- accepted_candidate_id: {acceptance_decision.get('accepted_candidate_id', '')}",
+        f"- status: {acceptance_decision.get('status', '')}",
+        f"- reason: {acceptance_decision.get('reason', '')}",
         "",
         "## MVP boundary",
         "",
@@ -1001,6 +1324,10 @@ def _validate_single_experiment_evidence(experiment_dir, export):
                 errors.append("experiment manifest run id does not match export")
             if manifest.get("summary") != export.get("summary"):
                 errors.append("experiment manifest summary does not match export")
+            if manifest.get("acceptance_policy") != export.get("acceptance_policy", {}):
+                errors.append("experiment manifest acceptance policy does not match export")
+            if manifest.get("acceptance_decision") != export.get("acceptance_decision", {}):
+                errors.append("experiment manifest acceptance decision does not match export")
             if manifest.get("artifacts") != export.get("artifacts"):
                 errors.append("experiment manifest artifacts do not match export")
             expected_manifest = build_headless_experiment_manifest(export)
@@ -1018,6 +1345,13 @@ def _validate_single_experiment_evidence(experiment_dir, export):
         errors.append("experiment summary does not match task-run evidence")
     if experiment_evidence_kind(task_runs) != export.get("evidence_kind", ""):
         errors.append("experiment evidence_kind does not match task-run providers")
+    if export.get("acceptance_policy") or export.get("acceptance_decision"):
+        expected_decision = decide_headless_experiment_acceptance(
+            export.get("acceptance_policy", {}),
+            task_runs,
+        )
+        if expected_decision != export.get("acceptance_decision", {}):
+            errors.append("experiment acceptance decision does not match task-run evidence")
     for boundary in HEADLESS_EXPERIMENT_MVP_BOUNDARIES:
         if boundary not in (export.get("mvp_boundaries", []) or []):
             errors.append(f"experiment export is missing MVP boundary: {boundary}")
