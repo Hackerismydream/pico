@@ -126,6 +126,36 @@ def test_run_store_writes_headless_task_artifacts(tmp_path):
     assert json.loads(export_path.read_text(encoding="utf-8"))["status"] == "pass"
 
 
+def test_run_store_writes_headless_experiment_artifacts(tmp_path):
+    store = RunStore(tmp_path / ".pico" / "runs")
+
+    grid_export_path = store.write_eval_grid_export("grid_001", {"grid_run_id": "grid_001"})
+    grid_report_path = store.write_eval_grid_report("grid_001", "# grid")
+    experiment_wal_path = store.append_experiment_wal("experiment_001", {"event": "experiment_started"})
+    experiment_export_path = store.write_experiment_export(
+        "experiment_001",
+        {"experiment_run_id": "experiment_001"},
+    )
+    experiment_report_path = store.write_experiment_report("experiment_001", "# experiment")
+    experiment_manifest_path = store.write_experiment_manifest(
+        "experiment_001",
+        {"experiment_run_id": "experiment_001"},
+    )
+
+    assert grid_export_path == store.eval_grid_export_path("grid_001")
+    assert grid_report_path == store.eval_grid_report_path("grid_001")
+    assert experiment_wal_path == store.experiment_wal_path("experiment_001")
+    assert experiment_export_path == store.experiment_export_path("experiment_001")
+    assert experiment_report_path == store.experiment_report_path("experiment_001")
+    assert experiment_manifest_path == store.experiment_manifest_path("experiment_001")
+    assert json.loads(grid_export_path.read_text(encoding="utf-8"))["grid_run_id"] == "grid_001"
+    assert grid_report_path.read_text(encoding="utf-8") == "# grid"
+    assert json.loads(experiment_wal_path.read_text(encoding="utf-8").strip())["event"] == "experiment_started"
+    assert json.loads(experiment_export_path.read_text(encoding="utf-8"))["experiment_run_id"] == "experiment_001"
+    assert experiment_report_path.read_text(encoding="utf-8") == "# experiment"
+    assert json.loads(experiment_manifest_path.read_text(encoding="utf-8"))["experiment_run_id"] == "experiment_001"
+
+
 def test_run_store_rejects_run_id_path_traversal(tmp_path):
     store = RunStore(tmp_path / ".pico" / "runs")
 
