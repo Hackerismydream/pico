@@ -24,14 +24,9 @@ from .runtime_kernel import (
     RuntimeRunner,
     ToolPermissionPolicy,
     ToolRuntime,
-    project_export,
     project_cli_runtime_events,
     project_final_answer,
-    project_report,
-    project_session,
     project_terminal_error,
-    project_trace,
-    runtime_event_to_dict,
 )
 from .workspace import WorkspaceContext, middle
 
@@ -403,60 +398,21 @@ def run_kernel_once(args):
 def inspect_kernel_run(args):
     workspace = WorkspaceContext.build(args.cwd)
     store = _kernel_run_store(workspace)
+    manager = ProjectionManager(store)
     try:
-        events = store.load_runtime_events(args.inspect_run)
+        payload = manager.inspect(args.inspect_run, view=args.inspect_view)
     except FileNotFoundError:
         print(f"kernel runtime events not found for run id: {args.inspect_run}", file=sys.stderr)
         return 1
 
     view = args.inspect_view
-    if view == "ledger":
-        for event in events:
-            print(json.dumps(runtime_event_to_dict(event), sort_keys=True, ensure_ascii=True))
-        return 0
-    if view == "trace":
-        for event in project_trace(events):
+    if view in {"ledger", "trace"}:
+        for event in payload:
             print(json.dumps(event, sort_keys=True, ensure_ascii=True))
         return 0
 
-    payload = _kernel_inspection_payload(view, store, args.inspect_run, events)
     print(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True))
     return 0
-
-
-def _kernel_inspection_payload(view, store, run_id, events):
-    if view == "session":
-        return project_session(events)
-    if view == "report":
-        return project_report(events)
-    if view == "export":
-        return project_export(events)
-    if view == "artifacts":
-        return _kernel_artifact_projection(store, run_id)
-    return {
-        "ledger": [runtime_event_to_dict(event) for event in events],
-        "session": project_session(events),
-        "trace": project_trace(events),
-        "report": project_report(events),
-        "export": project_export(events),
-        "artifacts": _kernel_artifact_projection(store, run_id),
-    }
-
-
-def _kernel_artifact_projection(store, run_id):
-    paths = {
-        "runtime_events": store.runtime_events_path(run_id),
-        "trace": store.trace_path(run_id),
-        "report": store.report_path(run_id),
-        "manifest": store.manifest_path(run_id),
-    }
-    return {
-        name: {
-            "path": str(path),
-            "exists": path.exists(),
-        }
-        for name, path in paths.items()
-    }
 
 
 def _kernel_tool_permission_policy(args):
