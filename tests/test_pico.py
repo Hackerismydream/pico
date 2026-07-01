@@ -586,6 +586,42 @@ def test_anthropic_compatible_client_posts_expected_messages_payload():
     }
 
 
+def test_anthropic_compatible_client_can_disable_thinking_blocks():
+    captured = {}
+
+    class FakeResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"content": [{"type": "text", "text": "<final>ok</final>"}]}).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    client = AnthropicCompatibleModelClient(
+        model="deepseek-v4-pro",
+        base_url="https://api.deepseek.com/anthropic",
+        api_key="sk-test",
+        temperature=0.0,
+        timeout=30,
+        disable_thinking=True,
+    )
+
+    with patch("urllib.request.urlopen", fake_urlopen):
+        result = client.complete("hello", 42)
+
+    assert result == "<final>ok</final>"
+    assert captured["body"]["thinking"] == {"type": "disabled"}
+
+
 def test_anthropic_compatible_client_extracts_first_text_block():
     class FakeResponse:
         headers = {"Content-Type": "application/json"}
@@ -618,6 +654,97 @@ def test_anthropic_compatible_client_extracts_first_text_block():
         result = client.complete("hello", 42)
 
     assert result == "<final>ok</final>"
+
+
+def test_anthropic_compatible_client_extracts_string_content():
+    class FakeResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"content": "<final>ok</final>"}).encode("utf-8")
+
+    client = AnthropicCompatibleModelClient(
+        model="deepseek-v4-pro",
+        base_url="https://www.right.codes/claude-aws/v1",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+    )
+
+    with patch("urllib.request.urlopen", return_value=FakeResponse()):
+        result = client.complete("hello", 42)
+
+    assert result == "<final>ok</final>"
+
+
+def test_anthropic_compatible_client_extracts_openai_compatible_shape():
+    class FakeResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": "<final>ok</final>"}}]}).encode("utf-8")
+
+    client = AnthropicCompatibleModelClient(
+        model="deepseek-v4-pro",
+        base_url="https://www.right.codes/claude-aws/v1",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+    )
+
+    with patch("urllib.request.urlopen", return_value=FakeResponse()):
+        result = client.complete("hello", 42)
+
+    assert result == "<final>ok</final>"
+
+
+def test_anthropic_compatible_client_converts_tool_use_block_to_prompt_protocol():
+    class FakeResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "read_file",
+                            "input": {"path": "README.md", "start": 1, "end": 20},
+                        }
+                    ]
+                }
+            ).encode("utf-8")
+
+    client = AnthropicCompatibleModelClient(
+        model="deepseek-v4-pro",
+        base_url="https://www.right.codes/claude-aws/v1",
+        api_key="sk-test",
+        temperature=0.2,
+        timeout=30,
+    )
+
+    with patch("urllib.request.urlopen", return_value=FakeResponse()):
+        result = client.complete("hello", 42)
+
+    assert result == '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":20}}</tool>'
 
 
 def test_build_agent_uses_openai_provider_and_model_override(tmp_path):
@@ -784,6 +911,7 @@ def test_build_agent_prefers_cli_provider_over_project_env_provider(tmp_path):
     assert mock_anthropic.call_args.kwargs["model"] == "deepseek-v4-pro"
     assert mock_anthropic.call_args.kwargs["base_url"] == "https://api.deepseek.com/anthropic"
     assert mock_anthropic.call_args.kwargs["api_key"] == "sk-project-deepseek"
+    assert mock_anthropic.call_args.kwargs["disable_thinking"] is True
     assert agent.model_client is fake_client
 
 
@@ -906,6 +1034,7 @@ def test_build_agent_uses_deepseek_provider_and_env_configuration(tmp_path):
     assert mock_anthropic.call_args.kwargs["model"] == "deepseek-v4-pro"
     assert mock_anthropic.call_args.kwargs["base_url"] == "https://api.deepseek.com/anthropic"
     assert mock_anthropic.call_args.kwargs["api_key"] == "sk-project-deepseek"
+    assert mock_anthropic.call_args.kwargs["disable_thinking"] is True
     assert agent.model_client is fake_client
 
 
@@ -918,6 +1047,7 @@ def test_build_agent_uses_deepseek_default_model_when_env_is_missing(tmp_path):
 
     assert mock_anthropic.call_args.kwargs["model"] == "deepseek-v4-pro"
     assert mock_anthropic.call_args.kwargs["base_url"] == "https://api.deepseek.com/anthropic"
+    assert mock_anthropic.call_args.kwargs["disable_thinking"] is True
 
 
 def test_build_agent_uses_deepseek_provider_by_default(tmp_path):
@@ -944,6 +1074,7 @@ def test_build_agent_uses_deepseek_provider_by_default(tmp_path):
     mock_anthropic.assert_called_once()
     assert mock_anthropic.call_args.kwargs["model"] == "deepseek-v4-pro"
     assert mock_anthropic.call_args.kwargs["base_url"] == "https://api.deepseek.com/anthropic"
+    assert mock_anthropic.call_args.kwargs["disable_thinking"] is True
     assert mock_anthropic.call_args.kwargs["api_key"] == "sk-test"
     assert agent.model_client is fake_client
 

@@ -15,19 +15,31 @@ OPENAI_COMPATIBLE_USER_AGENT = "pico/0.1"
 
 
 class FakeModelClient:
-    def __init__(self, outputs):
+    def __init__(self, outputs, metadata=None):
+        self._metadata_generation = 0
+        self._last_returned_metadata_generation = -1
         self.outputs = list(outputs)
+        self.metadata = list(metadata or [])
         self.prompts = []
         self.supports_prompt_cache = False
         self.last_completion_metadata = {}
 
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, value)
+        if name == "last_completion_metadata" and "_metadata_generation" in self.__dict__:
+            object.__setattr__(self, "_metadata_generation", self._metadata_generation + 1)
+
     def complete(self, prompt, max_new_tokens, **kwargs):
         self.prompts.append(prompt)
-        if not getattr(self, "last_completion_metadata", None):
-            self.last_completion_metadata = {}
         if not self.outputs:
             raise RuntimeError("fake model ran out of outputs")
-        return self.outputs.pop(0)
+        if self.metadata:
+            self.last_completion_metadata = dict(self.metadata.pop(0))
+        elif self._metadata_generation == self._last_returned_metadata_generation:
+            self.last_completion_metadata = {}
+        output = self.outputs.pop(0)
+        self._last_returned_metadata_generation = self._metadata_generation
+        return output
 
 
 class OllamaModelClient:
@@ -223,6 +235,24 @@ def _extract_usage_cache_details(data):
     }
 
 
+def _extract_openai_finish_details(data):
+    choices = data.get("choices") or []
+    finish_reason = ""
+    if choices and isinstance(choices[0], dict):
+        finish_reason = choices[0].get("finish_reason") or ""
+    output = data.get("output") or []
+    output_status = ""
+    if output and isinstance(output[0], dict):
+        output_status = output[0].get("status") or ""
+    incomplete = data.get("incomplete_details") or {}
+    return {
+        "finish_reason": finish_reason or data.get("finish_reason") or incomplete.get("reason") or "",
+        "provider_status": data.get("status") or output_status or "",
+        "response_id": data.get("id") or "",
+        "response_model": data.get("model") or "",
+    }
+
+
 class OpenAICompatibleModelClient:
     def __init__(self, model, base_url, api_key, temperature, timeout):
         self.model = model
@@ -327,6 +357,7 @@ class OpenAICompatibleModelClient:
                     "prompt_cache_supported": self.supports_prompt_cache,
                     "prompt_cache_key": prompt_cache_key,
                     "prompt_cache_retention": prompt_cache_retention,
+                    **_extract_openai_finish_details(response_data),
                     **_extract_usage_cache_details(response_data),
                 }
             if text:
@@ -345,27 +376,68 @@ class OpenAICompatibleModelClient:
             "prompt_cache_supported": self.supports_prompt_cache,
             "prompt_cache_key": prompt_cache_key,
             "prompt_cache_retention": prompt_cache_retention,
+            **_extract_openai_finish_details(data),
             **_extract_usage_cache_details(data),
         }
         return _extract_openai_text(data)
 
 
 def _extract_anthropic_text(data):
-    for item in data.get("content", []):
-        if isinstance(item, dict) and item.get("type") == "text":
+    content = data.get("content")
+    if isinstance(content, str) and content:
+        return content
+
+    if isinstance(content, list):
+        for item in content:
+            if isinstance(item, str) and item:
+                return item
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "tool_use":
+                name = item.get("name")
+                if isinstance(name, str) and name:
+                    args = item.get("input")
+                    if not isinstance(args, dict):
+                        args = {}
+                    return f"<tool>{json.dumps({'name': name, 'args': args}, separators=(',', ':'))}</tool>"
             text = item.get("text")
             if isinstance(text, str) and text:
                 return text
+    text = _extract_openai_text(data)
+    if text:
+        return text
     return ""
 
 
+def _extract_anthropic_metadata(data):
+    usage = data.get("usage") or {}
+    input_tokens = usage.get("input_tokens")
+    output_tokens = usage.get("output_tokens")
+    total_tokens = None
+    if isinstance(input_tokens, int) and isinstance(output_tokens, int):
+        total_tokens = input_tokens + output_tokens
+    return {
+        "finish_reason": data.get("stop_reason") or "",
+        "provider_status": data.get("stop_reason") or "",
+        "stop_sequence": data.get("stop_sequence") or "",
+        "response_id": data.get("id") or "",
+        "response_model": data.get("model") or "",
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "cached_tokens": None,
+        "cache_hit": None,
+    }
+
+
 class AnthropicCompatibleModelClient:
-    def __init__(self, model, base_url, api_key, temperature, timeout):
+    def __init__(self, model, base_url, api_key, temperature, timeout, disable_thinking=False):
         self.model = model
         self.base_url = _normalize_versioned_base_url(base_url)
         self.api_key = api_key
         self.temperature = temperature
         self.timeout = timeout
+        self.disable_thinking = disable_thinking
         self.supports_prompt_cache = False
         self.last_completion_metadata = {}
 
@@ -392,6 +464,8 @@ class AnthropicCompatibleModelClient:
         }
         if self.temperature is not None:
             payload["temperature"] = self.temperature
+        if self.disable_thinking:
+            payload["thinking"] = {"type": "disabled"}
 
         headers = {
             "Content-Type": "application/json",
@@ -435,6 +509,7 @@ class AnthropicCompatibleModelClient:
             ) from exc
         if data.get("error"):
             raise RuntimeError(f"Anthropic-compatible error: {data['error']}")
+        self.last_completion_metadata = _extract_anthropic_metadata(data)
         text = _extract_anthropic_text(data)
         if text:
             return text
