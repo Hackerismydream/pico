@@ -119,6 +119,46 @@ class ProjectionManager:
             diagnostics=tuple(diagnostics),
         )
 
+    def inspect(self, run_id, *, view="all"):
+        events = self.store.load_runtime_events(run_id)
+        if view == "ledger":
+            return [runtime_event_to_dict(event) for event in events]
+        if view == "trace":
+            return project_trace(events)
+        if view == "session":
+            return project_session(events)
+        if view == "report":
+            return project_report(events)
+        if view == "export":
+            return project_export(events)
+        if view == "artifacts":
+            return self.artifact_projection(run_id)
+        if view != "all":
+            raise ValueError(f"unknown runtime projection view: {view}")
+        return {
+            "ledger": [runtime_event_to_dict(event) for event in events],
+            "session": project_session(events),
+            "trace": project_trace(events),
+            "report": project_report(events),
+            "export": project_export(events),
+            "artifacts": self.artifact_projection(run_id),
+        }
+
+    def artifact_projection(self, run_id):
+        paths = {
+            "runtime_events": self.store.runtime_events_path(run_id),
+            "trace": self.store.trace_path(run_id),
+            "report": self.store.report_path(run_id),
+            "manifest": self.store.manifest_path(run_id),
+        }
+        return {
+            name: {
+                "path": str(path),
+                "exists": path.exists(),
+            }
+            for name, path in paths.items()
+        }
+
 
 def _runtime_event_schema_version(events):
     if events and all(getattr(event, "schema_version", 1) == RUNTIME_EVENT_SCHEMA_VERSION for event in events):
