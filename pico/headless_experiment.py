@@ -1,0 +1,1552 @@
+"""Headless experiment controller over kernel-backed task runs."""
+
+import argparse
+from collections import Counter
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path
+import sys
+import uuid
+
+from .headless import HEADLESS_TASK_SCHEMA_VERSION, HeadlessTaskRunner, HeadlessTaskSpec, load_headless_task_spec
+from .run_store import RunStore
+from .runtime_events import RUNTIME_EVENT_SCHEMA_VERSION
+
+HEADLESS_EXPERIMENT_SCHEMA_VERSION = 1
+HEADLESS_EXPERIMENT_MANIFEST_SCHEMA_VERSION = 1
+HEADLESS_EXPERIMENT_PROVIDER_CHOICES = ("fake", "openai", "anthropic", "deepseek", "ollama")
+HEADLESS_EXPERIMENT_ACCEPTANCE_POLICY_TYPES = ("benchmark_pass_rate_improvement",)
+HEADLESS_EXPERIMENT_MVP_BOUNDARIES = (
+    "no automatic prompt generation",
+    "no runtime-policy A/B claims",
+    "no broad tool expansion",
+)
+
+
+def _now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _slug(value):
+    text = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in str(value).strip())
+    text = "-".join(part for part in text.split("-") if part)
+    return text[:48] or "experiment"
+
+
+def _new_experiment_run_id(experiment_id):
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return f"experiment_{_slug(experiment_id)}_{stamp}_{uuid.uuid4().hex[:6]}"
+
+
+def _resolve_spec_path(raw_path, spec_path):
+    path = Path(str(raw_path))
+    if path.is_absolute():
+        return path.resolve()
+    return (spec_path.parent / path).resolve()
+
+
+def _relpath(path, root):
+    return os.path.relpath(str(Path(path).resolve()), str(Path(root).resolve()))
+
+
+def _join_relpath(base, child):
+    if not child:
+        return ""
+    return str(Path(base) / child)
+
+
+def _sha256_text(text):
+    return "sha256:" + hashlib.sha256(str(text).encode("utf-8")).hexdigest()
+
+
+def _default_verifier_id(task):
+    return "verifier:" + hashlib.sha256(task.verifier_command.encode("utf-8")).hexdigest()[:16]
+
+
+def _normalize_fake_model_id(value):
+    model_id = str(value or "fake:default").strip()
+    if not model_id:
+        raise ValueError("fake-provider headless experiment candidate is missing model_id")
+    if not model_id.startswith("fake:"):
+        raise ValueError("fake-provider headless experiment candidate model_id must start with fake:")
+    return model_id
+
+
+def _normalize_provider_id(value):
+    provider_id = str(value or "fake").strip()
+    if provider_id not in HEADLESS_EXPERIMENT_PROVIDER_CHOICES:
+        choices = ", ".join(HEADLESS_EXPERIMENT_PROVIDER_CHOICES)
+        raise ValueError(f"headless experiment candidate provider_id must be one of: {choices}")
+    return provider_id
+
+
+def _normalize_candidate_model_id(provider_id, value):
+    if provider_id == "fake":
+        return _normalize_fake_model_id(value)
+    model_id = str(value or "").strip()
+    if not model_id:
+        raise ValueError(f"headless experiment candidate provider {provider_id} is missing model_id")
+    return model_id
+
+
+def _candidate_provider_config(raw_candidate):
+    config = {}
+    for source_key, target_key in (
+        ("base_url", "base_url"),
+        ("provider_base_url", "base_url"),
+        ("host", "host"),
+        ("provider_host", "host"),
+    ):
+        if raw_candidate.get(source_key) is not None:
+            config[target_key] = str(raw_candidate[source_key]).strip()
+    for source_key, target_key in (
+        ("temperature", "temperature"),
+        ("top_p", "top_p"),
+    ):
+        if raw_candidate.get(source_key) is not None:
+            config[target_key] = float(raw_candidate[source_key])
+    for source_key, target_key in (
+        ("timeout", "timeout"),
+        ("provider_timeout", "timeout"),
+        ("openai_timeout", "timeout"),
+        ("ollama_timeout", "timeout"),
+    ):
+        if raw_candidate.get(source_key) is not None:
+            value = int(raw_candidate[source_key])
+            if value < 1:
+                raise ValueError(f"headless experiment candidate {source_key} must be positive")
+            config[target_key] = value
+    return config
+
+
+@dataclass(frozen=True)
+class HeadlessExperimentCandidate:
+    id: str
+    prompt: str
+    prompt_sha256: str
+    runtime_policy_id: str
+    provider_id: str
+    model_id: str
+    verifier_id: str
+    provider_config: dict
+    fake_model_outputs: list[str] | None = None
+
+
+@dataclass(frozen=True)
+class HeadlessExperimentAcceptancePolicy:
+    type: str
+    baseline_candidate_id: str
+    candidate_ids: list[str]
+    min_pass_rate_delta: float
+    require_no_infrastructure_failures: bool
+
+
+@dataclass(frozen=True)
+class HeadlessExperimentSpec:
+    id: str
+    spec_path: Path
+    task: HeadlessTaskSpec
+    candidates: list[HeadlessExperimentCandidate]
+    acceptance_policy: HeadlessExperimentAcceptancePolicy | None = None
+
+
+@dataclass(frozen=True)
+class HeadlessExperimentResult:
+    exit_code: int
+    export: dict
+    report: str
+
+
+def load_headless_experiment_spec(path):
+    spec_path = Path(path).resolve()
+    data = json.loads(spec_path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("headless experiment spec must be a JSON object")
+
+    experiment_id = str(data.get("id") or spec_path.stem).strip()
+    if not experiment_id:
+        raise ValueError("headless experiment spec is missing id")
+
+    task_value = data.get("task", data.get("task_spec"))
+    if isinstance(task_value, dict):
+        task_value = task_value.get("path", task_value.get("spec"))
+    if not str(task_value or "").strip():
+        raise ValueError(f"headless experiment {experiment_id} is missing task")
+    task = load_headless_task_spec(_resolve_spec_path(task_value, spec_path))
+    candidates = _load_candidates(data, task)
+    acceptance_policy = _load_acceptance_policy(data, candidates)
+    return HeadlessExperimentSpec(
+        id=experiment_id,
+        spec_path=spec_path,
+        task=task,
+        candidates=candidates,
+        acceptance_policy=acceptance_policy,
+    )
+
+
+def _load_candidates(data, task):
+    raw_candidates = data.get("candidates")
+    if raw_candidates is None:
+        return [
+            HeadlessExperimentCandidate(
+                id="default",
+                prompt=task.prompt,
+                prompt_sha256=_sha256_text(task.prompt),
+                runtime_policy_id="kernel-readonly-v1",
+                provider_id="fake",
+                model_id="fake:default",
+                verifier_id=_default_verifier_id(task),
+                provider_config={},
+                fake_model_outputs=None,
+            )
+        ]
+    if not isinstance(raw_candidates, list) or not raw_candidates:
+        raise ValueError("headless experiment candidates must be a non-empty list")
+
+    candidates = []
+    seen_ids = set()
+    for index, raw_candidate in enumerate(raw_candidates):
+        if not isinstance(raw_candidate, dict):
+            raise ValueError(f"headless experiment candidate #{index + 1} must be a JSON object")
+        candidate_id = str(raw_candidate.get("id", "")).strip()
+        if not candidate_id:
+            raise ValueError(f"headless experiment candidate #{index + 1} is missing id")
+        if candidate_id in seen_ids:
+            raise ValueError(f"duplicate headless experiment candidate id: {candidate_id}")
+        prompt = str(raw_candidate.get("prompt", raw_candidate.get("prompt_body", ""))).strip()
+        if not prompt:
+            raise ValueError(f"headless experiment candidate {candidate_id} is missing prompt")
+        computed_prompt_sha256 = _sha256_text(prompt)
+        prompt_sha256 = str(raw_candidate.get("prompt_sha256", computed_prompt_sha256)).strip()
+        if prompt_sha256 != computed_prompt_sha256:
+            raise ValueError(f"headless experiment candidate {candidate_id} prompt_sha256 does not match prompt")
+        provider_id = _normalize_provider_id(raw_candidate.get("provider_id", raw_candidate.get("provider", "fake")))
+        fake_model_outputs = _candidate_fake_model_outputs(raw_candidate, provider_id, candidate_id)
+        candidates.append(
+            HeadlessExperimentCandidate(
+                id=candidate_id,
+                prompt=prompt,
+                prompt_sha256=prompt_sha256,
+                runtime_policy_id=str(raw_candidate.get("runtime_policy_id", "kernel-readonly-v1")).strip(),
+                provider_id=provider_id,
+                model_id=_normalize_candidate_model_id(
+                    provider_id,
+                    _candidate_model_value(provider_id, raw_candidate),
+                ),
+                verifier_id=str(raw_candidate.get("verifier_id", _default_verifier_id(task))).strip(),
+                provider_config=_candidate_provider_config(raw_candidate),
+                fake_model_outputs=fake_model_outputs,
+            )
+        )
+        seen_ids.add(candidate_id)
+
+    for candidate in candidates:
+        for field in ("runtime_policy_id", "provider_id", "model_id", "verifier_id"):
+            if not getattr(candidate, field):
+                raise ValueError(f"headless experiment candidate {candidate.id} is missing {field}")
+    return candidates
+
+
+def _candidate_fake_model_outputs(raw_candidate, provider_id, candidate_id):
+    if "fake_model_outputs" not in raw_candidate and "model_outputs" not in raw_candidate:
+        return None
+    if provider_id != "fake":
+        raise ValueError(
+            f"headless experiment candidate {candidate_id} fake_model_outputs are only valid for fake provider"
+        )
+    value = raw_candidate.get("fake_model_outputs", raw_candidate.get("model_outputs"))
+    if not isinstance(value, list):
+        raise ValueError(f"headless experiment candidate {candidate_id} fake_model_outputs must be a list")
+    return [str(item) for item in value]
+
+
+def _candidate_model_value(provider_id, raw_candidate):
+    value = raw_candidate.get("model_id", raw_candidate.get("model"))
+    if value is None and provider_id == "fake":
+        return "fake:default"
+    return value
+
+
+def _load_acceptance_policy(data, candidates):
+    raw_policy = data.get("acceptance_policy", data.get("acceptance"))
+    if raw_policy is None:
+        return None
+    if not isinstance(raw_policy, dict):
+        raise ValueError("headless experiment acceptance_policy must be a JSON object")
+
+    policy_type = str(raw_policy.get("type", "benchmark_pass_rate_improvement")).strip()
+    if policy_type not in HEADLESS_EXPERIMENT_ACCEPTANCE_POLICY_TYPES:
+        choices = ", ".join(HEADLESS_EXPERIMENT_ACCEPTANCE_POLICY_TYPES)
+        raise ValueError(f"headless experiment acceptance_policy type must be one of: {choices}")
+
+    baseline_candidate_id = str(
+        raw_policy.get("baseline_candidate_id", raw_policy.get("baseline", ""))
+    ).strip()
+    candidate_ids = [candidate.id for candidate in candidates]
+    candidate_id_set = set(candidate_ids)
+    if not baseline_candidate_id:
+        raise ValueError("headless experiment acceptance_policy is missing baseline_candidate_id")
+    if baseline_candidate_id not in candidate_id_set:
+        raise ValueError(f"headless experiment acceptance_policy baseline candidate is unknown: {baseline_candidate_id}")
+
+    raw_candidate_ids = raw_policy.get("candidate_ids")
+    if raw_candidate_ids is None:
+        raw_candidate_id = raw_policy.get("challenger_candidate_id", raw_policy.get("candidate_id"))
+        if raw_candidate_id is None:
+            selected_candidate_ids = [candidate_id for candidate_id in candidate_ids if candidate_id != baseline_candidate_id]
+        else:
+            selected_candidate_ids = [str(raw_candidate_id).strip()]
+    else:
+        if not isinstance(raw_candidate_ids, list):
+            raise ValueError("headless experiment acceptance_policy candidate_ids must be a list")
+        selected_candidate_ids = [str(candidate_id).strip() for candidate_id in raw_candidate_ids]
+
+    if not selected_candidate_ids:
+        raise ValueError("headless experiment acceptance_policy must compare at least one candidate")
+    if len(set(selected_candidate_ids)) != len(selected_candidate_ids):
+        raise ValueError("headless experiment acceptance_policy candidate_ids contain duplicates")
+    if baseline_candidate_id in selected_candidate_ids:
+        raise ValueError("headless experiment acceptance_policy candidate_ids must not include baseline_candidate_id")
+    for candidate_id in selected_candidate_ids:
+        if not candidate_id:
+            raise ValueError("headless experiment acceptance_policy candidate_ids contain an empty candidate id")
+        if candidate_id not in candidate_id_set:
+            raise ValueError(f"headless experiment acceptance_policy candidate is unknown: {candidate_id}")
+
+    min_delta = float(
+        raw_policy.get("min_pass_rate_delta", raw_policy.get("minimum_pass_rate_delta", 0.0))
+    )
+    if min_delta < 0:
+        raise ValueError("headless experiment acceptance_policy min_pass_rate_delta must be non-negative")
+    require_no_infrastructure = raw_policy.get("require_no_infrastructure_failures", True)
+    if not isinstance(require_no_infrastructure, bool):
+        raise ValueError(
+            "headless experiment acceptance_policy require_no_infrastructure_failures must be a boolean"
+        )
+    return HeadlessExperimentAcceptancePolicy(
+        type=policy_type,
+        baseline_candidate_id=baseline_candidate_id,
+        candidate_ids=selected_candidate_ids,
+        min_pass_rate_delta=min_delta,
+        require_no_infrastructure_failures=require_no_infrastructure,
+    )
+
+
+class HeadlessExperimentRunner:
+    def __init__(self, runs_root, model_client_factory=None):
+        self.runs_root = Path(runs_root).resolve()
+        self.store = RunStore(self.runs_root)
+        self.model_client_factory = model_client_factory
+
+    def run(self, spec, report_path=None, resume=None):
+        experiment_run_id, experiment_dir, resumed = self._resolve_experiment_run(spec, resume)
+        experiment_dir.mkdir(parents=True, exist_ok=True)
+
+        if resumed:
+            self._wal(
+                experiment_run_id,
+                "resume_started",
+                experiment_id=spec.id,
+                spec_path=str(spec.spec_path),
+                resume_source=str(resume),
+            )
+        else:
+            self._wal(
+                experiment_run_id,
+                "experiment_started",
+                experiment_id=spec.id,
+                spec_path=str(spec.spec_path),
+            )
+        task_runner = HeadlessTaskRunner(
+            experiment_dir / "task-runs",
+            model_client_factory=self.model_client_factory,
+        )
+        task_refs = []
+        reconcile_failure = None
+        reusable_refs = {}
+        if resumed:
+            try:
+                reusable_refs = self._reconcile_existing_task_runs(spec, experiment_run_id, experiment_dir)
+            except ValueError as exc:
+                reconcile_failure = str(exc)
+                self._wal(
+                    experiment_run_id,
+                    "resume_rejected",
+                    failure_kind="infrastructure",
+                    failure_category="reconcile_failed",
+                    reason=reconcile_failure,
+                )
+
+        for candidate in spec.candidates:
+            candidate_task = replace(
+                spec.task,
+                prompt=candidate.prompt,
+                provider_id=candidate.provider_id,
+                model_id=candidate.model_id,
+                provider_config=dict(candidate.provider_config),
+                fake_model_outputs=(
+                    list(candidate.fake_model_outputs)
+                    if candidate.fake_model_outputs is not None
+                    else list(spec.task.fake_model_outputs)
+                ),
+            )
+            identity = _build_identity(candidate, spec.task)
+            identity_key = _identity_key(identity)
+            if reconcile_failure is not None:
+                continue
+            if identity_key in reusable_refs:
+                task_ref = reusable_refs[identity_key]
+                task_refs.append(task_ref)
+                self._wal(
+                    experiment_run_id,
+                    "resume_reused_task_run",
+                    task_run_id=task_ref["task_run_id"],
+                    status=task_ref["status"],
+                    failure_kind=task_ref["failure_kind"],
+                    failure_category=task_ref["failure_category"],
+                    **identity,
+                )
+                continue
+            if resumed:
+                self._wal(
+                    experiment_run_id,
+                    "resume_rerun_required",
+                    reason="no compatible completed task artifact found for identity",
+                    **identity,
+                )
+            self._wal(
+                experiment_run_id,
+                "task_scheduled",
+                task_spec_path=str(spec.task.spec_path),
+                **identity,
+            )
+            self._wal(experiment_run_id, "task_started", **identity)
+
+            task_result = task_runner.run(candidate_task)
+            task_export = task_result.export
+            task_ref = _build_task_run_ref(task_export, identity)
+            task_refs.append(task_ref)
+
+            self._wal(
+                experiment_run_id,
+                "task_finished",
+                task_run_id=task_ref["task_run_id"],
+                status=task_ref["status"],
+                failure_kind=task_ref["failure_kind"],
+                failure_category=task_ref["failure_category"],
+                **identity,
+            )
+            self._wal(
+                experiment_run_id,
+                "artifact_captured",
+                task_run_id=task_ref["task_run_id"],
+                task_run_export_relpath=task_ref["artifacts"]["task_run_export_relpath"],
+                runtime_manifest_relpath=task_ref["artifacts"]["runtime_manifest_relpath"],
+                runtime_event_schema_version=task_ref["runtime"]["runtime_event_schema_version"],
+                **identity,
+            )
+
+        if reconcile_failure is not None:
+            task_refs.append(_build_reconcile_failure_ref(spec, reconcile_failure))
+        summary = summarize_experiment_task_runs(task_refs)
+        acceptance_decision = decide_headless_experiment_acceptance(spec.acceptance_policy, task_refs)
+        report_path = Path(report_path).resolve() if report_path else self.store.experiment_report_path(experiment_run_id)
+        manifest_path = self.store.experiment_manifest_path(experiment_run_id)
+        export = _build_export(
+            spec,
+            experiment_run_id,
+            experiment_dir,
+            report_path,
+            manifest_path,
+            task_refs,
+            summary,
+            acceptance_decision,
+        )
+        report = render_headless_experiment_report(export)
+        manifest = build_headless_experiment_manifest(export)
+        self.store.write_experiment_export(experiment_run_id, export)
+        if report_path == self.store.experiment_report_path(experiment_run_id):
+            self.store.write_experiment_report(experiment_run_id, report)
+        else:
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_text(report, encoding="utf-8")
+        self.store.write_experiment_manifest(experiment_run_id, manifest)
+        self._wal(experiment_run_id, "experiment_finished", summary=summary)
+
+        exit_code = 1 if summary["infrastructure_failed"] else 0
+        return HeadlessExperimentResult(exit_code=exit_code, export=export, report=report)
+
+    def _resolve_experiment_run(self, spec, resume):
+        if not resume:
+            experiment_run_id = _new_experiment_run_id(spec.id)
+            return experiment_run_id, self.store.run_dir(experiment_run_id), False
+
+        resume_value = Path(str(resume)).expanduser()
+        if resume_value.exists() or resume_value.is_absolute() or len(resume_value.parts) > 1:
+            experiment_dir = resume_value.resolve()
+            if not experiment_dir.is_dir():
+                raise ValueError(f"headless experiment resume directory does not exist: {experiment_dir}")
+            self.runs_root = experiment_dir.parent
+            self.store = RunStore(self.runs_root)
+            return experiment_dir.name, experiment_dir, True
+
+        experiment_run_id = str(resume).strip()
+        if not experiment_run_id:
+            raise ValueError("headless experiment resume id is empty")
+        experiment_dir = self.store.run_dir(experiment_run_id)
+        if not experiment_dir.is_dir():
+            raise ValueError(f"headless experiment resume id does not exist: {experiment_run_id}")
+        return experiment_run_id, experiment_dir, True
+
+    def _reconcile_existing_task_runs(self, spec, experiment_run_id, experiment_dir):
+        wal_events = _read_jsonl(self.store.experiment_wal_path(experiment_run_id))
+        artifact_events = [event for event in wal_events if event.get("event") == "artifact_captured"]
+        if not artifact_events:
+            return {}
+
+        expected_keys = {_identity_key(_build_identity(candidate, spec.task)) for candidate in spec.candidates}
+        reusable_refs = {}
+        for event in artifact_events:
+            identity = _event_identity(event)
+            identity_key = _identity_key(identity)
+            if identity_key not in expected_keys:
+                continue
+            if identity_key in reusable_refs:
+                raise ValueError(f"duplicate reusable task artifact for identity {identity_key}")
+            task_ref = self._reconcile_task_artifact(experiment_dir, event, identity)
+            reusable_refs[identity_key] = task_ref
+
+        export_path = self.store.experiment_export_path(experiment_run_id)
+        if reusable_refs and export_path.exists():
+            export = json.loads(export_path.read_text(encoding="utf-8"))
+            prior_refs = [
+                row for row in export.get("task_runs", []) or []
+                if _identity_key(row.get("identity", {})) in reusable_refs
+            ]
+            prior_summary = summarize_experiment_task_runs(prior_refs)
+            if prior_summary != export.get("summary", {}):
+                raise ValueError("experiment export summary disagrees with reconciled task artifacts")
+
+        return reusable_refs
+
+    def _reconcile_task_artifact(self, experiment_dir, event, identity):
+        task_export_relpath = str(event.get("task_run_export_relpath", ""))
+        if not task_export_relpath:
+            raise ValueError("artifact_captured event is missing task_run_export_relpath")
+        task_export_path = experiment_dir / task_export_relpath
+        if not task_export_path.is_file():
+            raise ValueError(f"referenced task-run export is missing: {task_export_relpath}")
+        task_export = json.loads(task_export_path.read_text(encoding="utf-8"))
+        task_ref = _build_task_run_ref(task_export, identity)
+
+        artifact_paths = {
+            "task_run_export_relpath": task_ref["artifacts"].get("task_run_export_relpath", ""),
+            "task_run_wal_relpath": task_ref["artifacts"].get("task_run_wal_relpath", ""),
+        }
+        if task_ref["failure_category"] != "missing_credentials":
+            artifact_paths["runtime_manifest_relpath"] = task_ref["artifacts"].get("runtime_manifest_relpath", "")
+        for label, relpath in artifact_paths.items():
+            if not relpath or not (experiment_dir / relpath).is_file():
+                raise ValueError(f"referenced {label} is missing: {relpath}")
+
+        task_schema_version = task_ref["runtime"].get("runtime_event_schema_version", "")
+        if task_ref["failure_category"] != "missing_credentials":
+            manifest = json.loads((experiment_dir / artifact_paths["runtime_manifest_relpath"]).read_text(encoding="utf-8"))
+            manifest_schema_version = manifest.get("runtime_event_schema_version")
+            if manifest_schema_version != task_schema_version:
+                raise ValueError(
+                    "runtime manifest schema version disagrees with task-run export: "
+                    f"{manifest_schema_version} != {task_schema_version}"
+                )
+            if task_schema_version != event.get("runtime_event_schema_version"):
+                raise ValueError("artifact_captured runtime schema version disagrees with task-run export")
+            if task_schema_version != RUNTIME_EVENT_SCHEMA_VERSION:
+                raise ValueError(
+                    "reconciled task-run runtime schema version is incompatible with current runtime: "
+                    f"{task_schema_version} != {RUNTIME_EVENT_SCHEMA_VERSION}"
+                )
+
+        task_identity = {
+            "provider_id": str(task_export.get("policy", {}).get("model_provider", "")),
+            "task_id": str(task_export.get("task", {}).get("id", "")),
+            "prompt_sha256": str(task_export.get("task", {}).get("prompt_sha256", "")),
+        }
+        for field, actual in task_identity.items():
+            if identity.get(field) != actual:
+                raise ValueError(f"reconciled task-run {field} mismatch: {identity.get(field)} != {actual}")
+        verifier = dict(task_export.get("verifier", {}) or {})
+        if verifier.get("exit_code") is None and task_ref["failure_category"] not in {
+            "missing_credentials",
+            "provider_failed",
+            "runtime_failed",
+            "setup_failed",
+            "runtime_artifact_capture_failed",
+        }:
+            raise ValueError("reconciled task-run is missing verifier result")
+
+        task_ref["reused"] = True
+        return task_ref
+
+    def _wal(self, experiment_run_id, event, **payload):
+        self.store.append_experiment_wal(
+            experiment_run_id,
+            {
+                "event": event,
+                "created_at": _now(),
+                "experiment_run_id": experiment_run_id,
+                **payload,
+            },
+        )
+
+
+def _build_identity(candidate, task):
+    return {
+        "candidate_id": candidate.id,
+        "prompt_sha256": candidate.prompt_sha256,
+        "runtime_policy_id": candidate.runtime_policy_id,
+        "provider_id": candidate.provider_id,
+        "model_id": candidate.model_id,
+        "task_id": task.id,
+        "verifier_id": candidate.verifier_id,
+    }
+
+
+def _identity_key(identity):
+    return tuple(
+        str((identity or {}).get(field, ""))
+        for field in (
+            "candidate_id",
+            "prompt_sha256",
+            "runtime_policy_id",
+            "provider_id",
+            "model_id",
+            "task_id",
+            "verifier_id",
+        )
+    )
+
+
+def _event_identity(event):
+    return {
+        "candidate_id": str(event.get("candidate_id", "")),
+        "prompt_sha256": str(event.get("prompt_sha256", "")),
+        "runtime_policy_id": str(event.get("runtime_policy_id", "")),
+        "provider_id": str(event.get("provider_id", "")),
+        "model_id": str(event.get("model_id", "")),
+        "task_id": str(event.get("task_id", "")),
+        "verifier_id": str(event.get("verifier_id", "")),
+    }
+
+
+def _candidate_ref(candidate):
+    return {
+        "id": candidate.id,
+        "prompt_sha256": candidate.prompt_sha256,
+        "runtime_policy_id": candidate.runtime_policy_id,
+        "provider_id": candidate.provider_id,
+        "model_id": candidate.model_id,
+        "verifier_id": candidate.verifier_id,
+    }
+
+
+def _build_task_run_ref(task_export, identity):
+    task_run_id = str(task_export.get("task_run_id", ""))
+    task_run_dir_relpath = str(Path("task-runs") / task_run_id)
+    runtime = dict(task_export.get("runtime", {}) or {})
+    policy = dict(task_export.get("policy", {}) or {})
+    artifacts = dict(task_export.get("artifacts", {}) or {})
+    verifier = dict(task_export.get("verifier", {}) or {})
+    boundaries = dict(task_export.get("boundaries", {}) or {})
+    actual_provider_id = str(policy.get("model_provider", ""))
+    if actual_provider_id and identity.get("provider_id") != actual_provider_id:
+        raise ValueError(
+            "headless experiment candidate provider_id does not match task-run provider: "
+            f"{identity.get('provider_id')} != {actual_provider_id}"
+        )
+    classification = _classify_task_export(task_export, runtime, verifier)
+    return {
+        "task_run_id": task_run_id,
+        "status": classification["status"],
+        "failure_kind": classification["failure_kind"],
+        "failure_category": classification["failure_category"],
+        "infrastructure_error": str(task_export.get("infrastructure_error", "")),
+        "identity": dict(identity),
+        "task": dict(task_export.get("task", {}) or {}),
+        "runtime": {
+            "status": str(runtime.get("status", "")),
+            "run_id": str(runtime.get("run_id", "")),
+            "runtime_event_schema_version": runtime.get("runtime_event_schema_version", ""),
+            "event_count": int(runtime.get("event_count", 0) or 0),
+            "event_type_counts": dict(runtime.get("event_type_counts", {}) or {}),
+            "usage": dict(runtime.get("usage", {}) or {}),
+            "cost": dict(runtime.get("cost", {}) or {}),
+            "terminal_error": str(runtime.get("terminal_error", "")),
+        },
+        "verifier": {
+            "status": _verifier_status(verifier),
+            "exit_code": verifier.get("exit_code"),
+            "timed_out": bool(verifier.get("timed_out", False)),
+            "protected_boundary": bool(verifier.get("protected_boundary", False)),
+        },
+        "boundaries": {
+            "verifier_visible_to_runtime": bool(boundaries.get("verifier_visible_to_runtime", False)),
+        },
+        "artifacts": {
+            "task_run_dir_relpath": task_run_dir_relpath,
+            "task_run_export_relpath": _join_relpath(task_run_dir_relpath, artifacts.get("task_run_export_relpath", "")),
+            "task_run_facts_relpath": _join_relpath(task_run_dir_relpath, artifacts.get("task_run_facts_relpath", "")),
+            "task_run_wal_relpath": _join_relpath(task_run_dir_relpath, artifacts.get("task_run_wal_relpath", "")),
+            "runtime_events_relpath": _join_relpath(task_run_dir_relpath, runtime.get("runtime_events_relpath", "")),
+            "trace_relpath": _join_relpath(task_run_dir_relpath, runtime.get("trace_relpath", "")),
+            "runtime_report_relpath": _join_relpath(task_run_dir_relpath, runtime.get("report_relpath", "")),
+            "runtime_manifest_relpath": _join_relpath(task_run_dir_relpath, runtime.get("manifest_relpath", "")),
+        },
+    }
+
+
+def _classify_task_export(task_export, runtime, verifier):
+    status = str(task_export.get("status", ""))
+    failure_kind = str(task_export.get("failure_kind", ""))
+    failure_category = str(task_export.get("failure_category", ""))
+    verifier_status = _verifier_status(verifier)
+
+    if status == "pass":
+        if verifier_status == "pass":
+            return {"status": "pass", "failure_kind": "", "failure_category": ""}
+        return {
+            "status": "infra_fail",
+            "failure_kind": "infrastructure",
+            "failure_category": "verifier_boundary_invalid",
+        }
+
+    if failure_kind == "benchmark":
+        if verifier_status == "fail":
+            return {
+                "status": "fail",
+                "failure_kind": "benchmark",
+                "failure_category": failure_category or "verifier_failed",
+            }
+        return {
+            "status": "infra_fail",
+            "failure_kind": "infrastructure",
+            "failure_category": "verifier_boundary_invalid",
+        }
+
+    if failure_kind == "infrastructure":
+        return {
+            "status": status or "infra_fail",
+            "failure_kind": "infrastructure",
+            "failure_category": _normalize_infrastructure_failure_category(failure_category, runtime, verifier),
+        }
+
+    if status in {"skipped", "reused"}:
+        return {"status": status, "failure_kind": failure_kind, "failure_category": failure_category}
+
+    return {"status": status, "failure_kind": failure_kind, "failure_category": failure_category}
+
+
+def _build_reconcile_failure_ref(spec, message):
+    return {
+        "task_run_id": "",
+        "status": "infra_fail",
+        "failure_kind": "infrastructure",
+        "failure_category": "reconcile_failed",
+        "infrastructure_error": message,
+        "identity": {
+            "task_id": spec.task.id,
+        },
+        "task": {
+            "id": spec.task.id,
+            "spec_path": str(spec.task.spec_path),
+        },
+        "runtime": {
+            "status": "",
+            "run_id": "",
+            "runtime_event_schema_version": "",
+            "event_count": 0,
+            "event_type_counts": {},
+            "usage": {},
+            "cost": {},
+            "terminal_error": "",
+        },
+        "verifier": {
+            "status": "skipped",
+            "exit_code": None,
+            "timed_out": False,
+            "protected_boundary": True,
+        },
+        "boundaries": {
+            "verifier_visible_to_runtime": False,
+        },
+        "artifacts": {
+            "task_run_dir_relpath": "",
+            "task_run_export_relpath": "",
+            "task_run_facts_relpath": "",
+            "task_run_wal_relpath": "",
+            "runtime_events_relpath": "",
+            "trace_relpath": "",
+            "runtime_report_relpath": "",
+            "runtime_manifest_relpath": "",
+        },
+    }
+
+
+def _normalize_infrastructure_failure_category(failure_category, runtime, verifier):
+    if bool(verifier.get("timed_out", False)):
+        return "verifier_timeout"
+    if failure_category == "runtime_artifact_capture_failed":
+        return failure_category
+    if failure_category == "missing_credentials":
+        return failure_category
+    if failure_category == "setup_failed":
+        return failure_category
+    if failure_category == "runtime_failed":
+        if str(runtime.get("error_type", "")) == "provider_error":
+            return "provider_failed"
+        return "runtime_failed"
+    return failure_category or "infrastructure_failed"
+
+
+def _verifier_status(verifier):
+    exit_code = verifier.get("exit_code")
+    if exit_code is None:
+        return "skipped"
+    if exit_code == 0:
+        return "pass"
+    return "fail"
+
+
+def summarize_experiment_task_runs(task_runs):
+    status_counts = Counter(row.get("status", "") for row in task_runs if row.get("status", ""))
+    failure_kind_counts = Counter(
+        row.get("failure_kind", "")
+        for row in task_runs
+        if row.get("failure_kind", "")
+    )
+    failure_category_counts = Counter(
+        row.get("failure_category", "")
+        for row in task_runs
+        if row.get("failure_category", "")
+    )
+    benchmark_failed = sum(1 for row in task_runs if row.get("failure_kind") == "benchmark")
+    passed = sum(1 for row in task_runs if row.get("status") == "pass")
+    scored_runs = passed + benchmark_failed
+    return {
+        "total_runs": len(task_runs),
+        "passed": passed,
+        "benchmark_failed": benchmark_failed,
+        "infrastructure_failed": sum(1 for row in task_runs if row.get("failure_kind") == "infrastructure"),
+        "skipped": sum(1 for row in task_runs if row.get("status") == "skipped"),
+        "reused": sum(1 for row in task_runs if row.get("status") == "reused" or row.get("reused") is True),
+        "scored_runs": scored_runs,
+        "benchmark_pass_rate": (passed / scored_runs) if scored_runs else None,
+        "status_counts": dict(sorted(status_counts.items())),
+        "failure_kind_counts": dict(sorted(failure_kind_counts.items())),
+        "failure_category_counts": dict(sorted(failure_category_counts.items())),
+    }
+
+
+def summarize_experiment_usage(task_runs):
+    totals = Counter()
+    for row in task_runs:
+        for key, value in (row.get("runtime", {}).get("usage", {}) or {}).items():
+            if isinstance(value, bool):
+                totals[key] += int(value)
+            elif isinstance(value, (int, float)):
+                totals[key] += value
+    return dict(sorted(totals.items()))
+
+
+def summarize_experiment_cost(task_runs):
+    totals = Counter()
+    for row in task_runs:
+        for key, value in (row.get("runtime", {}).get("cost", {}) or {}).items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                totals[key] += value
+    return dict(sorted(totals.items()))
+
+
+def _acceptance_policy_ref(policy):
+    if not policy:
+        return {}
+    if isinstance(policy, dict):
+        if not policy:
+            return {}
+        min_pass_rate_delta = policy.get("min_pass_rate_delta", 0.0)
+        try:
+            min_pass_rate_delta = float(min_pass_rate_delta)
+        except (TypeError, ValueError):
+            min_pass_rate_delta = None
+        require_no_infrastructure = policy.get("require_no_infrastructure_failures", True)
+        if not isinstance(require_no_infrastructure, bool):
+            require_no_infrastructure = None
+        return {
+            "type": str(policy.get("type", "")),
+            "baseline_candidate_id": str(policy.get("baseline_candidate_id", "")),
+            "candidate_ids": [str(candidate_id) for candidate_id in policy.get("candidate_ids", []) or []],
+            "min_pass_rate_delta": min_pass_rate_delta,
+            "require_no_infrastructure_failures": require_no_infrastructure,
+        }
+    return {
+        "type": policy.type,
+        "baseline_candidate_id": policy.baseline_candidate_id,
+        "candidate_ids": list(policy.candidate_ids),
+        "min_pass_rate_delta": policy.min_pass_rate_delta,
+        "require_no_infrastructure_failures": policy.require_no_infrastructure_failures,
+    }
+
+
+def _not_configured_acceptance_decision():
+    return {
+        "status": "not_configured",
+        "accepted_candidate_id": "",
+        "baseline_candidate_id": "",
+        "reason": "no acceptance_policy declared",
+        "metric": "benchmark_pass_rate",
+        "min_pass_rate_delta": 0.0,
+        "scores": {},
+        "deltas": {},
+    }
+
+
+def _candidate_score(task_runs):
+    summary = summarize_experiment_task_runs(task_runs)
+    return {
+        "total_runs": summary["total_runs"],
+        "passed": summary["passed"],
+        "benchmark_failed": summary["benchmark_failed"],
+        "infrastructure_failed": summary["infrastructure_failed"],
+        "skipped": summary["skipped"],
+        "reused": summary["reused"],
+        "scored_runs": summary["scored_runs"],
+        "benchmark_pass_rate": summary["benchmark_pass_rate"],
+    }
+
+
+def _acceptance_scores(task_runs, candidate_ids):
+    by_candidate = {candidate_id: [] for candidate_id in candidate_ids}
+    for row in task_runs:
+        candidate_id = str(row.get("identity", {}).get("candidate_id", ""))
+        if candidate_id in by_candidate:
+            by_candidate[candidate_id].append(row)
+    return {
+        candidate_id: _candidate_score(rows)
+        for candidate_id, rows in by_candidate.items()
+    }
+
+
+def decide_headless_experiment_acceptance(policy, task_runs):
+    policy_ref = _acceptance_policy_ref(policy)
+    if not policy_ref:
+        return _not_configured_acceptance_decision()
+
+    baseline_candidate_id = policy_ref["baseline_candidate_id"]
+    candidate_ids = list(policy_ref["candidate_ids"])
+    base_decision = {
+        "accepted_candidate_id": "",
+        "baseline_candidate_id": baseline_candidate_id,
+        "metric": "benchmark_pass_rate",
+        "min_pass_rate_delta": policy_ref["min_pass_rate_delta"],
+        "scores": {},
+        "deltas": {},
+    }
+    if policy_ref["type"] not in HEADLESS_EXPERIMENT_ACCEPTANCE_POLICY_TYPES:
+        return {
+            **base_decision,
+            "status": "invalid",
+            "reason": "acceptance_policy type is unsupported: " + policy_ref["type"],
+        }
+    if not baseline_candidate_id:
+        return {
+            **base_decision,
+            "status": "invalid",
+            "reason": "acceptance_policy is missing baseline_candidate_id",
+        }
+    if not candidate_ids:
+        return {
+            **base_decision,
+            "status": "invalid",
+            "reason": "acceptance_policy must compare at least one candidate",
+        }
+    min_delta = policy_ref["min_pass_rate_delta"]
+    if min_delta is None or min_delta < 0:
+        return {
+            **base_decision,
+            "status": "invalid",
+            "reason": "acceptance_policy min_pass_rate_delta must be non-negative",
+        }
+    if policy_ref["require_no_infrastructure_failures"] is None:
+        return {
+            **base_decision,
+            "status": "invalid",
+            "reason": "acceptance_policy require_no_infrastructure_failures must be a boolean",
+        }
+
+    required_candidate_ids = [baseline_candidate_id, *candidate_ids]
+    scores = _acceptance_scores(task_runs, required_candidate_ids)
+    base_decision = {**base_decision, "scores": scores}
+
+    missing = [
+        candidate_id
+        for candidate_id in required_candidate_ids
+        if scores[candidate_id]["total_runs"] == 0
+    ]
+    if missing:
+        return {
+            **base_decision,
+            "status": "invalid",
+            "reason": "missing task-run evidence for candidate(s): " + ", ".join(missing),
+        }
+
+    if policy_ref["require_no_infrastructure_failures"]:
+        blocked = [
+            candidate_id
+            for candidate_id in required_candidate_ids
+            if scores[candidate_id]["infrastructure_failed"] or scores[candidate_id]["skipped"]
+        ]
+        if blocked:
+            return {
+                **base_decision,
+                "status": "invalid",
+                "reason": "candidate evidence has infrastructure failures or skipped runs: " + ", ".join(blocked),
+            }
+
+    baseline_rate = scores[baseline_candidate_id]["benchmark_pass_rate"]
+    if baseline_rate is None:
+        return {
+            **base_decision,
+            "status": "invalid",
+            "reason": f"baseline candidate has no scored verifier runs: {baseline_candidate_id}",
+        }
+
+    deltas = {}
+    eligible = []
+    for candidate_id in candidate_ids:
+        candidate_rate = scores[candidate_id]["benchmark_pass_rate"]
+        if candidate_rate is None:
+            return {
+                **base_decision,
+                "status": "invalid",
+                "reason": f"candidate has no scored verifier runs: {candidate_id}",
+            }
+        delta = candidate_rate - baseline_rate
+        deltas[candidate_id] = delta
+        eligible.append((delta, candidate_rate, candidate_id))
+
+    best_delta, _best_rate, best_candidate_id = max(eligible)
+    decision = {**base_decision, "deltas": deltas}
+    if best_delta > 0 and best_delta >= min_delta:
+        return {
+            **decision,
+            "status": "accepted",
+            "accepted_candidate_id": best_candidate_id,
+            "reason": (
+                f"{best_candidate_id} improved benchmark_pass_rate over "
+                f"{baseline_candidate_id} by {best_delta:.6g}"
+            ),
+        }
+    return {
+        **decision,
+        "status": "rejected",
+        "reason": "no candidate improved benchmark_pass_rate over baseline by the required margin",
+    }
+
+
+def experiment_evidence_kind(task_runs):
+    providers = {
+        str(row.get("identity", {}).get("provider_id", ""))
+        for row in task_runs
+        if row.get("identity", {}).get("provider_id")
+    }
+    if providers == {"fake"}:
+        return "deterministic-fake-provider"
+    if providers and "fake" not in providers:
+        return "manual-real-provider-acceptance"
+    if providers:
+        return "mixed-provider-evidence"
+    return "unknown"
+
+
+def _build_export(
+    spec,
+    experiment_run_id,
+    experiment_dir,
+    report_path,
+    manifest_path,
+    task_refs,
+    summary,
+    acceptance_decision,
+):
+    first_task_ref = task_refs[0] if task_refs else {}
+    return {
+        "artifact_type": "headless-experiment-export",
+        "schema_version": HEADLESS_EXPERIMENT_SCHEMA_VERSION,
+        "task_schema_version": HEADLESS_TASK_SCHEMA_VERSION,
+        "experiment_run_id": experiment_run_id,
+        "created_at": _now(),
+        "experiment": {
+            "id": spec.id,
+            "spec_path": str(spec.spec_path),
+        },
+        "candidates": [_candidate_ref(candidate) for candidate in spec.candidates],
+        "acceptance_policy": _acceptance_policy_ref(spec.acceptance_policy),
+        "acceptance_decision": acceptance_decision,
+        "summary": summary,
+        "usage": summarize_experiment_usage(task_refs),
+        "cost": summarize_experiment_cost(task_refs),
+        "evidence_kind": experiment_evidence_kind(task_refs),
+        "mvp_boundaries": list(HEADLESS_EXPERIMENT_MVP_BOUNDARIES),
+        "runtime_event_schema_version": first_task_ref.get("runtime", {}).get("runtime_event_schema_version", ""),
+        "task_run": first_task_ref,
+        "task_runs": task_refs,
+        "artifacts": {
+            "experiment_wal_relpath": _relpath(Path(experiment_dir) / "experiment_wal.jsonl", experiment_dir),
+            "experiment_export_relpath": _relpath(Path(experiment_dir) / "experiment_export.json", experiment_dir),
+            "report_relpath": _relpath(report_path, experiment_dir),
+            "experiment_manifest_relpath": _relpath(manifest_path, experiment_dir),
+        },
+    }
+
+
+def build_headless_experiment_manifest(export):
+    task_runs = list(export.get("task_runs", []) or [])
+    return {
+        "artifact_type": "headless-experiment-manifest",
+        "schema_version": HEADLESS_EXPERIMENT_MANIFEST_SCHEMA_VERSION,
+        "experiment_run_id": export.get("experiment_run_id", ""),
+        "experiment": dict(export.get("experiment", {}) or {}),
+        "created_at": _now(),
+        "summary": dict(export.get("summary", {}) or {}),
+        "usage": dict(export.get("usage", {}) or {}),
+        "cost": dict(export.get("cost", {}) or {}),
+        "evidence_kind": export.get("evidence_kind", ""),
+        "acceptance_policy": dict(export.get("acceptance_policy", {}) or {}),
+        "acceptance_decision": dict(export.get("acceptance_decision", {}) or {}),
+        "runtime_event_schema_version": export.get("runtime_event_schema_version", ""),
+        "mvp_boundaries": list(export.get("mvp_boundaries", []) or []),
+        "artifacts": dict(export.get("artifacts", {}) or {}),
+        "task_runs": [
+            {
+                "task_run_id": row.get("task_run_id", ""),
+                "status": row.get("status", ""),
+                "failure_kind": row.get("failure_kind", ""),
+                "failure_category": row.get("failure_category", ""),
+                "identity": dict(row.get("identity", {}) or {}),
+                "task": dict(row.get("task", {}) or {}),
+                "runtime": {
+                    "run_id": row.get("runtime", {}).get("run_id", ""),
+                    "status": row.get("runtime", {}).get("status", ""),
+                    "runtime_event_schema_version": row.get("runtime", {}).get("runtime_event_schema_version", ""),
+                    "usage": dict(row.get("runtime", {}).get("usage", {}) or {}),
+                    "cost": dict(row.get("runtime", {}).get("cost", {}) or {}),
+                },
+                "verifier": dict(row.get("verifier", {}) or {}),
+                "artifacts": dict(row.get("artifacts", {}) or {}),
+            }
+            for row in task_runs
+        ],
+    }
+
+
+def render_headless_experiment_report(export):
+    experiment_id = export.get("experiment", {}).get("id", "")
+    summary = export.get("summary", {})
+    task_runs = list(export.get("task_runs", []) or [])
+    if not task_runs and export.get("task_run"):
+        task_runs = [export.get("task_run", {})]
+    acceptance_policy = dict(export.get("acceptance_policy", {}) or {})
+    acceptance_decision = dict(export.get("acceptance_decision", {}) or {})
+    lines = [
+        f"# Headless experiment: {experiment_id}",
+        "",
+        f"- experiment_run_id: {export.get('experiment_run_id', '')}",
+        f"- total_runs: {summary.get('total_runs', 0)}",
+        f"- passed: {summary.get('passed', 0)}",
+        f"- benchmark_failed: {summary.get('benchmark_failed', 0)}",
+        f"- infrastructure_failed: {summary.get('infrastructure_failed', 0)}",
+        f"- skipped: {summary.get('skipped', 0)}",
+        f"- reused: {summary.get('reused', 0)}",
+        f"- scored_runs: {summary.get('scored_runs', 0)}",
+        f"- benchmark_pass_rate: {summary.get('benchmark_pass_rate', '')}",
+        f"- runtime_event_schema_version: {export.get('runtime_event_schema_version', '')}",
+        f"- evidence_kind: {export.get('evidence_kind', '')}",
+        f"- usage: {json.dumps(export.get('usage', {}) or {}, sort_keys=True)}",
+        f"- cost: {json.dumps(export.get('cost', {}) or {}, sort_keys=True)}",
+        "",
+        "## Acceptance",
+        "",
+        f"- policy_type: {acceptance_policy.get('type', 'none') or 'none'}",
+        f"- baseline_candidate_id: {acceptance_decision.get('baseline_candidate_id', '')}",
+        f"- accepted_candidate_id: {acceptance_decision.get('accepted_candidate_id', '')}",
+        f"- status: {acceptance_decision.get('status', '')}",
+        f"- reason: {acceptance_decision.get('reason', '')}",
+        "",
+        "## MVP boundary",
+        "",
+        *[f"- {item}" for item in export.get("mvp_boundaries", []) or []],
+        "",
+        "| candidate | prompt_sha256 | runtime_policy | provider | model | task | verifier_id | task_run | status | failure_kind | failure_category | runtime | verifier | task_export | runtime_manifest |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for task_run in task_runs:
+        identity = task_run.get("identity", {})
+        artifacts = task_run.get("artifacts", {})
+        lines.append("| {candidate} | {prompt} | {policy} | {provider} | {model} | {task} | {verifier_id} | {task_run} | {status} | {failure_kind} | {failure_category} | {runtime} | {verifier} | {task_export} | {manifest} |".format(
+            candidate=identity.get("candidate_id", ""),
+            prompt=identity.get("prompt_sha256", ""),
+            policy=identity.get("runtime_policy_id", ""),
+            provider=identity.get("provider_id", ""),
+            model=identity.get("model_id", ""),
+            task=task_run.get("task", {}).get("id", ""),
+            verifier_id=identity.get("verifier_id", ""),
+            task_run=task_run.get("task_run_id", ""),
+            status=task_run.get("status", ""),
+            failure_kind=task_run.get("failure_kind", ""),
+            failure_category=task_run.get("failure_category", ""),
+            runtime=task_run.get("runtime", {}).get("status", ""),
+            verifier=task_run.get("verifier", {}).get("status", ""),
+            task_export=artifacts.get("task_run_export_relpath", ""),
+            manifest=artifacts.get("runtime_manifest_relpath", ""),
+        ))
+    return "\n".join(lines) + "\n"
+
+
+def validate_headless_experiment_evidence(path):
+    root = Path(path).resolve()
+    if root.is_dir():
+        experiment_dir = root
+        export_path = experiment_dir / "experiment_export.json"
+    else:
+        payload = json.loads(root.read_text(encoding="utf-8"))
+        if payload.get("artifact_type") == "headless-experiment-live-provider-acceptance":
+            return _validate_live_acceptance_evidence(root, payload)
+        export_path = root
+        experiment_dir = export_path.parent
+    export = json.loads(export_path.read_text(encoding="utf-8"))
+    return _validate_single_experiment_evidence(experiment_dir, export)
+
+
+def _validate_live_acceptance_evidence(path, payload):
+    root = path.parent
+    child_results = []
+    errors = []
+    for item in payload.get("experiments", []) or []:
+        experiment_run_id = item.get("experiment_run_id", "")
+        if not experiment_run_id:
+            errors.append("live acceptance experiment entry is missing experiment_run_id")
+            continue
+        experiment_dir = root / "experiments" / experiment_run_id
+        export_path = experiment_dir / "experiment_export.json"
+        if not export_path.is_file():
+            errors.append(f"live acceptance experiment export is missing: {experiment_run_id}")
+            continue
+        child = _validate_single_experiment_evidence(
+            experiment_dir,
+            json.loads(export_path.read_text(encoding="utf-8")),
+        )
+        child_results.append((experiment_run_id, child))
+        errors.extend(f"{experiment_run_id}: {error}" for error in child.get("errors", []))
+        if child.get("evidence_kind") != "manual-real-provider-acceptance":
+            errors.append(f"{experiment_run_id}: live acceptance child is not real-provider evidence")
+        _validate_live_acceptance_summary(
+            errors,
+            f"{experiment_run_id}: live acceptance child",
+            child.get("summary", {}),
+        )
+    _validate_live_acceptance_summary(
+        errors,
+        "live acceptance aggregate",
+        payload.get("summary", {}),
+    )
+    checked_task_runs = sum(child.get("checked_task_runs", 0) for _, child in child_results)
+    aggregate_total_runs = int((payload.get("summary", {}) or {}).get("total_runs", 0) or 0)
+    if checked_task_runs != aggregate_total_runs:
+        errors.append(
+            "live acceptance aggregate references "
+            f"{aggregate_total_runs} task runs but {checked_task_runs} were checked"
+        )
+    return {
+        "artifact_type": "headless-experiment-evidence-gate",
+        "schema_version": 1,
+        "source": str(path),
+        "passed": not errors,
+        "evidence_kind": "manual-real-provider-acceptance",
+        "summary": dict(payload.get("summary", {}) or {}),
+        "checked_experiments": len(child_results),
+        "checked_task_runs": checked_task_runs,
+        "errors": errors,
+    }
+
+
+def _validate_live_acceptance_summary(errors, label, summary):
+    summary = dict(summary or {})
+    total_runs = int(summary.get("total_runs", 0) or 0)
+    passed = int(summary.get("passed", 0) or 0)
+    benchmark_failed = int(summary.get("benchmark_failed", 0) or 0)
+    infrastructure_failed = int(summary.get("infrastructure_failed", 0) or 0)
+    skipped = int(summary.get("skipped", 0) or 0)
+    if total_runs <= 0:
+        errors.append(f"{label} has no task runs")
+    if skipped:
+        errors.append(f"{label} has skipped runs: {skipped}")
+    if infrastructure_failed:
+        errors.append(f"{label} has infrastructure failures: {infrastructure_failed}")
+    if benchmark_failed:
+        errors.append(f"{label} has benchmark failures: {benchmark_failed}")
+    if total_runs and passed != total_runs:
+        errors.append(f"{label} passed {passed} of {total_runs} runs")
+
+
+def _validate_single_experiment_evidence(experiment_dir, export):
+    errors = []
+    task_runs = list(export.get("task_runs", []) or [])
+    artifacts = dict(export.get("artifacts", {}) or {})
+    if not task_runs:
+        errors.append("experiment has no task-run evidence")
+    _require_file(errors, experiment_dir, artifacts.get("experiment_wal_relpath", ""), "experiment WAL")
+    _require_file(errors, experiment_dir, artifacts.get("experiment_export_relpath", ""), "experiment export")
+    _require_file(errors, experiment_dir, artifacts.get("report_relpath", ""), "experiment report")
+    manifest_path = _require_file(
+        errors,
+        experiment_dir,
+        artifacts.get("experiment_manifest_relpath", ""),
+        "experiment manifest",
+    )
+    if manifest_path:
+        manifest = _load_json_file(errors, manifest_path, "experiment manifest")
+        if manifest:
+            if manifest.get("artifact_type") != "headless-experiment-manifest":
+                errors.append("experiment manifest artifact_type is not headless-experiment-manifest")
+            if manifest.get("experiment_run_id") != export.get("experiment_run_id"):
+                errors.append("experiment manifest run id does not match export")
+            if manifest.get("summary") != export.get("summary"):
+                errors.append("experiment manifest summary does not match export")
+            if manifest.get("acceptance_policy") != export.get("acceptance_policy", {}):
+                errors.append("experiment manifest acceptance policy does not match export")
+            if manifest.get("acceptance_decision") != export.get("acceptance_decision", {}):
+                errors.append("experiment manifest acceptance decision does not match export")
+            if manifest.get("artifacts") != export.get("artifacts"):
+                errors.append("experiment manifest artifacts do not match export")
+            expected_manifest = build_headless_experiment_manifest(export)
+            if manifest.get("task_runs") != expected_manifest.get("task_runs"):
+                errors.append("experiment manifest task-run references do not match export")
+
+    candidate_refs = {
+        str(candidate.get("id", "")): candidate
+        for candidate in export.get("candidates", []) or []
+    }
+    for index, task_run in enumerate(task_runs):
+        _validate_task_run_evidence(errors, experiment_dir, task_run, candidate_refs, index)
+    summary = summarize_experiment_task_runs(task_runs)
+    if summary != export.get("summary", {}):
+        errors.append("experiment summary does not match task-run evidence")
+    if experiment_evidence_kind(task_runs) != export.get("evidence_kind", ""):
+        errors.append("experiment evidence_kind does not match task-run providers")
+    if export.get("acceptance_policy") or export.get("acceptance_decision"):
+        expected_decision = decide_headless_experiment_acceptance(
+            export.get("acceptance_policy", {}),
+            task_runs,
+        )
+        if expected_decision != export.get("acceptance_decision", {}):
+            errors.append("experiment acceptance decision does not match task-run evidence")
+    for boundary in HEADLESS_EXPERIMENT_MVP_BOUNDARIES:
+        if boundary not in (export.get("mvp_boundaries", []) or []):
+            errors.append(f"experiment export is missing MVP boundary: {boundary}")
+    return {
+        "artifact_type": "headless-experiment-evidence-gate",
+        "schema_version": 1,
+        "source": str(experiment_dir),
+        "passed": not errors,
+        "evidence_kind": export.get("evidence_kind", ""),
+        "summary": dict(export.get("summary", {}) or {}),
+        "checked_experiments": 1,
+        "checked_task_runs": len(task_runs),
+        "errors": errors,
+    }
+
+
+def _validate_task_run_evidence(errors, experiment_dir, task_run, candidate_refs, index):
+    label = f"task_runs[{index}]"
+    identity = dict(task_run.get("identity", {}) or {})
+    artifacts = dict(task_run.get("artifacts", {}) or {})
+    runtime = dict(task_run.get("runtime", {}) or {})
+    verifier = dict(task_run.get("verifier", {}) or {})
+    for field in ("candidate_id", "prompt_sha256", "runtime_policy_id", "provider_id", "model_id", "task_id", "verifier_id"):
+        if not identity.get(field):
+            errors.append(f"{label} identity is missing {field}")
+    candidate = candidate_refs.get(str(identity.get("candidate_id", "")))
+    if not candidate:
+        errors.append(f"{label} candidate id is not declared")
+    elif any(str(candidate.get(field, "")) != str(identity.get(field, "")) for field in ("prompt_sha256", "runtime_policy_id", "provider_id", "model_id", "verifier_id")):
+        errors.append(f"{label} identity does not match candidate metadata")
+    if runtime.get("runtime_event_schema_version") != RUNTIME_EVENT_SCHEMA_VERSION:
+        errors.append(f"{label} is missing current runtime event schema metadata")
+    task_export_path = _require_file(errors, experiment_dir, artifacts.get("task_run_export_relpath", ""), f"{label} task-run export")
+    _require_file(errors, experiment_dir, artifacts.get("task_run_wal_relpath", ""), f"{label} task-run WAL")
+    _require_file(errors, experiment_dir, artifacts.get("task_run_facts_relpath", ""), f"{label} task facts")
+    _require_file(errors, experiment_dir, artifacts.get("runtime_events_relpath", ""), f"{label} runtime events")
+    _require_file(errors, experiment_dir, artifacts.get("trace_relpath", ""), f"{label} runtime trace")
+    _require_file(errors, experiment_dir, artifacts.get("runtime_report_relpath", ""), f"{label} runtime report")
+    runtime_manifest_path = _require_file(errors, experiment_dir, artifacts.get("runtime_manifest_relpath", ""), f"{label} runtime artifact manifest")
+    if verifier.get("exit_code") is None:
+        errors.append(f"{label} is missing verifier result")
+    if task_export_path:
+        task_export = _load_json_file(errors, task_export_path, f"{label} task-run export")
+        if task_export:
+            _validate_task_export_matches(errors, label, identity, task_run, task_export)
+    if runtime_manifest_path:
+        manifest = _load_json_file(errors, runtime_manifest_path, f"{label} runtime artifact manifest")
+        if manifest:
+            if manifest.get("runtime_event_schema_version") != runtime.get("runtime_event_schema_version"):
+                errors.append(f"{label} runtime manifest schema metadata does not match export")
+            if manifest.get("run_id") != runtime.get("run_id"):
+                errors.append(f"{label} runtime manifest run_id does not match export")
+
+
+def _validate_task_export_matches(errors, label, identity, task_run, task_export):
+    policy = dict(task_export.get("policy", {}) or {})
+    task = dict(task_export.get("task", {}) or {})
+    verifier = dict(task_export.get("verifier", {}) or {})
+    runtime = dict(task_export.get("runtime", {}) or {})
+    if task_export.get("task_run_id") != task_run.get("task_run_id"):
+        errors.append(f"{label} task-run export id does not match experiment export")
+    expected = {
+        "provider_id": policy.get("model_provider", ""),
+        "model_id": policy.get("model_id", ""),
+        "task_id": task.get("id", ""),
+        "prompt_sha256": task.get("prompt_sha256", ""),
+    }
+    for field, actual in expected.items():
+        if str(identity.get(field, "")) != str(actual):
+            errors.append(f"{label} identity mismatch for {field}: {identity.get(field, '')} != {actual}")
+    if verifier.get("exit_code") is None:
+        errors.append(f"{label} task-run export is missing verifier result")
+    if runtime.get("runtime_event_schema_version") != task_run.get("runtime", {}).get("runtime_event_schema_version"):
+        errors.append(f"{label} task-run export runtime schema does not match experiment export")
+
+
+def _require_file(errors, root, relpath, label):
+    if not relpath:
+        errors.append(f"{label} path is missing")
+        return None
+    raw_path = Path(str(relpath))
+    if raw_path.is_absolute():
+        errors.append(f"{label} path must be relative: {relpath}")
+        return None
+    root_path = Path(root).resolve()
+    path = (root_path / raw_path).resolve()
+    try:
+        path.relative_to(root_path)
+    except ValueError:
+        errors.append(f"{label} path escapes experiment directory: {relpath}")
+        return None
+    if not path.is_file():
+        errors.append(f"{label} is missing: {relpath}")
+        return None
+    return path
+
+
+def _load_json_file(errors, path, label):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"{label} is not readable JSON: {exc}")
+        return None
+
+
+def _read_jsonl(path):
+    path = Path(path)
+    if not path.is_file():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def build_headless_experiment_run_parser():
+    parser = argparse.ArgumentParser(
+        prog="pico headless experiment run",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description="Run headless tasks and wrap them in experiment-level evidence.",
+    )
+    parser.add_argument("spec", help="Path to a headless experiment JSON spec.")
+    parser.add_argument(
+        "--runs-root",
+        default=str(Path.cwd() / ".pico" / "headless" / "experiments"),
+        help="Directory where experiment artifacts and task-run artifacts are written.",
+    )
+    parser.add_argument("--report-path", default=None, help="Optional Markdown report output path.")
+    parser.add_argument(
+        "--fake-output",
+        dest="fake_outputs",
+        action="append",
+        default=None,
+        help="Override task fake_model_outputs. Repeat for multi-step fake provider runs.",
+    )
+    parser.add_argument("--max-steps", type=int, default=None, help="Override the task runtime step budget.")
+    parser.add_argument("--max-new-tokens", type=int, default=None, help="Override the task model output token budget.")
+    parser.add_argument(
+        "--resume",
+        default=None,
+        help="Resume an existing experiment by run id or experiment artifact directory.",
+    )
+    return parser
+
+
+def build_headless_experiment_gate_parser():
+    parser = argparse.ArgumentParser(
+        prog="pico headless experiment gate",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description="Validate headless experiment evidence without re-running providers.",
+    )
+    parser.add_argument(
+        "path",
+        help="Experiment directory, experiment_export.json, or headless_experiment_acceptance.json.",
+    )
+    return parser
+
+
+def run_headless_experiment_cli(argv):
+    args = build_headless_experiment_run_parser().parse_args(argv)
+    try:
+        spec = load_headless_experiment_spec(args.spec)
+        task = spec.task
+        if args.fake_outputs is not None:
+            task = replace(task, fake_model_outputs=list(args.fake_outputs))
+        if args.max_steps is not None:
+            task = replace(task, max_steps=int(args.max_steps))
+        if args.max_new_tokens is not None:
+            task = replace(task, max_new_tokens=int(args.max_new_tokens))
+        if task is not spec.task:
+            spec = replace(spec, task=task)
+        result = HeadlessExperimentRunner(args.runs_root).run(
+            spec,
+            report_path=args.report_path,
+            resume=args.resume,
+        )
+    except Exception as exc:
+        print(f"headless_experiment_error: {exc}", file=sys.stderr)
+        return 1
+
+    print(json.dumps(result.export, indent=2, sort_keys=True))
+    if result.exit_code != 0:
+        task_run = result.export.get("task_run", {})
+        message = (
+            task_run.get("runtime", {}).get("terminal_error")
+            or task_run.get("infrastructure_error", "")
+        )
+        if message:
+            print(message, file=sys.stderr)
+    return result.exit_code
+
+
+def run_headless_experiment_gate_cli(argv):
+    args = build_headless_experiment_gate_parser().parse_args(argv)
+    try:
+        result = validate_headless_experiment_evidence(args.path)
+    except Exception as exc:
+        print(f"headless_experiment_gate_error: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if result.get("passed") else 1

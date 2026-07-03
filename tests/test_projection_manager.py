@@ -148,6 +148,30 @@ def test_projection_manager_accepts_runtime_event_v2_dicts(tmp_path):
     assert _read_jsonl(artifacts.runtime_events_path)[0]["kind"] == "invocation_start"
 
 
+def test_projection_manager_inspects_persisted_views(tmp_path):
+    store = RunStore(tmp_path / ".pico" / "runs")
+    manager = ProjectionManager(store)
+    ledger = RuntimeEventLedgerV2("run_inspect")
+    ledger.append("invocation_start", status="started", actor="runtime_runner", payload={})
+    ledger.append("user_input", status="completed", actor="runtime_runner", payload={"text": "hello"})
+    ledger.append("model_output", status="completed", actor="model_adapter", payload={"text": "<final>Ok.</final>"})
+    ledger.append("final_answer", status="completed", actor="agent_flow", payload={"text": "Ok."})
+    ledger.append("terminal_status", status="completed", actor="runtime_runner", payload={"status": "completed"})
+    manager.capture([runtime_event_v2_to_dict(event) for event in ledger.events])
+
+    ledger_view = manager.inspect("run_inspect", view="ledger")
+    trace_view = manager.inspect("run_inspect", view="trace")
+    artifacts_view = manager.inspect("run_inspect", view="artifacts")
+    all_view = manager.inspect("run_inspect", view="all")
+
+    assert ledger_view[0]["kind"] == "invocation_start"
+    assert trace_view[-1]["kind"] == "terminal_status"
+    assert artifacts_view["manifest"]["exists"] is True
+    assert artifacts_view["manifest"]["path"].endswith("runtime_manifest.json")
+    assert all_view["session"]["history"][-1]["content"] == "Ok."
+    assert all_view["artifacts"] == artifacts_view
+
+
 def test_projection_manager_redacts_manifest_terminal_status(tmp_path, monkeypatch):
     secret = "sk-terminal-secret-123"
     monkeypatch.setenv("TERMINAL_SECRET", secret)
