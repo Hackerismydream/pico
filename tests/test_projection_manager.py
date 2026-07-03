@@ -40,7 +40,7 @@ def test_projection_manager_captures_no_tool_final_answer_and_redacts(tmp_path, 
     assert artifacts.status == "completed"
     assert artifacts.session_projection["history"][-1]["content"] == "Done <redacted>."
     assert artifacts.export_projection["final_answer"] == "Done <redacted>."
-    assert artifacts.diagnostics == ()
+    assert [item["code"] for item in artifacts.diagnostics] == ["legacy_event_shape"] * 5
     for path in artifacts.artifact_paths.values():
         text = path.read_text(encoding="utf-8")
         assert secret not in text
@@ -120,9 +120,11 @@ def test_projection_manager_manifest_contract(tmp_path):
     }
     assert manifest["projections"]["session"]["status"] == "completed"
     assert manifest["projections"]["export"]["artifact_type"] == "kernel-runtime-export"
-    assert manifest["diagnostics"] == []
+    assert [item["code"] for item in manifest["diagnostics"]] == ["legacy_event_shape"] * 3
     assert artifacts.manifest_path == store.manifest_path("run_manifest")
-    assert _read_jsonl(artifacts.runtime_events_path)[0]["type"] == "invocation_start"
+    first_event = _read_jsonl(artifacts.runtime_events_path)[0]
+    assert first_event["schema_version"] == 2
+    assert first_event["kind"] == "invocation_start"
 
 
 def test_projection_manager_accepts_runtime_event_v2_dicts(tmp_path):
@@ -144,6 +146,30 @@ def test_projection_manager_accepts_runtime_event_v2_dicts(tmp_path):
     assert manifest["runtime_event_schema_version"] == 2
     assert manifest["projections"]["export"]["final_answer"] == "Ok."
     assert _read_jsonl(artifacts.runtime_events_path)[0]["kind"] == "invocation_start"
+
+
+def test_projection_manager_inspects_persisted_views(tmp_path):
+    store = RunStore(tmp_path / ".pico" / "runs")
+    manager = ProjectionManager(store)
+    ledger = RuntimeEventLedgerV2("run_inspect")
+    ledger.append("invocation_start", status="started", actor="runtime_runner", payload={})
+    ledger.append("user_input", status="completed", actor="runtime_runner", payload={"text": "hello"})
+    ledger.append("model_output", status="completed", actor="model_adapter", payload={"text": "<final>Ok.</final>"})
+    ledger.append("final_answer", status="completed", actor="agent_flow", payload={"text": "Ok."})
+    ledger.append("terminal_status", status="completed", actor="runtime_runner", payload={"status": "completed"})
+    manager.capture([runtime_event_v2_to_dict(event) for event in ledger.events])
+
+    ledger_view = manager.inspect("run_inspect", view="ledger")
+    trace_view = manager.inspect("run_inspect", view="trace")
+    artifacts_view = manager.inspect("run_inspect", view="artifacts")
+    all_view = manager.inspect("run_inspect", view="all")
+
+    assert ledger_view[0]["kind"] == "invocation_start"
+    assert trace_view[-1]["kind"] == "terminal_status"
+    assert artifacts_view["manifest"]["exists"] is True
+    assert artifacts_view["manifest"]["path"].endswith("runtime_manifest.json")
+    assert all_view["session"]["history"][-1]["content"] == "Ok."
+    assert all_view["artifacts"] == artifacts_view
 
 
 def test_projection_manager_redacts_manifest_terminal_status(tmp_path, monkeypatch):
@@ -188,17 +214,16 @@ def test_projection_manager_records_diagnostics_for_missing_terminal_and_bad_eve
     assert manifest["status"] == "unknown"
     assert manifest["terminal_status"] == {}
     assert [item["code"] for item in manifest["diagnostics"]] == [
+        "legacy_event_shape",
         "unsupported_event_shape",
         "unsupported_event_shape",
         "missing_terminal_status",
     ]
-    assert _read_jsonl(artifacts.runtime_events_path) == [
-        {
-            "created_at": events[0].created_at,
-            "payload": {"invocation_id": "run_diagnostics"},
-            "type": "invocation_start",
-        }
-    ]
+    runtime_events = _read_jsonl(artifacts.runtime_events_path)
+    assert len(runtime_events) == 1
+    assert runtime_events[0]["schema_version"] == 2
+    assert runtime_events[0]["kind"] == "invocation_start"
+    assert runtime_events[0]["payload"] == {"invocation_id": "run_diagnostics"}
 
 
 def test_projection_manager_capture_failure_does_not_return_artifact_set(tmp_path, monkeypatch):

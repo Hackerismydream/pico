@@ -83,6 +83,15 @@ class RuntimeEventV2:
         return self.kind
 
 
+@dataclass(frozen=True)
+class RuntimeEvent:
+    """Legacy runtime event shape kept for old fixtures and compatibility."""
+
+    type: str
+    payload: dict[str, Any]
+    created_at: str = field(default_factory=_now)
+
+
 class RuntimeEventLedgerV2:
     """Append-only RuntimeEvent v2 ledger.
 
@@ -130,6 +139,40 @@ class RuntimeEventLedgerV2:
 
 def runtime_event_v2_to_dict(event: RuntimeEventV2) -> dict[str, Any]:
     assert_valid_runtime_event_v2(event)
+    return _runtime_event_v2_payload(event)
+
+
+def runtime_event_to_dict(event: Any) -> dict[str, Any]:
+    if is_runtime_event_v2(event):
+        normalized = event if isinstance(event, RuntimeEventV2) else _event_v2_from_mapping(_event_mapping(event))
+        return _runtime_event_v2_payload(normalized)
+    payload = _event_mapping(event)
+    if payload:
+        raw_payload = payload.get("payload", {})
+        return {
+            "type": str(payload.get("type", payload.get("kind", ""))),
+            "created_at": str(payload.get("created_at", "")),
+            "payload": dict(raw_payload if isinstance(raw_payload, Mapping) else {}),
+        }
+    return {
+        "type": str(getattr(event, "type", "")),
+        "created_at": str(getattr(event, "created_at", "")),
+        "payload": dict(getattr(event, "payload", {}) or {}),
+    }
+
+
+def runtime_event_from_dict(payload: Mapping[str, Any]) -> RuntimeEventV2 | RuntimeEvent:
+    if payload.get("schema_version") == RUNTIME_EVENT_SCHEMA_VERSION:
+        return runtime_event_v2_from_dict(payload)
+    raw_payload = payload.get("payload", {})
+    return RuntimeEvent(
+        type=str(payload.get("type", payload.get("kind", ""))),
+        created_at=str(payload.get("created_at", "")),
+        payload=dict(raw_payload if isinstance(raw_payload, Mapping) else {}),
+    )
+
+
+def _runtime_event_v2_payload(event: RuntimeEventV2) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "schema_version": event.schema_version,
         "event_id": event.event_id,

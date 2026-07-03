@@ -6,7 +6,7 @@ ToolRuntime -> RuntimeEvent ledger -> projection.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -29,28 +29,18 @@ from .runtime_projections import (
     project_trace as project_trace,
 )
 from .runtime_events import (
+    RuntimeEvent as RuntimeEvent,
     RuntimeEventLedgerV2,
-    RuntimeEventV2,
-    runtime_event_v2_from_dict,
-    runtime_event_v2_to_dict,
+    RuntimeEventV2 as RuntimeEventV2,
+    runtime_event_from_dict as runtime_event_from_dict,
+    runtime_event_to_dict as runtime_event_to_dict,
 )
 from .tool_context import ToolContext
 from .workspace import clip
 
 
-def _now():
-    return datetime.now(timezone.utc).isoformat()
-
-
 def _new_id(prefix):
     return f"{prefix}_{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
-
-
-@dataclass(frozen=True)
-class RuntimeEvent:
-    type: str
-    payload: dict[str, Any]
-    created_at: str = field(default_factory=_now)
 
 
 class RuntimeEventLedger:
@@ -74,26 +64,6 @@ class RuntimeEventLedger:
     @property
     def events(self):
         return self._ledger.events
-
-
-def runtime_event_to_dict(event):
-    if isinstance(event, RuntimeEventV2):
-        return runtime_event_v2_to_dict(event)
-    return {
-        "type": event.type,
-        "created_at": event.created_at,
-        "payload": dict(event.payload),
-    }
-
-
-def runtime_event_from_dict(payload):
-    if payload.get("schema_version") == 2:
-        return runtime_event_v2_from_dict(payload)
-    return RuntimeEvent(
-        type=str(payload.get("type", "")),
-        created_at=str(payload.get("created_at", "")),
-        payload=dict(payload.get("payload", {}) or {}),
-    )
 
 
 def _event_status(event_type, payload):
