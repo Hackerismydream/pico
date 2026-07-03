@@ -1,4 +1,6 @@
 import json
+import shlex
+import sys
 
 from pico.cli import main
 from pico.providers.clients import FakeModelClient
@@ -25,10 +27,26 @@ READONLY_TOOL_EVENTS = {
 }
 
 
+def _write_spec(path, payload):
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def _python_check(expr):
+    code = f"import os, sys; sys.exit(0 if ({expr}) else 1)"
+    return f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
+
+
 def _single_cli_run_dir(root):
     run_dirs = sorted((root / ".pico" / "runs").iterdir())
     assert len(run_dirs) == 1
     return run_dirs[0]
+
+
+def _runtime_run_dir_from_headless_payload(task_run_dir, payload):
+    manifest_path = task_run_dir / payload["runtime"]["manifest_relpath"]
+    assert manifest_path.exists()
+    return manifest_path.parent
 
 
 def _load_json(path):
@@ -147,5 +165,71 @@ def test_cli_fake_provider_readonly_tool_acceptance_uses_manifest_contract(tmp_p
     _assert_manifest_backed_runtime_contract(
         _single_cli_run_dir(tmp_path),
         final_answer="CLI read-only projection ok.",
+        expect_readonly_tool=True,
+    )
+
+
+def test_headless_fake_provider_no_tool_acceptance_uses_same_manifest_contract(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    (fixture / "README.md").write_text("project fact: headless-no-tool\n", encoding="utf-8")
+    spec = _write_spec(
+        tmp_path / "task.json",
+        {
+            "id": "headless_no_tool_projection",
+            "workspace": str(fixture),
+            "prompt": "Answer directly.",
+            "fake_model_outputs": ["<final>Headless no-tool projection ok.</final>"],
+            "verifier": _python_check(
+                "os.environ.get('PICO_FINAL_ANSWER') == 'Headless no-tool projection ok.'"
+            ),
+        },
+    )
+
+    status = main(["headless", "task", "run", str(spec), "--runs-root", str(tmp_path / "runs")])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert status == 0
+    assert payload["status"] == "pass"
+    assert payload["runtime"]["manifest_relpath"].endswith("runtime_manifest.json")
+    assert payload["runtime"]["runtime_event_schema_version"] == 2
+    _assert_manifest_backed_runtime_contract(
+        _runtime_run_dir_from_headless_payload(tmp_path / "runs" / payload["task_run_id"], payload),
+        final_answer="Headless no-tool projection ok.",
+        expect_readonly_tool=False,
+    )
+
+
+def test_headless_fake_provider_readonly_tool_acceptance_uses_same_manifest_contract(tmp_path, capsys):
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    (fixture / "README.md").write_text("project fact: headless-readonly\n", encoding="utf-8")
+    spec = _write_spec(
+        tmp_path / "task.json",
+        {
+            "id": "headless_readonly_projection",
+            "workspace": str(fixture),
+            "prompt": "Read README.",
+            "fake_model_outputs": [
+                '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":1}}</tool>',
+                "<final>Headless read-only projection ok.</final>",
+            ],
+            "verifier": _python_check(
+                "os.environ.get('PICO_FINAL_ANSWER') == 'Headless read-only projection ok.'"
+            ),
+            "allowed_tools": ["read_file"],
+        },
+    )
+
+    status = main(["headless", "task", "run", str(spec), "--runs-root", str(tmp_path / "runs")])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert status == 0
+    assert payload["status"] == "pass"
+    assert payload["runtime"]["manifest_relpath"].endswith("runtime_manifest.json")
+    assert payload["runtime"]["runtime_event_schema_version"] == 2
+    _assert_manifest_backed_runtime_contract(
+        _runtime_run_dir_from_headless_payload(tmp_path / "runs" / payload["task_run_id"], payload),
+        final_answer="Headless read-only projection ok.",
         expect_readonly_tool=True,
     )
