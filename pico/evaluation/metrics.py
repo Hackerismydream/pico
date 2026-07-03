@@ -738,6 +738,7 @@ def _make_provider_client(provider):
         api_key=profile["api_key"],
         temperature=0.0,
         timeout=timeout,
+        disable_thinking=provider == "deepseek",
     )
 
 
@@ -777,6 +778,7 @@ def run_provider_experiments(benchmark_path, workspace_root, artifact_root, max_
                     api_key=profile["api_key"],
                     temperature=0.0,
                     timeout=300,
+                    disable_thinking=profile["provider"] == "deepseek",
                 )
         artifact_path = artifact_root / f"{provider_name}-benchmark.json"
         try:
