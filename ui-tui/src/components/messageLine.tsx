@@ -93,7 +93,8 @@ export const MessageLine = memo(function MessageLine({
     const preview = compactPreview(stripped, maxChars) || '(empty tool result)'
 
     return (
-      <Box alignSelf="flex-start" borderColor={t.color.muted} borderStyle="round" marginLeft={3} paddingX={1}>
+      <Box alignSelf="flex-start" marginLeft={3}>
+        <Text color={t.color.muted}>· </Text>
         {hasAnsi(msg.text) ? (
           <Text wrap="truncate-end">
             <Ansi>{msg.text}</Ansi>
@@ -178,9 +179,12 @@ export const MessageLine = memo(function MessageLine({
 
   return (
     <Box
+      backgroundColor={msg.role === 'user' ? t.color.surfaceRaised : undefined}
       flexDirection="column"
       marginBottom={msg.role === 'user' || isDiffSegment ? 1 : 0}
       marginTop={msg.role === 'user' || msg.kind === 'slash' || isDiffSegment ? 1 : 0}
+      paddingX={msg.role === 'user' ? 1 : 0}
+      width={msg.role === 'user' ? '100%' : undefined}
     >
       {showDetails && (
         <Box flexDirection="column" marginBottom={1}>

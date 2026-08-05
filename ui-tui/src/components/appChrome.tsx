@@ -6,7 +6,6 @@
 import { Box, type ScrollBoxHandle, Text } from '@hermes/ink'
 import { useStore } from '@nanostores/react'
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react'
-import unicodeSpinners from 'unicode-animations'
 
 import type { IndicatorStyle } from '../app/interfaces.js'
 import type { Theme } from '../theme.js'
@@ -72,14 +71,7 @@ const renderIndicator = (style: IndicatorStyle, tick: number, brandMark: string)
     }
   }
 
-  // 'unicode' — braille spinner (fixed 1-col).  Authored interval is
-  // ~80ms; honour it but bound below at a safe minimum so React
-  // re-renders stay reasonable.  This style is for users who want
-  // the cleanest possible status, so no verb rotation either.
-  const spinner = unicodeSpinners.braille
-  const frame = spinner.frames[tick % spinner.frames.length] ?? '⠋'
-
-  return { frame, intervalMs: Math.max(SPINNER_TICK_MS, spinner.interval), showVerb: false }
+  return { frame: tick % 2 === 0 ? '◆' : '◇', intervalMs: 500, showVerb: false }
 }
 
 function FaceTicker({ color, startedAt }: { color: string; startedAt?: null | number }) {
@@ -129,36 +121,6 @@ function FaceTicker({ color, startedAt }: { color: string; startedAt?: null | nu
       {durationSegment}
     </Text>
   )
-}
-
-function ctxBarColor(pct: number | undefined, t: Theme) {
-  if (pct == null) {
-    return t.color.muted
-  }
-
-  if (pct >= 95) {
-    return t.color.statusCritical
-  }
-
-  if (pct > 80) {
-    return t.color.statusBad
-  }
-
-  if (pct >= 50) {
-    return t.color.statusWarn
-  }
-
-  return t.color.statusGood
-}
-
-function ctxBar(pct: number | undefined, w = 10) {
-  const p = Math.max(0, Math.min(100, pct ?? 0))
-  const filled = Math.round((p / 100) * w)
-
-  const [filledChar, emptyChar] = '█░'
-  // const [filledChar, emptyChar] = '▰▱'
-
-  return filledChar.repeat(filled) + emptyChar.repeat(w - filled)
 }
 
 function SpawnHud({ t }: { t: Theme }) {
@@ -298,44 +260,38 @@ export function StatusRule({
   t
 }: StatusRuleProps) {
   const pct = usage.context_percent
-  const barColor = ctxBarColor(pct, t)
 
   const ctxLabel = usage.context_max
     ? `${fmtK(usage.context_used ?? 0)}/${fmtK(usage.context_max)}`
     : usage.total > 0
       ? `${fmtK(usage.total)} tok`
       : ''
+  const modelMeta = modelLabel(model, modelReasoningEffort, modelFast)
 
-  const bar = usage.context_max ? ctxBar(pct) : ''
   const leftWidth = Math.max(12, cols - cwdLabel.length - 3)
 
   return (
     <Box height={1}>
       <Box flexShrink={1} width={leftWidth}>
-        <Text color={t.color.border} wrap="truncate-end">
-          {'─ '}
+        <Text color={t.color.muted} wrap="truncate-end">
           {busy ? (
-            <FaceTicker color={statusColor} startedAt={turnStartedAt} />
+            <FaceTicker color={t.color.thinking} startedAt={turnStartedAt} />
           ) : (
-            <Text color={statusColor}>{`● ${status} `}</Text>
+            <Text color={statusColor}>{`◆ ${status}`}</Text>
           )}
-          <Text color={t.color.muted}> {modelLabel(model, modelReasoningEffort, modelFast)}</Text>
-          {ctxLabel ? <Text color={t.color.muted}> {ctxLabel}</Text> : null}
-          {bar ? (
-            <Text color={t.color.muted}>
-              {'   '}
-              <Text color={barColor}>[{bar}]</Text> <Text color={barColor}>{pct != null ? `${pct}%` : ''}</Text>
-            </Text>
-          ) : null}
+          {modelMeta ? <Text color={t.color.muted}> · {modelMeta}</Text> : null}
+          {ctxLabel ? <Text color={t.color.muted}> · {ctxLabel}</Text> : null}
+          {pct != null ? <Text color={t.color.muted}> · {pct}%</Text> : null}
           {sessionStartedAt ? (
             <Text color={t.color.muted}>
-              {'   '}
-              <SessionDuration startedAt={sessionStartedAt} />
+              {' '}
+              · <SessionDuration startedAt={sessionStartedAt} />
             </Text>
           ) : null}
           {typeof usage.compressions === 'number' && usage.compressions > 0 ? (
             <Text color={t.color.muted}>
-              {'   '}
+              {' '}
+              ·
               <Text
                 color={
                   usage.compressions >= 10 ? t.color.error : usage.compressions >= 5 ? t.color.warn : t.color.muted
@@ -346,14 +302,14 @@ export function StatusRule({
             </Text>
           ) : null}
           <SpawnHud t={t} />
-          {bgCount > 0 ? <Text color={t.color.muted}> {bgCount} bg</Text> : null}
+          {bgCount > 0 ? <Text color={t.color.muted}> · {bgCount} bg</Text> : null}
           {showCost && typeof usage.cost_usd === 'number' ? (
-            <Text color={t.color.muted}> ${usage.cost_usd.toFixed(4)}</Text>
+            <Text color={t.color.muted}> · ${usage.cost_usd.toFixed(4)}</Text>
           ) : null}
         </Text>
       </Box>
 
-      <Text color={t.color.border}> ─ </Text>
+      <Text color={t.color.border}> · </Text>
       <Text color={t.color.label}>{cwdLabel}</Text>
     </Box>
   )

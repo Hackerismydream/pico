@@ -799,7 +799,7 @@ export const ToolTrail = memo(function ToolTrail({
         key: `tr-${i}`,
         content: groups.length ? (
           <>
-            <Spinner color={t.color.accent} variant="think" /> {line}
+            <Spinner color={t.color.thinking} variant="think" /> {line}
           </>
         ) : (
           line
@@ -822,7 +822,7 @@ export const ToolTrail = memo(function ToolTrail({
       details: [],
       content: (
         <>
-          <Spinner color={t.color.accent} variant="tool" /> {label}
+          <Spinner color={t.color.thinking} variant="tool" /> {label}
           {tool.startedAt ? ` (${fmtElapsed(now - tool.startedAt)})` : ''}
         </>
       )

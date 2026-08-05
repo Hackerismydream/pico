@@ -30,6 +30,11 @@ describe('TUI state isolation', () => {
     resetTurnState()
   })
 
+  it('starts with the compact top status and diamond indicator', () => {
+    expect($uiState.get().statusBar).toBe('top')
+    expect($uiState.get().indicatorStyle).toBe('unicode')
+  })
+
   it('does not notify ui/composer subscribers for high-frequency turn updates', () => {
     const composerRelevant = subscribeSelected(() => ({ busy: $uiState.get().busy, sid: $uiState.get().sid }))
 

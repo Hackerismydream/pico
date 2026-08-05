@@ -62,8 +62,8 @@ describe('input metrics helpers', () => {
   })
 
   it('reserves gutters on wide panes without starving narrow composer width', () => {
-    expect(stableComposerColumns(100, 3)).toBe(93)
-    expect(stableComposerColumns(100, 5)).toBe(91)
+    expect(stableComposerColumns(100, 3)).toBe(89)
+    expect(stableComposerColumns(100, 5)).toBe(87)
     expect(stableComposerColumns(10, 3)).toBe(5)
     expect(stableComposerColumns(6, 3)).toBe(1)
   })

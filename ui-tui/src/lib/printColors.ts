@@ -9,8 +9,6 @@ import { colorize } from '@hermes/ink'
 
 import type { Theme, ThemeColors } from '../theme.js'
 
-import { picoLogo } from '../banner.js'
-
 const TIER_NAMES: Record<number, string> = {
   0: 'none',
   1: '16-color',
@@ -47,8 +45,7 @@ export function renderColorSwatches(theme: Theme, tier: 0 | 1 | 2 | 3): string {
 
 /**
  * Render the tokens in the contexts they're actually used — so the designer
- * sees real fg/bg pairings (status bar, completion rows, diff lines) and the
- * banner gradient, not just isolated swatches.
+ * sees real fg/bg pairings instead of isolated swatches.
  */
 export function renderColorPreview(theme: Theme, tier: 0 | 1 | 2 | 3): string {
   const c = theme.color
@@ -60,10 +57,9 @@ export function renderColorPreview(theme: Theme, tier: 0 | 1 | 2 | 3): string {
 
   out.push(`Pico TUI color usage preview — tier ${tier} (${TIER_NAMES[tier] ?? 'unknown'})`)
 
-  section('Banner (yellow ramp)')
-  for (const [color, text] of picoLogo(theme.yellow)) {
-    out.push('  ' + fg(text, color))
-  }
+  section('Transcript surfaces')
+  out.push('  ' + fgbg(' base transcript ', c.text, c.surface))
+  out.push('  ' + fgbg(' ❯ user prompt ', c.text, c.surfaceRaised))
 
   section('Prompt & input')
   out.push('  ' + fg('❯', c.prompt) + ' ' + fg('ask me something…', c.muted))
@@ -75,6 +71,9 @@ export function renderColorPreview(theme: Theme, tier: 0 | 1 | 2 | 3): string {
       [
         fg('primary', c.primary),
         fg('accent / link', c.accent),
+        fg('heading', c.heading),
+        fg('path', c.path),
+        fg('thinking', c.thinking),
         fg('body text', c.text),
         fg('muted', c.muted),
         fg('label', c.label)

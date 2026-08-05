@@ -48,17 +48,21 @@ describe('DEFAULT_THEME', () => {
   it('has brand defaults', async () => {
     const { DEFAULT_THEME } = await importThemeWithCleanEnv()
 
-    expect(DEFAULT_THEME.brand.name).toBe('Pico Agent')
+    expect(DEFAULT_THEME.brand.name).toBe('Pico')
     expect(DEFAULT_THEME.brand.icon).toBe('◆')
     expect(DEFAULT_THEME.brand.prompt).toBe('❯')
-    expect(DEFAULT_THEME.brand.tool).toBe('┊')
+    expect(DEFAULT_THEME.brand.tool).toBe('·')
   })
 
   it('has color palette', async () => {
     const { DEFAULT_THEME } = await importThemeWithCleanEnv()
 
-    expect(DEFAULT_THEME.color.primary).toBe('#fbe23f')
-    expect(DEFAULT_THEME.color.error).toBe('#ec6a5e')
+    expect(DEFAULT_THEME.color.primary).toBe('#c8c8c8')
+    expect(DEFAULT_THEME.color.accent).toBe('#7aa2f7')
+    expect(DEFAULT_THEME.color.surface).toBe('#141414')
+    expect(DEFAULT_THEME.color.surfaceRaised).toBe('#242424')
+    expect(DEFAULT_THEME.color.thinking).toBe('#bb9af7')
+    expect(DEFAULT_THEME.color.error).toBe('#f7768e')
   })
 })
 
@@ -146,17 +150,17 @@ describe('cursorColorHex (OSC 12 hardware cursor)', () => {
     const { cursorColorHex, resolveTheme } = await importThemeWithCleanEnv()
 
     // tiers 1/2 store ansi indices, but OSC 12 needs an RGB color.
-    expect(cursorColorHex(resolveTheme('dark', 3))).toBe('#fbe23f') // truecolor primary passed through
-    expect(cursorColorHex(resolveTheme('dark', 2))).toBe('#fbe23f')
-    expect(cursorColorHex(resolveTheme('dark', 1))).toBe('#fbe23f')
+    expect(cursorColorHex(resolveTheme('dark', 3))).toBe('#c8c8c8')
+    expect(cursorColorHex(resolveTheme('dark', 2))).toBe('#c8c8c8')
+    expect(cursorColorHex(resolveTheme('dark', 1))).toBe('#c8c8c8')
   })
 
   it('uses the light title color across all tiers when the scheme is light', async () => {
     const { cursorColorHex, resolveTheme } = await importThemeWithEnv({ PICO_TUI_THEME: 'light' })
 
-    expect(cursorColorHex(resolveTheme('light', 3))).toBe('#B87900')
-    expect(cursorColorHex(resolveTheme('light', 2))).toBe('#B87900')
-    expect(cursorColorHex(resolveTheme('light', 1))).toBe('#B87900')
+    expect(cursorColorHex(resolveTheme('light', 3))).toBe('#444444')
+    expect(cursorColorHex(resolveTheme('light', 2))).toBe('#444444')
+    expect(cursorColorHex(resolveTheme('light', 1))).toBe('#444444')
   })
 })
 
@@ -423,15 +427,17 @@ describe('resolveTheme', () => {
   it('uses curated ansi256 values at tier 2', async () => {
     const { resolveTheme } = await importThemeWithCleanEnv()
 
-    expect(resolveTheme('dark', 2).color.primary).toBe('ansi256(221)')
-    expect(resolveTheme('light', 2).color.primary).toBe('ansi256(136)')
+    expect(resolveTheme('dark', 2).color.primary).toBe('ansi256(251)')
+    expect(resolveTheme('dark', 2).color.thinking).toBe('ansi256(141)')
+    expect(resolveTheme('light', 2).color.primary).toBe('ansi256(238)')
   })
 
   it('uses named 16-color values at tier 1', async () => {
     const { resolveTheme } = await importThemeWithCleanEnv()
 
-    expect(resolveTheme('dark', 1).color.primary).toBe('ansi:yellowBright')
-    expect(resolveTheme('dark', 1).color.accent).toBe('ansi:yellowBright')
+    expect(resolveTheme('dark', 1).color.primary).toBe('ansi:white')
+    expect(resolveTheme('dark', 1).color.accent).toBe('ansi:blueBright')
+    expect(resolveTheme('dark', 1).color.thinking).toBe('ansi:magentaBright')
   })
 
   it('keeps the same color-role shape across every tier', async () => {

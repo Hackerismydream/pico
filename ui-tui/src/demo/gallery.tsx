@@ -213,7 +213,7 @@ function BrandingPage() {
 
       <Box marginTop={1}>
         <Text color={t.color.muted}>
-          (SessionPanel/Banner are full-width — widen the terminal if they wrap; sections toggle on click)
+          (Session details stay collapsed until selected; widen the terminal if metadata wraps.)
         </Text>
       </Box>
     </Box>

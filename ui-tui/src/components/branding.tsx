@@ -9,15 +9,6 @@ import unicodeSpinners from 'unicode-animations'
 
 import type { PanelSection, SessionInfo } from '../types.js'
 
-import {
-  picoHero,
-  PICO_HERO_WIDTH,
-  PICO_LOGO_WIDTH,
-  picoLogo,
-  picoLogoWord,
-  PICO_WORD_WIDTH,
-  rowsWidth
-} from '../banner.js'
 import { flat } from '../lib/text.js'
 import { DEFAULT_THEME, type Theme } from '../theme.js'
 
@@ -45,9 +36,7 @@ const STARTUP_MESSAGES = ['starting pico…', 'building agent loop…', 'loading
 const STARTUP_LABEL_MS = 900
 
 // Placeholder shown in the intro row while the backend builds the agent loop,
-// before the session.info handshake populates SessionPanel. Wrapped in the same
-// rounded box as SessionPanel so the handoff reads as one region's content
-// changing rather than a block appearing from nowhere.
+// before the session.info handshake populates SessionPanel.
 export function StartupLoader({ t }: { t: Theme }) {
   const [step, setStep] = useState(0)
 
@@ -60,7 +49,7 @@ export function StartupLoader({ t }: { t: Theme }) {
   const label = STARTUP_MESSAGES[Math.min(step, STARTUP_MESSAGES.length - 1)] ?? STARTUP_MESSAGES[0]
 
   return (
-    <Box borderColor={t.color.border} borderStyle="round" marginBottom={1} paddingX={2} paddingY={1}>
+    <Box backgroundColor={t.color.surfaceRaised} marginBottom={1} paddingX={1}>
       <InlineLoader label={label} t={t} />
     </Box>
   )
@@ -133,46 +122,15 @@ export function formatProvider(slug?: string, modelId?: string): string {
   return PROVIDER_LABELS[key] ?? effective.charAt(0).toUpperCase() + effective.slice(1)
 }
 
-// The full single-line wordmark needs the terminal clearly wider than the art:
-// PICO_LOGO_WIDTH plus the transcript chrome (paddingX + scrollbar gutter) and
-// headroom so the wordmark never wraps into the transcript.
-const LOGO_FULL_MIN_COLS = PICO_LOGO_WIDTH + 12
-// The "PICO"-only form needs just the first word's width, so it can show on
-// narrower terminals while keeping a little breathing room.
-const LOGO_WORD_MIN_COLS = PICO_WORD_WIDTH + 5
-
 export function Branding({ t }: { t?: Theme } = {}) {
   const theme = t ?? DEFAULT_THEME
-  const yellow = theme.yellow
-  // Banner draws the .100/.300/.500/.600 stops (skip .50 so the top band isn't
-  // near-white); picoLogo maps one ramp entry per vertical band.
-  const palette = [yellow[1], yellow[2], yellow[3], yellow[4]]
-  const cols = useStdout().stdout?.columns ?? 80
-
-  // Full single-line "PICO AGENT" when it fits; otherwise just the "PICO"
-  // word; and only when even that won't fit, a compact one-line title.
-  // ArtLines truncates so nothing ever wraps.
-  if (cols >= LOGO_FULL_MIN_COLS) {
-    return (
-      <Box flexDirection="column" marginBottom={1}>
-        <ArtLines lines={picoLogo(palette)} />
-      </Box>
-    )
-  }
-
-  if (cols >= LOGO_WORD_MIN_COLS) {
-    return (
-      <Box flexDirection="column" marginBottom={1}>
-        <ArtLines lines={picoLogoWord(palette)} />
-      </Box>
-    )
-  }
 
   return (
     <Box marginBottom={1}>
-      <Text bold color={theme.color.primary}>
-        {theme.brand.icon} {theme.brand.name}
+      <Text bold color={theme.color.text}>
+        {theme.brand.name}
       </Text>
+      <Text color={theme.color.muted}> · agent harness</Text>
     </Box>
   )
 }
@@ -213,31 +171,20 @@ function CollapseToggle({
 
 const SKILLS_MAX = 8
 const TOOLSETS_MAX = 8
-const FOOTER_HELP_TEXT = '/help for commands'
-
 export function SessionPanel({ info, maxCols, sid, t }: SessionPanelProps) {
   // Width the panel actually has. The full terminal width overshoots whenever
   // the panel is embedded in a narrower container (e.g. the demo gallery's
   // sidebar), so callers can pass `maxCols`; otherwise assume the terminal.
   const stdoutCols = useStdout().stdout?.columns ?? 100
   const cols = maxCols ?? stdoutCols
-  // Hero is rendered as a solid brand color (no ramp gradient).
-  const heroRamp = [t.color.primary, t.color.primary, t.color.primary, t.color.primary]
-  const heroRows = picoHero(heroRamp, t.bannerHero || undefined)
-  const leftW = Math.min((rowsWidth(heroRows) || PICO_HERO_WIDTH) + 4, Math.floor(cols * 0.4))
-  const wide = cols >= 90 && leftW + 40 < cols
-  const w = Math.max(20, wide ? cols - leftW - 14 : cols - 12)
+  const w = Math.max(20, cols - 6)
   const lineBudget = Math.max(12, w - 2)
   const strip = (s: string) => (s.endsWith('_tools') ? s.slice(0, -6) : s)
 
-  // Footer meta (model · provider · session). Kept beside `/help` only when it
-  // fits the column; otherwise the footer becomes a column so the whole meta
-  // line drops below `/help` instead of wrapping mid-string.
   const footerMeta = `${info.model.split('/').pop()} · ${formatProvider(info.provider, info.model)}${sid ? ` · ${sid}` : ''}`
-  const footerInline = FOOTER_HELP_TEXT.length + 2 + footerMeta.length <= w
 
   // ── Local collapse state for each section ──
-  const [toolsOpen, setToolsOpen] = useState(true)
+  const [toolsOpen, setToolsOpen] = useState(false)
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [systemOpen, setSystemOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
@@ -339,111 +286,78 @@ export function SessionPanel({ info, maxCols, sid, t }: SessionPanelProps) {
   }
 
   return (
-    <Box borderColor={t.color.border} borderStyle="round" marginBottom={1} paddingX={2} paddingY={1}>
-      {wide && (
-        <Box flexDirection="column" marginRight={2} width={leftW}>
-          <ArtRows rows={heroRows} />
+    <Box flexDirection="column" marginBottom={1} width={w}>
+      <Box backgroundColor={t.color.surfaceRaised} justifyContent="space-between" paddingX={1}>
+        <Text bold color={t.color.text}>
+          {t.brand.name}
+          {info.version ? ` v${info.version}` : ''}
+          {info.release_date ? ` (${info.release_date})` : ''}
+        </Text>
+        <Text color={t.color.muted}>{footerMeta}</Text>
+      </Box>
+
+      <Box paddingX={1}>
+        <Text color={t.color.muted} wrap="truncate-end">
+          {info.cwd || process.cwd()}
+        </Text>
+      </Box>
+
+      <Box flexDirection="column" paddingX={1}>
+        <Box flexDirection="column">
+          <CollapseToggle
+            count={toolsTotal}
+            onToggle={() => setToolsOpen(v => !v)}
+            open={toolsOpen}
+            t={t}
+            title="Tools"
+          />
+          {toolsOpen && toolsBody()}
         </Box>
-      )}
 
-      <Box flexDirection="column" width={w}>
-        {/* Upper content grows to push the working-dir footer to the bottom of
-            the panel when the (taller) hero stretches it. flexBasis stays auto
-            so the box keeps its content height when there is no hero (narrow
-            mode) — flexBasis={0} would collapse it to nothing there. */}
-        <Box flexDirection="column" flexGrow={1} width={w}>
-          <Box marginBottom={1}>
-            <Text bold color={t.color.primary}>
-              {t.brand.name}
-              {info.version ? ` v${info.version}` : ''}
-              {info.release_date ? ` (${info.release_date})` : ''}
-            </Text>
-          </Box>
+        <Box flexDirection="column">
+          <CollapseToggle
+            count={skillsTotal}
+            onToggle={() => setSkillsOpen(v => !v)}
+            open={skillsOpen}
+            suffix={
+              skillsCatCount > 0 ? `in ${skillsCatCount} categor${skillsCatCount === 1 ? 'y' : 'ies'}` : undefined
+            }
+            t={t}
+            title="Skills"
+          />
+          {skillsOpen && skillsBody()}
+        </Box>
 
-          {/* ── Tools (expanded by default) ── */}
-          <Box flexDirection="column" marginTop={1}>
+        {sysPromptLen > 0 && (
+          <Box flexDirection="column">
             <CollapseToggle
-              count={toolsTotal}
-              onToggle={() => setToolsOpen(v => !v)}
-              open={toolsOpen}
+              onToggle={() => setSystemOpen(v => !v)}
+              open={systemOpen}
+              suffix={`${sysPromptLen.toLocaleString()} chars`}
               t={t}
-              title="Available Tools"
+              title="System Prompt"
             />
-            {toolsOpen && toolsBody()}
+            {systemOpen && systemBody()}
           </Box>
+        )}
 
-          {/* ── Skills (collapsed by default) ── */}
-          <Box flexDirection="column" marginTop={1}>
+        {info.mcp_servers && info.mcp_servers.length > 0 && (
+          <Box flexDirection="column">
             <CollapseToggle
-              count={skillsTotal}
-              onToggle={() => setSkillsOpen(v => !v)}
-              open={skillsOpen}
-              suffix={
-                skillsCatCount > 0 ? `in ${skillsCatCount} categor${skillsCatCount === 1 ? 'y' : 'ies'}` : undefined
-              }
+              count={info.mcp_servers.length}
+              onToggle={() => setMcpOpen(v => !v)}
+              open={mcpOpen}
+              suffix="connected"
               t={t}
-              title="Available Skills"
+              title="MCP Servers"
             />
-            {skillsOpen && skillsBody()}
+            {mcpOpen && mcpBody()}
           </Box>
+        )}
 
-          {/* ── System Prompt (collapsed by default) ── */}
-          {sysPromptLen > 0 && (
-            <Box flexDirection="column" marginTop={1}>
-              <CollapseToggle
-                onToggle={() => setSystemOpen(v => !v)}
-                open={systemOpen}
-                suffix={`— ${sysPromptLen.toLocaleString()} chars`}
-                t={t}
-                title="System Prompt"
-              />
-              {systemOpen && systemBody()}
-            </Box>
-          )}
-
-          {/* ── MCP Servers (collapsed by default) ── */}
-          {info.mcp_servers && info.mcp_servers.length > 0 && (
-            <Box flexDirection="column" marginTop={1}>
-              <CollapseToggle
-                count={info.mcp_servers.length}
-                onToggle={() => setMcpOpen(v => !v)}
-                open={mcpOpen}
-                suffix="connected"
-                t={t}
-                title="MCP Servers"
-              />
-              {mcpOpen && mcpBody()}
-            </Box>
-          )}
-
-          {/* Divider above the footer. */}
-          <Box marginTop={1}>
-            <Text color={t.color.border} wrap="truncate">
-              {'─'.repeat(Math.max(1, w))}
-            </Text>
-          </Box>
-
-          {/* Footer: counts + /help on the left, model · session id on the right. */}
-          <Box
-            flexDirection={footerInline ? 'row' : 'column'}
-            justifyContent={footerInline ? 'space-between' : 'flex-start'}
-          >
-            <Text color={t.color.muted}>
-              <Text color={t.color.accent}>/help</Text> for commands
-            </Text>
-
-            <Text color={t.color.muted} wrap="wrap">
-              {footerMeta}
-            </Text>
-          </Box>
-
-        </Box>
-
-        <Box marginTop={1}>
-          <Text color={t.color.muted} wrap="truncate-end">
-            {info.cwd || process.cwd()}
-          </Text>
-        </Box>
+        <Text color={t.color.muted}>
+          <Text color={t.color.info}>/help</Text> commands
+        </Text>
       </Box>
     </Box>
   )
@@ -451,9 +365,9 @@ export function SessionPanel({ info, maxCols, sid, t }: SessionPanelProps) {
 
 export function Panel({ sections, t, title }: PanelProps) {
   return (
-    <Box borderColor={t.color.border} borderStyle="round" flexDirection="column" paddingX={2} paddingY={1}>
-      <Box justifyContent="center" marginBottom={1}>
-        <Text bold color={t.color.primary}>
+    <Box flexDirection="column" paddingX={1} paddingY={1}>
+      <Box marginBottom={1}>
+        <Text bold color={t.color.heading}>
           {title}
         </Text>
       </Box>

@@ -170,4 +170,17 @@ describe('floating overlays with statusBar position', () => {
     expect(frame).toContain('COMPLETION_0')
     expect(frame).toContain('COMPLETION_5')
   })
+
+  it('reports the full completion count when the visible window is capped', async () => {
+    const completions: CompletionItem[] = Array.from({ length: 20 }, (_, i) => ({
+      display: `COMPLETION_${i}`,
+      meta: `m${i}`,
+      text: `/completion_${i}`
+    }))
+
+    const frame = await renderFrame('bottom', { completions })
+
+    expect(frame).toContain('20')
+    expect(frame).toContain('matches')
+  })
 })
