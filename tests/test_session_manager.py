@@ -113,6 +113,40 @@ def test_record_stamps_timestamp_only(tmp_path: Path):
         assert "turn_id" not in m
 
 
+def test_get_history_preserves_reasoning_content_for_provider_replay():
+    session = Session(key="tui:t1")
+    session.record({"role": "user", "content": "inspect the repository"})
+    session.record(
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{"id": "call12345"}],
+            "reasoning_content": "I should inspect the repository first.",
+        }
+    )
+
+    assert session.get_history()[1]["reasoning_content"] == "I should inspect the repository first."
+
+
+def test_get_history_preserves_thinking_blocks_for_provider_replay():
+    session = Session(key="tui:t1")
+    session.record({"role": "user", "content": "inspect the repository"})
+    thinking_blocks = [
+        {"type": "thinking", "thinking": "I should inspect the repository first.", "signature": "signed"},
+        {"type": "redacted_thinking", "data": "opaque"},
+    ]
+    session.record(
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{"id": "toolu_123"}],
+            "thinking_blocks": thinking_blocks,
+        }
+    )
+
+    assert session.get_history()[1]["thinking_blocks"] == thinking_blocks
+
+
 def test_save_reserves_metadata_keys(tmp_path: Path):
     """Metadata reserves source/channel/chat_id/title/parent_session_id."""
     mgr = SessionManager(tmp_path)

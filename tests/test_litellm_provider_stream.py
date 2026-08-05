@@ -180,3 +180,76 @@ async def test_chat_stream_signature_parity_with_chat(monkeypatch: pytest.Monkey
     assert captured["tools"] == tools
     # model should be resolved (openai/gpt-4o-mini already has prefix → stays the same)
     assert "gpt-4o-mini" in captured["model"]
+
+
+@pytest.mark.asyncio
+async def test_deepseek_replays_reasoning_field_for_assistant_tool_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def fake_acompletion(**kwargs: Any):
+        captured.update(kwargs)
+        return _fake_stream([_chunk("ok")])
+
+    monkeypatch.setattr(
+        "pico.providers.litellm_provider.acompletion",
+        fake_acompletion,
+    )
+
+    provider = LiteLLMProvider(api_key="test-key", default_model="deepseek/deepseek-v4-flash")
+    messages = [
+        {"role": "user", "content": "inspect the repository"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call12345",
+                    "type": "function",
+                    "function": {"name": "read_file", "arguments": "{}"},
+                }
+            ],
+        },
+        {"role": "tool", "content": "contents", "tool_call_id": "call12345"},
+    ]
+
+    _ = [delta async for delta in provider.chat_stream(messages=messages)]
+
+    assert captured["messages"][1]["reasoning_content"] == ""
+
+
+@pytest.mark.asyncio
+async def test_openai_does_not_receive_deepseek_reasoning_replay_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def fake_acompletion(**kwargs: Any):
+        captured.update(kwargs)
+        return _fake_stream([_chunk("ok")])
+
+    monkeypatch.setattr(
+        "pico.providers.litellm_provider.acompletion",
+        fake_acompletion,
+    )
+
+    provider = LiteLLMProvider(api_key="test-key", default_model="openai/gpt-4o")
+    messages = [
+        {"role": "user", "content": "inspect the repository"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call12345",
+                    "type": "function",
+                    "function": {"name": "read_file", "arguments": "{}"},
+                }
+            ],
+        },
+    ]
+
+    _ = [delta async for delta in provider.chat_stream(messages=messages)]
+
+    assert "reasoning_content" not in captured["messages"][1]

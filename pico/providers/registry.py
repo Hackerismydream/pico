@@ -60,6 +60,9 @@ class ProviderSpec:
     # Provider supports cache_control on content blocks (e.g. Anthropic prompt caching)
     supports_prompt_caching: bool = False
 
+    # Provider requires reasoning_content on replayed assistant tool-call messages
+    requires_reasoning_content_replay: bool = False
+
     # Onboard wizard fallback for agents.defaults.model when /v1/models is empty
     default_model: str = ""
 
@@ -263,6 +266,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="",
         strip_model_prefix=False,
         model_overrides=(),
+        requires_reasoning_content_replay=True,
         default_model="deepseek/deepseek-v4-flash",
     ),
     # Gemini: needs "gemini/" prefix for LiteLLM.

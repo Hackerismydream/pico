@@ -62,3 +62,17 @@ def test_extra_msg_keys_matches_on_resolved_anthropic_prefix():
 
 def test_extra_msg_keys_non_anthropic_preserves_nothing():
     assert LiteLLMProvider._extra_msg_keys("gpt-4o", "gpt-4o") == frozenset()
+
+
+def test_anthropic_sanitizer_preserves_signed_thinking_blocks():
+    thinking_blocks = [
+        {"type": "thinking", "thinking": "Inspect the repository.", "signature": "signed"},
+        {"type": "redacted_thinking", "data": "opaque"},
+    ]
+
+    messages = LiteLLMProvider._sanitize_messages(
+        [{"role": "assistant", "content": None, "thinking_blocks": thinking_blocks}],
+        extra_keys=_ANTHROPIC_EXTRA_KEYS,
+    )
+
+    assert messages[0]["thinking_blocks"] == thinking_blocks
