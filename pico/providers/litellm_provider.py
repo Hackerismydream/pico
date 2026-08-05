@@ -224,6 +224,11 @@ class LiteLLMProvider(LLMProvider):
         return frozenset()
 
     @staticmethod
+    def _requires_reasoning_content_replay(original_model: str, resolved_model: str) -> bool:
+        spec = find_by_model(original_model) or find_by_model(resolved_model)
+        return spec is not None and spec.requires_reasoning_content_replay
+
+    @staticmethod
     def _normalize_tool_call_id(tool_call_id: Any) -> Any:
         """Normalize tool_call_id to a provider-safe 9-char alphanumeric form."""
         if not isinstance(tool_call_id, str):
@@ -234,7 +239,9 @@ class LiteLLMProvider(LLMProvider):
 
     @staticmethod
     def _sanitize_messages(
-        messages: list[dict[str, Any]], extra_keys: frozenset[str] = frozenset()
+        messages: list[dict[str, Any]],
+        extra_keys: frozenset[str] = frozenset(),
+        require_reasoning_content_replay: bool = False,
     ) -> list[dict[str, Any]]:
         """Strip non-standard keys and ensure assistant messages have a content key."""
         allowed = _ALLOWED_MSG_KEYS | extra_keys
@@ -247,6 +254,14 @@ class LiteLLMProvider(LLMProvider):
             return id_map.setdefault(value, LiteLLMProvider._normalize_tool_call_id(value))
 
         for clean in sanitized:
+            if (
+                require_reasoning_content_replay
+                and clean.get("role") == "assistant"
+                and clean.get("tool_calls")
+                and clean.get("reasoning_content") is None
+            ):
+                clean["reasoning_content"] = ""
+
             # Keep assistant tool_calls[].id and tool tool_call_id in sync after
             # shortening, otherwise strict providers reject the broken linkage.
             if isinstance(clean.get("tool_calls"), list):
@@ -290,6 +305,7 @@ class LiteLLMProvider(LLMProvider):
         original_model = model or self.default_model
         model = self._resolve_model(original_model)
         extra_msg_keys = self._extra_msg_keys(original_model, model)
+        require_reasoning_content_replay = self._requires_reasoning_content_replay(original_model, model)
 
         if self._supports_cache_control(original_model) and not self.disable_auto_cache_control:
             messages, tools = self._apply_cache_control(messages, tools)
@@ -300,7 +316,11 @@ class LiteLLMProvider(LLMProvider):
 
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": self._sanitize_messages(self._sanitize_empty_content(messages), extra_keys=extra_msg_keys),
+            "messages": self._sanitize_messages(
+                self._sanitize_empty_content(messages),
+                extra_keys=extra_msg_keys,
+                require_reasoning_content_replay=require_reasoning_content_replay,
+            ),
             "max_tokens": max_tokens,
             "temperature": temperature,
             # Hard cap on a single LLM call to prevent the agent from hanging
@@ -377,6 +397,7 @@ class LiteLLMProvider(LLMProvider):
         original_model = model or self.default_model
         model = self._resolve_model(original_model)
         extra_msg_keys = self._extra_msg_keys(original_model, model)
+        require_reasoning_content_replay = self._requires_reasoning_content_replay(original_model, model)
 
         if self._supports_cache_control(original_model) and not self.disable_auto_cache_control:
             messages, tools = self._apply_cache_control(messages, tools)
@@ -385,7 +406,11 @@ class LiteLLMProvider(LLMProvider):
 
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": self._sanitize_messages(self._sanitize_empty_content(messages), extra_keys=extra_msg_keys),
+            "messages": self._sanitize_messages(
+                self._sanitize_empty_content(messages),
+                extra_keys=extra_msg_keys,
+                require_reasoning_content_replay=require_reasoning_content_replay,
+            ),
             "max_tokens": max_tokens,
             "temperature": temperature,
             "stream": True,
