@@ -546,7 +546,7 @@ export function useMainApp(gw: TuiRpcClient, rpcClient?: ChatStreamRpcClient) {
 
   const tabCwd = ui.info?.cwd
 
-  useTerminalTitle(model ? `Pico · ${marker} ${model}${tabCwd ? ` · ${shortCwd(tabCwd, 24)}` : ''}` : 'Pico Agent')
+  useTerminalTitle(model ? `Pico · ${marker} ${model}${tabCwd ? ` · ${shortCwd(tabCwd, 24)}` : ''}` : 'Pico')
 
   useEffect(() => {
     if (!ui.sid || !stdout) {

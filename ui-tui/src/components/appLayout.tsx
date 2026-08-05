@@ -21,10 +21,11 @@ import {
   stableComposerColumns
 } from '../lib/inputMetrics.js'
 import { PerfPane } from '../lib/perfPane.js'
+import { fmtK } from '../lib/text.js'
 import { AgentsOverlay } from './agentsOverlay.js'
 import { GoodVibesHeart, StatusRule, StickyPromptTracker, TranscriptScrollbar } from './appChrome.js'
 import { FloatingOverlays, PromptZone } from './appOverlays.js'
-import { Banner, Panel, SessionPanel, StartupLoader } from './branding.js'
+import { Panel, SessionPanel, StartupLoader } from './branding.js'
 import { FpsOverlay } from './fpsOverlay.js'
 import { HelpHint } from './helpHint.js'
 import { MessageLine } from './messageLine.js'
@@ -80,15 +81,6 @@ const TranscriptPane = memo(function TranscriptPane({
     return -1
   }, [transcript.historyItems])
 
-  // Index of the first user-role message; every later user message gets a
-  // small dash above it so multi-turn transcripts visually segment by
-  // turn. -1 when no user message has been sent yet → no separator ever
-  // renders.
-  const firstUserIdx = useMemo(
-    () => transcript.historyItems.findIndex(m => m.role === 'user'),
-    [transcript.historyItems]
-  )
-
   return (
     <>
       <ScrollBox
@@ -108,16 +100,8 @@ const TranscriptPane = memo(function TranscriptPane({
 
           {transcript.virtualRows.slice(transcript.virtualHistory.start, transcript.virtualHistory.end).map(row => (
             <Box flexDirection="column" key={row.key} ref={transcript.virtualHistory.measureRef(row.key)}>
-              {row.msg.role === 'user' && firstUserIdx >= 0 && row.index > firstUserIdx && (
-                <Box marginTop={1}>
-                  <Text color={ui.theme.color.border}>───</Text>
-                </Box>
-              )}
-
               {row.msg.kind === 'intro' ? (
                 <Box flexDirection="column" paddingTop={1}>
-                  <Banner t={ui.theme} />
-
                   {row.msg.info ? (
                     <SessionPanel info={row.msg.info} sid={ui.sid} t={ui.theme} />
                   ) : (
@@ -296,50 +280,54 @@ const ComposerPane = memo(function ComposerPane({
               </Box>
             ))}
 
-            <Text color={ui.theme.color.primary}>{'─'.repeat(Math.max(1, composer.cols - 2))}</Text>
             <Box
+              backgroundColor={ui.theme.color.surface}
+              borderColor={ui.theme.color.sessionBorder}
+              borderStyle={composer.cols - promptWidth >= 24 ? 'round' : undefined}
+              flexDirection="column"
               onMouseDown={captureInputDrag}
               onMouseDrag={dragFromPromptRow}
               onMouseUp={endInputDrag}
+              paddingX={composer.cols - promptWidth >= 24 ? 1 : 0}
               position="relative"
               width={Math.max(1, composer.cols - 2)}
             >
-              <Box width={promptWidth}>
-                {sh ? (
-                  <PromptPrefix color={ui.theme.color.shellDollar} promptText={promptText} width={promptWidth} />
-                ) : composer.inputBuf.length ? (
-                  <Text color={ui.theme.color.prompt}>{promptBlank}</Text>
-                ) : (
-                  <PromptPrefix bold color={ui.theme.color.prompt} promptText={promptText} width={promptWidth} />
-                )}
-              </Box>
+              <Box>
+                <Box width={promptWidth}>
+                  {sh ? (
+                    <PromptPrefix color={ui.theme.color.shellDollar} promptText={promptText} width={promptWidth} />
+                  ) : composer.inputBuf.length ? (
+                    <Text color={ui.theme.color.prompt}>{promptBlank}</Text>
+                  ) : (
+                    <PromptPrefix bold color={ui.theme.color.prompt} promptText={promptText} width={promptWidth} />
+                  )}
+                </Box>
 
-              <Box flexGrow={0} flexShrink={0} height={inputHeight} width={inputColumns}>
-                {/* Reserve the transcript scrollbar gutter too so typing never rewraps when the scrollbar column repaints. */}
-                <TextInput
-                  columns={inputColumns}
-                  mouseApiRef={inputMouseRef}
-                  onChange={composer.updateInput}
-                  onPaste={composer.handleTextPaste}
-                  onSubmit={composer.submit}
-                  placeholder={
-                    composer.empty
-                      ? PLACEHOLDER
-                      : ui.busy
-                        ? ui.escapeArmed
-                          ? 'In Progress, press Ctrl+C again to force quit'
-                          : 'Ctrl+C to interrupt…'
-                        : ''
-                  }
-                  value={composer.input}
-                />
+                <Box flexGrow={0} flexShrink={0} height={inputHeight} width={inputColumns}>
+                  <TextInput
+                    columns={inputColumns}
+                    mouseApiRef={inputMouseRef}
+                    onChange={composer.updateInput}
+                    onPaste={composer.handleTextPaste}
+                    onSubmit={composer.submit}
+                    placeholder={
+                      composer.empty
+                        ? PLACEHOLDER
+                        : ui.busy
+                          ? ui.escapeArmed
+                            ? 'In Progress, press Ctrl+C again to force quit'
+                            : 'Ctrl+C to interrupt…'
+                          : ''
+                    }
+                    value={composer.input}
+                  />
+                </Box>
               </Box>
 
               <Box position="absolute" right={0}>
                 <GoodVibesHeart t={ui.theme} tick={status.goodVibesTick} />
               </Box>
             </Box>
-            <Text color={ui.theme.color.primary}>{'─'.repeat(Math.max(1, composer.cols - 2))}</Text>
           </>
         )}
       </Box>
@@ -351,6 +339,50 @@ const ComposerPane = memo(function ComposerPane({
       )}
 
       <StatusRulePane at="bottom" composer={composer} status={status} />
+
+      {!isBlocked && (
+        <Box justifyContent="space-between" width={Math.max(1, composer.cols - 2)}>
+          <Text color={ui.theme.color.muted}>
+            {composer.cols >= 44 ? (
+              <>
+                <Text bold color={ui.theme.color.label}>
+                  tab
+                </Text>{' '}
+                complete <Text color={ui.theme.color.border}>│</Text>{' '}
+                <Text bold color={ui.theme.color.label}>
+                  ctrl+c
+                </Text>{' '}
+                cancel <Text color={ui.theme.color.border}>│</Text>{' '}
+              </>
+            ) : null}
+            <Text bold color={ui.theme.color.label}>
+              /help
+            </Text>{' '}
+            commands
+          </Text>
+          {ui.busy && composer.cols >= 60 ? <Text color={ui.theme.color.muted}>ctrl+c stop</Text> : null}
+        </Box>
+      )}
+    </NoSelect>
+  )
+})
+
+const SessionHeader = memo(function SessionHeader({ cwdLabel }: { cwdLabel: string }) {
+  const ui = useStore($uiState)
+  const context = ui.usage.context_max
+    ? `${fmtK(ui.usage.context_used ?? 0)} / ${fmtK(ui.usage.context_max)}`
+    : ui.usage.total > 0
+      ? `${fmtK(ui.usage.total)} tokens`
+      : ''
+
+  return (
+    <NoSelect flexShrink={0} fromLeftEdge paddingX={1}>
+      <Box flexGrow={1}>
+        <Text color={ui.theme.color.muted} wrap="truncate-end">
+          {cwdLabel}
+        </Text>
+      </Box>
+      {context ? <Text color={ui.theme.color.label}>{context}</Text> : null}
     </NoSelect>
   )
 })
@@ -420,7 +452,9 @@ export const AppLayout = memo(function AppLayout({
 
   return (
     <Shell {...shellProps}>
-      <Box flexDirection="column" flexGrow={1}>
+      <Box backgroundColor={ui.theme.color.surface} flexDirection="column" flexGrow={1}>
+        {!overlay.agents && <SessionHeader cwdLabel={status.cwdLabel} />}
+
         <Box flexDirection="row" flexGrow={1}>
           {overlay.agents ? (
             <PerfPane id="agents">

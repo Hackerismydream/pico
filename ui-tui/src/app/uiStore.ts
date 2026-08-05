@@ -29,7 +29,7 @@ const buildUiState = (): UiState => ({
   showReasoning: true,
   sid: null,
   status: 'starting pico…',
-  statusBar: 'bottom',
+  statusBar: 'top',
   streaming: true,
   theme: DEFAULT_THEME,
   usage: ZERO

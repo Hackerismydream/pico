@@ -7,6 +7,7 @@ import { Box, Text } from '@hermes/ink'
 import { useStore } from '@nanostores/react'
 
 import type { AppOverlaysProps } from '../app/interfaces.js'
+import type { Theme } from '../theme.js'
 
 import { useGateway } from '../app/gatewayContext.js'
 import { $overlayState, patchOverlayState } from '../app/overlayStore.js'
@@ -160,37 +161,79 @@ export function FloatingOverlays({
       )}
 
       {!!completions.length && (
-        <FloatBox color={theme.color.border}>
-          <Box flexDirection="column" width={Math.max(28, cols - 6)}>
-            {completions.slice(start, start + viewportSize).map((item, i) => {
-              const active = start + i === compIdx
-
-              return (
-                <Box
-                  backgroundColor={active ? theme.color.completionCurrentBg : theme.color.completionBg}
-                  flexDirection="row"
-                  key={`${start + i}:${item.text}:${item.display}:${item.meta ?? ''}`}
-                  width="100%"
-                >
-                  <Text bold color={theme.color.label}>
-                    {' '}
-                    {item.display}
-                  </Text>
-                  {item.meta ? (
-                    <Text
-                      backgroundColor={active ? theme.color.completionMetaCurrentBg : theme.color.completionMetaBg}
-                      color={theme.color.muted}
-                    >
-                      {' '}
-                      {item.meta}
-                    </Text>
-                  ) : null}
-                </Box>
-              )
-            })}
-          </Box>
-        </FloatBox>
+        <CompletionPalette
+          compIdx={compIdx}
+          completions={completions.slice(start, start + viewportSize)}
+          start={start}
+          t={theme}
+          total={completions.length}
+          width={Math.max(8, cols - 4)}
+        />
       )}
+    </Box>
+  )
+}
+
+function CompletionPalette({
+  compIdx,
+  completions,
+  start,
+  t,
+  total,
+  width
+}: {
+  compIdx: number
+  completions: AppOverlaysProps['completions']
+  start: number
+  t: Theme
+  total: number
+  width: number
+}) {
+  const labelWidth = Math.max(1, Math.min(32, width - 8, Math.max(...completions.map(item => item.display.length))))
+
+  return (
+    <Box
+      backgroundColor={t.color.completionBg}
+      borderColor={t.color.border}
+      borderStyle="single"
+      flexDirection="column"
+      marginTop={1}
+      opaque
+      paddingX={1}
+      width={width}
+    >
+      <Text color={t.color.muted} wrap="truncate-end">
+        {total} matches
+      </Text>
+      {completions.map((item, i) => {
+        const active = start + i === compIdx
+        const display =
+          item.display.length > labelWidth
+            ? `${item.display.slice(0, Math.max(0, labelWidth - 1))}…`
+            : item.display.padEnd(labelWidth)
+
+        return (
+          <Box
+            backgroundColor={active ? t.color.completionCurrentBg : t.color.completionBg}
+            key={`${start + i}:${item.text}:${item.display}:${item.meta ?? ''}`}
+            width="100%"
+          >
+            <Text bold={active} color={active ? t.color.info : t.color.text} wrap="truncate-end">
+              {active ? `${t.brand.prompt} ` : '  '}
+              {display}
+            </Text>
+            {item.meta ? (
+              <Text color={t.color.muted} wrap="truncate-end">
+                {' '}
+                {item.meta}
+              </Text>
+            ) : null}
+          </Box>
+        )
+      })}
+      <Text color={t.color.muted} wrap="truncate-end">
+        ↑↓ move · tab apply · esc close
+      </Text>
     </Box>
   )
 }
