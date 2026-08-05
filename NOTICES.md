@@ -1,17 +1,16 @@
 # Third-Party Notices
 
-Pico is licensed under the Apache License 2.0 and is developed from the Raven
-Git history. It incorporates code from the following MIT-licensed projects.
-Their copyright notices and license texts are retained in `LICENSES/`.
+Pico is licensed under the Apache License 2.0. It incorporates code from the
+following MIT-licensed projects. Their copyright notices and license texts are
+retained in `LICENSES/`.
 
 ## nanobot (base agent runtime)
 - Source: https://github.com/HKUDS/nanobot
 - Copyright (c) 2025 nanobot contributors
 - License: MIT — see `LICENSES/MIT-nanobot.txt`
-- Scope: Raven forked nanobot at v0.1.5.post3. Descendant code is now modified
-  throughout the corresponding `pico/` Runtime packages, including agent,
-  bus, channels, CLI, config, cron, providers, sessions, skills, templates,
-  and utilities.
+- Scope: forked at v0.1.5.post3 and modified throughout the corresponding
+  `pico/` Runtime packages, including agent, bus, channels, CLI, config, cron,
+  providers, sessions, skills, templates, and utilities.
 
 ## hermes-agent (TUI layer)
 - Source: https://github.com/NousResearch/hermes-agent
