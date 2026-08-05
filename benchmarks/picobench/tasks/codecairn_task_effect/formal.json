@@ -1,0 +1,2066 @@
+{
+  "schema": "pico.picobench.codecairn-task-effect.v2",
+  "definition_kind": "formal",
+  "repositories": [
+    {
+      "fixture_id": "orion-ledger-formal-v2",
+      "repository_id": "fixture/orion-ledger",
+      "revision": "orion-ledger-r1-20260730",
+      "files": [
+        {
+          "path": "README.md",
+          "content": "# Orion Ledger\n\nverification command: python -B checks/validate_repository.py\nrelease owner: platform-reliability\nartifact format: canonical-json-v2\n"
+        },
+        {
+          "path": "config/deploy.toml",
+          "content": "primary_region = \"eu-west-3\"\nrelease_channel = \"canary-orion\"\ncurrent_queue = \"ledger-events-v3\"\n"
+        },
+        {
+          "path": "docs/conventions.md",
+          "content": "# Repository conventions\n\nservice_manifest_path: services/orion.yaml\nmigration_command: uv run python scripts/migrate.py --safe\n"
+        },
+        {
+          "path": "incidents/queue-recovery.md",
+          "content": "# Queue recovery\n\nfailed_approach: purge-the-queue\nverified_repair: pause-consumers-then-replay\nverification: event counts must converge before consumers resume\n"
+        },
+        {
+          "path": "incidents/cache-recovery.md",
+          "content": "# Cache recovery\n\nfailed_command: python scripts/rebuild_cache.py --all\nverified_command: python -B scripts/rebuild_cache.py --bounded\nverification: compare the rebuilt key count with the ledger snapshot\n"
+        },
+        {
+          "path": "policy/current.md",
+          "content": "# Current policy\n\nsuperseded listener port: 8100\ncurrent listener port: 8181\ncurrent rollback window: 12m\n"
+        },
+        {
+          "path": "facts/retrieval.md",
+          "content": "# Retrieval corpus evidence\n\nThis file pins the active repository-fact sentences used by the offline retrieval suite.\n\n## Active repository facts\n\n- [v2-fact-01-primary] The current release approval owner for Orion Ledger is platform reliability.\n- [v2-fact-01-support] A separate verified repository receipt confirms platform reliability as Orion Ledger's release approval owner.\n- [v2-fact-05-primary] The current bounded verification command for Orion Ledger is python -B checks/validate_repository.py.\n- [v2-fact-05-support] A separate verified repository receipt confirms python -B checks/validate_repository.py as Orion Ledger's bounded verification command.\n- [v2-fact-09-primary] The current migration receipt name for Orion Ledger is migration-complete.json.\n- [v2-fact-09-support] A separate verified repository receipt confirms migration-complete.json as Orion Ledger's migration receipt name.\n- [v2-fact-13-primary] The current queue ownership group for Orion Ledger is async systems.\n- [v2-fact-17-primary] The current default retry ceiling for Orion Ledger is two attempts.\n- [v2-fact-21-primary] The current cache rebuild mode for Orion Ledger is bounded offline rebuild.\n- [v2-fact-25-primary] The current workspace reset command for Orion Ledger is python -B tools/reset_fixture.py.\n- [v2-fact-29-primary] The current worker batch ceiling for Orion Ledger is 64 records.\n"
+        },
+        {
+          "path": "checks/validate_repository.py",
+          "content": "import json\nfrom pathlib import Path\n\nchecks = {\n    \"config/deploy.toml\": \"primary_region\",\n    \"incidents/queue-recovery.md\": \"verified_repair\",\n    \"policy/current.md\": \"current listener port\",\n    \"facts/retrieval.md\": \"## Active repository facts\"\n}\nfor relative, needle in checks.items():\n    if needle not in Path(relative).read_text(encoding=\"utf-8\"):\n        raise SystemExit(f\"invalid fixture: {relative}\")\n\ncontracts = {\n    \"deliverables/fact-01.json\": {\n        \"task_id\": \"cc-te-formal-fact-01\",\n        \"evidence_path\": \"config/deploy.toml\",\n        \"result_shape\": {\"deployment\": {\"region\": None, \"manifest\": None}},\n    },\n    \"deliverables/fact-02.json\": {\n        \"task_id\": \"cc-te-formal-fact-02\",\n        \"evidence_path\": \"docs/conventions.md\",\n        \"result_shape\": {\"registration\": {\"manifest\": None, \"approval\": {\"owner\": None, \"migration_command\": None}}},\n    },\n    \"deliverables/experience-01.json\": {\n        \"task_id\": \"cc-te-formal-experience-01\",\n        \"evidence_path\": \"incidents/queue-recovery.md\",\n        \"result_shape\": {\"queue_recovery\": {\"queue\": None, \"sequence\": None, \"exit_check\": None}},\n    },\n    \"deliverables/experience-02.json\": {\n        \"task_id\": \"cc-te-formal-experience-02\",\n        \"evidence_path\": \"incidents/cache-recovery.md\",\n        \"result_shape\": {\"cache_rebuild\": {\"steps\": [{\"command\": None}, {\"verification\": None}], \"artifact_format\": None}},\n    },\n    \"deliverables/stale-01.json\": {\n        \"task_id\": \"cc-te-formal-stale-01\",\n        \"evidence_path\": \"policy/current.md\",\n        \"result_shape\": {\"listener_rollout\": {\"port\": None, \"rollback_window\": None, \"approval_owner\": None}},\n    },\n    \"deliverables/irrelevant-01.json\": {\n        \"task_id\": \"cc-te-formal-irrelevant-01\",\n        \"evidence_path\": \"README.md\",\n        \"result_shape\": {\"artifact_envelope\": {\"format\": None, \"approval_owner\": None, \"release_channel\": None}},\n    },\n}\npresent = [relative for relative in contracts if Path(relative).is_file()]\ndeliverable_dir = Path(\"deliverables\")\nunexpected = [] if not deliverable_dir.exists() else [\n    str(path) for path in deliverable_dir.glob(\"*.json\") if str(path) not in contracts\n]\nif len(present) != 1 or unexpected:\n    raise SystemExit(\"expected exactly one known deliverable\")\n\nrelative = present[0]\ntry:\n    payload = json.loads(Path(relative).read_text(encoding=\"utf-8\"))\nexcept (OSError, json.JSONDecodeError) as exc:\n    raise SystemExit(f\"invalid deliverable JSON: {exc}\") from exc\n\ncontract = contracts[relative]\nif set(payload) != {\"task_id\", \"result\", \"evidence_path\", \"verification_command\"}:\n    raise SystemExit(\"invalid deliverable fields\")\nif payload[\"task_id\"] != contract[\"task_id\"]:\n    raise SystemExit(\"deliverable task_id does not match its path\")\nif payload[\"evidence_path\"] != contract[\"evidence_path\"]:\n    raise SystemExit(\"deliverable evidence_path does not match its task\")\nif payload[\"verification_command\"] != \"python -B checks/validate_repository.py\":\n    raise SystemExit(\"invalid verification command\")\n\ndef matches_shape(value, shape):\n    if shape is None:\n        return isinstance(value, str) and bool(value)\n    if isinstance(shape, dict):\n        return (\n            isinstance(value, dict)\n            and set(value) == set(shape)\n            and all(matches_shape(value[key], child) for key, child in shape.items())\n        )\n    if isinstance(shape, list):\n        return (\n            isinstance(value, list)\n            and len(value) == len(shape)\n            and all(matches_shape(item, child) for item, child in zip(value, shape))\n        )\n    return False\n\nif not matches_shape(payload[\"result\"], contract[\"result_shape\"]):\n    raise SystemExit(\"deliverable result has the wrong structure\")\nprint(\"fixture/orion-ledger fixture and deliverable valid\")\n"
+        }
+      ]
+    },
+    {
+      "fixture_id": "lyra-api-formal-v2",
+      "repository_id": "fixture/lyra-api",
+      "revision": "lyra-api-r1-20260730",
+      "files": [
+        {
+          "path": "README.md",
+          "content": "# Lyra API\n\nverification command: python -B checks/validate_repository.py\nrelease owner: api-foundations\nartifact format: snake_case-fields\n"
+        },
+        {
+          "path": "config/runtime.yaml",
+          "content": "primary_region: ap-southeast-2\nrouting_manifest: configs/routing.yaml\nrequest_profile: bounded-default\n"
+        },
+        {
+          "path": "docs/contracts.md",
+          "content": "# Contract workflow\n\ncontract_check: uv run python tools/check_contracts.py --changed\nschema_source: api/openapi.yaml\n"
+        },
+        {
+          "path": "incidents/index-recovery.md",
+          "content": "# Index recovery\n\nfailed_approach: enable-writes-before-index-restore\nverified_repair: restore-index-before-enabling-writes\nverification: compare index generation and write fence\n"
+        },
+        {
+          "path": "policy/retention.md",
+          "content": "# Retention policy\n\nsuperseded retention: 14d\ncurrent retention: 21d\ncurrent archive tier: cold-standard\n"
+        },
+        {
+          "path": "facts/retrieval.md",
+          "content": "# Retrieval corpus evidence\n\nThis file pins the active repository-fact sentences used by the offline retrieval suite.\n\n## Active repository facts\n\n- [v2-fact-02-primary] The current default deployment region for Lyra API is ap-southeast-2.\n- [v2-fact-02-support] A separate verified repository receipt confirms ap-southeast-2 as Lyra API's default deployment region.\n- [v2-fact-06-primary] The current artifact encoding for Lyra API is canonical UTF-8 JSON.\n- [v2-fact-06-support] A separate verified repository receipt confirms canonical UTF-8 JSON as Lyra API's artifact encoding.\n- [v2-fact-10-primary] The current incident ledger path for Lyra API is incidents/current.md.\n- [v2-fact-10-support] A separate verified repository receipt confirms incidents/current.md as Lyra API's incident ledger path.\n- [v2-fact-14-primary] The current snapshot retention period for Lyra API is twenty-one days.\n- [v2-fact-18-primary] The current audit record format for Lyra API is newline-delimited JSON.\n- [v2-fact-22-primary] The current service account scope for Lyra API is repository read-only.\n- [v2-fact-26-primary] The current configuration owner for Lyra API is runtime foundations.\n- [v2-fact-30-primary] The current bundle verification mode for Lyra API is offline manifest comparison.\n"
+        },
+        {
+          "path": "checks/validate_repository.py",
+          "content": "import json\nfrom pathlib import Path\n\nchecks = {\n    \"config/runtime.yaml\": \"ap-southeast-2\",\n    \"docs/contracts.md\": \"contract_check\",\n    \"policy/retention.md\": \"current retention\",\n    \"facts/retrieval.md\": \"## Active repository facts\"\n}\nfor relative, needle in checks.items():\n    if needle not in Path(relative).read_text(encoding=\"utf-8\"):\n        raise SystemExit(f\"invalid fixture: {relative}\")\n\ncontracts = {\n    \"deliverables/fact-03.json\": {\n        \"task_id\": \"cc-te-formal-fact-03\",\n        \"evidence_path\": \"config/runtime.yaml\",\n        \"result_shape\": {\"deployment_review\": {\"placement\": {\"region\": None}, \"contract\": {\"schema_source\": None}, \"owner\": None}},\n    },\n    \"deliverables/fact-04.json\": {\n        \"task_id\": \"cc-te-formal-fact-04\",\n        \"evidence_path\": \"config/runtime.yaml\",\n        \"result_shape\": {\"routing_validation\": {\"runtime\": [{\"manifest\": None}, {\"profile\": None}], \"contract_check\": None}},\n    },\n    \"deliverables/experience-03.json\": {\n        \"task_id\": \"cc-te-formal-experience-03\",\n        \"evidence_path\": \"incidents/index-recovery.md\",\n        \"result_shape\": {\"write_reenable\": {\"recovery_sequence\": None, \"gate\": None, \"request_profile\": None}},\n    },\n    \"deliverables/experience-04.json\": {\n        \"task_id\": \"cc-te-formal-experience-04\",\n        \"evidence_path\": \"docs/contracts.md\",\n        \"result_shape\": {\"contract_handoff\": [{\"validation_command\": None}, {\"schema_source\": None}, {\"artifact_format\": None}]},\n    },\n    \"deliverables/stale-02.json\": {\n        \"task_id\": \"cc-te-formal-stale-02\",\n        \"evidence_path\": \"policy/retention.md\",\n        \"result_shape\": {\"retention_decision\": {\"period\": None, \"archive_tier\": None, \"approval_owner\": None}},\n    },\n    \"deliverables/irrelevant-02.json\": {\n        \"task_id\": \"cc-te-formal-irrelevant-02\",\n        \"evidence_path\": \"README.md\",\n        \"result_shape\": {\"contract_artifact\": {\"field_style\": None, \"approval_owner\": None, \"schema_source\": None}},\n    },\n}\npresent = [relative for relative in contracts if Path(relative).is_file()]\ndeliverable_dir = Path(\"deliverables\")\nunexpected = [] if not deliverable_dir.exists() else [\n    str(path) for path in deliverable_dir.glob(\"*.json\") if str(path) not in contracts\n]\nif len(present) != 1 or unexpected:\n    raise SystemExit(\"expected exactly one known deliverable\")\n\nrelative = present[0]\ntry:\n    payload = json.loads(Path(relative).read_text(encoding=\"utf-8\"))\nexcept (OSError, json.JSONDecodeError) as exc:\n    raise SystemExit(f\"invalid deliverable JSON: {exc}\") from exc\n\ncontract = contracts[relative]\nif set(payload) != {\"task_id\", \"result\", \"evidence_path\", \"verification_command\"}:\n    raise SystemExit(\"invalid deliverable fields\")\nif payload[\"task_id\"] != contract[\"task_id\"]:\n    raise SystemExit(\"deliverable task_id does not match its path\")\nif payload[\"evidence_path\"] != contract[\"evidence_path\"]:\n    raise SystemExit(\"deliverable evidence_path does not match its task\")\nif payload[\"verification_command\"] != \"python -B checks/validate_repository.py\":\n    raise SystemExit(\"invalid verification command\")\n\ndef matches_shape(value, shape):\n    if shape is None:\n        return isinstance(value, str) and bool(value)\n    if isinstance(shape, dict):\n        return (\n            isinstance(value, dict)\n            and set(value) == set(shape)\n            and all(matches_shape(value[key], child) for key, child in shape.items())\n        )\n    if isinstance(shape, list):\n        return (\n            isinstance(value, list)\n            and len(value) == len(shape)\n            and all(matches_shape(item, child) for item, child in zip(value, shape))\n        )\n    return False\n\nif not matches_shape(payload[\"result\"], contract[\"result_shape\"]):\n    raise SystemExit(\"deliverable result has the wrong structure\")\nprint(\"fixture/lyra-api fixture and deliverable valid\")\n"
+        }
+      ]
+    },
+    {
+      "fixture_id": "cygnus-worker-formal-v2",
+      "repository_id": "fixture/cygnus-worker",
+      "revision": "cygnus-worker-r1-20260730",
+      "files": [
+        {
+          "path": "README.md",
+          "content": "# Cygnus Worker\n\nverification command: python -B checks/validate_repository.py\nrelease owner: async-systems\nartifact format: jsonl-v1\n"
+        },
+        {
+          "path": "deploy/worker.hcl",
+          "content": "region = \"us-central1\"\nmanifest = \"deploy/worker.hcl\"\nqueue = \"cygnus-work-v4\"\n"
+        },
+        {
+          "path": "docs/offsets.md",
+          "content": "# Offset verification\n\nverified_command: python -B tools/verify_offsets.py --strict\nreceipt: offset-high-water-mark\n"
+        },
+        {
+          "path": "incidents/shard-recovery.md",
+          "content": "# Shard recovery\n\nfailed_approach: reseed-while-serving\nverified_repair: drain-shard-then-reseed\nverification: restore traffic only after offset parity\n"
+        },
+        {
+          "path": "config/batching.toml",
+          "content": "superseded_max_batch = 128\nmax_batch = 64\nflush_interval_ms = 250\n"
+        },
+        {
+          "path": "facts/retrieval.md",
+          "content": "# Retrieval corpus evidence\n\nThis file pins the active repository-fact sentences used by the offline retrieval suite.\n\n## Active repository facts\n\n- [v2-fact-03-primary] The current service manifest location for Cygnus Worker is services/runtime.yaml.\n- [v2-fact-03-support] A separate verified repository receipt confirms services/runtime.yaml as Cygnus Worker's service manifest location.\n- [v2-fact-07-primary] The current canary observation window for Cygnus Worker is twelve minutes.\n- [v2-fact-07-support] A separate verified repository receipt confirms twelve minutes as Cygnus Worker's canary observation window.\n- [v2-fact-11-primary] The current release branch policy for Cygnus Worker is short-lived reviewed branches.\n- [v2-fact-15-primary] The current test fixture root for Cygnus Worker is tests/fixtures/repository.\n- [v2-fact-19-primary] The current operator runbook path for Cygnus Worker is docs/operator/runbook.md.\n- [v2-fact-23-primary] The current failure receipt field for Cygnus Worker is terminal_class.\n- [v2-fact-27-primary] The current rollback manifest name for Cygnus Worker is rollback-plan.json.\n"
+        },
+        {
+          "path": "checks/validate_repository.py",
+          "content": "import json\nfrom pathlib import Path\n\nchecks = {\n    \"deploy/worker.hcl\": \"us-central1\",\n    \"incidents/shard-recovery.md\": \"verified_repair\",\n    \"config/batching.toml\": \"max_batch = 64\",\n    \"facts/retrieval.md\": \"## Active repository facts\"\n}\nfor relative, needle in checks.items():\n    if needle not in Path(relative).read_text(encoding=\"utf-8\"):\n        raise SystemExit(f\"invalid fixture: {relative}\")\n\ncontracts = {\n    \"deliverables/fact-05.json\": {\n        \"task_id\": \"cc-te-formal-fact-05\",\n        \"evidence_path\": \"deploy/worker.hcl\",\n        \"result_shape\": {\"worker_release\": {\"placement\": None, \"queue\": None, \"approval\": {\"owner\": None}}},\n    },\n    \"deliverables/fact-06.json\": {\n        \"task_id\": \"cc-te-formal-fact-06\",\n        \"evidence_path\": \"deploy/worker.hcl\",\n        \"result_shape\": {\"deployment_audit\": {\"manifest\": None, \"offset_check\": {\"command\": None, \"receipt\": None}}},\n    },\n    \"deliverables/experience-05.json\": {\n        \"task_id\": \"cc-te-formal-experience-05\",\n        \"evidence_path\": \"incidents/shard-recovery.md\",\n        \"result_shape\": {\"shard_recovery\": {\"queue\": None, \"repair\": None, \"return_gate\": None}},\n    },\n    \"deliverables/experience-06.json\": {\n        \"task_id\": \"cc-te-formal-experience-06\",\n        \"evidence_path\": \"docs/offsets.md\",\n        \"result_shape\": {\"offset_audit\": {\"verification\": {\"command\": None, \"receipt\": None}, \"output\": {\"format\": None}}},\n    },\n    \"deliverables/stale-03.json\": {\n        \"task_id\": \"cc-te-formal-stale-03\",\n        \"evidence_path\": \"config/batching.toml\",\n        \"result_shape\": {\"batching_profile\": {\"max_batch\": None, \"flush_interval_ms\": None, \"approval_owner\": None}},\n    },\n    \"deliverables/irrelevant-03.json\": {\n        \"task_id\": \"cc-te-formal-irrelevant-03\",\n        \"evidence_path\": \"README.md\",\n        \"result_shape\": {\"stream_artifact\": {\"format\": None, \"approval_owner\": None, \"queue\": None}},\n    },\n}\npresent = [relative for relative in contracts if Path(relative).is_file()]\ndeliverable_dir = Path(\"deliverables\")\nunexpected = [] if not deliverable_dir.exists() else [\n    str(path) for path in deliverable_dir.glob(\"*.json\") if str(path) not in contracts\n]\nif len(present) != 1 or unexpected:\n    raise SystemExit(\"expected exactly one known deliverable\")\n\nrelative = present[0]\ntry:\n    payload = json.loads(Path(relative).read_text(encoding=\"utf-8\"))\nexcept (OSError, json.JSONDecodeError) as exc:\n    raise SystemExit(f\"invalid deliverable JSON: {exc}\") from exc\n\ncontract = contracts[relative]\nif set(payload) != {\"task_id\", \"result\", \"evidence_path\", \"verification_command\"}:\n    raise SystemExit(\"invalid deliverable fields\")\nif payload[\"task_id\"] != contract[\"task_id\"]:\n    raise SystemExit(\"deliverable task_id does not match its path\")\nif payload[\"evidence_path\"] != contract[\"evidence_path\"]:\n    raise SystemExit(\"deliverable evidence_path does not match its task\")\nif payload[\"verification_command\"] != \"python -B checks/validate_repository.py\":\n    raise SystemExit(\"invalid verification command\")\n\ndef matches_shape(value, shape):\n    if shape is None:\n        return isinstance(value, str) and bool(value)\n    if isinstance(shape, dict):\n        return (\n            isinstance(value, dict)\n            and set(value) == set(shape)\n            and all(matches_shape(value[key], child) for key, child in shape.items())\n        )\n    if isinstance(shape, list):\n        return (\n            isinstance(value, list)\n            and len(value) == len(shape)\n            and all(matches_shape(item, child) for item, child in zip(value, shape))\n        )\n    return False\n\nif not matches_shape(payload[\"result\"], contract[\"result_shape\"]):\n    raise SystemExit(\"deliverable result has the wrong structure\")\nprint(\"fixture/cygnus-worker fixture and deliverable valid\")\n"
+        }
+      ]
+    },
+    {
+      "fixture_id": "vela-console-formal-v2",
+      "repository_id": "fixture/vela-console",
+      "revision": "vela-console-r1-20260730",
+      "files": [
+        {
+          "path": "README.md",
+          "content": "# Vela Console\n\nverification command: python -B checks/validate_repository.py\nrelease owner: console-platform\nartifact format: sorted-key-json\n"
+        },
+        {
+          "path": "config/release.yaml",
+          "content": "primary_region: eu-north-1\nroute_manifest: ui/routes.ts\nasset_channel: stable-vela\n"
+        },
+        {
+          "path": "docs/bundle-check.md",
+          "content": "# Bundle verification\n\nverified_command: python -B tools/check_bundle_manifest.py --offline\nreceipt: bundle-manifest-ok\n"
+        },
+        {
+          "path": "incidents/schema-rollout.md",
+          "content": "# Schema rollout recovery\n\nfailed_approach: roll-back-schema-before-assets\nverified_repair: rollback-assets-before-schema\nverification: old assets must load before schema rollback\n"
+        },
+        {
+          "path": "config/api.toml",
+          "content": "superseded_api_prefix = \"/v2\"\napi_prefix = \"/v3\"\ncompatibility_window = \"two-releases\"\n"
+        },
+        {
+          "path": "facts/retrieval.md",
+          "content": "# Retrieval corpus evidence\n\nThis file pins the active repository-fact sentences used by the offline retrieval suite.\n\n## Active repository facts\n\n- [v2-fact-04-primary] The current rollback evidence directory for Vela Console is evidence/rollback.\n- [v2-fact-04-support] A separate verified repository receipt confirms evidence/rollback as Vela Console's rollback evidence directory.\n- [v2-fact-08-primary] The current configuration precedence for Vela Console is environment then repository file.\n- [v2-fact-08-support] A separate verified repository receipt confirms environment then repository file as Vela Console's configuration precedence.\n- [v2-fact-12-primary] The current schema compatibility window for Vela Console is two supported releases.\n- [v2-fact-16-primary] The current health probe endpoint for Vela Console is /health/ready.\n- [v2-fact-20-primary] The current deployment lock name for Vela Console is release-coordinator.\n- [v2-fact-24-primary] The current release evidence index for Vela Console is docs/evidence-index.md.\n- [v2-fact-28-primary] The current API compatibility prefix for Vela Console is /v3.\n"
+        },
+        {
+          "path": "checks/validate_repository.py",
+          "content": "import json\nfrom pathlib import Path\n\nchecks = {\n    \"config/release.yaml\": \"eu-north-1\",\n    \"incidents/schema-rollout.md\": \"verified_repair\",\n    \"config/api.toml\": \"api_prefix = \\\"/v3\\\"\",\n    \"facts/retrieval.md\": \"## Active repository facts\"\n}\nfor relative, needle in checks.items():\n    if needle not in Path(relative).read_text(encoding=\"utf-8\"):\n        raise SystemExit(f\"invalid fixture: {relative}\")\n\ncontracts = {\n    \"deliverables/fact-07.json\": {\n        \"task_id\": \"cc-te-formal-fact-07\",\n        \"evidence_path\": \"config/release.yaml\",\n        \"result_shape\": {\"release_handoff\": {\"target\": {\"region\": None, \"asset_channel\": None}, \"approval_owner\": None}},\n    },\n    \"deliverables/fact-08.json\": {\n        \"task_id\": \"cc-te-formal-fact-08\",\n        \"evidence_path\": \"config/release.yaml\",\n        \"result_shape\": {\"route_bundle\": [{\"route_manifest\": None}, {\"verification\": {\"command\": None, \"receipt\": None}}]},\n    },\n    \"deliverables/experience-07.json\": {\n        \"task_id\": \"cc-te-formal-experience-07\",\n        \"evidence_path\": \"incidents/schema-rollout.md\",\n        \"result_shape\": {\"rollback_run_card\": {\"order\": None, \"precondition\": None, \"compatibility_window\": None}},\n    },\n    \"deliverables/experience-08.json\": {\n        \"task_id\": \"cc-te-formal-experience-08\",\n        \"evidence_path\": \"docs/bundle-check.md\",\n        \"result_shape\": {\"bundle_receipt\": {\"verification\": [{\"command\": None}, {\"receipt\": None}], \"asset_channel\": None}},\n    },\n    \"deliverables/stale-04.json\": {\n        \"task_id\": \"cc-te-formal-stale-04\",\n        \"evidence_path\": \"config/api.toml\",\n        \"result_shape\": {\"api_compatibility\": {\"prefix\": None, \"support_window\": None, \"approval_owner\": None}},\n    },\n    \"deliverables/irrelevant-04.json\": {\n        \"task_id\": \"cc-te-formal-irrelevant-04\",\n        \"evidence_path\": \"README.md\",\n        \"result_shape\": {\"release_artifact\": {\"key_format\": None, \"approval_owner\": None, \"route_manifest\": None}},\n    },\n}\npresent = [relative for relative in contracts if Path(relative).is_file()]\ndeliverable_dir = Path(\"deliverables\")\nunexpected = [] if not deliverable_dir.exists() else [\n    str(path) for path in deliverable_dir.glob(\"*.json\") if str(path) not in contracts\n]\nif len(present) != 1 or unexpected:\n    raise SystemExit(\"expected exactly one known deliverable\")\n\nrelative = present[0]\ntry:\n    payload = json.loads(Path(relative).read_text(encoding=\"utf-8\"))\nexcept (OSError, json.JSONDecodeError) as exc:\n    raise SystemExit(f\"invalid deliverable JSON: {exc}\") from exc\n\ncontract = contracts[relative]\nif set(payload) != {\"task_id\", \"result\", \"evidence_path\", \"verification_command\"}:\n    raise SystemExit(\"invalid deliverable fields\")\nif payload[\"task_id\"] != contract[\"task_id\"]:\n    raise SystemExit(\"deliverable task_id does not match its path\")\nif payload[\"evidence_path\"] != contract[\"evidence_path\"]:\n    raise SystemExit(\"deliverable evidence_path does not match its task\")\nif payload[\"verification_command\"] != \"python -B checks/validate_repository.py\":\n    raise SystemExit(\"invalid verification command\")\n\ndef matches_shape(value, shape):\n    if shape is None:\n        return isinstance(value, str) and bool(value)\n    if isinstance(shape, dict):\n        return (\n            isinstance(value, dict)\n            and set(value) == set(shape)\n            and all(matches_shape(value[key], child) for key, child in shape.items())\n        )\n    if isinstance(shape, list):\n        return (\n            isinstance(value, list)\n            and len(value) == len(shape)\n            and all(matches_shape(item, child) for item, child in zip(value, shape))\n        )\n    return False\n\nif not matches_shape(payload[\"result\"], contract[\"result_shape\"]):\n    raise SystemExit(\"deliverable result has the wrong structure\")\nprint(\"fixture/vela-console fixture and deliverable valid\")\n"
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "cc-te-formal-fact-01",
+      "task_class": "fact",
+      "fixture_id": "orion-ledger-formal-v2",
+      "title": "Assemble the Orion deployment handoff",
+      "prior_work_prompt": "A prior rollout found that Orion approval depends on combining live deployment state with the repository service convention.",
+      "memory_query": "Which repository evidence should be combined to rebuild the Orion deployment handoff?",
+      "evaluation_prompt": "Prepare an Orion deployment handoff that pairs the active region with the service manifest. Read both authoritative repository records, write deliverables/fact-01.json with exactly task_id, result, evidence_path, and verification_command, then run the bounded repository check.",
+      "source_paths": [
+        "config/deploy.toml",
+        "docs/conventions.md"
+      ],
+      "artifact_path": "deliverables/fact-01.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-fact-01",
+        "payload": {
+          "task_id": "cc-te-formal-fact-01",
+          "result": {
+            "deployment": {
+              "region": "eu-west-3",
+              "manifest": "services/orion.yaml"
+            }
+          },
+          "evidence_path": "config/deploy.toml",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/fact-01.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:config/deploy.toml",
+        "read:docs/conventions.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/fact-01.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "region",
+            "path": "config/deploy.toml",
+            "line_prefix": "primary_region = \"",
+            "line_suffix": "\""
+          },
+          {
+            "name": "manifest",
+            "path": "docs/conventions.md",
+            "line_prefix": "service_manifest_path: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "deployment": {
+            "region": "{region}",
+            "manifest": "{manifest}"
+          }
+        },
+        "evidence_path": "config/deploy.toml"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-fact-02",
+      "task_class": "fact",
+      "fixture_id": "orion-ledger-formal-v2",
+      "title": "Build the Orion service registration brief",
+      "prior_work_prompt": "Earlier service work noted that registration, approval ownership, and the safe migration procedure live in separate repository records.",
+      "memory_query": "How did prior Orion work locate the inputs for a service registration brief?",
+      "evaluation_prompt": "Build a service registration brief with the current manifest, approval owner, and migration command. Read the repository convention and project metadata, write deliverables/fact-02.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "docs/conventions.md",
+        "README.md"
+      ],
+      "artifact_path": "deliverables/fact-02.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-fact-02",
+        "payload": {
+          "task_id": "cc-te-formal-fact-02",
+          "result": {
+            "registration": {
+              "manifest": "services/orion.yaml",
+              "approval": {
+                "owner": "platform-reliability",
+                "migration_command": "uv run python scripts/migrate.py --safe"
+              }
+            }
+          },
+          "evidence_path": "docs/conventions.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/fact-02.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:docs/conventions.md",
+        "read:README.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/fact-02.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "manifest",
+            "path": "docs/conventions.md",
+            "line_prefix": "service_manifest_path: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "migration",
+            "path": "docs/conventions.md",
+            "line_prefix": "migration_command: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "owner",
+            "path": "README.md",
+            "line_prefix": "release owner: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "registration": {
+            "manifest": "{manifest}",
+            "approval": {
+              "owner": "{owner}",
+              "migration_command": "{migration}"
+            }
+          }
+        },
+        "evidence_path": "docs/conventions.md"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-fact-03",
+      "task_class": "fact",
+      "fixture_id": "lyra-api-formal-v2",
+      "title": "Prepare the Lyra deployment review",
+      "prior_work_prompt": "The last Lyra review combined runtime placement, API schema provenance, and release ownership before approving a deployment.",
+      "memory_query": "Which evidence categories did the prior Lyra deployment review combine?",
+      "evaluation_prompt": "Prepare a Lyra deployment review containing the active region, schema source, and release owner. Read the current runtime, contract workflow, and project metadata, write deliverables/fact-03.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "config/runtime.yaml",
+        "docs/contracts.md",
+        "README.md"
+      ],
+      "artifact_path": "deliverables/fact-03.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-fact-03",
+        "payload": {
+          "task_id": "cc-te-formal-fact-03",
+          "result": {
+            "deployment_review": {
+              "placement": {
+                "region": "ap-southeast-2"
+              },
+              "contract": {
+                "schema_source": "api/openapi.yaml"
+              },
+              "owner": "api-foundations"
+            }
+          },
+          "evidence_path": "config/runtime.yaml",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/fact-03.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:config/runtime.yaml",
+        "read:docs/contracts.md",
+        "read:README.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/fact-03.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "region",
+            "path": "config/runtime.yaml",
+            "line_prefix": "primary_region: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "schema",
+            "path": "docs/contracts.md",
+            "line_prefix": "schema_source: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "owner",
+            "path": "README.md",
+            "line_prefix": "release owner: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "deployment_review": {
+            "placement": {
+              "region": "{region}"
+            },
+            "contract": {
+              "schema_source": "{schema}"
+            },
+            "owner": "{owner}"
+          }
+        },
+        "evidence_path": "config/runtime.yaml"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-fact-04",
+      "task_class": "fact",
+      "fixture_id": "lyra-api-formal-v2",
+      "title": "Compose the Lyra routing validation plan",
+      "prior_work_prompt": "Prior routing work recorded that the active route declaration and the contract checker must be reviewed together.",
+      "memory_query": "What evidence pairing helped the earlier Lyra routing review?",
+      "evaluation_prompt": "Compose a routing validation plan with the active manifest, request profile, and contract check. Read the runtime and contract workflow, write deliverables/fact-04.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "config/runtime.yaml",
+        "docs/contracts.md"
+      ],
+      "artifact_path": "deliverables/fact-04.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-fact-04",
+        "payload": {
+          "task_id": "cc-te-formal-fact-04",
+          "result": {
+            "routing_validation": {
+              "runtime": [
+                {
+                  "manifest": "configs/routing.yaml"
+                },
+                {
+                  "profile": "bounded-default"
+                }
+              ],
+              "contract_check": "uv run python tools/check_contracts.py --changed"
+            }
+          },
+          "evidence_path": "config/runtime.yaml",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/fact-04.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:config/runtime.yaml",
+        "read:docs/contracts.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/fact-04.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "manifest",
+            "path": "config/runtime.yaml",
+            "line_prefix": "routing_manifest: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "profile",
+            "path": "config/runtime.yaml",
+            "line_prefix": "request_profile: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "check",
+            "path": "docs/contracts.md",
+            "line_prefix": "contract_check: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "routing_validation": {
+            "runtime": [
+              {
+                "manifest": "{manifest}"
+              },
+              {
+                "profile": "{profile}"
+              }
+            ],
+            "contract_check": "{check}"
+          }
+        },
+        "evidence_path": "config/runtime.yaml"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-fact-05",
+      "task_class": "fact",
+      "fixture_id": "cygnus-worker-formal-v2",
+      "title": "Assemble the Cygnus worker release card",
+      "prior_work_prompt": "A previous worker rollout used both deployment state and repository ownership metadata to construct its release card.",
+      "memory_query": "Where should the next Cygnus release card gather its deployment and ownership inputs?",
+      "evaluation_prompt": "Assemble a worker release card containing placement, queue, and approval owner. Read the deployment manifest and project metadata, write deliverables/fact-05.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "deploy/worker.hcl",
+        "README.md"
+      ],
+      "artifact_path": "deliverables/fact-05.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-fact-05",
+        "payload": {
+          "task_id": "cc-te-formal-fact-05",
+          "result": {
+            "worker_release": {
+              "placement": "us-central1",
+              "queue": "cygnus-work-v4",
+              "approval": {
+                "owner": "async-systems"
+              }
+            }
+          },
+          "evidence_path": "deploy/worker.hcl",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/fact-05.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:deploy/worker.hcl",
+        "read:README.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/fact-05.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "region",
+            "path": "deploy/worker.hcl",
+            "line_prefix": "region = \"",
+            "line_suffix": "\""
+          },
+          {
+            "name": "queue",
+            "path": "deploy/worker.hcl",
+            "line_prefix": "queue = \"",
+            "line_suffix": "\""
+          },
+          {
+            "name": "owner",
+            "path": "README.md",
+            "line_prefix": "release owner: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "worker_release": {
+            "placement": "{region}",
+            "queue": "{queue}",
+            "approval": {
+              "owner": "{owner}"
+            }
+          }
+        },
+        "evidence_path": "deploy/worker.hcl"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-fact-06",
+      "task_class": "fact",
+      "fixture_id": "cygnus-worker-formal-v2",
+      "title": "Build the Cygnus deployment audit bundle",
+      "prior_work_prompt": "Earlier audit work paired the deployment declaration with the strict offset receipt before handoff.",
+      "memory_query": "Which repository records were paired in the prior Cygnus deployment audit?",
+      "evaluation_prompt": "Build a deployment audit bundle with the active manifest, offset verification command, and receipt name. Read the deployment and offset records, write deliverables/fact-06.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "deploy/worker.hcl",
+        "docs/offsets.md"
+      ],
+      "artifact_path": "deliverables/fact-06.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-fact-06",
+        "payload": {
+          "task_id": "cc-te-formal-fact-06",
+          "result": {
+            "deployment_audit": {
+              "manifest": "deploy/worker.hcl",
+              "offset_check": {
+                "command": "python -B tools/verify_offsets.py --strict",
+                "receipt": "offset-high-water-mark"
+              }
+            }
+          },
+          "evidence_path": "deploy/worker.hcl",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/fact-06.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:deploy/worker.hcl",
+        "read:docs/offsets.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/fact-06.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "manifest",
+            "path": "deploy/worker.hcl",
+            "line_prefix": "manifest = \"",
+            "line_suffix": "\""
+          },
+          {
+            "name": "command",
+            "path": "docs/offsets.md",
+            "line_prefix": "verified_command: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "receipt",
+            "path": "docs/offsets.md",
+            "line_prefix": "receipt: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "deployment_audit": {
+            "manifest": "{manifest}",
+            "offset_check": {
+              "command": "{command}",
+              "receipt": "{receipt}"
+            }
+          }
+        },
+        "evidence_path": "deploy/worker.hcl"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-fact-07",
+      "task_class": "fact",
+      "fixture_id": "vela-console-formal-v2",
+      "title": "Prepare the Vela release handoff",
+      "prior_work_prompt": "The previous console release assembled placement, asset channel, and approval ownership from current repository records.",
+      "memory_query": "What repository evidence did the Vela handoff process combine?",
+      "evaluation_prompt": "Prepare a release handoff with the active region, asset channel, and approval owner. Read the release configuration and project metadata, write deliverables/fact-07.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "config/release.yaml",
+        "README.md"
+      ],
+      "artifact_path": "deliverables/fact-07.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-fact-07",
+        "payload": {
+          "task_id": "cc-te-formal-fact-07",
+          "result": {
+            "release_handoff": {
+              "target": {
+                "region": "eu-north-1",
+                "asset_channel": "stable-vela"
+              },
+              "approval_owner": "console-platform"
+            }
+          },
+          "evidence_path": "config/release.yaml",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/fact-07.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:config/release.yaml",
+        "read:README.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/fact-07.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "region",
+            "path": "config/release.yaml",
+            "line_prefix": "primary_region: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "channel",
+            "path": "config/release.yaml",
+            "line_prefix": "asset_channel: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "owner",
+            "path": "README.md",
+            "line_prefix": "release owner: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "release_handoff": {
+            "target": {
+              "region": "{region}",
+              "asset_channel": "{channel}"
+            },
+            "approval_owner": "{owner}"
+          }
+        },
+        "evidence_path": "config/release.yaml"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-fact-08",
+      "task_class": "fact",
+      "fixture_id": "vela-console-formal-v2",
+      "title": "Compose the Vela route bundle check",
+      "prior_work_prompt": "Prior route work required the route declaration and the offline bundle receipt to agree before release.",
+      "memory_query": "Which records did earlier Vela route verification compare?",
+      "evaluation_prompt": "Compose a route bundle check containing the active route manifest, offline verification command, and receipt. Read the release and bundle records, write deliverables/fact-08.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "config/release.yaml",
+        "docs/bundle-check.md"
+      ],
+      "artifact_path": "deliverables/fact-08.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-fact-08",
+        "payload": {
+          "task_id": "cc-te-formal-fact-08",
+          "result": {
+            "route_bundle": [
+              {
+                "route_manifest": "ui/routes.ts"
+              },
+              {
+                "verification": {
+                  "command": "python -B tools/check_bundle_manifest.py --offline",
+                  "receipt": "bundle-manifest-ok"
+                }
+              }
+            ]
+          },
+          "evidence_path": "config/release.yaml",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/fact-08.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:config/release.yaml",
+        "read:docs/bundle-check.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/fact-08.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "manifest",
+            "path": "config/release.yaml",
+            "line_prefix": "route_manifest: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "command",
+            "path": "docs/bundle-check.md",
+            "line_prefix": "verified_command: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "receipt",
+            "path": "docs/bundle-check.md",
+            "line_prefix": "receipt: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "route_bundle": [
+            {
+              "route_manifest": "{manifest}"
+            },
+            {
+              "verification": {
+                "command": "{command}",
+                "receipt": "{receipt}"
+              }
+            }
+          ]
+        },
+        "evidence_path": "config/release.yaml"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-experience-01",
+      "task_class": "experience",
+      "fixture_id": "orion-ledger-formal-v2",
+      "title": "Plan the next Orion queue recovery",
+      "prior_work_prompt": "A prior incident showed that the destructive shortcut lost useful state; the retained lesson was to preserve convergence evidence before resuming traffic.",
+      "memory_query": "What failure lesson and evidence trail should guide a new Orion queue recovery?",
+      "evaluation_prompt": "Plan recovery for the current Orion queue using the verified sequence and its exit check. Read the incident record and live deployment state, write deliverables/experience-01.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "incidents/queue-recovery.md",
+        "config/deploy.toml"
+      ],
+      "artifact_path": "deliverables/experience-01.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-experience-01",
+        "payload": {
+          "task_id": "cc-te-formal-experience-01",
+          "result": {
+            "queue_recovery": {
+              "queue": "ledger-events-v3",
+              "sequence": "pause-consumers-then-replay",
+              "exit_check": "event counts must converge before consumers resume"
+            }
+          },
+          "evidence_path": "incidents/queue-recovery.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/experience-01.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:incidents/queue-recovery.md",
+        "read:config/deploy.toml",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/experience-01.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "sequence",
+            "path": "incidents/queue-recovery.md",
+            "line_prefix": "verified_repair: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "exit_check",
+            "path": "incidents/queue-recovery.md",
+            "line_prefix": "verification: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "queue",
+            "path": "config/deploy.toml",
+            "line_prefix": "current_queue = \"",
+            "line_suffix": "\""
+          }
+        ],
+        "result_template": {
+          "queue_recovery": {
+            "queue": "{queue}",
+            "sequence": "{sequence}",
+            "exit_check": "{exit_check}"
+          }
+        },
+        "evidence_path": "incidents/queue-recovery.md"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-experience-02",
+      "task_class": "experience",
+      "fixture_id": "orion-ledger-formal-v2",
+      "title": "Design the Orion cache rebuild receipt",
+      "prior_work_prompt": "An earlier cache incident rejected an unbounded rebuild and retained a bounded, repository-verified workflow with an explicit comparison step.",
+      "memory_query": "How should the previous Orion cache failure shape a new rebuild receipt?",
+      "evaluation_prompt": "Design a cache rebuild receipt with the verified command, comparison check, and repository artifact format. Read the incident record and project metadata, write deliverables/experience-02.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "incidents/cache-recovery.md",
+        "README.md"
+      ],
+      "artifact_path": "deliverables/experience-02.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-experience-02",
+        "payload": {
+          "task_id": "cc-te-formal-experience-02",
+          "result": {
+            "cache_rebuild": {
+              "steps": [
+                {
+                  "command": "python -B scripts/rebuild_cache.py --bounded"
+                },
+                {
+                  "verification": "compare the rebuilt key count with the ledger snapshot"
+                }
+              ],
+              "artifact_format": "canonical-json-v2"
+            }
+          },
+          "evidence_path": "incidents/cache-recovery.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/experience-02.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:incidents/cache-recovery.md",
+        "read:README.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/experience-02.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "command",
+            "path": "incidents/cache-recovery.md",
+            "line_prefix": "verified_command: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "comparison",
+            "path": "incidents/cache-recovery.md",
+            "line_prefix": "verification: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "format",
+            "path": "README.md",
+            "line_prefix": "artifact format: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "cache_rebuild": {
+            "steps": [
+              {
+                "command": "{command}"
+              },
+              {
+                "verification": "{comparison}"
+              }
+            ],
+            "artifact_format": "{format}"
+          }
+        },
+        "evidence_path": "incidents/cache-recovery.md"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-experience-03",
+      "task_class": "experience",
+      "fixture_id": "lyra-api-formal-v2",
+      "title": "Create the Lyra write-reenable checklist",
+      "prior_work_prompt": "A previous index incident failed because writes returned too early; the retained lesson requires restoration evidence before the write fence moves.",
+      "memory_query": "What prior Lyra failure lesson should govern a new write-reenable checklist?",
+      "evaluation_prompt": "Create a checklist for re-enabling writes with the verified recovery order, its comparison gate, and the active request profile. Read the incident and runtime records, write deliverables/experience-03.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "incidents/index-recovery.md",
+        "config/runtime.yaml"
+      ],
+      "artifact_path": "deliverables/experience-03.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-experience-03",
+        "payload": {
+          "task_id": "cc-te-formal-experience-03",
+          "result": {
+            "write_reenable": {
+              "recovery_sequence": "restore-index-before-enabling-writes",
+              "gate": "compare index generation and write fence",
+              "request_profile": "bounded-default"
+            }
+          },
+          "evidence_path": "incidents/index-recovery.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/experience-03.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:incidents/index-recovery.md",
+        "read:config/runtime.yaml",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/experience-03.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "sequence",
+            "path": "incidents/index-recovery.md",
+            "line_prefix": "verified_repair: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "gate",
+            "path": "incidents/index-recovery.md",
+            "line_prefix": "verification: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "profile",
+            "path": "config/runtime.yaml",
+            "line_prefix": "request_profile: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "write_reenable": {
+            "recovery_sequence": "{sequence}",
+            "gate": "{gate}",
+            "request_profile": "{profile}"
+          }
+        },
+        "evidence_path": "incidents/index-recovery.md"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-experience-04",
+      "task_class": "experience",
+      "fixture_id": "lyra-api-formal-v2",
+      "title": "Package the Lyra contract validation handoff",
+      "prior_work_prompt": "Earlier contract work learned to validate only the changed surface and to retain schema provenance in the handoff.",
+      "memory_query": "Which Lyra contract lesson should be applied to the next validation handoff?",
+      "evaluation_prompt": "Package a contract validation handoff with the verified command, schema source, and artifact format. Read the contract workflow and project metadata, write deliverables/experience-04.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "docs/contracts.md",
+        "README.md"
+      ],
+      "artifact_path": "deliverables/experience-04.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-experience-04",
+        "payload": {
+          "task_id": "cc-te-formal-experience-04",
+          "result": {
+            "contract_handoff": [
+              {
+                "validation_command": "uv run python tools/check_contracts.py --changed"
+              },
+              {
+                "schema_source": "api/openapi.yaml"
+              },
+              {
+                "artifact_format": "snake_case-fields"
+              }
+            ]
+          },
+          "evidence_path": "docs/contracts.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/experience-04.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:docs/contracts.md",
+        "read:README.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/experience-04.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "command",
+            "path": "docs/contracts.md",
+            "line_prefix": "contract_check: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "schema",
+            "path": "docs/contracts.md",
+            "line_prefix": "schema_source: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "format",
+            "path": "README.md",
+            "line_prefix": "artifact format: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "contract_handoff": [
+            {
+              "validation_command": "{command}"
+            },
+            {
+              "schema_source": "{schema}"
+            },
+            {
+              "artifact_format": "{format}"
+            }
+          ]
+        },
+        "evidence_path": "docs/contracts.md"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-experience-05",
+      "task_class": "experience",
+      "fixture_id": "cygnus-worker-formal-v2",
+      "title": "Plan a Cygnus shard return to service",
+      "prior_work_prompt": "A prior shard incident showed that reseeding under load duplicated work; the retained lesson makes offset parity the return-to-service gate.",
+      "memory_query": "How should the earlier Cygnus shard failure constrain a new recovery plan?",
+      "evaluation_prompt": "Plan a shard return to service with the verified repair, parity gate, and active queue. Read the incident and deployment records, write deliverables/experience-05.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "incidents/shard-recovery.md",
+        "deploy/worker.hcl"
+      ],
+      "artifact_path": "deliverables/experience-05.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-experience-05",
+        "payload": {
+          "task_id": "cc-te-formal-experience-05",
+          "result": {
+            "shard_recovery": {
+              "queue": "cygnus-work-v4",
+              "repair": "drain-shard-then-reseed",
+              "return_gate": "restore traffic only after offset parity"
+            }
+          },
+          "evidence_path": "incidents/shard-recovery.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/experience-05.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:incidents/shard-recovery.md",
+        "read:deploy/worker.hcl",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/experience-05.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "repair",
+            "path": "incidents/shard-recovery.md",
+            "line_prefix": "verified_repair: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "gate",
+            "path": "incidents/shard-recovery.md",
+            "line_prefix": "verification: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "queue",
+            "path": "deploy/worker.hcl",
+            "line_prefix": "queue = \"",
+            "line_suffix": "\""
+          }
+        ],
+        "result_template": {
+          "shard_recovery": {
+            "queue": "{queue}",
+            "repair": "{repair}",
+            "return_gate": "{gate}"
+          }
+        },
+        "evidence_path": "incidents/shard-recovery.md"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-experience-06",
+      "task_class": "experience",
+      "fixture_id": "cygnus-worker-formal-v2",
+      "title": "Build the Cygnus offset audit record",
+      "prior_work_prompt": "Earlier worker recovery retained a strict offline verification workflow and a high-water receipt rather than relying on a service-only observation.",
+      "memory_query": "What prior Cygnus verification lesson belongs in a fresh offset audit?",
+      "evaluation_prompt": "Build an offset audit record with the verified command, receipt, and repository artifact format. Read the offset workflow and project metadata, write deliverables/experience-06.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "docs/offsets.md",
+        "README.md"
+      ],
+      "artifact_path": "deliverables/experience-06.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-experience-06",
+        "payload": {
+          "task_id": "cc-te-formal-experience-06",
+          "result": {
+            "offset_audit": {
+              "verification": {
+                "command": "python -B tools/verify_offsets.py --strict",
+                "receipt": "offset-high-water-mark"
+              },
+              "output": {
+                "format": "jsonl-v1"
+              }
+            }
+          },
+          "evidence_path": "docs/offsets.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/experience-06.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:docs/offsets.md",
+        "read:README.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/experience-06.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "command",
+            "path": "docs/offsets.md",
+            "line_prefix": "verified_command: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "receipt",
+            "path": "docs/offsets.md",
+            "line_prefix": "receipt: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "format",
+            "path": "README.md",
+            "line_prefix": "artifact format: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "offset_audit": {
+            "verification": {
+              "command": "{command}",
+              "receipt": "{receipt}"
+            },
+            "output": {
+              "format": "{format}"
+            }
+          }
+        },
+        "evidence_path": "docs/offsets.md"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-experience-07",
+      "task_class": "experience",
+      "fixture_id": "vela-console-formal-v2",
+      "title": "Create the Vela schema rollback run card",
+      "prior_work_prompt": "A prior rollout failed when schema moved before compatible assets; the retained lesson preserves asset availability as the rollback precondition.",
+      "memory_query": "How should the earlier Vela rollout failure shape a new rollback run card?",
+      "evaluation_prompt": "Create a schema rollback run card with the verified order, asset precondition, and current compatibility window. Read the incident and API policy records, write deliverables/experience-07.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "incidents/schema-rollout.md",
+        "config/api.toml"
+      ],
+      "artifact_path": "deliverables/experience-07.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-experience-07",
+        "payload": {
+          "task_id": "cc-te-formal-experience-07",
+          "result": {
+            "rollback_run_card": {
+              "order": "rollback-assets-before-schema",
+              "precondition": "old assets must load before schema rollback",
+              "compatibility_window": "two-releases"
+            }
+          },
+          "evidence_path": "incidents/schema-rollout.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/experience-07.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:incidents/schema-rollout.md",
+        "read:config/api.toml",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/experience-07.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "order",
+            "path": "incidents/schema-rollout.md",
+            "line_prefix": "verified_repair: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "precondition",
+            "path": "incidents/schema-rollout.md",
+            "line_prefix": "verification: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "window",
+            "path": "config/api.toml",
+            "line_prefix": "compatibility_window = \"",
+            "line_suffix": "\""
+          }
+        ],
+        "result_template": {
+          "rollback_run_card": {
+            "order": "{order}",
+            "precondition": "{precondition}",
+            "compatibility_window": "{window}"
+          }
+        },
+        "evidence_path": "incidents/schema-rollout.md"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-experience-08",
+      "task_class": "experience",
+      "fixture_id": "vela-console-formal-v2",
+      "title": "Assemble the Vela offline bundle receipt",
+      "prior_work_prompt": "Earlier release work avoided network-dependent validation and retained an offline manifest comparison with a named receipt.",
+      "memory_query": "Which Vela release lesson should guide the next bundle receipt?",
+      "evaluation_prompt": "Assemble an offline bundle receipt with the verified command, receipt name, and active asset channel. Read the bundle workflow and release configuration, write deliverables/experience-08.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "docs/bundle-check.md",
+        "config/release.yaml"
+      ],
+      "artifact_path": "deliverables/experience-08.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-experience-08",
+        "payload": {
+          "task_id": "cc-te-formal-experience-08",
+          "result": {
+            "bundle_receipt": {
+              "verification": [
+                {
+                  "command": "python -B tools/check_bundle_manifest.py --offline"
+                },
+                {
+                  "receipt": "bundle-manifest-ok"
+                }
+              ],
+              "asset_channel": "stable-vela"
+            }
+          },
+          "evidence_path": "docs/bundle-check.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/experience-08.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:docs/bundle-check.md",
+        "read:config/release.yaml",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/experience-08.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "command",
+            "path": "docs/bundle-check.md",
+            "line_prefix": "verified_command: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "receipt",
+            "path": "docs/bundle-check.md",
+            "line_prefix": "receipt: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "channel",
+            "path": "config/release.yaml",
+            "line_prefix": "asset_channel: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "bundle_receipt": {
+            "verification": [
+              {
+                "command": "{command}"
+              },
+              {
+                "receipt": "{receipt}"
+              }
+            ],
+            "asset_channel": "{channel}"
+          }
+        },
+        "evidence_path": "docs/bundle-check.md"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-stale-01",
+      "task_class": "stale_conflict",
+      "fixture_id": "orion-ledger-formal-v2",
+      "title": "Reconcile the Orion listener rollout",
+      "prior_work_prompt": "An older Orion session recorded listener port 8100 before the policy changed.",
+      "memory_query": "What current repository evidence should settle Orion's listener rollout after an older port observation?",
+      "evaluation_prompt": "Reconcile the listener rollout using the active port, rollback window, and approval owner. Read current policy and project metadata, write deliverables/stale-01.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "policy/current.md",
+        "README.md"
+      ],
+      "artifact_path": "deliverables/stale-01.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-stale-01",
+        "payload": {
+          "task_id": "cc-te-formal-stale-01",
+          "result": {
+            "listener_rollout": {
+              "port": "8181",
+              "rollback_window": "12m",
+              "approval_owner": "platform-reliability"
+            }
+          },
+          "evidence_path": "policy/current.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "parent_owned_mutation": {
+        "mutation_id": "cc-te-formal-stale-01-transition",
+        "path": "policy/current.md",
+        "prior_revision": "orion-ledger-r0-20260729",
+        "prior_content": "# Current policy\n\ncurrent listener port: 8100\ncurrent rollback window: 12m\n",
+        "prior_observation": "listener port: 8100"
+      },
+      "allowed_mutation_paths": [
+        "deliverables/stale-01.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:policy/current.md",
+        "read:README.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/stale-01.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "port",
+            "path": "policy/current.md",
+            "line_prefix": "current listener port: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "window",
+            "path": "policy/current.md",
+            "line_prefix": "current rollback window: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "owner",
+            "path": "README.md",
+            "line_prefix": "release owner: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "listener_rollout": {
+            "port": "{port}",
+            "rollback_window": "{window}",
+            "approval_owner": "{owner}"
+          }
+        },
+        "evidence_path": "policy/current.md"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-stale-02",
+      "task_class": "stale_conflict",
+      "fixture_id": "lyra-api-formal-v2",
+      "title": "Refresh the Lyra retention decision",
+      "prior_work_prompt": "A retired Lyra runbook retained archives for 14d.",
+      "memory_query": "Which active Lyra records should replace the remembered retention decision?",
+      "evaluation_prompt": "Refresh the retention decision with the current period, archive tier, and approval owner. Read active policy and project metadata, write deliverables/stale-02.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "policy/retention.md",
+        "README.md"
+      ],
+      "artifact_path": "deliverables/stale-02.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-stale-02",
+        "payload": {
+          "task_id": "cc-te-formal-stale-02",
+          "result": {
+            "retention_decision": {
+              "period": "21d",
+              "archive_tier": "cold-standard",
+              "approval_owner": "api-foundations"
+            }
+          },
+          "evidence_path": "policy/retention.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "parent_owned_mutation": {
+        "mutation_id": "cc-te-formal-stale-02-transition",
+        "path": "policy/retention.md",
+        "prior_revision": "lyra-api-r0-20260729",
+        "prior_content": "# Retention policy\n\ncurrent retention: 14d\ncurrent archive tier: cold-standard\n",
+        "prior_observation": "current retention: 14d"
+      },
+      "allowed_mutation_paths": [
+        "deliverables/stale-02.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:policy/retention.md",
+        "read:README.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/stale-02.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "period",
+            "path": "policy/retention.md",
+            "line_prefix": "current retention: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "tier",
+            "path": "policy/retention.md",
+            "line_prefix": "current archive tier: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "owner",
+            "path": "README.md",
+            "line_prefix": "release owner: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "retention_decision": {
+            "period": "{period}",
+            "archive_tier": "{tier}",
+            "approval_owner": "{owner}"
+          }
+        },
+        "evidence_path": "policy/retention.md"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-stale-03",
+      "task_class": "stale_conflict",
+      "fixture_id": "cygnus-worker-formal-v2",
+      "title": "Rebuild the Cygnus batching profile",
+      "prior_work_prompt": "A previous Cygnus tuning session recorded max_batch 128.",
+      "memory_query": "What current batching evidence should supersede the old Cygnus tuning note?",
+      "evaluation_prompt": "Rebuild the batching profile with the active ceiling, flush interval, and approval owner. Read current batching configuration and project metadata, write deliverables/stale-03.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "config/batching.toml",
+        "README.md"
+      ],
+      "artifact_path": "deliverables/stale-03.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-stale-03",
+        "payload": {
+          "task_id": "cc-te-formal-stale-03",
+          "result": {
+            "batching_profile": {
+              "max_batch": "64",
+              "flush_interval_ms": "250",
+              "approval_owner": "async-systems"
+            }
+          },
+          "evidence_path": "config/batching.toml",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "parent_owned_mutation": {
+        "mutation_id": "cc-te-formal-stale-03-transition",
+        "path": "config/batching.toml",
+        "prior_revision": "cygnus-worker-r0-20260729",
+        "prior_content": "max_batch = 128\nflush_interval_ms = 250\n",
+        "prior_observation": "max_batch = 128"
+      },
+      "allowed_mutation_paths": [
+        "deliverables/stale-03.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:config/batching.toml",
+        "read:README.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/stale-03.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "ceiling",
+            "path": "config/batching.toml",
+            "line_prefix": "max_batch = ",
+            "line_suffix": ""
+          },
+          {
+            "name": "flush",
+            "path": "config/batching.toml",
+            "line_prefix": "flush_interval_ms = ",
+            "line_suffix": ""
+          },
+          {
+            "name": "owner",
+            "path": "README.md",
+            "line_prefix": "release owner: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "batching_profile": {
+            "max_batch": "{ceiling}",
+            "flush_interval_ms": "{flush}",
+            "approval_owner": "{owner}"
+          }
+        },
+        "evidence_path": "config/batching.toml"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-stale-04",
+      "task_class": "stale_conflict",
+      "fixture_id": "vela-console-formal-v2",
+      "title": "Reissue the Vela API compatibility brief",
+      "prior_work_prompt": "Earlier Vela work used the /v2 API prefix.",
+      "memory_query": "Which current Vela records should drive a replacement compatibility brief?",
+      "evaluation_prompt": "Reissue the API compatibility brief with the active prefix, compatibility window, and approval owner. Read current API policy and project metadata, write deliverables/stale-04.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "config/api.toml",
+        "README.md"
+      ],
+      "artifact_path": "deliverables/stale-04.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-stale-04",
+        "payload": {
+          "task_id": "cc-te-formal-stale-04",
+          "result": {
+            "api_compatibility": {
+              "prefix": "/v3",
+              "support_window": "two-releases",
+              "approval_owner": "console-platform"
+            }
+          },
+          "evidence_path": "config/api.toml",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "parent_owned_mutation": {
+        "mutation_id": "cc-te-formal-stale-04-transition",
+        "path": "config/api.toml",
+        "prior_revision": "vela-console-r0-20260729",
+        "prior_content": "api_prefix = \"/v2\"\ncompatibility_window = \"one-release\"\n",
+        "prior_observation": "api_prefix = \"/v2\""
+      },
+      "allowed_mutation_paths": [
+        "deliverables/stale-04.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:config/api.toml",
+        "read:README.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/stale-04.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "prefix",
+            "path": "config/api.toml",
+            "line_prefix": "api_prefix = \"",
+            "line_suffix": "\""
+          },
+          {
+            "name": "window",
+            "path": "config/api.toml",
+            "line_prefix": "compatibility_window = \"",
+            "line_suffix": "\""
+          },
+          {
+            "name": "owner",
+            "path": "README.md",
+            "line_prefix": "release owner: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "api_compatibility": {
+            "prefix": "{prefix}",
+            "support_window": "{window}",
+            "approval_owner": "{owner}"
+          }
+        },
+        "evidence_path": "config/api.toml"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-irrelevant-01",
+      "task_class": "irrelevant",
+      "fixture_id": "orion-ledger-formal-v2",
+      "title": "Define the Orion release artifact envelope",
+      "prior_work_prompt": "Prior work discussed a foreign mobile application's color tokens; it has no bearing on Orion artifacts.",
+      "memory_query": "Which Orion records define the release artifact envelope for this repository?",
+      "evaluation_prompt": "Define the release artifact envelope with its format, approval owner, and active release channel. Use only current Orion repository evidence, write deliverables/irrelevant-01.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "README.md",
+        "config/deploy.toml"
+      ],
+      "artifact_path": "deliverables/irrelevant-01.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-irrelevant-01",
+        "payload": {
+          "task_id": "cc-te-formal-irrelevant-01",
+          "result": {
+            "artifact_envelope": {
+              "format": "canonical-json-v2",
+              "approval_owner": "platform-reliability",
+              "release_channel": "canary-orion"
+            }
+          },
+          "evidence_path": "README.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/irrelevant-01.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:README.md",
+        "read:config/deploy.toml",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/irrelevant-01.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "format",
+            "path": "README.md",
+            "line_prefix": "artifact format: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "owner",
+            "path": "README.md",
+            "line_prefix": "release owner: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "channel",
+            "path": "config/deploy.toml",
+            "line_prefix": "release_channel = \"",
+            "line_suffix": "\""
+          }
+        ],
+        "result_template": {
+          "artifact_envelope": {
+            "format": "{format}",
+            "approval_owner": "{owner}",
+            "release_channel": "{channel}"
+          }
+        },
+        "evidence_path": "README.md"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-irrelevant-02",
+      "task_class": "irrelevant",
+      "fixture_id": "lyra-api-formal-v2",
+      "title": "Define the Lyra contract artifact",
+      "prior_work_prompt": "Prior work covered an unrelated data warehouse partition schedule.",
+      "memory_query": "What current Lyra evidence defines its contract artifact?",
+      "evaluation_prompt": "Define the contract artifact with its field style, approval owner, and schema source. Use only current Lyra repository evidence, write deliverables/irrelevant-02.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "README.md",
+        "docs/contracts.md"
+      ],
+      "artifact_path": "deliverables/irrelevant-02.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-irrelevant-02",
+        "payload": {
+          "task_id": "cc-te-formal-irrelevant-02",
+          "result": {
+            "contract_artifact": {
+              "field_style": "snake_case-fields",
+              "approval_owner": "api-foundations",
+              "schema_source": "api/openapi.yaml"
+            }
+          },
+          "evidence_path": "README.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/irrelevant-02.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:README.md",
+        "read:docs/contracts.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/irrelevant-02.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "style",
+            "path": "README.md",
+            "line_prefix": "artifact format: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "owner",
+            "path": "README.md",
+            "line_prefix": "release owner: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "schema",
+            "path": "docs/contracts.md",
+            "line_prefix": "schema_source: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "contract_artifact": {
+            "field_style": "{style}",
+            "approval_owner": "{owner}",
+            "schema_source": "{schema}"
+          }
+        },
+        "evidence_path": "README.md"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-irrelevant-03",
+      "task_class": "irrelevant",
+      "fixture_id": "cygnus-worker-formal-v2",
+      "title": "Define the Cygnus stream artifact",
+      "prior_work_prompt": "Prior work described a marketing newsletter workflow from another repository.",
+      "memory_query": "Which Cygnus repository records govern a stream artifact handoff?",
+      "evaluation_prompt": "Define the stream artifact with its format, approval owner, and active queue. Use only current Cygnus repository evidence, write deliverables/irrelevant-03.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "README.md",
+        "deploy/worker.hcl"
+      ],
+      "artifact_path": "deliverables/irrelevant-03.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-irrelevant-03",
+        "payload": {
+          "task_id": "cc-te-formal-irrelevant-03",
+          "result": {
+            "stream_artifact": {
+              "format": "jsonl-v1",
+              "approval_owner": "async-systems",
+              "queue": "cygnus-work-v4"
+            }
+          },
+          "evidence_path": "README.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/irrelevant-03.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:README.md",
+        "read:deploy/worker.hcl",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/irrelevant-03.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "format",
+            "path": "README.md",
+            "line_prefix": "artifact format: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "owner",
+            "path": "README.md",
+            "line_prefix": "release owner: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "queue",
+            "path": "deploy/worker.hcl",
+            "line_prefix": "queue = \"",
+            "line_suffix": "\""
+          }
+        ],
+        "result_template": {
+          "stream_artifact": {
+            "format": "{format}",
+            "approval_owner": "{owner}",
+            "queue": "{queue}"
+          }
+        },
+        "evidence_path": "README.md"
+      }
+    },
+    {
+      "task_id": "cc-te-formal-irrelevant-04",
+      "task_class": "irrelevant",
+      "fixture_id": "vela-console-formal-v2",
+      "title": "Define the Vela release artifact",
+      "prior_work_prompt": "Prior work covered a foreign repository's database vacuum schedule.",
+      "memory_query": "What current Vela evidence defines the release artifact contract?",
+      "evaluation_prompt": "Define the release artifact with its key format, approval owner, and route manifest. Use only current Vela repository evidence, write deliverables/irrelevant-04.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "README.md",
+        "config/release.yaml"
+      ],
+      "artifact_path": "deliverables/irrelevant-04.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-formal-irrelevant-04",
+        "payload": {
+          "task_id": "cc-te-formal-irrelevant-04",
+          "result": {
+            "release_artifact": {
+              "key_format": "sorted-key-json",
+              "approval_owner": "console-platform",
+              "route_manifest": "ui/routes.ts"
+            }
+          },
+          "evidence_path": "README.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/irrelevant-04.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:README.md",
+        "read:config/release.yaml",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/irrelevant-04.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "format",
+            "path": "README.md",
+            "line_prefix": "artifact format: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "owner",
+            "path": "README.md",
+            "line_prefix": "release owner: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "manifest",
+            "path": "config/release.yaml",
+            "line_prefix": "route_manifest: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "release_artifact": {
+            "key_format": "{format}",
+            "approval_owner": "{owner}",
+            "route_manifest": "{manifest}"
+          }
+        },
+        "evidence_path": "README.md"
+      }
+    }
+  ]
+}

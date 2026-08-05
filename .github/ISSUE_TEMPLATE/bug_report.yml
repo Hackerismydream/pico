@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a reproducible problem in Pico.
+title: "fix: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Pico. Please include enough detail for maintainers to reproduce the issue.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest sequence of commands or actions that reproduces the issue.
+      placeholder: |
+        1. Run `pico ...`
+        2. Configure ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, shell, Python, Node, installation method, and Pico version or commit.
+      placeholder: |
+        OS:
+        Shell:
+        Python:
+        Node:
+        Pico:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste relevant logs. Redact secrets, tokens, and private data.
+      render: text
+    validations:
+      required: false

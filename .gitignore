@@ -1,0 +1,57 @@
+.worktrees/
+.assets
+.env
+node_modules/
+ui-tui/node_modules
+# Generated architecture/diagram SVGs at repo root (not source)
+/*.svg
+
+# Engineering working notes — plan + process records, never committed
+revice_notes/
+*.pyc
+dist/
+build/
+*.egg-info/
+*.egg
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywz
+*.pyzz
+.venv/
+venv/
+__pycache__/
+poetry.lock
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+botpy.log
+nano.*.save
+swebench_jobs/
+*.env
+key.env
+sty_readme.md
+CLAUDE.local.md
+logs/
+.DS_Store
+.claude/
+tmp.sh
+# Pico workspace state is never project content
+.pico/
+
+# SkillForge dense retrieval cache (auto-built per-deployment, never tracked)
+.skill_index/
+.cache/skill_index/
+
+# Eval run artifacts (benchmark products — reproducible via runners, no need to track)
+benchmarks/clawbench/results/
+benchmarks/pinchbench/benchmark.log
+benchmarks/pinchbench/results/*.json
+
+# Disposable small-real Evolution Run subject (materialized from
+# benchmarks/evolver/subject_template/ by scripts/setup_small_real_subject.py)
+benchmarks/evolver/subject/

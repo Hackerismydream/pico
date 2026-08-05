@@ -1,0 +1,106 @@
+# Release build - DRAFT.
+#
+# The canonical distribution verifier owns the TUI build, package build,
+# isolated installs, installed Runtime probes, wheel manifest checks, and sdist
+# round trip. Release assets therefore come from the same V-P0 gate used
+# locally instead of a second build path.
+#
+# Trigger: push a version tag (v1.2.3) or run manually.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-distribution:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Verify distribution
+        run: |
+          uv run python scripts/verify_distribution.py \
+            --output-root "$RUNNER_TEMP/pico-distribution" \
+            --entrypoint pico \
+            --extras base,channel-feishu,channel-qq,channel-wecom,channels,sandbox
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pico-distribution
+          path: |
+            ${{ runner.temp }}/pico-distribution/dist/*.whl
+            ${{ runner.temp }}/pico-distribution/dist/*.tar.gz
+            ${{ runner.temp }}/pico-distribution/distribution-report.json
+          if-no-files-found: error
+
+      # On a version tag, publish a draft GitHub Release with the verified
+      # wheel, sdist, and evidence report attached. Manual dispatch stops after
+      # the Actions artifact upload above.
+      - name: Check tag matches pyproject version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${{ github.ref_name }}"
+          v=$(grep -m1 '^version = ' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          base="${tag#v}"; base="${base%%-*}"
+          [ "$base" = "$v" ] || { echo "tag $tag does not match pyproject version $v"; exit 1; }
+
+      - name: Create draft GitHub Release with assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ github.ref_name }}"
+          repo="${{ github.repository }}"
+          ver="${tag#v}"
+          today="$(date -u +%Y-%m-%d)"
+          # Prerelease tags must never become /releases/latest because
+          # install.sh serves that release to public installers.
+          pre=""
+          case "$tag" in *-*) pre="--prerelease" ;; esac
+          sed "s/__VERSION__/$ver/g; s/__TAG__/$tag/g" \
+            .github/release-notes-template.md > "$RUNNER_TEMP/notes.md"
+          # Recreate a stale draft on rerun, but never replace a published release.
+          rel=$(gh api "repos/$repo/releases?per_page=100" --jq "map(select(.tag_name==\"$tag\"))[0] // {}")
+          id=$(printf '%s' "$rel" | jq -r '.id // empty')
+          isdraft=$(printf '%s' "$rel" | jq -r '.draft // false')
+          if [ -n "$id" ] && [ "$isdraft" = "true" ]; then
+            gh api -X DELETE "repos/$repo/releases/$id"
+            id=""
+          fi
+          if [ -z "$id" ]; then
+            distribution_root="$RUNNER_TEMP/pico-distribution"
+            gh release create "$tag" \
+              "$distribution_root"/dist/*.whl \
+              "$distribution_root"/dist/*.tar.gz \
+              "$distribution_root"/distribution-report.json \
+              --title "Pico $ver ($today)" --notes-file "$RUNNER_TEMP/notes.md" --draft $pre
+          else
+            echo "Release $tag already published (id=$id); leaving as-is."
+          fi
+
+      # (Optional, wire up when ready) publish to PyPI on tag:
+      # - name: Publish to PyPI
+      #   if: startsWith(github.ref, 'refs/tags/v')
+      #   run: uv publish "$RUNNER_TEMP"/pico-distribution/dist/*
+      #   env:
+      #     UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}

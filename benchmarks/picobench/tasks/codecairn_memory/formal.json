@@ -1,0 +1,93 @@
+{
+  "schema": "pico.picobench.codecairn-memory-tasks.v1",
+  "tasks": [
+    {
+      "task_id": "cc-memory-formal-01",
+      "prior_session_id": "learning-cc-memory-formal-01",
+      "evaluation_session_id": "evaluation-cc-memory-formal-01",
+      "learning_prompt": "For repository Alder, remember that the production rollback token is ALD-RBK-7F3Q.",
+      "memory_query": "What is the production rollback token for repository Alder?",
+      "evaluation_prompt": "Recover the production rollback token for repository Alder from prior work and write rollback.json with exactly one JSON field named rollback_token.",
+      "output_file": "rollback.json",
+      "expected_key": "rollback_token",
+      "expected_value": "ALD-RBK-7F3Q"
+    },
+    {
+      "task_id": "cc-memory-formal-02",
+      "prior_session_id": "learning-cc-memory-formal-02",
+      "evaluation_session_id": "evaluation-cc-memory-formal-02",
+      "learning_prompt": "For repository Birch, remember that the canary region is eu-central-1-birch-42.",
+      "memory_query": "What is the canary region for repository Birch?",
+      "evaluation_prompt": "Recover the canary region for repository Birch from prior work and write region.json with exactly one JSON field named canary_region.",
+      "output_file": "region.json",
+      "expected_key": "canary_region",
+      "expected_value": "eu-central-1-birch-42"
+    },
+    {
+      "task_id": "cc-memory-formal-03",
+      "prior_session_id": "learning-cc-memory-formal-03",
+      "evaluation_session_id": "evaluation-cc-memory-formal-03",
+      "learning_prompt": "For repository Cedar, remember that the migration checkpoint is CDR-MIG-2907-X.",
+      "memory_query": "What is the migration checkpoint for repository Cedar?",
+      "evaluation_prompt": "Recover the migration checkpoint for repository Cedar from prior work and write migration.json with exactly one JSON field named checkpoint.",
+      "output_file": "migration.json",
+      "expected_key": "checkpoint",
+      "expected_value": "CDR-MIG-2907-X"
+    },
+    {
+      "task_id": "cc-memory-formal-04",
+      "prior_session_id": "learning-cc-memory-formal-04",
+      "evaluation_session_id": "evaluation-cc-memory-formal-04",
+      "learning_prompt": "For repository Dogwood, remember that its feature gate is dogwood_delta_8c51.",
+      "memory_query": "What is the feature gate for repository Dogwood?",
+      "evaluation_prompt": "Recover the feature gate for repository Dogwood from prior work and write feature.json with exactly one JSON field named feature_gate.",
+      "output_file": "feature.json",
+      "expected_key": "feature_gate",
+      "expected_value": "dogwood_delta_8c51"
+    },
+    {
+      "task_id": "cc-memory-formal-05",
+      "prior_session_id": "learning-cc-memory-formal-05",
+      "evaluation_session_id": "evaluation-cc-memory-formal-05",
+      "learning_prompt": "For repository Elm, remember that the audit shard is elm-audit-61-kappa.",
+      "memory_query": "What is the audit shard for repository Elm?",
+      "evaluation_prompt": "Recover the audit shard for repository Elm from prior work and write audit.json with exactly one JSON field named audit_shard.",
+      "output_file": "audit.json",
+      "expected_key": "audit_shard",
+      "expected_value": "elm-audit-61-kappa"
+    },
+    {
+      "task_id": "cc-memory-formal-06",
+      "prior_session_id": "learning-cc-memory-formal-06",
+      "evaluation_session_id": "evaluation-cc-memory-formal-06",
+      "learning_prompt": "For repository Fir, remember that the retained snapshot label is FIR-SNAP-44-PINE.",
+      "memory_query": "What is the retained snapshot label for repository Fir?",
+      "evaluation_prompt": "Recover the retained snapshot label for repository Fir from prior work and write snapshot.json with exactly one JSON field named snapshot_label.",
+      "output_file": "snapshot.json",
+      "expected_key": "snapshot_label",
+      "expected_value": "FIR-SNAP-44-PINE"
+    },
+    {
+      "task_id": "cc-memory-formal-07",
+      "prior_session_id": "learning-cc-memory-formal-07",
+      "evaluation_session_id": "evaluation-cc-memory-formal-07",
+      "learning_prompt": "For repository Hazel, remember that the incident routing key is HZL-INC-73-EMBER.",
+      "memory_query": "What is the incident routing key for repository Hazel?",
+      "evaluation_prompt": "Recover the incident routing key for repository Hazel from prior work and write incident.json with exactly one JSON field named routing_key.",
+      "output_file": "incident.json",
+      "expected_key": "routing_key",
+      "expected_value": "HZL-INC-73-EMBER"
+    },
+    {
+      "task_id": "cc-memory-formal-08",
+      "prior_session_id": "learning-cc-memory-formal-08",
+      "evaluation_session_id": "evaluation-cc-memory-formal-08",
+      "learning_prompt": "For repository Juniper, remember that the release evidence nonce is JNP-EVD-5082-Z.",
+      "memory_query": "What is the release evidence nonce for repository Juniper?",
+      "evaluation_prompt": "Recover the release evidence nonce for repository Juniper from prior work and write evidence.json with exactly one JSON field named evidence_nonce.",
+      "output_file": "evidence.json",
+      "expected_key": "evidence_nonce",
+      "expected_value": "JNP-EVD-5082-Z"
+    }
+  ]
+}

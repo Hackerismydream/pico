@@ -1,0 +1,175 @@
+{
+  "schema": "pico.picobench.codecairn-retrieval-quality.v2",
+  "definition_kind": "calibration",
+  "suite_id": "codecairn-retrieval-quality-calibration-v2",
+  "corpus": [
+    {
+      "memory_id": "cal-v2-fact-01",
+      "repository_id": "fixture/ursa-gateway-calibration",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Ursa Gateway's current calibration region is ca-central-1.",
+      "source_uri": "repo://ursa-gateway-calibration/facts/region",
+      "fixture_revision": "ursa-gateway-cal-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "436629c11497bd26b3810e8c5c9eb01362db54dfcbb770fa114df4426a86bd8e"
+    },
+    {
+      "memory_id": "cal-v2-fact-02",
+      "repository_id": "fixture/draco-cli-calibration",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Draco CLI's command manifest is docs/command-map.yaml.",
+      "source_uri": "repo://draco-cli-calibration/facts/manifest",
+      "fixture_revision": "draco-cli-cal-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "abcd7c6551e858010ffaab193d2f75ddf87c0f4fb314ead7ec37f602bb4e251a"
+    },
+    {
+      "memory_id": "cal-v2-experience-01",
+      "repository_id": "fixture/ursa-gateway-calibration",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Ursa Gateway recovered a locked journal by replaying only after the lock was released.",
+      "source_uri": "repo://ursa-gateway-calibration/experience/journal"
+    },
+    {
+      "memory_id": "cal-v2-experience-02",
+      "repository_id": "fixture/draco-cli-calibration",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Draco CLI verified help output with the offline checker after the network route failed.",
+      "source_uri": "repo://draco-cli-calibration/experience/help"
+    },
+    {
+      "memory_id": "cal-v2-stale-01",
+      "repository_id": "fixture/ursa-gateway-calibration",
+      "memory_class": "repository_fact",
+      "validity": "superseded",
+      "content": "A retired Ursa note used listener port 7220.",
+      "source_uri": "repo://ursa-gateway-calibration/retired/port"
+    },
+    {
+      "memory_id": "cal-v2-stale-02",
+      "repository_id": "fixture/draco-cli-calibration",
+      "memory_class": "repository_fact",
+      "validity": "stale",
+      "content": "An obsolete Draco guide emitted platform-default text.",
+      "source_uri": "repo://draco-cli-calibration/retired/encoding"
+    },
+    {
+      "memory_id": "cal-v2-cross-01",
+      "repository_id": "fixture/phoenix-calibration",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Phoenix Scheduler runs its calibration in asia-east1.",
+      "source_uri": "repo://phoenix-calibration/facts/region"
+    },
+    {
+      "memory_id": "cal-v2-cross-02",
+      "repository_id": "fixture/ursa-gateway-calibration",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Ursa Gateway uses a journal cursor receipt that does not belong to Draco CLI.",
+      "source_uri": "repo://ursa-gateway-calibration/experience/cursor"
+    }
+  ],
+  "queries": [
+    {
+      "query_id": "cal-v2-retrieval-fact-01",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/ursa-gateway-calibration",
+      "query_text": "Which current repository fact identifies the Ursa Gateway calibration region?",
+      "expected_memory_ids": [
+        "cal-v2-fact-01"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "cal-v2-retrieval-fact-02",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/draco-cli-calibration",
+      "query_text": "Where does the Draco CLI repository declare its active command manifest?",
+      "expected_memory_ids": [
+        "cal-v2-fact-02"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "cal-v2-retrieval-experience-01",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/ursa-gateway-calibration",
+      "query_text": "What verified Ursa procedure recovered the journal after lock contention?",
+      "expected_memory_ids": [
+        "cal-v2-experience-01"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "cal-v2-retrieval-experience-02",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/draco-cli-calibration",
+      "query_text": "Which retained Draco lesson avoids the failed network-dependent help check?",
+      "expected_memory_ids": [
+        "cal-v2-experience-02"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "cal-v2-retrieval-hard-negative-01",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/ursa-gateway-calibration",
+      "query_text": "Which current TLS protocol floor should Ursa Gateway enforce on its calibration listener?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "cal-v2-retrieval-hard-negative-02",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/draco-cli-calibration",
+      "query_text": "What command output directory does Draco CLI use for generated shell-completion scripts?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "cal-v2-retrieval-stale-01",
+      "query_class": "stale",
+      "repository_id": "fixture/ursa-gateway-calibration",
+      "query_text": "A fresh Ursa gateway probe is failing after the listener migration. Which port does the current configuration expose?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "cal-v2-stale-01"
+      ]
+    },
+    {
+      "query_id": "cal-v2-retrieval-stale-02",
+      "query_class": "stale",
+      "repository_id": "fixture/draco-cli-calibration",
+      "query_text": "Generate a Draco help snapshot with the current CLI repository's declared artifact encoding.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "cal-v2-stale-02"
+      ]
+    },
+    {
+      "query_id": "cal-v2-retrieval-cross-01",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/ursa-gateway-calibration",
+      "query_text": "Prepare Ursa's calibration card with the region configured for this gateway checkout.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "cal-v2-cross-01"
+      ]
+    },
+    {
+      "query_id": "cal-v2-retrieval-cross-02",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/draco-cli-calibration",
+      "query_text": "Record Draco's help verification using the receipt convention owned by the CLI project.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "cal-v2-cross-02"
+      ]
+    }
+  ]
+}

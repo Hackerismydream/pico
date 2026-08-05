@@ -1,0 +1,204 @@
+# PicoBench Ship-1
+
+PicoBench is Pico's checkout-only evaluation campaign. It runs the real Pico
+Runtime through frozen, single-axis comparisons and rebuilds every result from
+terminal artifacts. It is not part of the `pico` wheel and does not add a
+public `pico bench` command.
+
+## Entry points
+
+Run the credential-free gate first:
+
+```bash
+make picobench-smoke
+```
+
+It executes the 2,000-request Scheduler track, the 100-Turn full Runtime track,
+the local stdio MCP transport smoke, and an artifact-only report rebuild. It
+does not resolve a Provider or make a paid model call.
+
+Run the frozen calibration and formal campaign with:
+
+```bash
+make picobench
+```
+
+The paid command uses the normal Pico configuration, but only proceeds when it
+resolves exactly `deepseek / deepseek-v4-flash`, proves Tool Calling and
+complete usage fields with one live preflight, and freezes the tokenizer
+identity. Fallback models are forbidden.
+
+## Frozen scale and budget
+
+The suite at
+`benchmarks/picobench/suites/agent_application_ship_1.yaml` freezes:
+
+- calibration: 64 E2E Trials and 34 Retrieval Cases;
+- formal: 216 E2E Trials and 260 Retrieval Cases;
+- at most two Provider attempts and two whole-block attempts;
+- a warning threshold of 80 CNY and a hard ceiling of 100 CNY.
+
+The frozen Provider budget is pack-specific:
+
+- Context Trials allow at most eight logical calls with 42,000 input tokens
+  and 1,200 output tokens per call. The benchmark-only Curator is capped at
+  four steps and the main Agent Loop at four calls.
+- Memory / Skill Trials allow at most four logical calls with 15,000 input
+  tokens and 1,500 output tokens per call.
+- Tool / MCP Trials allow at most four logical calls with 40,000 input tokens
+  and 1,500 output tokens per call.
+
+Pricing all DeepSeek input at the cache-miss rate, using the frozen USD-to-CNY
+multiplier, and reserving 5 CNY for external services gives a 62.86592 CNY
+fresh-campaign worst case for the current suite.
+
+Before any paid call, PicoBench includes existing ledger spend and two live
+preflight attempts in its projection. It freezes the current request count and
+the newly authorized attempt count in a digest-bound approval record. Resumed
+runs reuse that lifetime ceiling rather than opening a new budget. Every
+request reserves its pack-specific maximum before dispatch and settles from
+complete Provider usage; incomplete accounting is an infrastructure failure,
+not permission to continue spending.
+
+## Formal result
+
+The final-history Ship-1 campaign ran from clean source commit
+`e6c790e37d707f74c44896dbcba9de9ee4ad8327` with
+`deepseek / deepseek-v4-flash`. The Provider did not expose a seed, so the
+matrix records three repetitions rather than three seeds.
+
+The formal experiment id is
+`abffb7d2fe6a76f1102741cacd3cff1ed02697be0fb37fe2fa7a910dbeb11b4d`:
+
+- `ship_complete=true`, but `measurement_valid=false`;
+- all 216 planned E2E Trials and all 260 Retrieval Cases have terminal records;
+- selected E2E outcomes are 82 passed, 72 task failures, 61 task timeouts,
+  and one infrastructure failure;
+- 119 of 120 Pairs are valid. One Context comparison exhausted its symmetric
+  retry after incomplete treatment usage evidence;
+- repeated raw-artifact rebuilds produce report digest
+  `25ca985d2f80560fba789d14fc76acc07d0a45ea3b6a0b4aa7a3d4cfadf19eb1`;
+- the cumulative main-campaign ledger recorded a 25.26335175 CNY Provider
+  high-water mark, or 30.26335175 CNY committed including the fixed 5 CNY
+  external-service reserve. This is a budget-control estimate, not a Provider
+  invoice.
+
+Across the final-history main campaign, semantic v1 replay, and semantic v2
+campaign, the three Provider high-water marks are 25.26335175, 0.13745664,
+and 0.21468672 CNY, totaling 25.61549511 CNY with zero open reservations.
+This cross-ledger total is also a budget-control estimate, not a Provider
+invoice.
+
+Global `positive_claim_eligible` is false and `cv-metrics.json` exports no
+metrics. Context has only 23 valid Pairs, so the declared pack invalidates the
+aggregate measurement. Tool/MCP remains independently ineligible even though
+progressive disclosure reduced equal-task macro estimated visible Tool Schema
+tokens by 93.4513% across six measurable tasks: treatment passed 20 of 24
+Trials versus 23 of 24 control Trials, including one task that lost at least
+two of three passes. Semantic Memory end-to-end produced zero passes in both
+arms and no verifier gain. These retained failures are product findings, not
+positive resume claims.
+
+## CodeCairn joint campaign result
+
+The independent CodeCairn track bound Pico commit `5318daa` to CodeCairn
+commit `a501fe2` and compared only `memory.backend = null` with
+`memory.backend = codecairn`. Formal experiment
+`1c5496edfaa08212635f6218f9aaa55c3e942fcd1e79203a11a6b8c4d9b94623`
+recorded:
+
+- 32/32 terminal Trials and 16/16 valid Pairs;
+- 16/16 treatment task passes versus 0/16 control task passes;
+- Recall@5 of 1.0, zero stale injections, zero cross-repository leakage, and
+  zero Memory-off CodeCairn operations;
+- treatment P95 latency of 48.090 seconds versus 16.299 seconds for control;
+- 588.188 more main-Agent input tokens and 4,121.750 more total Trial tokens
+  per treatment Trial.
+
+The campaign is ship-complete and measurement-valid. It is not eligible for a
+positive resume claim because every hard-negative query returned three
+memories, producing `irrelevant_injection_rate=3.0` against the frozen maximum
+of 0.05. `cv-metrics.json` correctly exports no eligible metrics. Raw records
+and generated reports remain outside Git; the durable result ledger is
+[Issue #70](https://github.com/Hackerismydream/pico-harness/issues/70#issuecomment-5128723096).
+
+## CodeCairn task-effect v2
+
+The independent task-effect v2 Pack is owned by
+[Issue #77](https://github.com/Hackerismydream/pico-harness/issues/77), while
+[Issue #79](https://github.com/Hackerismydream/pico-harness/issues/79) owns
+the installed campaign. Its credential-free Gate is:
+
+```bash
+make picobench-codecairn-task-effect-smoke
+```
+
+The Gate freezes and validates 24 formal repository tasks across at least four
+fixtures, six or more disjoint calibration tasks, 100 formal retrieval cases,
+the 96-Trial and 48-Pair scripted matrix, sealed parent-owned Verifiers, true
+v2 retrieval metrics, and byte-stable offline report rebuild. Memory-off
+records zero CodeCairn operations.
+
+The scripted runner deliberately records
+`production_evidence_complete=false`. Passing this Gate proves the Pack and
+evidence pipeline are deterministic; it does not measure production CodeCairn
+retrieval or task effect.
+
+The installed campaign freezes exact Pico and CodeCairn wheels in a Stage C
+summary, installs both into an isolated Python 3.12 environment, and executes
+repository tasks through the real Pico Runtime. Only `read_file`, `write_file`,
+and bounded `exec` are available to the Agent. CodeCairn retrieval uses the
+local FastEmbed profile; the configured Provider is used only for Agent turns.
+The proposed worst-case budget is printed without making a Provider call:
+
+```bash
+make picobench-codecairn-task-effect-estimate
+```
+
+`make picobench-codecairn-task-effect-ship` remains blocked until the exact
+Stage C digests, Provider configuration, pricing source, and numeric CNY
+ceiling are authorized on Issue #79. The complete operator and claim boundary
+is in
+[PicoBench task-effect v2](../../docs/evaluation/picobench-task-effect-v2.md).
+
+## Evidence boundary
+
+Calibration and formal task and query IDs are disjoint. Claim Rules are hashed
+before the live preflight. Every planned Trial and Retrieval Case must have one
+terminal record, and the report is rebuilt only from those records. Provider,
+infrastructure, timeout, cancellation, and task failures remain in the
+artifacts.
+
+`ship_complete` means the campaign and evidence chain completed.
+`measurement_valid` means the retained measurements are interpretable.
+`positive_claim_eligible` is reported globally and per capability; only metrics
+that pass every rule in their capability group enter `cv-metrics.json`. A
+valid negative result completes Ship-1 without becoming a positive resume
+claim.
+
+Deterministic R0 and R1 Runtime metrics are exported separately from a clean
+source commit into an immutable, self-digested Runtime evidence artifact. The
+current artifact is bound to source commit
+`e6c790e37d707f74c44896dbcba9de9ee4ad8327` with evidence digest
+`1c9fc1c4882ff09e3cf44140d84206bfb5ce923344cf7e482615a36e4f0f6006`.
+Those metrics may be quoted only with their explicit Scheduler or full-path
+deterministic scope; they are not live throughput, task-effect, or production
+SLO claims.
+
+Raw Trials, traces, Memory content, receipts, and generated reports stay under
+`.pico/evidence/picobench/` and are not committed.
+
+## Semantic retrieval addendum
+
+The frozen Ship-1 Retrieval Cases are deterministic contract evidence. The
+historical
+[semantic addendum](../../docs/evaluation/picobench-semantic-addendum.md)
+ran held-out natural-language Memory and Skill queries through the former
+production EverOS indexing and retrieval path under an independent cumulative
+`5 CNY` cap. Its 260 formal records comprise 200 historical EverOS retrieval
+records and 60 Local-only BM25 control records. These labels are frozen
+evidence identity and are not a current CodeCairn campaign.
+The completed v2 result makes Memory context-injection retrieval and Skill
+candidate retrieval eligible while explicitly withholding final Skill
+injection quality. Its artifacts and CV eligibility remain separate from the
+completed Ship-1 report.

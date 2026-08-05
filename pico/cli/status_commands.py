@@ -1,0 +1,57 @@
+"""Top-level ``status`` command — show config / workspace / provider status."""
+
+from __future__ import annotations
+
+import typer
+from rich.console import Console
+
+from pico import __logo__
+
+console = Console()
+
+
+def register(app: typer.Typer) -> None:
+    """Attach the ``status`` command to ``app``."""
+
+    @app.command()
+    def status():
+        """Show Pico status."""
+        from pico.config.loader import get_config_path, load_config
+        from pico.config.paths import resolve_foreground_paths
+
+        config_path = get_config_path()
+        config = load_config()
+        paths = resolve_foreground_paths(config)
+
+        console.print(f"{__logo__} Pico Status\n")
+
+        console.print(f"Config: {config_path} {'[green]✓[/green]' if config_path.exists() else '[red]✗[/red]'}")
+        console.print(
+            f"Workspace: {paths.workspace} {'[green]✓[/green]' if paths.workspace.exists() else '[red]✗[/red]'}"
+        )
+        console.print(f"State: {paths.state} {'[green]✓[/green]' if paths.state.exists() else '[yellow]new[/yellow]'}")
+
+        if config_path.exists():
+            from pico.providers.registry import PROVIDERS
+
+            console.print(f"Model: {config.agents.defaults.model}")
+
+            # Check API keys from registry
+            for spec in PROVIDERS:
+                p = getattr(config.providers, spec.name, None)
+                if p is None:
+                    continue
+                if spec.is_oauth:
+                    console.print(f"{spec.label}: [green]✓ (OAuth)[/green]")
+                elif spec.is_local:
+                    # Local deployments show api_base instead of api_key
+                    if p.api_base:
+                        console.print(f"{spec.label}: [green]✓ {p.api_base}[/green]")
+                    else:
+                        console.print(f"{spec.label}: [dim]not set[/dim]")
+                else:
+                    has_key = bool(p.api_key)
+                    console.print(f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}")
+
+
+__all__ = ["register"]

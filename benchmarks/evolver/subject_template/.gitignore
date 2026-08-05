@@ -1,0 +1,5 @@
+# Importing the bench plugin out of this checkout writes bytecode next to the
+# source; without this the subject counts as dirty after every run and the
+# setup script refuses to reuse it.
+__pycache__/
+*.py[cod]

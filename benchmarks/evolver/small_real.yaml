@@ -1,0 +1,44 @@
+# Small real Evolution Run: one funnel round against the disposable subject
+# repo materialized by scripts/setup_small_real_subject.py.
+#
+#   uv run python scripts/setup_small_real_subject.py            # once
+#   uv run pico evolve check    --config benchmarks/evolver/small_real.yaml
+#   uv run pico evolve run      --config benchmarks/evolver/small_real.yaml --smoke
+#   uv run pico evolve run      --config benchmarks/evolver/small_real.yaml
+#   uv run pico evolve status   --config benchmarks/evolver/small_real.yaml
+#   uv run pico evolve finalize --config benchmarks/evolver/small_real.yaml --yes
+#
+# The bench key is `appworld` because that is the registered module path
+# (benchmarks.appworld.evolve.entry:build) and the registry imports it FROM the
+# subject repo below - the disposable subject carries its own entry.py; the
+# real AppWorld environment is never touched.
+
+bench: appworld
+repo_root: subject                # relative to this file; gitignored, created
+                                  # by scripts/setup_small_real_subject.py
+# base_sha omitted: the subject has exactly one commit, resolved at launch and
+# pinned for the whole run.
+work_dir: ../../.pico/evolver/small-real   # outside the subject repo, under
+                                           # the gitignored .pico/ evidence root
+
+# models omitted entirely: all loop roles use Pico's own configured model
+# (~/.pico/config.json agents.defaults.model).
+
+funnel:                           # sized for one real round
+  k_screen: 1
+  k_confirm: 2
+  budget:      {max_why_per_round: 1, candidates_per_why: 1}
+  termination: {patience: 1, max_rounds: 1}
+
+bench_config:
+  timeout: 120                    # grading subprocess timeout, seconds
+  # train_task_ids / test_task_ids: omitted -> the subject's built-in split
+  # (10 train / 4 sealed test assertion tasks over agent_cli.py).
+
+# Deep-merged on top when --smoke is passed (after the built-in shrink:
+# 1 WHY x 1 candidate x 1 round, K=1; work_dir gets a _smoke suffix). Pins the
+# three slugify tasks (two of them failing) and one non-overlapping sealed id.
+smoke:
+  bench_config:
+    train_task_ids: ["slug-basic", "slug-trim", "slug-collapse"]
+    test_task_ids: ["sealed-slug-plain"]

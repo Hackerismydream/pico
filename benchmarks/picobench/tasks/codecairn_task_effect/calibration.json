@@ -1,0 +1,539 @@
+{
+  "schema": "pico.picobench.codecairn-task-effect.v2",
+  "definition_kind": "calibration",
+  "repositories": [
+    {
+      "fixture_id": "ursa-gateway-calibration-v2",
+      "repository_id": "fixture/ursa-gateway-calibration",
+      "revision": "ursa-gateway-cal-r1-20260730",
+      "files": [
+        {
+          "path": "README.md",
+          "content": "# Ursa Gateway calibration\n\nverification command: python -B checks/validate_repository.py\nartifact format: utf8-object-v2\n"
+        },
+        {
+          "path": "config/gateway.toml",
+          "content": "primary_region = \"ca-central-1\"\nsuperseded_port = 7220\nlistener_port = 7331\n"
+        },
+        {
+          "path": "incidents/journal-lock.md",
+          "content": "# Journal lock recovery\n\nfailed_approach: delete-journal-under-lock\nverified_repair: replay-journal-after-lock\nverification: compare committed cursor before accepting traffic\n"
+        },
+        {
+          "path": "facts/retrieval.md",
+          "content": "# Retrieval corpus evidence\n\nThis file pins the active repository-fact sentences used by the offline calibration suite.\n\n## Active repository facts\n\n- [cal-v2-fact-01] Ursa Gateway's current calibration region is ca-central-1.\n"
+        },
+        {
+          "path": "checks/validate_repository.py",
+          "content": "import json\nfrom pathlib import Path\n\nchecks = {\n    \"config/gateway.toml\": \"listener_port = 7331\",\n    \"incidents/journal-lock.md\": \"verified_repair\",\n    \"facts/retrieval.md\": \"## Active repository facts\"\n}\nfor relative, needle in checks.items():\n    if needle not in Path(relative).read_text(encoding=\"utf-8\"):\n        raise SystemExit(f\"invalid fixture: {relative}\")\n\ncontracts = {\n    \"deliverables/cal-fact-01.json\": {\n        \"task_id\": \"cc-te-cal-fact-01\",\n        \"evidence_path\": \"config/gateway.toml\",\n        \"result_shape\": {\"gateway_release\": {\"placement\": None, \"listener\": {\"port\": None}, \"artifact_format\": None}},\n    },\n    \"deliverables/cal-experience-01.json\": {\n        \"task_id\": \"cc-te-cal-experience-01\",\n        \"evidence_path\": \"incidents/journal-lock.md\",\n        \"result_shape\": {\"journal_recovery\": {\"sequence\": None, \"acceptance_gate\": None, \"resume_listener\": None}},\n    },\n    \"deliverables/cal-stale-01.json\": {\n        \"task_id\": \"cc-te-cal-stale-01\",\n        \"evidence_path\": \"config/gateway.toml\",\n        \"result_shape\": {\"listener_migration\": {\"active_port\": None, \"region\": None, \"receipt_format\": None}},\n    },\n}\npresent = [relative for relative in contracts if Path(relative).is_file()]\ndeliverable_dir = Path(\"deliverables\")\nunexpected = [] if not deliverable_dir.exists() else [\n    str(path) for path in deliverable_dir.glob(\"*.json\") if str(path) not in contracts\n]\nif len(present) != 1 or unexpected:\n    raise SystemExit(\"expected exactly one known deliverable\")\n\nrelative = present[0]\ntry:\n    payload = json.loads(Path(relative).read_text(encoding=\"utf-8\"))\nexcept (OSError, json.JSONDecodeError) as exc:\n    raise SystemExit(f\"invalid deliverable JSON: {exc}\") from exc\n\ncontract = contracts[relative]\nif set(payload) != {\"task_id\", \"result\", \"evidence_path\", \"verification_command\"}:\n    raise SystemExit(\"invalid deliverable fields\")\nif payload[\"task_id\"] != contract[\"task_id\"]:\n    raise SystemExit(\"deliverable task_id does not match its path\")\nif payload[\"evidence_path\"] != contract[\"evidence_path\"]:\n    raise SystemExit(\"deliverable evidence_path does not match its task\")\nif payload[\"verification_command\"] != \"python -B checks/validate_repository.py\":\n    raise SystemExit(\"invalid verification command\")\n\ndef matches_shape(value, shape):\n    if shape is None:\n        return isinstance(value, str) and bool(value)\n    if isinstance(shape, dict):\n        return (\n            isinstance(value, dict)\n            and set(value) == set(shape)\n            and all(matches_shape(value[key], child) for key, child in shape.items())\n        )\n    if isinstance(shape, list):\n        return (\n            isinstance(value, list)\n            and len(value) == len(shape)\n            and all(matches_shape(item, child) for item, child in zip(value, shape))\n        )\n    return False\n\nif not matches_shape(payload[\"result\"], contract[\"result_shape\"]):\n    raise SystemExit(\"deliverable result has the wrong structure\")\nprint(\"fixture/ursa-gateway-calibration fixture and deliverable valid\")\n"
+        }
+      ]
+    },
+    {
+      "fixture_id": "draco-cli-calibration-v2",
+      "repository_id": "fixture/draco-cli-calibration",
+      "revision": "draco-cli-cal-r1-20260730",
+      "files": [
+        {
+          "path": "README.md",
+          "content": "# Draco CLI calibration\n\nverification command: python -B checks/validate_repository.py\nartifact format: utf8-json-v2\n"
+        },
+        {
+          "path": "config/commands.yaml",
+          "content": "command_manifest: docs/command-map.yaml\nhelp_profile: compact\n"
+        },
+        {
+          "path": "incidents/help-rendering.md",
+          "content": "# Help rendering recovery\n\nfailed_command: python tools/verify_help.py --network\nverified_command: python -B tools/verify_help.py --offline\nverification: compare stable option ordering\n"
+        },
+        {
+          "path": "facts/retrieval.md",
+          "content": "# Retrieval corpus evidence\n\nThis file pins the active repository-fact sentences used by the offline calibration suite.\n\n## Active repository facts\n\n- [cal-v2-fact-02] Draco CLI's command manifest is docs/command-map.yaml.\n"
+        },
+        {
+          "path": "checks/validate_repository.py",
+          "content": "import json\nfrom pathlib import Path\n\nchecks = {\n    \"config/commands.yaml\": \"docs/command-map.yaml\",\n    \"incidents/help-rendering.md\": \"--offline\",\n    \"facts/retrieval.md\": \"## Active repository facts\"\n}\nfor relative, needle in checks.items():\n    if needle not in Path(relative).read_text(encoding=\"utf-8\"):\n        raise SystemExit(f\"invalid fixture: {relative}\")\n\ncontracts = {\n    \"deliverables/cal-fact-02.json\": {\n        \"task_id\": \"cc-te-cal-fact-02\",\n        \"evidence_path\": \"config/commands.yaml\",\n        \"result_shape\": {\"command_registry\": {\"manifest\": None, \"help_profile\": None, \"output\": {\"format\": None}}},\n    },\n    \"deliverables/cal-experience-02.json\": {\n        \"task_id\": \"cc-te-cal-experience-02\",\n        \"evidence_path\": \"incidents/help-rendering.md\",\n        \"result_shape\": {\"help_receipt\": {\"verification\": [{\"command\": None}, {\"comparison\": None}], \"command_manifest\": None}},\n    },\n    \"deliverables/cal-irrelevant-01.json\": {\n        \"task_id\": \"cc-te-cal-irrelevant-01\",\n        \"evidence_path\": \"README.md\",\n        \"result_shape\": {\"help_artifact\": {\"format\": None, \"profile\": None, \"command_manifest\": None}},\n    },\n}\npresent = [relative for relative in contracts if Path(relative).is_file()]\ndeliverable_dir = Path(\"deliverables\")\nunexpected = [] if not deliverable_dir.exists() else [\n    str(path) for path in deliverable_dir.glob(\"*.json\") if str(path) not in contracts\n]\nif len(present) != 1 or unexpected:\n    raise SystemExit(\"expected exactly one known deliverable\")\n\nrelative = present[0]\ntry:\n    payload = json.loads(Path(relative).read_text(encoding=\"utf-8\"))\nexcept (OSError, json.JSONDecodeError) as exc:\n    raise SystemExit(f\"invalid deliverable JSON: {exc}\") from exc\n\ncontract = contracts[relative]\nif set(payload) != {\"task_id\", \"result\", \"evidence_path\", \"verification_command\"}:\n    raise SystemExit(\"invalid deliverable fields\")\nif payload[\"task_id\"] != contract[\"task_id\"]:\n    raise SystemExit(\"deliverable task_id does not match its path\")\nif payload[\"evidence_path\"] != contract[\"evidence_path\"]:\n    raise SystemExit(\"deliverable evidence_path does not match its task\")\nif payload[\"verification_command\"] != \"python -B checks/validate_repository.py\":\n    raise SystemExit(\"invalid verification command\")\n\ndef matches_shape(value, shape):\n    if shape is None:\n        return isinstance(value, str) and bool(value)\n    if isinstance(shape, dict):\n        return (\n            isinstance(value, dict)\n            and set(value) == set(shape)\n            and all(matches_shape(value[key], child) for key, child in shape.items())\n        )\n    if isinstance(shape, list):\n        return (\n            isinstance(value, list)\n            and len(value) == len(shape)\n            and all(matches_shape(item, child) for item, child in zip(value, shape))\n        )\n    return False\n\nif not matches_shape(payload[\"result\"], contract[\"result_shape\"]):\n    raise SystemExit(\"deliverable result has the wrong structure\")\nprint(\"fixture/draco-cli-calibration fixture and deliverable valid\")\n"
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "cc-te-cal-fact-01",
+      "task_class": "fact",
+      "fixture_id": "ursa-gateway-calibration-v2",
+      "title": "Assemble the Ursa gateway release card",
+      "prior_work_prompt": "A prior gateway review combined active placement, listener configuration, and repository output policy before approving the release.",
+      "memory_query": "Which evidence categories did the earlier Ursa gateway review combine?",
+      "evaluation_prompt": "Assemble a gateway release card with the active region, listener port, and artifact format. Read current gateway configuration and project metadata, write deliverables/cal-fact-01.json with exactly task_id, result, evidence_path, and verification_command, then run the bounded repository check.",
+      "source_paths": [
+        "config/gateway.toml",
+        "README.md"
+      ],
+      "artifact_path": "deliverables/cal-fact-01.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-cal-fact-01",
+        "payload": {
+          "task_id": "cc-te-cal-fact-01",
+          "result": {
+            "gateway_release": {
+              "placement": "ca-central-1",
+              "listener": {
+                "port": "7331"
+              },
+              "artifact_format": "utf8-object-v2"
+            }
+          },
+          "evidence_path": "config/gateway.toml",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/cal-fact-01.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:config/gateway.toml",
+        "read:README.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/cal-fact-01.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "region",
+            "path": "config/gateway.toml",
+            "line_prefix": "primary_region = \"",
+            "line_suffix": "\""
+          },
+          {
+            "name": "port",
+            "path": "config/gateway.toml",
+            "line_prefix": "listener_port = ",
+            "line_suffix": ""
+          },
+          {
+            "name": "format",
+            "path": "README.md",
+            "line_prefix": "artifact format: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "gateway_release": {
+            "placement": "{region}",
+            "listener": {
+              "port": "{port}"
+            },
+            "artifact_format": "{format}"
+          }
+        },
+        "evidence_path": "config/gateway.toml"
+      }
+    },
+    {
+      "task_id": "cc-te-cal-fact-02",
+      "task_class": "fact",
+      "fixture_id": "draco-cli-calibration-v2",
+      "title": "Build the Draco command registry bundle",
+      "prior_work_prompt": "Earlier CLI work paired the command registry with the active help profile and repository artifact policy.",
+      "memory_query": "What repository evidence did prior Draco command work assemble?",
+      "evaluation_prompt": "Build a command registry bundle with the manifest, help profile, and artifact format. Read current command configuration and project metadata, write deliverables/cal-fact-02.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "config/commands.yaml",
+        "README.md"
+      ],
+      "artifact_path": "deliverables/cal-fact-02.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-cal-fact-02",
+        "payload": {
+          "task_id": "cc-te-cal-fact-02",
+          "result": {
+            "command_registry": {
+              "manifest": "docs/command-map.yaml",
+              "help_profile": "compact",
+              "output": {
+                "format": "utf8-json-v2"
+              }
+            }
+          },
+          "evidence_path": "config/commands.yaml",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/cal-fact-02.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:config/commands.yaml",
+        "read:README.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/cal-fact-02.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "manifest",
+            "path": "config/commands.yaml",
+            "line_prefix": "command_manifest: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "profile",
+            "path": "config/commands.yaml",
+            "line_prefix": "help_profile: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "format",
+            "path": "README.md",
+            "line_prefix": "artifact format: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "command_registry": {
+            "manifest": "{manifest}",
+            "help_profile": "{profile}",
+            "output": {
+              "format": "{format}"
+            }
+          }
+        },
+        "evidence_path": "config/commands.yaml"
+      }
+    },
+    {
+      "task_id": "cc-te-cal-experience-01",
+      "task_class": "experience",
+      "fixture_id": "ursa-gateway-calibration-v2",
+      "title": "Create the Ursa journal recovery run card",
+      "prior_work_prompt": "A previous lock incident showed that deleting state under contention was unsafe; the retained lesson requires cursor evidence before traffic returns.",
+      "memory_query": "How should the earlier Ursa lock failure constrain a new recovery run card?",
+      "evaluation_prompt": "Create a journal recovery run card with the verified sequence, acceptance check, and active listener. Read the incident and gateway configuration, write deliverables/cal-experience-01.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "incidents/journal-lock.md",
+        "config/gateway.toml"
+      ],
+      "artifact_path": "deliverables/cal-experience-01.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-cal-experience-01",
+        "payload": {
+          "task_id": "cc-te-cal-experience-01",
+          "result": {
+            "journal_recovery": {
+              "sequence": "replay-journal-after-lock",
+              "acceptance_gate": "compare committed cursor before accepting traffic",
+              "resume_listener": "7331"
+            }
+          },
+          "evidence_path": "incidents/journal-lock.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/cal-experience-01.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:incidents/journal-lock.md",
+        "read:config/gateway.toml",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/cal-experience-01.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "repair",
+            "path": "incidents/journal-lock.md",
+            "line_prefix": "verified_repair: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "gate",
+            "path": "incidents/journal-lock.md",
+            "line_prefix": "verification: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "port",
+            "path": "config/gateway.toml",
+            "line_prefix": "listener_port = ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "journal_recovery": {
+            "sequence": "{repair}",
+            "acceptance_gate": "{gate}",
+            "resume_listener": "{port}"
+          }
+        },
+        "evidence_path": "incidents/journal-lock.md"
+      }
+    },
+    {
+      "task_id": "cc-te-cal-experience-02",
+      "task_class": "experience",
+      "fixture_id": "draco-cli-calibration-v2",
+      "title": "Assemble the Draco help verification receipt",
+      "prior_work_prompt": "Earlier help validation failed on a network dependency and retained an offline workflow with a stable-order comparison.",
+      "memory_query": "Which prior Draco failure lesson belongs in a fresh help verification receipt?",
+      "evaluation_prompt": "Assemble a help verification receipt with the verified command, comparison rule, and command manifest. Read the incident and command configuration, write deliverables/cal-experience-02.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "incidents/help-rendering.md",
+        "config/commands.yaml"
+      ],
+      "artifact_path": "deliverables/cal-experience-02.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-cal-experience-02",
+        "payload": {
+          "task_id": "cc-te-cal-experience-02",
+          "result": {
+            "help_receipt": {
+              "verification": [
+                {
+                  "command": "python -B tools/verify_help.py --offline"
+                },
+                {
+                  "comparison": "compare stable option ordering"
+                }
+              ],
+              "command_manifest": "docs/command-map.yaml"
+            }
+          },
+          "evidence_path": "incidents/help-rendering.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/cal-experience-02.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:incidents/help-rendering.md",
+        "read:config/commands.yaml",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/cal-experience-02.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "command",
+            "path": "incidents/help-rendering.md",
+            "line_prefix": "verified_command: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "comparison",
+            "path": "incidents/help-rendering.md",
+            "line_prefix": "verification: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "manifest",
+            "path": "config/commands.yaml",
+            "line_prefix": "command_manifest: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "help_receipt": {
+            "verification": [
+              {
+                "command": "{command}"
+              },
+              {
+                "comparison": "{comparison}"
+              }
+            ],
+            "command_manifest": "{manifest}"
+          }
+        },
+        "evidence_path": "incidents/help-rendering.md"
+      }
+    },
+    {
+      "task_id": "cc-te-cal-stale-01",
+      "task_class": "stale_conflict",
+      "fixture_id": "ursa-gateway-calibration-v2",
+      "title": "Refresh the Ursa listener migration card",
+      "prior_work_prompt": "An older Ursa session remembered listener port 7220.",
+      "memory_query": "Which active records should replace the old Ursa listener observation?",
+      "evaluation_prompt": "Refresh the listener migration card with the active port, gateway region, and artifact format. Read current gateway configuration and project metadata, write deliverables/cal-stale-01.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "config/gateway.toml",
+        "README.md"
+      ],
+      "artifact_path": "deliverables/cal-stale-01.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-cal-stale-01",
+        "payload": {
+          "task_id": "cc-te-cal-stale-01",
+          "result": {
+            "listener_migration": {
+              "active_port": "7331",
+              "region": "ca-central-1",
+              "receipt_format": "utf8-object-v2"
+            }
+          },
+          "evidence_path": "config/gateway.toml",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "parent_owned_mutation": {
+        "mutation_id": "cc-te-cal-stale-01-transition",
+        "path": "config/gateway.toml",
+        "prior_revision": "ursa-gateway-cal-r0-20260729",
+        "prior_content": "primary_region = \"ca-central-1\"\nlistener_port = 7220\n",
+        "prior_observation": "listener_port = 7220"
+      },
+      "allowed_mutation_paths": [
+        "deliverables/cal-stale-01.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:config/gateway.toml",
+        "read:README.md",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/cal-stale-01.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "port",
+            "path": "config/gateway.toml",
+            "line_prefix": "listener_port = ",
+            "line_suffix": ""
+          },
+          {
+            "name": "region",
+            "path": "config/gateway.toml",
+            "line_prefix": "primary_region = \"",
+            "line_suffix": "\""
+          },
+          {
+            "name": "format",
+            "path": "README.md",
+            "line_prefix": "artifact format: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "listener_migration": {
+            "active_port": "{port}",
+            "region": "{region}",
+            "receipt_format": "{format}"
+          }
+        },
+        "evidence_path": "config/gateway.toml"
+      }
+    },
+    {
+      "task_id": "cc-te-cal-irrelevant-01",
+      "task_class": "irrelevant",
+      "fixture_id": "draco-cli-calibration-v2",
+      "title": "Define the Draco help artifact contract",
+      "prior_work_prompt": "Prior work described an unrelated warehouse backup color code.",
+      "memory_query": "Which Draco records define the help artifact contract?",
+      "evaluation_prompt": "Define the help artifact contract with its output format, help profile, and command manifest. Use only current Draco repository evidence, write deliverables/cal-irrelevant-01.json with the required four top-level fields, then run the bounded repository check.",
+      "source_paths": [
+        "README.md",
+        "config/commands.yaml"
+      ],
+      "artifact_path": "deliverables/cal-irrelevant-01.json",
+      "expected_artifact": {
+        "expected_id": "expected-cc-te-cal-irrelevant-01",
+        "payload": {
+          "task_id": "cc-te-cal-irrelevant-01",
+          "result": {
+            "help_artifact": {
+              "format": "utf8-json-v2",
+              "profile": "compact",
+              "command_manifest": "docs/command-map.yaml"
+            }
+          },
+          "evidence_path": "README.md",
+          "verification_command": "python -B checks/validate_repository.py"
+        }
+      },
+      "allowed_mutation_paths": [
+        "deliverables/cal-irrelevant-01.json"
+      ],
+      "forbidden_paths": [
+        "pico",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/release.yml"
+      ],
+      "required_receipt_ids": [
+        "read:README.md",
+        "read:config/commands.yaml",
+        "test:python -B checks/validate_repository.py",
+        "write:deliverables/cal-irrelevant-01.json"
+      ],
+      "test_command": "python -B checks/validate_repository.py",
+      "reference_solution": {
+        "captures": [
+          {
+            "name": "format",
+            "path": "README.md",
+            "line_prefix": "artifact format: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "profile",
+            "path": "config/commands.yaml",
+            "line_prefix": "help_profile: ",
+            "line_suffix": ""
+          },
+          {
+            "name": "manifest",
+            "path": "config/commands.yaml",
+            "line_prefix": "command_manifest: ",
+            "line_suffix": ""
+          }
+        ],
+        "result_template": {
+          "help_artifact": {
+            "format": "{format}",
+            "profile": "{profile}",
+            "command_manifest": "{manifest}"
+          }
+        },
+        "evidence_path": "README.md"
+      }
+    }
+  ]
+}

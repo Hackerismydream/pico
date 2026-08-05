@@ -1,0 +1,1819 @@
+{
+  "schema": "pico.picobench.codecairn-retrieval-quality.v2",
+  "definition_kind": "formal",
+  "suite_id": "codecairn-retrieval-quality-v2",
+  "corpus": [
+    {
+      "memory_id": "v2-fact-01-primary",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current release approval owner for Orion Ledger is platform reliability.",
+      "source_uri": "repo://orion-ledger/facts/01-primary",
+      "fixture_revision": "orion-ledger-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "a411d5b1108bf4470c803d03e110557d835144fecf4501547603e5d3412d8581"
+    },
+    {
+      "memory_id": "v2-fact-01-support",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "A separate verified repository receipt confirms platform reliability as Orion Ledger's release approval owner.",
+      "source_uri": "repo://orion-ledger/receipts/01-support",
+      "fixture_revision": "orion-ledger-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "a411d5b1108bf4470c803d03e110557d835144fecf4501547603e5d3412d8581"
+    },
+    {
+      "memory_id": "v2-fact-02-primary",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current default deployment region for Lyra API is ap-southeast-2.",
+      "source_uri": "repo://lyra-api/facts/02-primary",
+      "fixture_revision": "lyra-api-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7b84d676ca8153cd0b98350f6c8dd727c359a16747200c88ba5009be99a5c621"
+    },
+    {
+      "memory_id": "v2-fact-02-support",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "A separate verified repository receipt confirms ap-southeast-2 as Lyra API's default deployment region.",
+      "source_uri": "repo://lyra-api/receipts/02-support",
+      "fixture_revision": "lyra-api-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7b84d676ca8153cd0b98350f6c8dd727c359a16747200c88ba5009be99a5c621"
+    },
+    {
+      "memory_id": "v2-fact-03-primary",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current service manifest location for Cygnus Worker is services/runtime.yaml.",
+      "source_uri": "repo://cygnus-worker/facts/03-primary",
+      "fixture_revision": "cygnus-worker-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "196144835bd87f56f94572502f3a73c31005560715d9d513c97054281fa23ad3"
+    },
+    {
+      "memory_id": "v2-fact-03-support",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "A separate verified repository receipt confirms services/runtime.yaml as Cygnus Worker's service manifest location.",
+      "source_uri": "repo://cygnus-worker/receipts/03-support",
+      "fixture_revision": "cygnus-worker-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "196144835bd87f56f94572502f3a73c31005560715d9d513c97054281fa23ad3"
+    },
+    {
+      "memory_id": "v2-fact-04-primary",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current rollback evidence directory for Vela Console is evidence/rollback.",
+      "source_uri": "repo://vela-console/facts/04-primary",
+      "fixture_revision": "vela-console-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7531f995caca81f88e6a92b7ab51f272594fe1aaf49ca632b92ac1ecf086c1ea"
+    },
+    {
+      "memory_id": "v2-fact-04-support",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "A separate verified repository receipt confirms evidence/rollback as Vela Console's rollback evidence directory.",
+      "source_uri": "repo://vela-console/receipts/04-support",
+      "fixture_revision": "vela-console-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7531f995caca81f88e6a92b7ab51f272594fe1aaf49ca632b92ac1ecf086c1ea"
+    },
+    {
+      "memory_id": "v2-fact-05-primary",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current bounded verification command for Orion Ledger is python -B checks/validate_repository.py.",
+      "source_uri": "repo://orion-ledger/facts/05-primary",
+      "fixture_revision": "orion-ledger-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "a411d5b1108bf4470c803d03e110557d835144fecf4501547603e5d3412d8581"
+    },
+    {
+      "memory_id": "v2-fact-05-support",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "A separate verified repository receipt confirms python -B checks/validate_repository.py as Orion Ledger's bounded verification command.",
+      "source_uri": "repo://orion-ledger/receipts/05-support",
+      "fixture_revision": "orion-ledger-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "a411d5b1108bf4470c803d03e110557d835144fecf4501547603e5d3412d8581"
+    },
+    {
+      "memory_id": "v2-fact-06-primary",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current artifact encoding for Lyra API is canonical UTF-8 JSON.",
+      "source_uri": "repo://lyra-api/facts/06-primary",
+      "fixture_revision": "lyra-api-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7b84d676ca8153cd0b98350f6c8dd727c359a16747200c88ba5009be99a5c621"
+    },
+    {
+      "memory_id": "v2-fact-06-support",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "A separate verified repository receipt confirms canonical UTF-8 JSON as Lyra API's artifact encoding.",
+      "source_uri": "repo://lyra-api/receipts/06-support",
+      "fixture_revision": "lyra-api-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7b84d676ca8153cd0b98350f6c8dd727c359a16747200c88ba5009be99a5c621"
+    },
+    {
+      "memory_id": "v2-fact-07-primary",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current canary observation window for Cygnus Worker is twelve minutes.",
+      "source_uri": "repo://cygnus-worker/facts/07-primary",
+      "fixture_revision": "cygnus-worker-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "196144835bd87f56f94572502f3a73c31005560715d9d513c97054281fa23ad3"
+    },
+    {
+      "memory_id": "v2-fact-07-support",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "A separate verified repository receipt confirms twelve minutes as Cygnus Worker's canary observation window.",
+      "source_uri": "repo://cygnus-worker/receipts/07-support",
+      "fixture_revision": "cygnus-worker-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "196144835bd87f56f94572502f3a73c31005560715d9d513c97054281fa23ad3"
+    },
+    {
+      "memory_id": "v2-fact-08-primary",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current configuration precedence for Vela Console is environment then repository file.",
+      "source_uri": "repo://vela-console/facts/08-primary",
+      "fixture_revision": "vela-console-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7531f995caca81f88e6a92b7ab51f272594fe1aaf49ca632b92ac1ecf086c1ea"
+    },
+    {
+      "memory_id": "v2-fact-08-support",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "A separate verified repository receipt confirms environment then repository file as Vela Console's configuration precedence.",
+      "source_uri": "repo://vela-console/receipts/08-support",
+      "fixture_revision": "vela-console-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7531f995caca81f88e6a92b7ab51f272594fe1aaf49ca632b92ac1ecf086c1ea"
+    },
+    {
+      "memory_id": "v2-fact-09-primary",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current migration receipt name for Orion Ledger is migration-complete.json.",
+      "source_uri": "repo://orion-ledger/facts/09-primary",
+      "fixture_revision": "orion-ledger-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "a411d5b1108bf4470c803d03e110557d835144fecf4501547603e5d3412d8581"
+    },
+    {
+      "memory_id": "v2-fact-09-support",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "A separate verified repository receipt confirms migration-complete.json as Orion Ledger's migration receipt name.",
+      "source_uri": "repo://orion-ledger/receipts/09-support",
+      "fixture_revision": "orion-ledger-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "a411d5b1108bf4470c803d03e110557d835144fecf4501547603e5d3412d8581"
+    },
+    {
+      "memory_id": "v2-fact-10-primary",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current incident ledger path for Lyra API is incidents/current.md.",
+      "source_uri": "repo://lyra-api/facts/10-primary",
+      "fixture_revision": "lyra-api-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7b84d676ca8153cd0b98350f6c8dd727c359a16747200c88ba5009be99a5c621"
+    },
+    {
+      "memory_id": "v2-fact-10-support",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "A separate verified repository receipt confirms incidents/current.md as Lyra API's incident ledger path.",
+      "source_uri": "repo://lyra-api/receipts/10-support",
+      "fixture_revision": "lyra-api-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7b84d676ca8153cd0b98350f6c8dd727c359a16747200c88ba5009be99a5c621"
+    },
+    {
+      "memory_id": "v2-fact-11-primary",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current release branch policy for Cygnus Worker is short-lived reviewed branches.",
+      "source_uri": "repo://cygnus-worker/facts/11-primary",
+      "fixture_revision": "cygnus-worker-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "196144835bd87f56f94572502f3a73c31005560715d9d513c97054281fa23ad3"
+    },
+    {
+      "memory_id": "v2-fact-12-primary",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current schema compatibility window for Vela Console is two supported releases.",
+      "source_uri": "repo://vela-console/facts/12-primary",
+      "fixture_revision": "vela-console-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7531f995caca81f88e6a92b7ab51f272594fe1aaf49ca632b92ac1ecf086c1ea"
+    },
+    {
+      "memory_id": "v2-fact-13-primary",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current queue ownership group for Orion Ledger is async systems.",
+      "source_uri": "repo://orion-ledger/facts/13-primary",
+      "fixture_revision": "orion-ledger-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "a411d5b1108bf4470c803d03e110557d835144fecf4501547603e5d3412d8581"
+    },
+    {
+      "memory_id": "v2-fact-14-primary",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current snapshot retention period for Lyra API is twenty-one days.",
+      "source_uri": "repo://lyra-api/facts/14-primary",
+      "fixture_revision": "lyra-api-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7b84d676ca8153cd0b98350f6c8dd727c359a16747200c88ba5009be99a5c621"
+    },
+    {
+      "memory_id": "v2-fact-15-primary",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current test fixture root for Cygnus Worker is tests/fixtures/repository.",
+      "source_uri": "repo://cygnus-worker/facts/15-primary",
+      "fixture_revision": "cygnus-worker-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "196144835bd87f56f94572502f3a73c31005560715d9d513c97054281fa23ad3"
+    },
+    {
+      "memory_id": "v2-fact-16-primary",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current health probe endpoint for Vela Console is /health/ready.",
+      "source_uri": "repo://vela-console/facts/16-primary",
+      "fixture_revision": "vela-console-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7531f995caca81f88e6a92b7ab51f272594fe1aaf49ca632b92ac1ecf086c1ea"
+    },
+    {
+      "memory_id": "v2-fact-17-primary",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current default retry ceiling for Orion Ledger is two attempts.",
+      "source_uri": "repo://orion-ledger/facts/17-primary",
+      "fixture_revision": "orion-ledger-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "a411d5b1108bf4470c803d03e110557d835144fecf4501547603e5d3412d8581"
+    },
+    {
+      "memory_id": "v2-fact-18-primary",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current audit record format for Lyra API is newline-delimited JSON.",
+      "source_uri": "repo://lyra-api/facts/18-primary",
+      "fixture_revision": "lyra-api-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7b84d676ca8153cd0b98350f6c8dd727c359a16747200c88ba5009be99a5c621"
+    },
+    {
+      "memory_id": "v2-fact-19-primary",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current operator runbook path for Cygnus Worker is docs/operator/runbook.md.",
+      "source_uri": "repo://cygnus-worker/facts/19-primary",
+      "fixture_revision": "cygnus-worker-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "196144835bd87f56f94572502f3a73c31005560715d9d513c97054281fa23ad3"
+    },
+    {
+      "memory_id": "v2-fact-20-primary",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current deployment lock name for Vela Console is release-coordinator.",
+      "source_uri": "repo://vela-console/facts/20-primary",
+      "fixture_revision": "vela-console-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7531f995caca81f88e6a92b7ab51f272594fe1aaf49ca632b92ac1ecf086c1ea"
+    },
+    {
+      "memory_id": "v2-fact-21-primary",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current cache rebuild mode for Orion Ledger is bounded offline rebuild.",
+      "source_uri": "repo://orion-ledger/facts/21-primary",
+      "fixture_revision": "orion-ledger-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "a411d5b1108bf4470c803d03e110557d835144fecf4501547603e5d3412d8581"
+    },
+    {
+      "memory_id": "v2-fact-22-primary",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current service account scope for Lyra API is repository read-only.",
+      "source_uri": "repo://lyra-api/facts/22-primary",
+      "fixture_revision": "lyra-api-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7b84d676ca8153cd0b98350f6c8dd727c359a16747200c88ba5009be99a5c621"
+    },
+    {
+      "memory_id": "v2-fact-23-primary",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current failure receipt field for Cygnus Worker is terminal_class.",
+      "source_uri": "repo://cygnus-worker/facts/23-primary",
+      "fixture_revision": "cygnus-worker-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "196144835bd87f56f94572502f3a73c31005560715d9d513c97054281fa23ad3"
+    },
+    {
+      "memory_id": "v2-fact-24-primary",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current release evidence index for Vela Console is docs/evidence-index.md.",
+      "source_uri": "repo://vela-console/facts/24-primary",
+      "fixture_revision": "vela-console-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7531f995caca81f88e6a92b7ab51f272594fe1aaf49ca632b92ac1ecf086c1ea"
+    },
+    {
+      "memory_id": "v2-fact-25-primary",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current workspace reset command for Orion Ledger is python -B tools/reset_fixture.py.",
+      "source_uri": "repo://orion-ledger/facts/25-primary",
+      "fixture_revision": "orion-ledger-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "a411d5b1108bf4470c803d03e110557d835144fecf4501547603e5d3412d8581"
+    },
+    {
+      "memory_id": "v2-fact-26-primary",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current configuration owner for Lyra API is runtime foundations.",
+      "source_uri": "repo://lyra-api/facts/26-primary",
+      "fixture_revision": "lyra-api-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7b84d676ca8153cd0b98350f6c8dd727c359a16747200c88ba5009be99a5c621"
+    },
+    {
+      "memory_id": "v2-fact-27-primary",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current rollback manifest name for Cygnus Worker is rollback-plan.json.",
+      "source_uri": "repo://cygnus-worker/facts/27-primary",
+      "fixture_revision": "cygnus-worker-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "196144835bd87f56f94572502f3a73c31005560715d9d513c97054281fa23ad3"
+    },
+    {
+      "memory_id": "v2-fact-28-primary",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current API compatibility prefix for Vela Console is /v3.",
+      "source_uri": "repo://vela-console/facts/28-primary",
+      "fixture_revision": "vela-console-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7531f995caca81f88e6a92b7ab51f272594fe1aaf49ca632b92ac1ecf086c1ea"
+    },
+    {
+      "memory_id": "v2-fact-29-primary",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current worker batch ceiling for Orion Ledger is 64 records.",
+      "source_uri": "repo://orion-ledger/facts/29-primary",
+      "fixture_revision": "orion-ledger-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "a411d5b1108bf4470c803d03e110557d835144fecf4501547603e5d3412d8581"
+    },
+    {
+      "memory_id": "v2-fact-30-primary",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "The current bundle verification mode for Lyra API is offline manifest comparison.",
+      "source_uri": "repo://lyra-api/facts/30-primary",
+      "fixture_revision": "lyra-api-r1-20260730",
+      "evidence_path": "facts/retrieval.md",
+      "evidence_digest": "7b84d676ca8153cd0b98350f6c8dd727c359a16747200c88ba5009be99a5c621"
+    },
+    {
+      "memory_id": "v2-experience-01",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Lyra API experience for queue replay after a stuck consumer: pause consumers, replay the committed prefix, then verify parity.",
+      "source_uri": "repo://lyra-api/experience/01"
+    },
+    {
+      "memory_id": "v2-experience-02",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Cygnus Worker experience for index restoration after a partial deploy: restore the index before reopening writes.",
+      "source_uri": "repo://cygnus-worker/experience/02"
+    },
+    {
+      "memory_id": "v2-experience-03",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Vela Console experience for cache repair after key-count drift: run the bounded rebuild and compare the ledger snapshot.",
+      "source_uri": "repo://vela-console/experience/03"
+    },
+    {
+      "memory_id": "v2-experience-04",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Orion Ledger experience for schema rollback with mixed assets: rollback assets before reverting the schema.",
+      "source_uri": "repo://orion-ledger/experience/04"
+    },
+    {
+      "memory_id": "v2-experience-05",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Lyra API experience for journal recovery after lock contention: release the lock, replay the journal, and compare cursors.",
+      "source_uri": "repo://lyra-api/experience/05"
+    },
+    {
+      "memory_id": "v2-experience-06",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Cygnus Worker experience for offset repair after shard reseeding: drain the shard before reseeding offsets.",
+      "source_uri": "repo://cygnus-worker/experience/06"
+    },
+    {
+      "memory_id": "v2-experience-07",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Vela Console experience for contract verification after API edits: run the changed-contract check before packaging.",
+      "source_uri": "repo://vela-console/experience/07"
+    },
+    {
+      "memory_id": "v2-experience-08",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Orion Ledger experience for bundle validation in an isolated runner: use the offline bundle manifest check.",
+      "source_uri": "repo://orion-ledger/experience/08"
+    },
+    {
+      "memory_id": "v2-experience-09",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Lyra API experience for migration recovery after an interrupted copy: resume from the durable checkpoint instead of restarting.",
+      "source_uri": "repo://lyra-api/experience/09"
+    },
+    {
+      "memory_id": "v2-experience-10",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Cygnus Worker experience for rate-limit handling during calibration: pace requests and retain the original terminal record.",
+      "source_uri": "repo://cygnus-worker/experience/10"
+    },
+    {
+      "memory_id": "v2-experience-11",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Vela Console experience for fixture repair after unexpected mutation: reset from the pinned fixture digest.",
+      "source_uri": "repo://vela-console/experience/11"
+    },
+    {
+      "memory_id": "v2-experience-12",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Orion Ledger experience for provider failure inside a comparison block: rerun the complete block symmetrically.",
+      "source_uri": "repo://orion-ledger/experience/12"
+    },
+    {
+      "memory_id": "v2-experience-13",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Lyra API experience for stale configuration discovered during rollout: verify repository state and reject the remembered value.",
+      "source_uri": "repo://lyra-api/experience/13"
+    },
+    {
+      "memory_id": "v2-experience-14",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Cygnus Worker experience for missing receipt after a successful command: treat the task as failed until the receipt is present.",
+      "source_uri": "repo://cygnus-worker/experience/14"
+    },
+    {
+      "memory_id": "v2-experience-15",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Vela Console experience for repository isolation probe: repeat the query under a distinct repository identity.",
+      "source_uri": "repo://vela-console/experience/15"
+    },
+    {
+      "memory_id": "v2-experience-16",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Orion Ledger experience for report drift after a rebuild: compare canonical semantic digests before publishing.",
+      "source_uri": "repo://orion-ledger/experience/16"
+    },
+    {
+      "memory_id": "v2-experience-17",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Lyra API experience for test timeout during a bounded check: retain the timeout and do not relabel it as success.",
+      "source_uri": "repo://lyra-api/experience/17"
+    },
+    {
+      "memory_id": "v2-experience-18",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Cygnus Worker experience for corrupt artifact discovered by the verifier: discard the artifact and rebuild it from repository facts.",
+      "source_uri": "repo://cygnus-worker/experience/18"
+    },
+    {
+      "memory_id": "v2-experience-19",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Vela Console experience for failed canary caused by wrong ordering: restore the previous assets before reopening traffic.",
+      "source_uri": "repo://vela-console/experience/19"
+    },
+    {
+      "memory_id": "v2-experience-20",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "execution_experience",
+      "validity": "active",
+      "content": "Verified Orion Ledger experience for cross-process recall readiness: wait for the durable index cursor before process exit.",
+      "source_uri": "repo://orion-ledger/experience/20"
+    },
+    {
+      "memory_id": "v2-stale-01",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "superseded",
+      "content": "A retired Cygnus Worker note recorded 8100 for listener port; this value is no longer valid.",
+      "source_uri": "repo://cygnus-worker/retired/01"
+    },
+    {
+      "memory_id": "v2-stale-02",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "stale",
+      "content": "A retired Vela Console note recorded fourteen days for archive retention; this value is no longer valid.",
+      "source_uri": "repo://vela-console/retired/02"
+    },
+    {
+      "memory_id": "v2-stale-03",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "superseded",
+      "content": "A retired Orion Ledger note recorded 128 records for maximum worker batch; this value is no longer valid.",
+      "source_uri": "repo://orion-ledger/retired/03"
+    },
+    {
+      "memory_id": "v2-stale-04",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "stale",
+      "content": "A retired Lyra API note recorded /v2 for API prefix; this value is no longer valid.",
+      "source_uri": "repo://lyra-api/retired/04"
+    },
+    {
+      "memory_id": "v2-stale-05",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "superseded",
+      "content": "A retired Cygnus Worker note recorded us-east-1 for release region; this value is no longer valid.",
+      "source_uri": "repo://cygnus-worker/retired/05"
+    },
+    {
+      "memory_id": "v2-stale-06",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "stale",
+      "content": "A retired Vela Console note recorded config/routes-old.yaml for routing manifest; this value is no longer valid.",
+      "source_uri": "repo://vela-console/retired/06"
+    },
+    {
+      "memory_id": "v2-stale-07",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "superseded",
+      "content": "A retired Orion Ledger note recorded thirty minutes for rollback window; this value is no longer valid.",
+      "source_uri": "repo://orion-ledger/retired/07"
+    },
+    {
+      "memory_id": "v2-stale-08",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "stale",
+      "content": "A retired Lyra API note recorded generation 4 for schema generation; this value is no longer valid.",
+      "source_uri": "repo://lyra-api/retired/08"
+    },
+    {
+      "memory_id": "v2-stale-09",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "superseded",
+      "content": "A retired Cygnus Worker note recorded events-legacy for queue name; this value is no longer valid.",
+      "source_uri": "repo://cygnus-worker/retired/09"
+    },
+    {
+      "memory_id": "v2-stale-10",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "stale",
+      "content": "A retired Vela Console note recorded python tools/rebuild.py --all for cache rebuild command; this value is no longer valid.",
+      "source_uri": "repo://vela-console/retired/10"
+    },
+    {
+      "memory_id": "v2-stale-11",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "superseded",
+      "content": "A retired Orion Ledger note recorded legacy operations for service owner; this value is no longer valid.",
+      "source_uri": "repo://orion-ledger/retired/11"
+    },
+    {
+      "memory_id": "v2-stale-12",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "stale",
+      "content": "A retired Lyra API note recorded /status for health endpoint; this value is no longer valid.",
+      "source_uri": "repo://lyra-api/retired/12"
+    },
+    {
+      "memory_id": "v2-stale-13",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "superseded",
+      "content": "A retired Cygnus Worker note recorded destructive replace for migration mode; this value is no longer valid.",
+      "source_uri": "repo://cygnus-worker/retired/13"
+    },
+    {
+      "memory_id": "v2-stale-14",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "stale",
+      "content": "A retired Vela Console note recorded platform-default text for artifact encoding; this value is no longer valid.",
+      "source_uri": "repo://vela-console/retired/14"
+    },
+    {
+      "memory_id": "v2-stale-15",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "superseded",
+      "content": "A retired Orion Ledger note recorded five attempts for retry ceiling; this value is no longer valid.",
+      "source_uri": "repo://orion-ledger/retired/15"
+    },
+    {
+      "memory_id": "v2-cross-01",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Lyra API has its own deployment region; it must never be injected into Orion Ledger.",
+      "source_uri": "repo://lyra-api/foreign/01"
+    },
+    {
+      "memory_id": "v2-cross-02",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Cygnus Worker has its own release owner; it must never be injected into Lyra API.",
+      "source_uri": "repo://cygnus-worker/foreign/02"
+    },
+    {
+      "memory_id": "v2-cross-03",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Vela Console has its own rollback manifest; it must never be injected into Cygnus Worker.",
+      "source_uri": "repo://vela-console/foreign/03"
+    },
+    {
+      "memory_id": "v2-cross-04",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Orion Ledger has its own worker batch policy; it must never be injected into Vela Console.",
+      "source_uri": "repo://orion-ledger/foreign/04"
+    },
+    {
+      "memory_id": "v2-cross-05",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Lyra API has its own API compatibility prefix; it must never be injected into Orion Ledger.",
+      "source_uri": "repo://lyra-api/foreign/05"
+    },
+    {
+      "memory_id": "v2-cross-06",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Cygnus Worker has its own artifact encoding; it must never be injected into Lyra API.",
+      "source_uri": "repo://cygnus-worker/foreign/06"
+    },
+    {
+      "memory_id": "v2-cross-07",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Vela Console has its own queue recovery procedure; it must never be injected into Cygnus Worker.",
+      "source_uri": "repo://vela-console/foreign/07"
+    },
+    {
+      "memory_id": "v2-cross-08",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Orion Ledger has its own contract verification command; it must never be injected into Vela Console.",
+      "source_uri": "repo://orion-ledger/foreign/08"
+    },
+    {
+      "memory_id": "v2-cross-09",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Lyra API has its own retention window; it must never be injected into Orion Ledger.",
+      "source_uri": "repo://lyra-api/foreign/09"
+    },
+    {
+      "memory_id": "v2-cross-10",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Cygnus Worker has its own health probe endpoint; it must never be injected into Lyra API.",
+      "source_uri": "repo://cygnus-worker/foreign/10"
+    },
+    {
+      "memory_id": "v2-cross-11",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Vela Console has its own migration receipt; it must never be injected into Cygnus Worker.",
+      "source_uri": "repo://vela-console/foreign/11"
+    },
+    {
+      "memory_id": "v2-cross-12",
+      "repository_id": "fixture/orion-ledger",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Orion Ledger has its own fixture reset command; it must never be injected into Vela Console.",
+      "source_uri": "repo://orion-ledger/foreign/12"
+    },
+    {
+      "memory_id": "v2-cross-13",
+      "repository_id": "fixture/lyra-api",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Lyra API has its own bundle verification mode; it must never be injected into Orion Ledger.",
+      "source_uri": "repo://lyra-api/foreign/13"
+    },
+    {
+      "memory_id": "v2-cross-14",
+      "repository_id": "fixture/cygnus-worker",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Cygnus Worker has its own configuration precedence; it must never be injected into Lyra API.",
+      "source_uri": "repo://cygnus-worker/foreign/14"
+    },
+    {
+      "memory_id": "v2-cross-15",
+      "repository_id": "fixture/vela-console",
+      "memory_class": "repository_fact",
+      "validity": "active",
+      "content": "Vela Console has its own incident ledger path; it must never be injected into Cygnus Worker.",
+      "source_uri": "repo://vela-console/foreign/15"
+    }
+  ],
+  "queries": [
+    {
+      "query_id": "v2-retrieval-fact-01",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "For Orion Ledger, which repository record states the current release approval owner?",
+      "expected_memory_ids": [
+        "v2-fact-01-primary",
+        "v2-fact-01-support"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-02",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "A maintainer is checking Lyra API; what is the active default deployment region recorded by this repository?",
+      "expected_memory_ids": [
+        "v2-fact-02-primary",
+        "v2-fact-02-support"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-03",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Before the next Cygnus Worker change, identify the repository-backed service manifest location.",
+      "expected_memory_ids": [
+        "v2-fact-03-primary",
+        "v2-fact-03-support"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-04",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/vela-console",
+      "query_text": "What does current Vela Console evidence specify for rollback evidence directory?",
+      "expected_memory_ids": [
+        "v2-fact-04-primary",
+        "v2-fact-04-support"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-05",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "Locate the authoritative bounded verification command for Orion Ledger without relying on an old session.",
+      "expected_memory_ids": [
+        "v2-fact-05-primary",
+        "v2-fact-05-support"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-06",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "For Lyra API, which repository record states the current artifact encoding?",
+      "expected_memory_ids": [
+        "v2-fact-06-primary",
+        "v2-fact-06-support"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-07",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "A maintainer is checking Cygnus Worker; what is the active canary observation window recorded by this repository?",
+      "expected_memory_ids": [
+        "v2-fact-07-primary",
+        "v2-fact-07-support"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-08",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/vela-console",
+      "query_text": "Before the next Vela Console change, identify the repository-backed configuration precedence.",
+      "expected_memory_ids": [
+        "v2-fact-08-primary",
+        "v2-fact-08-support"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-09",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "What does current Orion Ledger evidence specify for migration receipt name?",
+      "expected_memory_ids": [
+        "v2-fact-09-primary",
+        "v2-fact-09-support"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-10",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "Locate the authoritative incident ledger path for Lyra API without relying on an old session.",
+      "expected_memory_ids": [
+        "v2-fact-10-primary",
+        "v2-fact-10-support"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-11",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "For Cygnus Worker, which repository record states the current release branch policy?",
+      "expected_memory_ids": [
+        "v2-fact-11-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-12",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/vela-console",
+      "query_text": "A maintainer is checking Vela Console; what is the active schema compatibility window recorded by this repository?",
+      "expected_memory_ids": [
+        "v2-fact-12-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-13",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "Before the next Orion Ledger change, identify the repository-backed queue ownership group.",
+      "expected_memory_ids": [
+        "v2-fact-13-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-14",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "What does current Lyra API evidence specify for snapshot retention period?",
+      "expected_memory_ids": [
+        "v2-fact-14-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-15",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Locate the authoritative test fixture root for Cygnus Worker without relying on an old session.",
+      "expected_memory_ids": [
+        "v2-fact-15-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-16",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/vela-console",
+      "query_text": "For Vela Console, which repository record states the current health probe endpoint?",
+      "expected_memory_ids": [
+        "v2-fact-16-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-17",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "A maintainer is checking Orion Ledger; what is the active default retry ceiling recorded by this repository?",
+      "expected_memory_ids": [
+        "v2-fact-17-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-18",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "Before the next Lyra API change, identify the repository-backed audit record format.",
+      "expected_memory_ids": [
+        "v2-fact-18-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-19",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "What does current Cygnus Worker evidence specify for operator runbook path?",
+      "expected_memory_ids": [
+        "v2-fact-19-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-20",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/vela-console",
+      "query_text": "Locate the authoritative deployment lock name for Vela Console without relying on an old session.",
+      "expected_memory_ids": [
+        "v2-fact-20-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-21",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "For Orion Ledger, which repository record states the current cache rebuild mode?",
+      "expected_memory_ids": [
+        "v2-fact-21-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-22",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "A maintainer is checking Lyra API; what is the active service account scope recorded by this repository?",
+      "expected_memory_ids": [
+        "v2-fact-22-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-23",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Before the next Cygnus Worker change, identify the repository-backed failure receipt field.",
+      "expected_memory_ids": [
+        "v2-fact-23-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-24",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/vela-console",
+      "query_text": "What does current Vela Console evidence specify for release evidence index?",
+      "expected_memory_ids": [
+        "v2-fact-24-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-25",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "Locate the authoritative workspace reset command for Orion Ledger without relying on an old session.",
+      "expected_memory_ids": [
+        "v2-fact-25-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-26",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "For Lyra API, which repository record states the current configuration owner?",
+      "expected_memory_ids": [
+        "v2-fact-26-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-27",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "A maintainer is checking Cygnus Worker; what is the active rollback manifest name recorded by this repository?",
+      "expected_memory_ids": [
+        "v2-fact-27-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-28",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/vela-console",
+      "query_text": "Before the next Vela Console change, identify the repository-backed API compatibility prefix.",
+      "expected_memory_ids": [
+        "v2-fact-28-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-29",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "What does current Orion Ledger evidence specify for worker batch ceiling?",
+      "expected_memory_ids": [
+        "v2-fact-29-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-fact-30",
+      "query_class": "fact_positive",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "Locate the authoritative bundle verification mode for Lyra API without relying on an old session.",
+      "expected_memory_ids": [
+        "v2-fact-30-primary"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-01",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "Which verified recovery should Lyra API reuse for queue replay after a stuck consumer?",
+      "expected_memory_ids": [
+        "v2-experience-01"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-02",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Prior work on Cygnus Worker encountered index restoration after a partial deploy; what procedure was proven to work?",
+      "expected_memory_ids": [
+        "v2-experience-02"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-03",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/vela-console",
+      "query_text": "Find the retained repair lesson for cache repair after key-count drift in Vela Console.",
+      "expected_memory_ids": [
+        "v2-experience-03"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-04",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "How did verified Orion Ledger work resolve schema rollback with mixed assets?",
+      "expected_memory_ids": [
+        "v2-experience-04"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-05",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "Which verified recovery should Lyra API reuse for journal recovery after lock contention?",
+      "expected_memory_ids": [
+        "v2-experience-05"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-06",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Prior work on Cygnus Worker encountered offset repair after shard reseeding; what procedure was proven to work?",
+      "expected_memory_ids": [
+        "v2-experience-06"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-07",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/vela-console",
+      "query_text": "Find the retained repair lesson for contract verification after API edits in Vela Console.",
+      "expected_memory_ids": [
+        "v2-experience-07"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-08",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "How did verified Orion Ledger work resolve bundle validation in an isolated runner?",
+      "expected_memory_ids": [
+        "v2-experience-08"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-09",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "Which verified recovery should Lyra API reuse for migration recovery after an interrupted copy?",
+      "expected_memory_ids": [
+        "v2-experience-09"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-10",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Prior work on Cygnus Worker encountered rate-limit handling during calibration; what procedure was proven to work?",
+      "expected_memory_ids": [
+        "v2-experience-10"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-11",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/vela-console",
+      "query_text": "Find the retained repair lesson for fixture repair after unexpected mutation in Vela Console.",
+      "expected_memory_ids": [
+        "v2-experience-11"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-12",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "How did verified Orion Ledger work resolve provider failure inside a comparison block?",
+      "expected_memory_ids": [
+        "v2-experience-12"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-13",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "Which verified recovery should Lyra API reuse for stale configuration discovered during rollout?",
+      "expected_memory_ids": [
+        "v2-experience-13"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-14",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Prior work on Cygnus Worker encountered missing receipt after a successful command; what procedure was proven to work?",
+      "expected_memory_ids": [
+        "v2-experience-14"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-15",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/vela-console",
+      "query_text": "Find the retained repair lesson for repository isolation probe in Vela Console.",
+      "expected_memory_ids": [
+        "v2-experience-15"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-16",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "How did verified Orion Ledger work resolve report drift after a rebuild?",
+      "expected_memory_ids": [
+        "v2-experience-16"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-17",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "Which verified recovery should Lyra API reuse for test timeout during a bounded check?",
+      "expected_memory_ids": [
+        "v2-experience-17"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-18",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Prior work on Cygnus Worker encountered corrupt artifact discovered by the verifier; what procedure was proven to work?",
+      "expected_memory_ids": [
+        "v2-experience-18"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-19",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/vela-console",
+      "query_text": "Find the retained repair lesson for failed canary caused by wrong ordering in Vela Console.",
+      "expected_memory_ids": [
+        "v2-experience-19"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-experience-20",
+      "query_class": "experience_positive",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "How did verified Orion Ledger work resolve cross-process recall readiness?",
+      "expected_memory_ids": [
+        "v2-experience-20"
+      ],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-01",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "Where does Orion Ledger declare the minimum supported Python version for local repository tooling?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-02",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "Which linter configuration file governs import ordering in the Lyra API checkout?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-03",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "What repository test coverage percentage must Cygnus Worker meet before a release branch can merge?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-04",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/vela-console",
+      "query_text": "Which container base image should the Vela Console release artifact build use?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-05",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "What release artifact SPDX license identifier belongs in newly generated Orion Ledger package metadata?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-06",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "How many characters may a Lyra API source line contain under the repository formatter policy?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-07",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Which repository validation mode enables strict static type checking for Cygnus Worker?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-08",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/vela-console",
+      "query_text": "What prefix should Vela Console release tags use in Git?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-09",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "Which log timestamp format is required for Orion Ledger command output?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-10",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "What current rollout tracing sample ratio should Lyra API apply in its repository profile?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-11",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Which repository release schedule should Cygnus Worker's dependency bot follow when updating the lockfile?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-12",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/vela-console",
+      "query_text": "Where is the Vela Console changelog stored for release note generation?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-13",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "Which current repository metrics namespace should Orion Ledger exporters attach to new counters?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-14",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "What feature-flag key prefix does Lyra API reserve for experimental endpoints?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-15",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Which operating-system versions are in Cygnus Worker's supported release CI matrix?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-16",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/vela-console",
+      "query_text": "How often must Vela Console rotate the signing key used for release artifacts?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-17",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "What database transaction isolation level does Orion Ledger require for migration recovery?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-18",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "Which current repository package namespace contains Lyra API's generated client artifact modules?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-19",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "What log-redaction rule applies to tokens stored in a Cygnus Worker failure receipt?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-hard-negative-20",
+      "query_class": "hard_negative",
+      "repository_id": "fixture/vela-console",
+      "query_text": "Which documentation generator command rebuilds Vela Console's release reference?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": []
+    },
+    {
+      "query_id": "v2-retrieval-stale-01",
+      "query_class": "stale",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "The Cygnus worker health probe cannot reach the listener after today's rollout. Which current port belongs in the probe configuration?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-stale-01"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-stale-02",
+      "query_class": "stale",
+      "repository_id": "fixture/vela-console",
+      "query_text": "Update Vela's cleanup schedule to match the repository's active archive policy. How long should records be retained now?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-stale-02"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-stale-03",
+      "query_class": "stale",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "The Orion queue consumer is being retuned against current repository policy. What maximum batch should the new profile use?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-stale-03"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-stale-04",
+      "query_class": "stale",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "A Lyra client is regenerating its base routes from today's checkout. Which API prefix should it publish?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-stale-04"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-stale-05",
+      "query_class": "stale",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Prepare the next Cygnus deployment ticket using the region currently owned by this worker repository.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-stale-05"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-stale-06",
+      "query_class": "stale",
+      "repository_id": "fixture/vela-console",
+      "query_text": "The Vela route build needs the manifest declared by the present release configuration. Where should it read routes from?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-stale-06"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-stale-07",
+      "query_class": "stale",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "Fill in Orion's canary run card with the rollback window enforced by the current policy.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-stale-07"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-stale-08",
+      "query_class": "stale",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "A Lyra migration check needs the schema generation accepted by the current contract state. Which generation applies?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-stale-08"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-stale-09",
+      "query_class": "stale",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Configure a fresh Cygnus worker against the queue named by the active deployment manifest.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-stale-09"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-stale-10",
+      "query_class": "stale",
+      "repository_id": "fixture/vela-console",
+      "query_text": "The Vela cache must be rebuilt under today's repository procedure. Which bounded command should the operator run?",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-stale-10"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-stale-11",
+      "query_class": "stale",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "Route Orion's release approval to the service owner recorded in the current checkout.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-stale-11"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-stale-12",
+      "query_class": "stale",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "Wire Lyra's readiness monitor to the endpoint defined by current repository state.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-stale-12"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-stale-13",
+      "query_class": "stale",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Draft the Cygnus migration job in the active worker configuration's supported mode.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-stale-13"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-stale-14",
+      "query_class": "stale",
+      "repository_id": "fixture/vela-console",
+      "query_text": "Produce Vela's release receipt in the encoding mandated by its current artifact contract.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-stale-14"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-stale-15",
+      "query_class": "stale",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "Set Orion's retry guard to the ceiling currently allowed by repository policy.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-stale-15"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-cross-01",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "Prepare Orion's deployment summary with the region that belongs to this ledger repository.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-cross-01"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-cross-02",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "Assign the Lyra API release review to the owner documented for this service.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-cross-02"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-cross-03",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Attach the rollback manifest maintained by Cygnus Worker to its release ticket.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-cross-03"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-cross-04",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/vela-console",
+      "query_text": "A Vela background job needs its repository's own batch policy for the upcoming console rollout.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-cross-04"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-cross-05",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "Generate an Orion client example using the API compatibility prefix defined for Orion.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-cross-05"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-cross-06",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "Serialize the Lyra contract receipt using this API repository's artifact encoding.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-cross-06"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-cross-07",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Draft a Cygnus queue incident card from the recovery procedure owned by the worker.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-cross-07"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-cross-08",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/vela-console",
+      "query_text": "Run the contract verification command maintained by Vela before publishing console assets.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-cross-08"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-cross-09",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "Update Orion's archival task with the retention window specified for the ledger.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-cross-09"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-cross-10",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "Point the Lyra deployment monitor at the readiness endpoint owned by the API service.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-cross-10"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-cross-11",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Record the Cygnus migration using the receipt name defined in the worker repository.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-cross-11"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-cross-12",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/vela-console",
+      "query_text": "Reset Vela's local fixture with the command documented for the console project.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-cross-12"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-cross-13",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/orion-ledger",
+      "query_text": "Choose Orion's ledger-specific release bundle verification method for this checkout.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-cross-13"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-cross-14",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/lyra-api",
+      "query_text": "Resolve a Lyra runtime override according to this API repository's configuration precedence.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-cross-14"
+      ]
+    },
+    {
+      "query_id": "v2-retrieval-cross-15",
+      "query_class": "cross_repository",
+      "repository_id": "fixture/cygnus-worker",
+      "query_text": "Link the Cygnus on-call ticket to the incident ledger maintained by the worker repository.",
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "v2-cross-15"
+      ]
+    }
+  ]
+}

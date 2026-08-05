@@ -1,0 +1,165 @@
+from __future__ import annotations
+
+from benchmarks.picobench.schema import ClaimRule
+
+_PRODUCTION_EVIDENCE = ("codecairn_task_effect_v2.production_evidence_complete",)
+_TASK_SUCCESS_PREREQUISITES = (
+    *_PRODUCTION_EVIDENCE,
+    "codecairn_retrieval_v2.claim_eligible",
+)
+_EFFICIENCY_PREREQUISITES = _TASK_SUCCESS_PREREQUISITES
+
+
+def task_effect_claim_rules() -> tuple[ClaimRule, ...]:
+    return (
+        ClaimRule(
+            rule_id="codecairn-retrieval-v2-positive-hit-at-5",
+            metric="codecairn_retrieval_v2.positive_hit_at_5",
+            operator="ge",
+            threshold=0.80,
+            prerequisites=_PRODUCTION_EVIDENCE,
+        ),
+        ClaimRule(
+            rule_id="codecairn-retrieval-v2-positive-recall-at-5",
+            metric="codecairn_retrieval_v2.positive_recall_at_5",
+            operator="ge",
+            threshold=0.80,
+            prerequisites=_PRODUCTION_EVIDENCE,
+        ),
+        ClaimRule(
+            rule_id="codecairn-retrieval-v2-injected-precision",
+            metric="codecairn_retrieval_v2.injected_precision",
+            operator="ge",
+            threshold=0.80,
+            prerequisites=_PRODUCTION_EVIDENCE,
+        ),
+        ClaimRule(
+            rule_id="codecairn-retrieval-v2-hard-negative-any-injection",
+            metric="codecairn_retrieval_v2.hard_negative_any_injection_rate",
+            operator="le",
+            threshold=0.05,
+            prerequisites=_PRODUCTION_EVIDENCE,
+        ),
+        ClaimRule(
+            rule_id="codecairn-retrieval-v2-stale-any-injection",
+            metric="codecairn_retrieval_v2.stale_any_injection_rate",
+            operator="eq",
+            threshold=0,
+            prerequisites=_PRODUCTION_EVIDENCE,
+        ),
+        ClaimRule(
+            rule_id="codecairn-retrieval-v2-cross-repository-any-injection",
+            metric="codecairn_retrieval_v2.cross_repository_any_injection_rate",
+            operator="eq",
+            threshold=0,
+            prerequisites=_PRODUCTION_EVIDENCE,
+        ),
+        ClaimRule(
+            rule_id="codecairn-retrieval-v2-memory-off-operation-calls",
+            metric="codecairn_retrieval_v2.memory_off_operation_calls",
+            operator="eq",
+            threshold=0,
+            prerequisites=_PRODUCTION_EVIDENCE,
+        ),
+        ClaimRule(
+            rule_id="codecairn-task-success-v2-paired-task-pass-delta",
+            metric="codecairn_task_success_v2.paired_task_pass_delta",
+            operator="gt",
+            threshold=0,
+            prerequisites=_TASK_SUCCESS_PREREQUISITES,
+        ),
+        ClaimRule(
+            rule_id="codecairn-task-success-v2-net-gained-tasks",
+            metric="codecairn_task_success_v2.net_gained_tasks",
+            operator="ge",
+            threshold=3,
+            prerequisites=_TASK_SUCCESS_PREREQUISITES,
+        ),
+        ClaimRule(
+            rule_id="codecairn-task-success-v2-stale-net-task-gain",
+            metric="codecairn_task_success_v2.stale_conflict_net_task_gain",
+            operator="ge",
+            threshold=0,
+            prerequisites=_TASK_SUCCESS_PREREQUISITES,
+        ),
+        ClaimRule(
+            rule_id="codecairn-task-success-v2-irrelevant-net-task-gain",
+            metric="codecairn_task_success_v2.irrelevant_net_task_gain",
+            operator="ge",
+            threshold=0,
+            prerequisites=_TASK_SUCCESS_PREREQUISITES,
+        ),
+        ClaimRule(
+            rule_id="codecairn-task-success-v2-clustered-interval",
+            metric="codecairn_task_success_v2.clustered_interval_reported",
+            operator="eq",
+            threshold=1,
+            prerequisites=_TASK_SUCCESS_PREREQUISITES,
+        ),
+        ClaimRule(
+            rule_id="codecairn-task-success-v2-task-classes-covered",
+            metric="codecairn_task_success_v2.task_classes_covered",
+            operator="ge",
+            threshold=4,
+            prerequisites=_TASK_SUCCESS_PREREQUISITES,
+        ),
+        ClaimRule(
+            rule_id="codecairn-efficiency-v2-task-pass-count-delta",
+            metric="codecairn_efficiency_v2.task_pass_count_delta",
+            operator="ge",
+            threshold=-1,
+            prerequisites=_EFFICIENCY_PREREQUISITES,
+        ),
+        ClaimRule(
+            rule_id="codecairn-efficiency-v2-stale-net-task-gain",
+            metric="codecairn_efficiency_v2.stale_conflict_net_task_gain",
+            operator="ge",
+            threshold=0,
+            prerequisites=_EFFICIENCY_PREREQUISITES,
+        ),
+        ClaimRule(
+            rule_id="codecairn-efficiency-v2-irrelevant-net-task-gain",
+            metric="codecairn_efficiency_v2.irrelevant_net_task_gain",
+            operator="ge",
+            threshold=0,
+            prerequisites=_EFFICIENCY_PREREQUISITES,
+        ),
+        ClaimRule(
+            rule_id="codecairn-efficiency-v2-best-rediscovery-improvement",
+            metric="codecairn_efficiency_v2.best_rediscovery_improvement_percent",
+            operator="ge",
+            threshold=15,
+            prerequisites=_EFFICIENCY_PREREQUISITES,
+        ),
+        ClaimRule(
+            rule_id="codecairn-efficiency-v2-trial-total-token-overhead",
+            metric="codecairn_efficiency_v2.trial_total_token_overhead_reported",
+            operator="eq",
+            threshold=1,
+            prerequisites=_EFFICIENCY_PREREQUISITES,
+        ),
+        ClaimRule(
+            rule_id="codecairn-efficiency-v2-latency-overhead",
+            metric="codecairn_efficiency_v2.latency_overhead_reported",
+            operator="eq",
+            threshold=1,
+            prerequisites=_EFFICIENCY_PREREQUISITES,
+        ),
+        ClaimRule(
+            rule_id="codecairn-efficiency-v2-cost-overhead",
+            metric="codecairn_efficiency_v2.cost_overhead_reported",
+            operator="eq",
+            threshold=1,
+            prerequisites=_EFFICIENCY_PREREQUISITES,
+        ),
+        ClaimRule(
+            rule_id="codecairn-efficiency-v2-clustered-interval",
+            metric="codecairn_efficiency_v2.clustered_interval_reported",
+            operator="eq",
+            threshold=1,
+            prerequisites=_EFFICIENCY_PREREQUISITES,
+        ),
+    )
+
+
+__all__ = ["task_effect_claim_rules"]

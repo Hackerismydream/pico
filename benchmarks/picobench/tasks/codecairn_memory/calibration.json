@@ -1,0 +1,27 @@
+{
+  "schema": "pico.picobench.codecairn-memory-tasks.v1",
+  "tasks": [
+    {
+      "task_id": "cc-memory-calibration-01",
+      "prior_session_id": "learning-cc-memory-calibration-01",
+      "evaluation_session_id": "evaluation-cc-memory-calibration-01",
+      "learning_prompt": "For repository Quartz, remember that the deployment ring token is QRZ-4M7K-19.",
+      "memory_query": "What is the deployment ring token for repository Quartz?",
+      "evaluation_prompt": "Recover the deployment ring token for repository Quartz from prior work and write token.json with exactly one JSON field named deployment_ring_token.",
+      "output_file": "token.json",
+      "expected_key": "deployment_ring_token",
+      "expected_value": "QRZ-4M7K-19"
+    },
+    {
+      "task_id": "cc-memory-calibration-02",
+      "prior_session_id": "learning-cc-memory-calibration-02",
+      "evaluation_session_id": "evaluation-cc-memory-calibration-02",
+      "learning_prompt": "For repository Topaz, remember that its sealed maintenance code is TPZ-83-NIGHT.",
+      "memory_query": "What is the sealed maintenance code for repository Topaz?",
+      "evaluation_prompt": "Recover the sealed maintenance code for repository Topaz from prior work and write maintenance.json with exactly one JSON field named maintenance_code.",
+      "output_file": "maintenance.json",
+      "expected_key": "maintenance_code",
+      "expected_value": "TPZ-83-NIGHT"
+    }
+  ]
+}
