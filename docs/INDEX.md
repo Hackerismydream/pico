@@ -63,7 +63,7 @@ proof that the corresponding product behavior works.
 | [Operations and extension surfaces](architecture/operations.md) | Providers, Routing, TokenWise, Channels, Cron, Sandbox, Tracing, configuration, and packaging |
 | [Evolver architecture](architecture/evolver.md) | Evolution Run lifecycle, benchmark inversion, candidate evidence, activation, rollback, and threat model |
 | [Agent application evaluation](evaluation/README.md) | Implemented checkout-only PicoBench boundary, Runtime relationship, experiment state, and claim discipline |
-| [TokenWise cost experiment](evaluation/tokenwise-cost.md) | Four-arm cache-policy matrix, conservative hit-rate and success-cost metrics, and claim gates |
+| [TokenWise cost experiment](evaluation/tokenwise-cost.md) | Completed DeepSeek two-arm prefix-stability campaign, conservative hit-rate and success-cost metrics, and claim gates |
 | [PicoBench Ship-1 contract](evaluation/picobench-ship-1.md) | Runtime, Context, Memory/Skill, Tool/MCP, and paired-evaluation task protocol |
 | [PicoBench semantic addendum](evaluation/picobench-semantic-addendum.md) | Historical production EverOS semantic retrieval, source fusion, cumulative budget, and separate claim gates |
 | [CodeCairn Memory backend](specs/codecairn-memory-backend.md) | Current v0.2 cross-repository Interface, ownership, lifecycle, Source Journal, failure semantics, and acceptance Gates |
@@ -96,6 +96,7 @@ Module-local documentation remains colocated with its implementation:
 | [Plan directory](plan/README.md) | How GitHub issues, local plan summaries, acceptance Gates, and future ideas relate |
 | [PicoBench Ship-1 analysis](plan/analysis/picobench-ship-1.md) | Historical module alternatives, integration enumeration, dependency graph, and campaign boundary |
 | [CodeCairn Memory replacement analysis](plan/analysis/codecairn-memory-replacement.md) | Replacement analysis, EverOS deletion inventory, cross-repository sequence, rollout, and evidence boundary |
+| [TokenWise evidence expansion analysis](plan/analysis/tokenwise-evidence-expansion.md) | Current CV wording and evidence boundary plus the proposed 320-Trial DeepSeek campaign |
 | [Pico CodeCairn implementation Goal](plan/pico-codecairn-implementation-goal.md) | Delivery record for consuming the installed Adapter and removing active EverOS coupling |
 | [Pico-CodeCairn joint evidence Goal](plan/pico-codecairn-joint-evidence-goal.md) | Completed execution record for installed continuity, isolation, paired evaluation, and claim reconciliation |
 | [Delivery tasks](plan/tasks/README.md) | Completed PicoBench and CodeCairn delivery slices |

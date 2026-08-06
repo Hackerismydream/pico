@@ -80,6 +80,12 @@ Future ideas belong in the “Future candidates” section of
 [roadmap.md](../roadmap.md) until accepted. When accepted, link the new issue,
 define dependencies and Gates, and move the item into the committed roadmap.
 
+The proposed
+[TokenWise evidence expansion](analysis/tokenwise-evidence-expansion.md)
+records the current CV-eligible DeepSeek result and a larger 320-Trial
+follow-up. It is analysis only and does not authorize implementation or paid
+Provider calls.
+
 ## Accepted delivery packages
 
 The following package is accepted under GitHub Issue
