@@ -212,7 +212,17 @@ def reduce_experiment(ref: ExperimentRef) -> Reduction:
         )
         pack_metrics = {key: value for key, value in pack_metrics.items() if key not in base_collisions}
     metrics = {**base_metrics, **pack_metrics}
-    all_pair_coverage = all(summary.coverage_valid for summary in pair_summaries)
+    capability_only_pair_packs = {
+        str(definition.get("pack_id"))
+        for definition in manifest.get("pack_definitions", ())
+        if isinstance(definition, dict)
+        and isinstance(definition.get("identity"), dict)
+        and definition["identity"].get("claim_reducer") == "context_v2"
+    }
+    all_pair_coverage = all(
+        summary.coverage_valid or summary.pack_id in capability_only_pair_packs
+        for summary in pair_summaries
+    )
     invalid_retrieval = any(
         retrieval_statuses[status]
         for status in (
