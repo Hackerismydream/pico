@@ -220,8 +220,7 @@ def reduce_experiment(ref: ExperimentRef) -> Reduction:
         and definition["identity"].get("claim_reducer") == "context_v2"
     }
     all_pair_coverage = all(
-        summary.coverage_valid or summary.pack_id in capability_only_pair_packs
-        for summary in pair_summaries
+        summary.coverage_valid or summary.pack_id in capability_only_pair_packs for summary in pair_summaries
     )
     invalid_retrieval = any(
         retrieval_statuses[status]

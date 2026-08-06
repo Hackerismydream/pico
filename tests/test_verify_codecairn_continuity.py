@@ -21,10 +21,7 @@ def test_pair_audit_verifies_current_and_historical_artifacts(
         tmp_path / "pico-current.whl",
         "pico-harness",
         "0.1.7",
-        requires_dist=(
-            "codecairn @ git+https://example.invalid/CodeCairn.git@"
-            + current_codecairn_commit
-        ),
+        requires_dist=("codecairn @ git+https://example.invalid/CodeCairn.git@" + current_codecairn_commit),
     )
     implementation_pico = _wheel(
         tmp_path / "pico-implementation.whl",

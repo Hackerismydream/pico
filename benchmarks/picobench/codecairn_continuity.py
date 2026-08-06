@@ -1695,9 +1695,7 @@ def _current_codecairn_install(path: Path) -> tuple[str, str]:
     metadata = _wheel_metadata_message(path)
     requirements = metadata.get_all("Requires-Dist", [])
     matches = [
-        requirement
-        for requirement in requirements
-        if requirement.lower().startswith("codecairn @ git+https://")
+        requirement for requirement in requirements if requirement.lower().startswith("codecairn @ git+https://")
     ]
     if len(matches) != 1:
         raise PairIntegrityError(
