@@ -1,9 +1,11 @@
 # TokenWise cost experiment contract
 
-> **Status: deterministic contract only.** PicoBench freezes the treatment
-> arms, workload shapes, reduction formulas, and positive-claim gates. The live
-> runner, sealed task corpus, Provider preflight, and paid campaign have not
-> run. This document therefore contains no current product result.
+> **Status: live runner ready; paid campaign not run.** PicoBench freezes the
+> treatment arms, workload shapes, sealed task corpus, reduction formulas, and
+> positive-claim gates. The credential-free model and price preflight passes,
+> but this checkout has no OpenRouter credential, so the paid cache preflight
+> and formal campaign have not run. This document therefore contains no current
+> product result.
 
 ## Question
 
@@ -52,6 +54,13 @@ once; it is not a workload and it is not a whole four-arm comparison.
 Before the formal run, a disjoint calibration corpus must prove the live
 runner, cache isolation, Provider usage fields, and Verifiers. Calibration
 results cannot enter the formal report.
+
+The formal route is pinned to `anthropic/claude-sonnet-5` through OpenRouter's
+Anthropic endpoint with Provider fallback disabled. The frozen 2026-08-06
+price snapshot is USD 2.00 per million fresh input tokens, USD 10.00 per
+million output tokens, USD 0.20 per million cache-read tokens, and USD 2.50
+per million five-minute cache-write tokens. Any catalog price drift aborts the
+campaign before a paid call.
 
 ## Trial procedure
 
@@ -135,14 +144,44 @@ The credential-free and calibration gates must cover:
 These probes explain why a cache misses or becomes more expensive. They do not
 inflate the formal Trial denominator.
 
+The live preflight executes the cache-minimum, namespace-isolation, changed
+system, changed Tool Schema, exact-model, usage-completeness, and five-minute
+expiry probes. The expiry probe waits for the configured TTL and must observe
+a new cache write. OpenRouter response caching is disabled so a response-cache
+hit cannot zero the Provider usage being measured.
+
+## Live execution
+
+The dedicated runner is resumable and freezes each Trial record before moving
+to the next arm. It stops before a new Provider call at either 1,200 calls or
+USD 25 of observed spend. Failed tasks and Provider attempts remain in the
+artifact numerator.
+
+```bash
+uv run python -m benchmarks.picobench.tokenwise_cost_campaign \
+  --mode preflight \
+  --execute-paid-campaign
+
+uv run python -m benchmarks.picobench.tokenwise_cost_campaign \
+  --mode formal \
+  --execute-paid-campaign
+```
+
+The runner reads `OPENROUTER_API_KEY`, then falls back to the configured
+`providers.openrouter.apiKey`. It never writes the credential into campaign
+artifacts. Raw Trial and per-call records live under
+`.pico/evidence/tokenwise-cost/`; the final report is rebuilt only from those
+terminal records.
+
 ## Current evidence boundary
 
-The Pack at `benchmarks/picobench/packs/tokenwise_cost/` currently proves the
-matrix, Pair definitions, conservative hit-rate formula, success-normalized
-cost, and fail-closed claim reduction. Its `run_trial` method deliberately
-returns an infrastructure failure until a live runner and sealed task corpus
-are configured.
+The Pack at `benchmarks/picobench/packs/tokenwise_cost/` proves the matrix,
+Pair definitions, conservative hit-rate formula, success-normalized cost, and
+fail-closed claim reduction. Its generic `run_trial` method remains an
+infrastructure failure so an ordinary PicoBench campaign cannot accidentally
+spend money. The dedicated `tokenwise_cost_campaign` entry point owns the paid
+route, sealed corpus, preflight, resume behavior, and cost ceiling.
 
-No paid Provider call is authorized by this contract. A future campaign must
-first freeze the exact commit, model, Provider route, task and Verifier
-digests, price snapshot, worst-case budget, and explicit spending approval.
+No eligible credential was available at this evidence capture. Current
+evidence therefore stops at runner implementation plus the credential-free
+catalog and price check.
