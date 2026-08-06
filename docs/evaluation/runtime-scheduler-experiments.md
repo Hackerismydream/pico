@@ -54,3 +54,32 @@ violations.
 This is an in-process guarantee from scheduler acceptance to terminal Handle
 resolution. It does not claim exactly-once execution across process crashes or
 external side effects.
+
+## Live Agent response experiment
+
+The live extension keeps the head-of-line comparison but replaces scripted
+delays with `AgentTurnRunner -> AgentLoop -> configured Provider` calls. Every
+foreground prompt owns a unique marker. A Turn is measurable only when the
+reply contains that marker, Provider usage is complete, no Tool is called, and
+the Runtime reaches a terminal result.
+
+The control and treatment receive the same prompts in the same order, use the
+same Provider and model, and alternate arm order across three repetitions. The
+primary metric is foreground accept-to-terminal P95 latency. The result is
+eligible only if all 156 Turns pass their task Verifiers and every Provider,
+usage, budget, checkout, and performance-direction Gate passes.
+
+Live execution is a separately approved paid action. First freeze the clean
+commit, exact manifest, maximum request attempts, and CNY hard cap:
+
+```bash
+make picobench-runtime-live-plan
+```
+
+Then pass the exact approved manifest digest and amount:
+
+```bash
+PICO_LIVE_PERF_APPROVAL_DIGEST=<digest> \
+PICO_LIVE_PERF_APPROVED_CNY=<amount> \
+make picobench-runtime-live-run
+```
