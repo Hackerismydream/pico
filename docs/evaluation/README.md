@@ -10,6 +10,12 @@ Skill, and Tool/MCP behavior improves multi-turn Agent tasks. The evaluation
 track consumes the shipped Runtime; it is not a second Agent Runtime and is not
 an end-user product surface.
 
+The deterministic
+[Runtime scheduler experiments](runtime-scheduler-experiments.md) separately
+compare session-level scheduling and USER/Runtime-origin concurrency isolation,
+then repeat the accepted-request fate conformance track. Their local queueing
+metrics are architecture evidence, not a production service-level objective.
+
 The historical
 [semantic retrieval addendum](picobench-semantic-addendum.md) separately
 measured the former production EverOS Memory and Skill retrieval path. It does
