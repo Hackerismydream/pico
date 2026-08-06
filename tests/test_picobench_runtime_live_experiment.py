@@ -36,7 +36,7 @@ def _small_config() -> LiveSchedulerConfig:
         user_slots=2,
         hot_turns=1,
         foreground_sessions=3,
-        hard_cap_cny=0.5,
+        hard_cap_cny=0.7,
     )
 
 
@@ -50,8 +50,8 @@ def test_live_plan_freezes_workload_and_budget_without_credentials() -> None:
     )
 
     assert config.planned_turns == 156
-    assert config.maximum_provider_request_attempts == 936
-    assert config.maximum_cost_cny < config.hard_cap_cny == 10.0
+    assert config.maximum_provider_request_attempts == 1_248
+    assert config.maximum_cost_cny < config.hard_cap_cny == 12.0
     assert plan["budget"]["planned_turns"] == 156
     assert "api_key" not in canonical_json(plan).lower()
 
