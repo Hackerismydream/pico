@@ -513,13 +513,24 @@ def _seed_workspace(workspace: Path, *, namespace: str, workload_class: str) -> 
             "Call exactly one tool per response in this order: chain_alpha, chain_beta, chain_gamma. "
             "After chain_gamma, return only the requested code."
         )
-    (workspace / "SOUL.md").write_text(
+    state = workspace / "state"
+    agent_profile = state / "agent_memory" / "profile"
+    user_profile = state / "user_memory" / "profile"
+    agent_profile.mkdir(parents=True, exist_ok=True)
+    user_profile.mkdir(parents=True, exist_ok=True)
+    (agent_profile / "soul.md").write_text(
         f"# TokenWise benchmark\nNamespace: {namespace}\n{tool_protocol}\n{rules}\n",
         encoding="utf-8",
     )
-    (workspace / "AGENTS.md").write_text("# Agent\nFollow SOUL.md exactly.\n", encoding="utf-8")
-    (workspace / "USER.md").write_text("# User\nBenchmark operator.\n", encoding="utf-8")
-    (workspace / "TOOLS.md").write_text("# Tools\nUse only the registered benchmark tools.\n", encoding="utf-8")
+    (agent_profile / "agent.md").write_text(
+        "# Agent\nFollow the benchmark protocol exactly.\n",
+        encoding="utf-8",
+    )
+    (user_profile / "user.md").write_text("# User\nBenchmark operator.\n", encoding="utf-8")
+    (state / "TOOLS.md").write_text(
+        "# Tools\nUse only the registered benchmark tools.\n",
+        encoding="utf-8",
+    )
 
 
 def _seed_history(loop: AgentLoop, *, session_key: str, turns: int) -> None:

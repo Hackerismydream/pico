@@ -21,6 +21,7 @@ from benchmarks.picobench.packs.tokenwise_cost.live import (
 )
 from benchmarks.picobench.packs.tokenwise_cost.runner import (
     TrialArtifact,
+    _seed_workspace,
     load_deepseek_key,
     run_formal_campaign,
 )
@@ -143,6 +144,19 @@ def test_deepseek_key_preflight_fails_closed_without_a_credential(
 
     with pytest.raises(CampaignError, match="DeepSeek credential"):
         load_deepseek_key(config_path=tmp_path / "missing.json")
+
+
+def test_workspace_seed_uses_current_context_layout(tmp_path: Path) -> None:
+    _seed_workspace(tmp_path, namespace="trial-namespace", workload_class="tool_accumulation")
+
+    state = tmp_path / "state"
+    soul = (state / "agent_memory" / "profile" / "soul.md").read_text(encoding="utf-8")
+    assert "Namespace: trial-namespace" in soul
+    assert "call lookup_record exactly once" in soul
+    assert "Rule 179" in soul
+    assert (state / "agent_memory" / "profile" / "agent.md").is_file()
+    assert (state / "user_memory" / "profile" / "user.md").is_file()
+    assert (state / "TOOLS.md").is_file()
 
 
 @pytest.mark.asyncio
