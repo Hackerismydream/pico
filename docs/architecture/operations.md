@@ -159,6 +159,10 @@ Retained implementations:
 - `SystemAndTailCacheStrategy`: a reference cache placement variant;
 - pricing and model-catalog helpers.
 
+The shared Runtime Assembly does not currently install the configured TokenWise
+chain. Experiments inject a StrategyRegistry explicitly; mechanism evidence
+must not be reported as current host activation.
+
 Before-hook errors fail fast because they may corrupt the Provider request.
 After-hook errors are logged and swallowed so telemetry cannot fail the Turn.
 

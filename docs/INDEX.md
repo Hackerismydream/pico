@@ -63,6 +63,7 @@ proof that the corresponding product behavior works.
 | [Operations and extension surfaces](architecture/operations.md) | Providers, Routing, TokenWise, Channels, Cron, Sandbox, Tracing, configuration, and packaging |
 | [Evolver architecture](architecture/evolver.md) | Evolution Run lifecycle, benchmark inversion, candidate evidence, activation, rollback, and threat model |
 | [Agent application evaluation](evaluation/README.md) | Implemented checkout-only PicoBench boundary, Runtime relationship, experiment state, and claim discipline |
+| [TokenWise cost experiment](evaluation/tokenwise-cost.md) | Four-arm cache-policy matrix, conservative hit-rate and success-cost metrics, and claim gates |
 | [PicoBench Ship-1 contract](evaluation/picobench-ship-1.md) | Runtime, Context, Memory/Skill, Tool/MCP, and paired-evaluation task protocol |
 | [PicoBench semantic addendum](evaluation/picobench-semantic-addendum.md) | Historical production EverOS semantic retrieval, source fusion, cumulative budget, and separate claim gates |
 | [CodeCairn Memory backend](specs/codecairn-memory-backend.md) | Current v0.2 cross-repository Interface, ownership, lifecycle, Source Journal, failure semantics, and acceptance Gates |

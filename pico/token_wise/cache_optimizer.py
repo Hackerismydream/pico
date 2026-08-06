@@ -99,8 +99,8 @@ class CacheOptimizer(TokenStrategy):
     name = "cache_optimizer"
 
     def __init__(self, max_breakpoints: int = 4):
-        if max_breakpoints < 1:
-            raise ValueError("max_breakpoints must be >= 1")
+        if not 1 <= max_breakpoints <= 4:
+            raise ValueError("max_breakpoints must be between 1 and 4")
         self.max_breakpoints = max_breakpoints
 
     async def before_llm_call(
