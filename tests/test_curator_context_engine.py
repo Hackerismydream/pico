@@ -422,3 +422,10 @@ def test_history_from_messages_preserves_reasoning_fields():
 
     assert history[1]["reasoning_content"] == "chain of thought"
     assert history[1]["thinking_blocks"] == [{"thinking": "block"}]
+
+
+def test_curator_prompt_keeps_only_the_active_decision() -> None:
+    prompt = CuratorSegmentBuilder._system_prompt()
+
+    assert "latest explicit user decision active" in prompt
+    assert "only the active version of a decision" in prompt

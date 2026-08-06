@@ -19,6 +19,7 @@ from .metrics import (
     TOOL_SCHEMA_ESTIMATOR_ID,
 )
 from .models import ToolMCPTask, ToolMCPTrack
+from .runner import TOOL_MCP_MAX_TOOL_ITERATIONS
 from .tasks import load_tool_mcp_tasks, tool_mcp_task_set_digest
 from .verifier import mcp_verifier_code_digest
 
@@ -117,6 +118,7 @@ class ToolMCPPack:
                 "mcp_transport": "stdio",
                 "schema_estimator_id": TOOL_SCHEMA_ESTIMATOR_ID,
                 "schema_estimator_digest": TOOL_SCHEMA_ESTIMATOR_DIGEST,
+                "max_tool_iterations": TOOL_MCP_MAX_TOOL_ITERATIONS,
                 "result_scope": (
                     "exploratory_eight_task_pack" if self.track is ToolMCPTrack.FORMAL else "calibration_only"
                 ),

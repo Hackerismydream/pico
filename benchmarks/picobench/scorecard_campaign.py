@@ -27,11 +27,7 @@ from .campaign import (
 from .canonical import to_primitive
 from .registry import PackRegistry
 
-DEFAULT_SCORECARD_SUITE_PATH = (
-    Path(__file__).resolve().parent
-    / "suites"
-    / "agent_application_scorecard_v1.yaml"
-)
+DEFAULT_SCORECARD_SUITE_PATH = Path(__file__).resolve().parent / "suites" / "agent_application_scorecard_v1.yaml"
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 _RUNTIME_SUBJECT_PATHS = (
     "pico",
@@ -88,10 +84,7 @@ def build_scorecard_registry(
             ToolMCPTrack.CALIBRATION if calibration else ToolMCPTrack.FORMAL,
             runner=MCPRuntimeTrialRunner(
                 provider=provider,
-                model=(
-                    resolved.configured_model
-                    or resolved.provider_name + "/" + resolved.model
-                ),
+                model=(resolved.configured_model or resolved.provider_name + "/" + resolved.model),
             ),
         )
     )
@@ -171,7 +164,7 @@ async def run_scorecard_campaign(
     mode: CampaignMode,
     *,
     output_root: Path,
-    runtime_evidence: Path,
+    runtime_evidence: Path | None = None,
     suite_path: Path = DEFAULT_SCORECARD_SUITE_PATH,
 ) -> CampaignOutcome:
     suite = load_campaign_suite(suite_path)
@@ -181,6 +174,14 @@ async def run_scorecard_campaign(
     async def deterministic(
         _output_root: Path,
     ) -> DeterministicGateResult:
+        if runtime_evidence is None:
+            return DeterministicGateResult(
+                passed=True,
+                details={
+                    "stage": "scorecard-pack-preflight",
+                    "pico_commit": pico_commit,
+                },
+            )
         return reused_runtime_gate(
             runtime_evidence,
             pico_commit=pico_commit,
@@ -232,8 +233,6 @@ def main() -> int:
                 )
             )
             return 0
-        if args.runtime_evidence is None:
-            raise CampaignError("--runtime-evidence is required for ship")
         outcome = asyncio.run(
             run_scorecard_campaign(
                 CampaignMode.SHIP,

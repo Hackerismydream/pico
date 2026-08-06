@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import shutil
+import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Mapping
+
+from .canonical import canonical_digest
 
 
 @dataclass(frozen=True)
@@ -36,10 +41,20 @@ def compute_scorecard(
     scoring_spec_preregistered: bool = False,
 ) -> ScorecardResult:
     metrics = _mapping(formal_summary.get("metrics"), "formal metrics")
-    context_rate = _pass_rate(
-        metrics,
-        numerator="context.treatment_pass_count",
-        denominator="context.expected_pair_count",
+    context_capability_rate = metrics.get(
+        "context.treatment_capability_score_rate",
+    )
+    context_capability_current = metrics.get("context.capability_evidence_complete") is True and isinstance(
+        context_capability_rate, (int, float)
+    )
+    context_rate = (
+        _rate(float(context_capability_rate))
+        if context_capability_current
+        else _pass_rate(
+            metrics,
+            numerator="context.treatment_pass_count",
+            denominator="context.expected_pair_count",
+        )
     )
     tool_rate = _pass_rate(
         metrics,
@@ -80,7 +95,7 @@ def compute_scorecard(
     }
     diagnostic = round(sum(value.earned for value in dimensions.values()), 4)
     evidence = {
-        "context_current": True,
+        "context_current": context_capability_current,
         "tool_mcp_current": True,
         "memory_current": memory_available,
         "runtime_current": runtime_current,
@@ -96,7 +111,7 @@ def compute_scorecard(
     }
     certified = diagnostic if all(certification_gates.values()) else None
     return ScorecardResult(
-        schema="pico.picobench.multidimensional-score.v0",
+        schema="pico.picobench.multidimensional-score.v1",
         diagnostic_score=diagnostic,
         certified_score=certified,
         dimensions=dimensions,
@@ -140,16 +155,105 @@ def _read_json(path: Path) -> Mapping[str, Any]:
     return _mapping(value, str(path))
 
 
+def _memory_inputs(
+    summary_path: Path,
+    handoff_path: Path,
+    *,
+    pico_commit: str,
+) -> tuple[float, bool]:
+    summary = _read_json(summary_path)
+    handoff = _read_json(handoff_path)
+    if handoff.get("kind") != "codecairn.pico.joint-evidence.handoff":
+        raise ValueError("memory handoff has the wrong kind")
+    if handoff.get("schema_version") != 1:
+        raise ValueError("memory handoff has the wrong schema version")
+    recorded_digest = handoff.get("aggregate_digest")
+    if not isinstance(recorded_digest, str):
+        raise ValueError("memory handoff is missing aggregate_digest")
+    payload = dict(handoff)
+    payload.pop("aggregate_digest")
+    if canonical_digest(payload) != recorded_digest:
+        raise ValueError("memory handoff aggregate_digest does not match")
+    pico = _mapping(handoff.get("pico"), "memory handoff pico")
+    if pico.get("commit") != pico_commit:
+        raise ValueError("memory handoff does not match the current Pico commit")
+    campaign = _mapping(handoff.get("campaign"), "memory handoff campaign")
+    experiments = campaign.get("experiments")
+    if not isinstance(experiments, list) or not experiments:
+        raise ValueError("memory handoff has no experiments")
+    formal = _mapping(experiments[-1], "memory handoff formal experiment")
+    summary_digest = hashlib.sha256(summary_path.read_bytes()).hexdigest()
+    if formal.get("summary_sha256") != summary_digest:
+        raise ValueError("memory summary does not match the handoff")
+    result = _mapping(handoff.get("result"), "memory handoff result")
+    metrics = _mapping(summary.get("metrics"), "memory summary metrics")
+    rate = metrics.get("codecairn_memory.treatment_pass_rate")
+    if not isinstance(rate, (int, float)):
+        raise ValueError("memory treatment pass rate must be numeric")
+    current = (
+        summary.get("ship_complete") is True
+        and summary.get("measurement_valid") is True
+        and metrics.get("codecairn_memory.ship_complete") is True
+        and metrics.get("codecairn_memory.measurement_valid") is True
+        and result.get("ship_complete") is True
+        and result.get("measurement_valid") is True
+    )
+    if not current:
+        raise ValueError("memory evidence is incomplete")
+    safety_current = (
+        metrics.get("codecairn_memory.production_evidence_complete") is True
+        and metrics.get("codecairn_memory.irrelevant_injection_rate") is not None
+        and float(metrics["codecairn_memory.irrelevant_injection_rate"]) <= 0.05
+        and metrics.get("codecairn_memory.stale_injection_count") == 0
+        and metrics.get("codecairn_memory.cross_repository_leakage_count") == 0
+        and metrics.get("codecairn_memory.memory_off_operation_calls") == 0
+    )
+    return _rate(float(rate)), safety_current
+
+
+def _current_pico_commit() -> str:
+    git = shutil.which("git")
+    if git is None:
+        raise RuntimeError("git is required to resolve the Pico commit")
+    completed = subprocess.run(
+        (git, "rev-parse", "HEAD"),
+        check=True,
+        capture_output=True,
+        cwd=Path(__file__).resolve().parents[2],
+        text=True,
+    )
+    return completed.stdout.strip()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Compute the PicoBench multidimensional diagnostic score.",
     )
     parser.add_argument("--formal-summary", required=True, type=Path)
-    parser.add_argument("--runtime-evidence", required=True, type=Path)
+    parser.add_argument("--runtime-evidence", type=Path)
+    parser.add_argument("--memory-summary", type=Path)
+    parser.add_argument("--memory-handoff", type=Path)
+    parser.add_argument(
+        "--scoring-spec-preregistered",
+        action="store_true",
+    )
     args = parser.parse_args()
+    if (args.memory_summary is None) != (args.memory_handoff is None):
+        parser.error("--memory-summary and --memory-handoff must be used together")
+    memory_rate = None
+    memory_safety = False
+    if args.memory_summary is not None and args.memory_handoff is not None:
+        memory_rate, memory_safety = _memory_inputs(
+            args.memory_summary,
+            args.memory_handoff,
+            pico_commit=_current_pico_commit(),
+        )
     result = compute_scorecard(
         _read_json(args.formal_summary),
-        _read_json(args.runtime_evidence),
+        _read_json(args.runtime_evidence) if args.runtime_evidence else {},
+        memory_treatment_pass_rate=memory_rate,
+        memory_safety_current=memory_safety,
+        scoring_spec_preregistered=args.scoring_spec_preregistered,
     )
     print(json.dumps(asdict(result), indent=2, sort_keys=True))
     return 0

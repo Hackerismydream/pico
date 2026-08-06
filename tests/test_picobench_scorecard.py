@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import hashlib
+import json
+
 import pytest
 
-from benchmarks.picobench.scorecard import compute_scorecard
+from benchmarks.picobench.canonical import canonical_digest
+from benchmarks.picobench.scorecard import _memory_inputs, compute_scorecard
 
 
 def _formal_summary() -> dict[str, object]:
@@ -12,6 +16,8 @@ def _formal_summary() -> dict[str, object]:
         "metrics": {
             "context.expected_pair_count": 24,
             "context.treatment_pass_count": 0,
+            "context.capability_evidence_complete": True,
+            "context.treatment_capability_score_rate": 0.25,
             "context.positive_claim_eligible": False,
             "tool_mcp.pair_measurement_count": 24,
             "tool_mcp.treatment_pass_count": 22,
@@ -30,9 +36,10 @@ def test_scorecard_reports_current_diagnostic_without_certifying_it() -> None:
         {"claim_eligible": True},
     )
 
-    assert result.diagnostic_score == pytest.approx(45.2778)
+    assert result.schema == "pico.picobench.multidimensional-score.v1"
+    assert result.diagnostic_score == pytest.approx(49.4444)
     assert result.certified_score is None
-    assert result.dimensions["capability"].earned == pytest.approx(15.2778)
+    assert result.dimensions["capability"].earned == pytest.approx(19.4444)
     assert result.dimensions["reliability"].earned == 20
     assert result.dimensions["efficiency"].earned == 0
     assert result.dimensions["process"].earned == 10
@@ -45,6 +52,7 @@ def test_scorecard_certifies_only_complete_preregistered_evidence() -> None:
     assert isinstance(metrics, dict)
     metrics["context.positive_claim_eligible"] = True
     metrics["tool_mcp.positive_claim_eligible"] = True
+    metrics["context.treatment_capability_score_rate"] = 1.0
 
     result = compute_scorecard(
         summary,
@@ -58,7 +66,7 @@ def test_scorecard_certifies_only_complete_preregistered_evidence() -> None:
         scoring_spec_preregistered=True,
     )
 
-    assert result.diagnostic_score == pytest.approx(77.7778)
+    assert result.diagnostic_score == pytest.approx(94.4444)
     assert result.certified_score == result.diagnostic_score
 
 
@@ -70,3 +78,75 @@ def test_scorecard_rejects_invalid_rates() -> None:
 
     with pytest.raises(ValueError, match="rates must be between"):
         compute_scorecard(summary, {"claim_eligible": True})
+
+
+def test_scorecard_accepts_current_memory_handoff(tmp_path) -> None:
+    pico_commit = "a" * 40
+    summary = {
+        "ship_complete": True,
+        "measurement_valid": True,
+        "metrics": {
+            "codecairn_memory.ship_complete": True,
+            "codecairn_memory.measurement_valid": True,
+            "codecairn_memory.treatment_pass_rate": 0.75,
+            "codecairn_memory.production_evidence_complete": True,
+            "codecairn_memory.irrelevant_injection_rate": 0.04,
+            "codecairn_memory.stale_injection_count": 0,
+            "codecairn_memory.cross_repository_leakage_count": 0,
+            "codecairn_memory.memory_off_operation_calls": 0,
+        },
+    }
+    summary_path = tmp_path / "SUMMARY.json"
+    summary_path.write_text(json.dumps(summary), encoding="utf-8")
+    handoff = {
+        "schema_version": 1,
+        "kind": "codecairn.pico.joint-evidence.handoff",
+        "pico": {"commit": pico_commit},
+        "campaign": {
+            "experiments": [
+                {
+                    "summary_sha256": hashlib.sha256(
+                        summary_path.read_bytes(),
+                    ).hexdigest(),
+                }
+            ]
+        },
+        "result": {
+            "ship_complete": True,
+            "measurement_valid": True,
+        },
+    }
+    handoff["aggregate_digest"] = canonical_digest(handoff)
+    handoff_path = tmp_path / "handoff.json"
+    handoff_path.write_text(json.dumps(handoff), encoding="utf-8")
+
+    assert _memory_inputs(
+        summary_path,
+        handoff_path,
+        pico_commit=pico_commit,
+    ) == (0.75, True)
+
+
+def test_scorecard_rejects_memory_from_another_commit(tmp_path) -> None:
+    summary_path = tmp_path / "SUMMARY.json"
+    summary_path.write_text(
+        json.dumps({"metrics": {}}),
+        encoding="utf-8",
+    )
+    handoff = {
+        "schema_version": 1,
+        "kind": "codecairn.pico.joint-evidence.handoff",
+        "pico": {"commit": "a" * 40},
+        "campaign": {"experiments": [{}]},
+        "result": {},
+    }
+    handoff["aggregate_digest"] = canonical_digest(handoff)
+    handoff_path = tmp_path / "handoff.json"
+    handoff_path.write_text(json.dumps(handoff), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="current Pico commit"):
+        _memory_inputs(
+            summary_path,
+            handoff_path,
+            pico_commit="b" * 40,
+        )

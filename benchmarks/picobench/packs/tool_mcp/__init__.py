@@ -23,6 +23,7 @@ from .models import (
 from .pack import ToolMCPPack, ToolMCPTrialRunner
 from .reducer import reduce_tool_mcp_claim_from_artifacts
 from .runner import (
+    TOOL_MCP_MAX_TOOL_ITERATIONS,
     DeterministicMCPTrialRunner,
     MCPRuntimeTrialRunner,
     run_mcp_transport_smoke,
@@ -43,6 +44,7 @@ __all__ = [
     "SealedMCPReceiptVerifier",
     "TOOL_SCHEMA_ESTIMATOR_DIGEST",
     "TOOL_SCHEMA_ESTIMATOR_ID",
+    "TOOL_MCP_MAX_TOOL_ITERATIONS",
     "CatalogToolDefinition",
     "DeterministicMCPTrialRunner",
     "TargetCallRecord",

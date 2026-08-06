@@ -80,16 +80,17 @@ picobench-scorecard-estimate:
 	uv run --frozen --all-extras --exact python -m benchmarks.picobench.scorecard_campaign estimate
 
 picobench-scorecard-ship:
-	@test -n "$$PICO_SCORECARD_RUNTIME_EVIDENCE" || (echo "PICO_SCORECARD_RUNTIME_EVIDENCE is required" >&2; exit 2)
 	uv run --frozen --all-extras --exact python -m benchmarks.picobench.scorecard_campaign ship \
-		--runtime-evidence "$$PICO_SCORECARD_RUNTIME_EVIDENCE"
+		$(if $(PICO_SCORECARD_RUNTIME_EVIDENCE),--runtime-evidence "$(PICO_SCORECARD_RUNTIME_EVIDENCE)",)
 
 picobench-scorecard-score:
 	@test -n "$$PICO_SCORECARD_FORMAL_SUMMARY" || (echo "PICO_SCORECARD_FORMAL_SUMMARY is required" >&2; exit 2)
-	@test -n "$$PICO_SCORECARD_RUNTIME_EVIDENCE" || (echo "PICO_SCORECARD_RUNTIME_EVIDENCE is required" >&2; exit 2)
 	uv run --frozen --all-extras --exact python -m benchmarks.picobench.scorecard \
 		--formal-summary "$$PICO_SCORECARD_FORMAL_SUMMARY" \
-		--runtime-evidence "$$PICO_SCORECARD_RUNTIME_EVIDENCE"
+		$(if $(PICO_SCORECARD_RUNTIME_EVIDENCE),--runtime-evidence "$(PICO_SCORECARD_RUNTIME_EVIDENCE)",) \
+		$(if $(PICO_SCORECARD_MEMORY_SUMMARY),--memory-summary "$(PICO_SCORECARD_MEMORY_SUMMARY)",) \
+		$(if $(PICO_SCORECARD_MEMORY_HANDOFF),--memory-handoff "$(PICO_SCORECARD_MEMORY_HANDOFF)",) \
+		$(if $(PICO_SCORECARD_PREREGISTERED),--scoring-spec-preregistered,)
 
 picobench-runtime-scheduler:
 	uv run --frozen --all-extras --exact python -m benchmarks.picobench.packs.runtime.scheduler_experiments

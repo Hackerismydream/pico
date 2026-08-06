@@ -79,6 +79,7 @@ _DISABLED_DEFAULT_TOOLS = [
 ]
 _EXPECTED_CATALOG_NAMES = frozenset(definition.runtime_name for definition in catalog_definitions())
 _MAX_OUTPUT_TOKENS = 1_500
+TOOL_MCP_MAX_TOOL_ITERATIONS = 6
 
 
 class _ScriptedToolMCPProvider(LLMProvider):
@@ -524,7 +525,7 @@ def _runtime_config(
     config.agents.defaults.max_tokens = provider.generation.max_tokens
     config.agents.defaults.temperature = provider.generation.temperature
     config.agents.defaults.reasoning_effort = provider.generation.reasoning_effort
-    config.agents.defaults.max_tool_iterations = 4
+    config.agents.defaults.max_tool_iterations = TOOL_MCP_MAX_TOOL_ITERATIONS
     config.routing.enabled = False
     config.tools.restrict_to_workspace = True
     config.tools.disabled_tools = list(_DISABLED_DEFAULT_TOOLS)

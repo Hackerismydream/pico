@@ -70,6 +70,8 @@ def _parse_task(track: ContextTrack, raw: Any) -> ContextTask:
         early_constraint=_required_str(raw, "early_constraint"),
         superseded_before=_required_str(raw, "superseded_before"),
         superseded_after=_required_str(raw, "superseded_after"),
+        constraint_keys=_required_str_tuple(raw, "constraint_keys"),
+        decision_keys=_required_str_tuple(raw, "decision_keys"),
         noise_topic=_required_str(raw, "noise_topic"),
         first_tool_label=_required_str(raw, "first_tool_label"),
         second_tool_label=_required_str(raw, "second_tool_label"),
@@ -92,7 +94,15 @@ def _parse_task(track: ContextTrack, raw: Any) -> ContextTask:
     if (task.message_count - 14) % 2:
         raise ValueError(f"{task.task_id} message_count cannot materialize turn pairs")
     task.materialize_history()
-    json.loads(task.expected_path.read_text(encoding="utf-8"))
+    expected = json.loads(task.expected_path.read_text(encoding="utf-8"))
+    expected_keys = set(expected) if isinstance(expected, dict) else set()
+    declared_keys = set(task.constraint_keys) | set(task.decision_keys)
+    if set(task.constraint_keys) & set(task.decision_keys):
+        raise ValueError(f"{task.task_id} Context scoring keys overlap")
+    if declared_keys != expected_keys:
+        raise ValueError(
+            f"{task.task_id} Context scoring keys must cover the expected artifact",
+        )
     return task
 
 
@@ -101,6 +111,17 @@ def _required_str(raw: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"Context task field {key!r} must be a non-empty string")
     return value
+
+
+def _required_str_tuple(raw: dict[str, Any], key: str) -> tuple[str, ...]:
+    value = raw.get(key)
+    if not isinstance(value, list) or not value or not all(isinstance(item, str) and item for item in value):
+        raise ValueError(
+            f"Context task field {key!r} must be a non-empty string list",
+        )
+    if len(set(value)) != len(value):
+        raise ValueError(f"Context task field {key!r} contains duplicates")
+    return tuple(value)
 
 
 __all__ = [

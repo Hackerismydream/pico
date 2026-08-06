@@ -16,6 +16,12 @@ _TREATMENT_AXIS = "history_manager"
 _CONTROL_VARIANT = "context-fifo"
 _TREATMENT_VARIANT = "context-curator"
 _MEASURABLE_STATUSES = {"passed", "task_failed", "task_timeout"}
+_CAPABILITY_CRITERIA = (
+    "early_constraint_retained",
+    "active_constraint_applied",
+    "latest_decision_applied",
+    "artifact_exact",
+)
 
 
 def reduce_context_artifacts(
@@ -139,6 +145,11 @@ def reduce_context_artifacts(
     reduction_percent = (
         assessment.equal_task_macro_reduction * 100.0 if assessment.equal_task_macro_reduction is not None else None
     )
+    capability_metrics = _capability_metrics(
+        trials=trials,
+        pack_ids=pair_pack_ids,
+        planned_pair_keys=planned_pair_keys,
+    )
     return {
         "context.measurement_valid": measurement_valid,
         "context.positive_claim_eligible": (measurement_valid and assessment.claim_eligible),
@@ -157,6 +168,7 @@ def reduce_context_artifacts(
         "context.tasks_with_lower_trial_total_input": (assessment.tasks_with_lower_trial_total),
         "context.control_pass_count": assessment.control_passes,
         "context.treatment_pass_count": assessment.treatment_passes,
+        **capability_metrics,
         "context.result_scope": ("exploratory_eight_task_pack" if pair_pack_ids == {"context"} else "calibration_only"),
         "context.findings": combined_findings,
     }
@@ -337,6 +349,40 @@ def _measurement(
         integrity_findings,
         operational_findings,
     )
+
+
+def _capability_metrics(
+    *,
+    trials: Mapping[tuple[str, str, int, str], Mapping[str, Any]],
+    pack_ids: set[str],
+    planned_pair_keys: set[tuple[str, int]],
+) -> dict[str, JsonValue]:
+    expected_trials = len(planned_pair_keys)
+    passed = {criterion: 0 for criterion in _CAPABILITY_CRITERIA}
+    evidence_complete = len(pack_ids) == 1
+    pack_id = next(iter(pack_ids), "")
+    for task_id, repetition in sorted(planned_pair_keys):
+        trial = trials.get(
+            (pack_id, task_id, repetition, _TREATMENT_VARIANT),
+        )
+        if trial is None:
+            evidence_complete = False
+            continue
+        metrics = _mapping(trial.get("metrics")) or {}
+        for criterion in _CAPABILITY_CRITERIA:
+            value = metrics.get(criterion)
+            if isinstance(value, bool):
+                passed[criterion] += int(value)
+            elif trial.get("status") in _MEASURABLE_STATUSES:
+                evidence_complete = False
+    denominator = expected_trials * len(_CAPABILITY_CRITERIA)
+    result: dict[str, JsonValue] = {
+        "context.capability_evidence_complete": (evidence_complete and expected_trials > 0),
+        "context.treatment_capability_score_rate": (sum(passed.values()) / denominator if denominator else None),
+    }
+    for criterion, count in passed.items():
+        result[f"context.treatment_{criterion}_rate"] = count / expected_trials if expected_trials else None
+    return result
 
 
 def _mapping(value: Any) -> Mapping[str, Any] | None:

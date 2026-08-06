@@ -147,6 +147,10 @@ def test_every_context_task_materializes_required_long_session_shape(
         assert max(len(str(result["content"])) for result in tool_results) >= 800
         assert any("[irrelevant-noise:" in str(message.get("content", "")) for message in history)
         assert task.expected_path.is_file()
+        assert set(task.constraint_keys).isdisjoint(task.decision_keys)
+        assert set(task.constraint_keys) | set(task.decision_keys) == set(
+            json.loads(task.expected_path.read_text(encoding="utf-8")),
+        )
         assert task.history_digest == task.compute_history_digest()
 
 
@@ -350,6 +354,29 @@ async def test_every_formal_context_verifier_reports_own_tampering_as_infrastruc
     assert execution.infrastructure_error == "verifier_digest_changed"
 
 
+@pytest.mark.asyncio
+async def test_context_verifier_reports_constraint_and_decision_separately(
+    tmp_path: Path,
+) -> None:
+    task = load_context_tasks(ContextTrack.FORMAL)[0]
+    expected = json.loads(task.expected_path.read_text(encoding="utf-8"))
+    expected[task.decision_keys[0]] = "stale-value"
+    artifact = tmp_path / task.artifact_path
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text(json.dumps(expected), encoding="utf-8")
+    verifier = SealedContextTaskVerifier.capture(task)
+
+    metrics = verifier.diagnostic_metrics(tmp_path)
+
+    assert metrics == {
+        "artifact_valid_json": True,
+        "active_constraint_applied": True,
+        "latest_decision_applied": False,
+        "artifact_exact": False,
+        "forbidden_paths_clean": True,
+    }
+
+
 def _positive_measurements() -> tuple[ContextPairMeasurement, ...]:
     return tuple(
         ContextPairMeasurement(
@@ -422,6 +449,12 @@ def test_context_artifact_reducer_rebuilds_flat_claim_metrics() -> None:
     assert result["context.coverage_valid"] is True
     assert result["context.usage_complete"] is True
     assert result["context.single_axis_valid"] is True
+    assert result["context.capability_evidence_complete"] is True
+    assert result["context.treatment_capability_score_rate"] == 1.0
+    assert result["context.treatment_early_constraint_retained_rate"] == 1.0
+    assert result["context.treatment_active_constraint_applied_rate"] == 1.0
+    assert result["context.treatment_latest_decision_applied_rate"] == 1.0
+    assert result["context.treatment_artifact_exact_rate"] == 1.0
     assert result["context.findings"] == []
 
 
@@ -607,6 +640,10 @@ def _positive_context_artifacts(
                             "trial_total_input_tokens": total_tokens,
                             "context_auxiliary_input_tokens": (auxiliary_tokens),
                             "usage_complete": True,
+                            "early_constraint_retained": True,
+                            "active_constraint_applied": True,
+                            "latest_decision_applied": True,
+                            "artifact_exact": True,
                         },
                     }
                 )
@@ -655,6 +692,13 @@ async def test_context_pack_resolves_factory_and_rejects_observed_axis_drift(
                 "usage_complete": True,
                 "context_path": "fifo_tail",
                 "early_constraint_retained": False,
+                "artifact_valid_json": True,
+                "active_constraint_applied": True,
+                "latest_decision_applied": True,
+                "artifact_exact": True,
+                "forbidden_paths_clean": True,
+                "capability_criteria_passed": 3,
+                "capability_criteria_total": 4,
                 "end_to_end_latency_ms": 1,
             },
         )

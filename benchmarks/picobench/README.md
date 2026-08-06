@@ -42,37 +42,45 @@ Print the frozen worst-case budget with:
 make picobench-scorecard-estimate
 ```
 
-Run the paid campaign with an existing Runtime evidence artifact:
+Run the paid campaign with:
 
 ```bash
-PICO_SCORECARD_RUNTIME_EVIDENCE=/absolute/path/to/cv-metrics-runtime.json \
-  make picobench-scorecard-ship
+make picobench-scorecard-ship
 ```
 
-The Runtime artifact may come from an earlier commit only when Pico product
-code, dependency identity, and the Runtime Pack are byte-equivalent across the
-two commits. The campaign verifies that continuity before making a paid call;
-it does not rerun the completed Runtime experiment.
+Runtime evidence is not required to measure the independent Context and
+Tool/MCP Packs. When `PICO_SCORECARD_RUNTIME_EVIDENCE` is supplied, the
+campaign verifies that its Pico product code, dependency identity, and Runtime
+Pack are byte-equivalent before making a paid call. It never silently reruns
+the Runtime experiment.
 
-The v0 multidimensional score uses Capability 50, Reliability 20, Efficiency
-20, and Process 10. Capability averages current treatment pass rates for
-Context, Tool/MCP, and Memory. Efficiency assigns five points to each eligible
-TokenWise, Context, Tool/MCP, and Turn-efficiency claim. Missing, ineligible,
-or commit-incompatible evidence contributes zero. Process checks MCP
-disclosure, transport, invalid-target, and exact-repeat gates. Safety and full
-evidence coverage are certification gates, not bonus points.
+The v1 multidimensional score uses Capability 50, Reliability 20, Efficiency
+20, and Process 10. Capability averages current treatment rates for Context,
+Tool/MCP, and Memory. Context capability is the average of four frozen checks:
+the early constraint is still present, the artifact applies it, the latest
+decision is applied, and the artifact is exactly correct. The strict external
+verifier pass rate is still reported separately and is not relaxed.
+Efficiency assigns five points to each eligible TokenWise, Context, Tool/MCP,
+and Turn-efficiency claim. Missing, ineligible, or commit-incompatible evidence
+contributes zero. Process checks MCP disclosure, transport, invalid-target,
+and exact-repeat gates. Safety and full evidence coverage are certification
+gates, not bonus points.
 
 Compute the score from immutable formal and Runtime artifacts with:
 
 ```bash
 PICO_SCORECARD_FORMAL_SUMMARY=/absolute/path/to/summary.json \
-PICO_SCORECARD_RUNTIME_EVIDENCE=/absolute/path/to/cv-metrics-runtime.json \
+PICO_SCORECARD_MEMORY_SUMMARY=/absolute/path/to/memory-summary.json \
+PICO_SCORECARD_MEMORY_HANDOFF=/absolute/path/to/memory-handoff.json \
+PICO_SCORECARD_PREREGISTERED=1 \
   make picobench-scorecard-score
 ```
 
-The scorer always emits a diagnostic score. It emits a certified score only
-when the scoring specification was preregistered and every evidence and safety
-gate is complete.
+Runtime, Memory, and preregistration inputs are optional. The Memory summary
+is accepted only with a digest-bound handoff that names the current Pico
+commit. The scorer always emits a diagnostic score and assigns zero to missing
+dimensions. It emits a certified score only when the scoring specification was
+preregistered and every evidence and safety gate is complete.
 
 ## Frozen scale and budget
 
