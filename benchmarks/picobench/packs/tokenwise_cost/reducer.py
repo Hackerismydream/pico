@@ -9,15 +9,11 @@ from .models import (
     TokenWiseCostMeasurement,
 )
 
-CACHE_POLICY_NO_EXPLICIT = "no_explicit_cache"
-CACHE_POLICY_PROVIDER_AUTO = "provider_auto"
-CACHE_POLICY_SYSTEM_AND_3 = "system_and_3"
-CACHE_POLICY_ADAPTIVE_4 = "tokenwise_adaptive_4"
+CACHE_POLICY_PREFIX_DISRUPTED = "prefix_disrupted"
+CACHE_POLICY_PREFIX_STABLE = "prefix_stable"
 CACHE_POLICIES = (
-    CACHE_POLICY_NO_EXPLICIT,
-    CACHE_POLICY_PROVIDER_AUTO,
-    CACHE_POLICY_SYSTEM_AND_3,
-    CACHE_POLICY_ADAPTIVE_4,
+    CACHE_POLICY_PREFIX_DISRUPTED,
+    CACHE_POLICY_PREFIX_STABLE,
 )
 
 
@@ -67,11 +63,10 @@ def assess_tokenwise_cost_claim(
         )
         for policy in CACHE_POLICIES
     }
-    adaptive = arms[CACHE_POLICY_ADAPTIVE_4]
-    no_explicit = arms[CACHE_POLICY_NO_EXPLICIT]
-    provider_auto = arms[CACHE_POLICY_PROVIDER_AUTO]
-    cost_reduction_vs_no_explicit = _cost_reduction(no_explicit, adaptive)
-    cost_reduction_vs_provider_auto = _cost_reduction(provider_auto, adaptive)
+    disrupted = arms[CACHE_POLICY_PREFIX_DISRUPTED]
+    stable = arms[CACHE_POLICY_PREFIX_STABLE]
+    cost_reduction_vs_disrupted = _cost_reduction(disrupted, stable)
+    cache_hit_rate_lift = stable.conservative_cache_hit_rate - disrupted.conservative_cache_hit_rate
 
     findings: list[str] = []
     if set(grouped) != expected_block_keys or len(valid_blocks) != len(expected_block_keys):
@@ -80,22 +75,22 @@ def assess_tokenwise_cost_claim(
         findings.append("workload_coverage_incomplete")
     if not _success_non_regression(retained):
         findings.append("task_success_regression")
-    if cost_reduction_vs_no_explicit is None or cost_reduction_vs_no_explicit <= 0:
-        findings.append("no_cost_reduction_vs_no_explicit")
-    if cost_reduction_vs_provider_auto is None or cost_reduction_vs_provider_auto <= 0:
-        findings.append("no_cost_reduction_vs_provider_auto")
-    if adaptive.conservative_cache_hit_rate <= 0:
-        findings.append("no_tokenwise_cache_reads")
+    if cost_reduction_vs_disrupted is None or cost_reduction_vs_disrupted <= 0:
+        findings.append("no_cost_reduction_vs_disrupted_prefix")
+    if cache_hit_rate_lift <= 0:
+        findings.append("no_cache_hit_rate_lift")
+    if stable.conservative_cache_hit_rate <= 0:
+        findings.append("no_stable_prefix_cache_reads")
 
     claim_eligible = not findings
     cv_metrics: dict[str, int | float] = {}
     if claim_eligible:
         cv_metrics = {
-            "cost_per_verified_success_usd": adaptive.cost_per_verified_success_usd or 0.0,
-            "cost_reduction_vs_no_explicit": cost_reduction_vs_no_explicit or 0.0,
-            "cost_reduction_vs_provider_auto": cost_reduction_vs_provider_auto or 0.0,
-            "conservative_cache_hit_rate": adaptive.conservative_cache_hit_rate,
-            "task_pass_rate": adaptive.task_pass_rate,
+            "cost_per_verified_success_usd": stable.cost_per_verified_success_usd or 0.0,
+            "cost_reduction_vs_disrupted": cost_reduction_vs_disrupted or 0.0,
+            "conservative_cache_hit_rate": stable.conservative_cache_hit_rate,
+            "cache_hit_rate_lift": cache_hit_rate_lift,
+            "task_pass_rate": stable.task_pass_rate,
             "valid_comparison_blocks": len(valid_blocks),
             "trial_count": len(retained),
         }
@@ -104,8 +99,8 @@ def assess_tokenwise_cost_claim(
         expected_blocks=len(expected_block_keys),
         valid_blocks=len(valid_blocks),
         arms=arms,
-        cost_reduction_vs_no_explicit=cost_reduction_vs_no_explicit,
-        cost_reduction_vs_provider_auto=cost_reduction_vs_provider_auto,
+        cost_reduction_vs_disrupted=cost_reduction_vs_disrupted,
+        cache_hit_rate_lift=cache_hit_rate_lift,
         findings=tuple(findings),
         cv_metrics=cv_metrics,
     )
@@ -163,22 +158,18 @@ def _success_non_regression(
     for measurement in measurements:
         by_workload[measurement.workload_class][measurement.cache_policy].append(measurement.task_passed)
     for policies in by_workload.values():
-        adaptive = policies[CACHE_POLICY_ADAPTIVE_4]
-        if not adaptive:
+        stable = policies[CACHE_POLICY_PREFIX_STABLE]
+        disrupted = policies[CACHE_POLICY_PREFIX_DISRUPTED]
+        if not stable or not disrupted:
             return False
-        adaptive_rate = sum(adaptive) / len(adaptive)
-        for control_policy in (CACHE_POLICY_NO_EXPLICIT, CACHE_POLICY_PROVIDER_AUTO):
-            control = policies[control_policy]
-            if not control or adaptive_rate < sum(control) / len(control):
-                return False
+        if sum(stable) / len(stable) < sum(disrupted) / len(disrupted):
+            return False
     return True
 
 
 __all__ = [
     "CACHE_POLICIES",
-    "CACHE_POLICY_ADAPTIVE_4",
-    "CACHE_POLICY_NO_EXPLICIT",
-    "CACHE_POLICY_PROVIDER_AUTO",
-    "CACHE_POLICY_SYSTEM_AND_3",
+    "CACHE_POLICY_PREFIX_DISRUPTED",
+    "CACHE_POLICY_PREFIX_STABLE",
     "assess_tokenwise_cost_claim",
 ]

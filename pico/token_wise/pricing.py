@@ -17,7 +17,8 @@ Anthropic ephemeral cache pricing is applied on top of the base rate:
     cache read  → 10% of prompt rate
     cache write → 125% of prompt rate (ephemeral 5-min TTL)
 
-Non-Anthropic providers (no cache support) pass ``cache_read_tokens=0``,
+DeepSeek V4 instead uses its published automatic disk-cache hit, miss, and
+output rates. Other providers pass ``cache_read_tokens=0``,
 ``cache_write_tokens=0`` and the function collapses to the standard formula.
 """
 
@@ -36,6 +37,15 @@ from pico.token_wise import model_catalog_cache
 _FALLBACK_PRICING: dict[str, tuple[float, float]] = {
     # OpenRouter model pages (snapshot 2026-03)
     "z-ai/glm-4.5-air": (0.13e-6, 0.85e-6),  # $0.13/$0.85 per 1M
+}
+
+# Snapshot from DeepSeek's 2026-08-06 Models & Pricing page. These direct
+# Provider rates take precedence over LiteLLM because cache-hit prices are not
+# represented by LiteLLM's ordinary prompt/completion pair.
+_DEEPSEEK_V4_PRICING: dict[str, tuple[float, float, float]] = {
+    # (cache-miss input, cache-hit input, output), USD per token
+    "deepseek-v4-flash": (0.14e-6, 0.0028e-6, 0.28e-6),
+    "deepseek-v4-pro": (0.435e-6, 0.003625e-6, 0.87e-6),
 }
 
 # Track which unknown models we've already warned about so we log once each.
@@ -227,9 +237,20 @@ def estimate_cost_usd(
     """Estimate USD cost for a single LLM call. Returns None for unknown models.
 
     ``input_tokens`` is fresh (non-cache) prompt tokens. Anthropic's
-    ``usage.input_tokens`` already excludes cache tokens, so pass it
-    through untouched.
+    ``usage.input_tokens`` already excludes cache tokens, so pass it through
+    untouched. DeepSeek reports cache hits separately from total prompt tokens;
+    callers normalize the total to fresh tokens before invoking this function.
     """
+    deepseek_model = model.removeprefix("deepseek/")
+    if not model.startswith("openrouter/") and deepseek_model in _DEEPSEEK_V4_PRICING:
+        miss_rate, hit_rate, output_rate = _DEEPSEEK_V4_PRICING[deepseek_model]
+        return (
+            input_tokens * miss_rate
+            + output_tokens * output_rate
+            + cache_read_tokens * hit_rate
+            + cache_write_tokens * miss_rate
+        )
+
     rates = _try_litellm_rates(model, input_tokens, output_tokens)
     if rates is None:
         rates = _try_openrouter_rates(model)

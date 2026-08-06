@@ -100,6 +100,27 @@ def test_cache_write_more_expensive_than_fresh_input():
     assert cw == pytest.approx(base * 1.25, rel=0.01)
 
 
+@pytest.mark.parametrize(
+    ("model", "fresh_rate", "cache_read_rate", "output_rate"),
+    [
+        ("deepseek/deepseek-v4-flash", 0.14e-6, 0.0028e-6, 0.28e-6),
+        ("deepseek/deepseek-v4-pro", 0.435e-6, 0.003625e-6, 0.87e-6),
+    ],
+)
+def test_deepseek_v4_uses_native_cache_rates(model, fresh_rate, cache_read_rate, output_rate):
+    cost = estimate_cost_usd(
+        model,
+        input_tokens=1_000_000,
+        output_tokens=1_000_000,
+        cache_read_tokens=1_000_000,
+    )
+
+    assert cost == pytest.approx(
+        1_000_000 * (fresh_rate + cache_read_rate + output_rate),
+        rel=1e-12,
+    )
+
+
 def test_zero_tokens_returns_zero_cost():
     cost = estimate_cost_usd("anthropic/claude-sonnet-4-5", 0, 0)
     assert cost == 0.0
