@@ -54,6 +54,26 @@ code, dependency identity, and the Runtime Pack are byte-equivalent across the
 two commits. The campaign verifies that continuity before making a paid call;
 it does not rerun the completed Runtime experiment.
 
+The v0 multidimensional score uses Capability 50, Reliability 20, Efficiency
+20, and Process 10. Capability averages current treatment pass rates for
+Context, Tool/MCP, and Memory. Efficiency assigns five points to each eligible
+TokenWise, Context, Tool/MCP, and Turn-efficiency claim. Missing, ineligible,
+or commit-incompatible evidence contributes zero. Process checks MCP
+disclosure, transport, invalid-target, and exact-repeat gates. Safety and full
+evidence coverage are certification gates, not bonus points.
+
+Compute the score from immutable formal and Runtime artifacts with:
+
+```bash
+PICO_SCORECARD_FORMAL_SUMMARY=/absolute/path/to/summary.json \
+PICO_SCORECARD_RUNTIME_EVIDENCE=/absolute/path/to/cv-metrics-runtime.json \
+  make picobench-scorecard-score
+```
+
+The scorer always emits a diagnostic score. It emits a certified score only
+when the scoring specification was preregistered and every evidence and safety
+gate is complete.
+
 ## Frozen scale and budget
 
 The suite at

@@ -1,4 +1,4 @@
-.PHONY: help install install-deps lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-scorecard-estimate picobench-scorecard-ship picobench-runtime-scheduler picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify picobench-codecairn-smoke picobench-codecairn-task-effect-smoke picobench-codecairn-task-effect-estimate picobench-codecairn-task-effect-ship picobench-codecairn-ship verify-codecairn-continuity verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
+.PHONY: help install install-deps lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-scorecard-estimate picobench-scorecard-ship picobench-scorecard-score picobench-runtime-scheduler picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify picobench-codecairn-smoke picobench-codecairn-task-effect-smoke picobench-codecairn-task-effect-estimate picobench-codecairn-task-effect-ship picobench-codecairn-ship verify-codecairn-continuity verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
 
 PYTHON ?= python3
 PYTHON_LINT_TARGETS ?= scripts/check_commit_file.py scripts/check_commit_messages.py scripts/check_pr_title.py scripts/check_large_files.py scripts/commit_lint.py tests/test_commit_lint.py tests/test_large_file_check.py
@@ -21,6 +21,7 @@ help:
 	@echo "  picobench      Run the frozen PicoBench calibration and formal campaign"
 	@echo "  picobench-scorecard-estimate Print the current Scorecard worst-case budget"
 	@echo "  picobench-scorecard-ship Run the current Context and Tool/MCP Scorecard campaign"
+	@echo "  picobench-scorecard-score Compute the multidimensional diagnostic score"
 	@echo "  picobench-codecairn-smoke Validate the credential-free CodeCairn Pack"
 	@echo "  picobench-codecairn-task-effect-smoke Validate the credential-free task-effect v2 Pack"
 	@echo "  picobench-codecairn-task-effect-estimate Print the task-effect v2 worst-case budget"
@@ -81,6 +82,13 @@ picobench-scorecard-estimate:
 picobench-scorecard-ship:
 	@test -n "$$PICO_SCORECARD_RUNTIME_EVIDENCE" || (echo "PICO_SCORECARD_RUNTIME_EVIDENCE is required" >&2; exit 2)
 	uv run --frozen --all-extras --exact python -m benchmarks.picobench.scorecard_campaign ship \
+		--runtime-evidence "$$PICO_SCORECARD_RUNTIME_EVIDENCE"
+
+picobench-scorecard-score:
+	@test -n "$$PICO_SCORECARD_FORMAL_SUMMARY" || (echo "PICO_SCORECARD_FORMAL_SUMMARY is required" >&2; exit 2)
+	@test -n "$$PICO_SCORECARD_RUNTIME_EVIDENCE" || (echo "PICO_SCORECARD_RUNTIME_EVIDENCE is required" >&2; exit 2)
+	uv run --frozen --all-extras --exact python -m benchmarks.picobench.scorecard \
+		--formal-summary "$$PICO_SCORECARD_FORMAL_SUMMARY" \
 		--runtime-evidence "$$PICO_SCORECARD_RUNTIME_EVIDENCE"
 
 picobench-runtime-scheduler:
