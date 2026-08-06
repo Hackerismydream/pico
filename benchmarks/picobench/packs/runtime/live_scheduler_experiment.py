@@ -56,11 +56,11 @@ _DISABLED_TOOLS = [
 
 @dataclass(frozen=True)
 class LiveSchedulerConfig:
-    repetitions: int = 20
+    repetitions: int = 80
     user_slots: int = 4
     system_slots: int = 1
     hot_turns: int = 2
-    foreground_sessions: int = 100
+    foreground_sessions: int = 24
     max_agent_iterations: int = 3
     max_output_tokens_per_call: int = 512
     max_input_tokens_per_call: int = 8_000

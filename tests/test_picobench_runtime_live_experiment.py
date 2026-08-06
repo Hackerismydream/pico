@@ -53,10 +53,10 @@ def test_live_plan_freezes_workload_and_budget_without_credentials() -> None:
         model="deepseek/deepseek-v4-flash",
     )
 
-    assert config.planned_turns == 4_080
-    assert config.maximum_provider_request_attempts == 32_640
+    assert config.planned_turns == 4_160
+    assert config.maximum_provider_request_attempts == 33_280
     assert config.maximum_cost_cny < config.hard_cap_cny == 320.0
-    assert plan["budget"]["planned_turns"] == 4_080
+    assert plan["budget"]["planned_turns"] == 4_160
     assert plan["analysis"] == {
         "confidence_interval": "paired_repetition_bootstrap_percentile",
         "confidence_level": 0.95,

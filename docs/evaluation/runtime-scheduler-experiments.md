@@ -64,9 +64,9 @@ reply contains that marker, Provider usage is complete, no Tool is called, and
 the Runtime reaches a terminal result.
 
 The control and treatment receive the same prompts in the same order, use the
-same Provider and model, and use a balanced alternating arm order across 20
+same Provider and model, and use a balanced alternating arm order across 80
 paired repetitions. Each arm contains two consecutive Turns from one hot
-conversation followed by 100 foreground conversations, for 4,080 real Agent
+conversation followed by 24 foreground conversations, for 4,160 real Agent
 Turns in total. The primary metric is foreground accept-to-terminal P95
 latency. The reported effect is the median paired P95 reduction with a
 deterministic 10,000-resample bootstrap 95% confidence interval.
