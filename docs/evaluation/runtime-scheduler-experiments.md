@@ -109,6 +109,9 @@ The formal campaign was bound to source commit
 `d45e5ba88b8f07a82276612170bdbf2b9205f15d3c3b73ac1534378e7c1b4e8c`,
 and evidence digest
 `07f8c955347f50797e8f4e4aafb02ee85cd9e3ab06547ecaa75cc0fd9fd8bf59`.
+The exact pre-rebase source commit is retained on the
+`perf/live_scheduler_evidence_source` branch so the evidence-bound checkout
+remains retrievable after this change is squash-merged.
 It completed 80 paired repetitions and retained 4,160 raw Turn records.
 
 The median foreground P95 fell from 13,567.997 ms under strict global FIFO
