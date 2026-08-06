@@ -101,3 +101,30 @@ records without calling the Provider:
 PICO_LIVE_PERF_EVIDENCE=<run-artifact.json> \
 make picobench-runtime-live-verify
 ```
+
+## Formal live campaign result
+
+The formal campaign was bound to source commit
+`00fd757f1b55cb05f67bde099de2b1196d690db6`, plan digest
+`d45e5ba88b8f07a82276612170bdbf2b9205f15d3c3b73ac1534378e7c1b4e8c`,
+and evidence digest
+`07f8c955347f50797e8f4e4aafb02ee85cd9e3ab06547ecaa75cc0fd9fd8bf59`.
+It completed 80 paired repetitions and retained 4,160 raw Turn records.
+
+The median foreground P95 fell from 13,567.997 ms under strict global FIFO
+to 11,663.193 ms with session Lanes, a 13.53% reduction. The deterministic
+10,000-resample paired bootstrap 95% confidence interval was 11.36% to
+15.26%. All 4,160 requests executed with zero missing executions, duplicate
+executions, runner exceptions, or Provider failures.
+
+The task Verifier passed 4,158 of 4,160 Turns, or 99.95%. The two failures
+were `marker_missing`: each request reached a normal terminal result with
+complete usage and an explicit reply, but the model reply omitted its unique
+marker. One reply reached the 512 completion-token limit. These were model
+response-quality failures, not scheduler loss or Provider errors.
+
+The preregistered `all_tasks_verified` Gate required 4,160 of 4,160 marker
+passes, so the aggregate artifact records `claim_eligible: false`. Resume and
+public wording must report the 99.95% Verifier pass rate and must not say that
+every task passed. The raw-record verifier independently reproduces the P95
+reduction, confidence interval, usage totals, and request-integrity counts.
