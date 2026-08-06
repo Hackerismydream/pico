@@ -63,6 +63,8 @@ def _count_breakpoints(messages: list[dict], tools: list[dict] | None) -> int:
 def test_constructor_validates_max_breakpoints():
     with pytest.raises(ValueError):
         CacheOptimizer(max_breakpoints=0)
+    with pytest.raises(ValueError):
+        CacheOptimizer(max_breakpoints=5)
 
 
 async def test_noop_for_non_cache_models():
