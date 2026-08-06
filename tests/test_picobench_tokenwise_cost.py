@@ -141,7 +141,9 @@ def test_tokenwise_cost_claim_rejects_incomplete_usage() -> None:
 def test_tokenwise_cost_claim_rejects_task_success_regression() -> None:
     measurements = list(_measurements())
     index = next(
-        index for index, measurement in enumerate(measurements) if measurement.cache_policy == CACHE_POLICY_PREFIX_STABLE
+        index
+        for index, measurement in enumerate(measurements)
+        if measurement.cache_policy == CACHE_POLICY_PREFIX_STABLE
     )
     measurements[index] = replace(measurements[index], task_passed=False)
 
