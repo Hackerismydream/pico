@@ -78,16 +78,16 @@ million cache-hit input tokens, and USD 0.28 per million output tokens.
 | --- | ---: | ---: |
 | Valid Trials | 36 | 36 |
 | Verified task pass rate | 100% | 100% |
-| Conservative cache hit rate | 0% | 75.23% |
-| Estimated cost per verified success | $0.008704 | $0.002308 |
+| Conservative cache hit rate | 0% | 75.19% |
+| Estimated cost per verified success | $0.008694 | $0.002309 |
 
-Stable prefixes reduced estimated cost per verified success by **73.49%**
+Stable prefixes reduced estimated cost per verified success by **73.44%**
 relative to the deliberately disrupted counterfactual. All 36 Comparison
 Blocks were valid, no fallback or model drift occurred, and the full campaign
-used an estimated USD 0.3964.
+used an estimated USD 0.3961.
 
-Per-workload treatment hit rates were 65.09% for stable dialogue, 75.81% for
-long history, 79.29% for Tool accumulation, and 65.68% for the intra-Turn Tool
+Per-workload treatment hit rates were 65.12% for stable dialogue, 75.72% for
+long history, 79.31% for Tool accumulation, and 65.47% for the intra-Turn Tool
 chain.
 
 ## Evidence boundary
@@ -95,12 +95,12 @@ chain.
 The result proves that Pico's stable request prefixes benefit from DeepSeek's
 automatic cache under the frozen workload and that TokenWise reconstructs
 DeepSeek cache usage and estimated cost. It does not prove that Pico created
-DeepSeek's cache, that every production workload will achieve a 75.23% hit
+DeepSeek's cache, that every production workload will achieve a 75.19% hit
 rate, or that the estimate has been reconciled against a Provider invoice.
 
 The report and per-call artifacts are retained outside git under
-`.pico/evidence/tokenwise-cost-deepseek-context-layout/`. The report digest is
-`5635ad590eaaecc702152042d5b246d297842d86bbc446c241f54cd8f7f37051`.
+`.pico/evidence/tokenwise-cost-deepseek-rebased/`. The report digest is
+`fcde99b98c8bc46d0852015d7a92c01a0de6a4e4216f773045375f2f06e75aec`.
 Repository policy forbids committing standalone report artifacts.
 
 ## Reproduction
@@ -108,12 +108,12 @@ Repository policy forbids committing standalone report artifacts.
 ```bash
 uv run python -m benchmarks.picobench.tokenwise_cost_campaign \
   --mode preflight \
-  --output-root .pico/evidence/tokenwise-cost-deepseek-context-layout \
+  --output-root .pico/evidence/tokenwise-cost-deepseek-rebased \
   --execute-paid-campaign
 
 uv run python -m benchmarks.picobench.tokenwise_cost_campaign \
   --mode formal \
-  --output-root .pico/evidence/tokenwise-cost-deepseek-context-layout \
+  --output-root .pico/evidence/tokenwise-cost-deepseek-rebased \
   --execute-paid-campaign
 ```
 
