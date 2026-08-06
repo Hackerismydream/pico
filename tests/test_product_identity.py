@@ -41,7 +41,7 @@ def test_distribution_pins_the_codecairn_handoff() -> None:
 
     assert (
         "codecairn @ git+https://github.com/Hackerismydream/"
-        "CodeCairn.git@e993eb562cf1bb0b89490de4e91c2a56d79eb3be" in metadata["project"]["dependencies"]
+        "CodeCairn.git@a501fe29782e69dd7fc9a9277ba6743b2f2b4bc6" in metadata["project"]["dependencies"]
     )
     assert "codecairn" not in metadata["tool"]["uv"]["sources"]
 

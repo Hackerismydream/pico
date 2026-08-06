@@ -43,7 +43,7 @@ def _write_wheel(
             "Provides-Extra: channel-wecom\n"
             "Provides-Extra: channels\n"
             "Provides-Extra: sandbox\n"
-            "Requires-Dist: codecairn @ git+https://github.com/Hackerismydream/CodeCairn.git@e993eb562cf1bb0b89490de4e91c2a56d79eb3be\n"
+            "Requires-Dist: codecairn @ git+https://github.com/Hackerismydream/CodeCairn.git@a501fe29782e69dd7fc9a9277ba6743b2f2b4bc6\n"
         ),
         "pico_harness-0.1.7.dist-info/entry_points.txt": "[console_scripts]\npico = pico.cli.commands:run\n",
         "pico_harness-0.1.7.dist-info/licenses/LICENSE": "Apache-2.0",
@@ -502,7 +502,7 @@ def test_wheel_metadata_rejects_removed_channel_dependency(tmp_path: Path) -> No
                 "Provides-Extra: channel-feishu\n"
                 "Provides-Extra: channel-qq\n"
                 "Provides-Extra: channel-wecom\n"
-                "Requires-Dist: codecairn @ git+https://github.com/Hackerismydream/CodeCairn.git@e993eb562cf1bb0b89490de4e91c2a56d79eb3be\n"
+                "Requires-Dist: codecairn @ git+https://github.com/Hackerismydream/CodeCairn.git@a501fe29782e69dd7fc9a9277ba6743b2f2b4bc6\n"
                 "Requires-Dist: slack-sdk>=3.39\n"
             )
         },
@@ -533,7 +533,7 @@ def test_wheel_rejects_direct_everos_dependency(tmp_path: Path) -> None:
                 "Provides-Extra: channel-feishu\n"
                 "Provides-Extra: channel-qq\n"
                 "Provides-Extra: channel-wecom\n"
-                "Requires-Dist: codecairn @ git+https://github.com/Hackerismydream/CodeCairn.git@e993eb562cf1bb0b89490de4e91c2a56d79eb3be\n"
+                "Requires-Dist: codecairn @ git+https://github.com/Hackerismydream/CodeCairn.git@a501fe29782e69dd7fc9a9277ba6743b2f2b4bc6\n"
                 "Requires-Dist: everos==1.1.2\n"
             )
         },

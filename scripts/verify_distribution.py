@@ -62,7 +62,7 @@ _REQUIRED_FILES = {
     "pico/tracing/viewer/ui/app.js",
 }
 _CODECAIRN_REQUIREMENT = (
-    "codecairn @ git+https://github.com/hackerismydream/codecairn.git@e993eb562cf1bb0b89490de4e91c2a56d79eb3be"
+    "codecairn @ git+https://github.com/hackerismydream/codecairn.git@a501fe29782e69dd7fc9a9277ba6743b2f2b4bc6"
 )
 
 _EXTRA_IMPORTS = {
