@@ -3354,6 +3354,7 @@ def test_semantic_proxy_envelope_allows_codecairn_task_experience(
 
     assert response.status == 200
     assert forwarded["max_tokens"] == 2_048
+    assert forwarded["thinking"] == {"type": "disabled"}
     assert ledger.snapshot().provider_charged_cny > 0
 
 

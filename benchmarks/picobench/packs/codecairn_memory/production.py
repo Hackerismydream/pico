@@ -917,6 +917,8 @@ class _MeteredSemanticProxy(
         request["model"] = self.model
         request["max_tokens"] = self.maximum_output_tokens
         request["stream"] = False
+        if self.role == "semantic":
+            request["thinking"] = {"type": "disabled"}
         estimated_input = _conservative_serialized_input_tokens(
             request["messages"],
             request.get("tools"),
