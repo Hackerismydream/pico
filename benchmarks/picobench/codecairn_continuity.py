@@ -44,11 +44,13 @@ class PairIntegrityError(RuntimeError):
 class PairAudit:
     pico_commit: str
     codecairn_commit: str
+    baseline_codecairn_commit: str
     codecairn_install_spec: str
     current_pico_wheel_sha256: str
     pico_distribution_report_sha256: str
     pico_source_manifest_sha256: str
     codecairn_wheel_sha256: str
+    baseline_codecairn_wheel_sha256: str
     pico_handoff_sha256: str
     codecairn_handoff_sha256: str
     historical_pico_commits: dict[str, str]
@@ -61,6 +63,10 @@ class PairAudit:
                 "commit": self.codecairn_commit,
                 "install_spec": self.codecairn_install_spec,
                 "wheel_sha256": self.codecairn_wheel_sha256,
+            },
+            "baseline_codecairn": {
+                "commit": self.baseline_codecairn_commit,
+                "wheel_sha256": self.baseline_codecairn_wheel_sha256,
             },
             "current_pico": {
                 "commit": self.pico_commit,
@@ -97,6 +103,7 @@ def audit_pair_inputs(
     pico_compatibility_wheel: Path,
     pico_distribution_report: Path,
     pico_commit: str,
+    codecairn_baseline_wheel: Path | None = None,
 ) -> PairAudit:
     if not _COMMIT_RE.fullmatch(pico_commit):
         raise PairIntegrityError("current Pico commit must be a 40-character SHA")
@@ -125,7 +132,7 @@ def audit_pair_inputs(
         codecairn_pico.get("commit"),
         "CodeCairn compatibility Pico commit",
     )
-    codecairn_commit = _commit(
+    baseline_codecairn_commit = _commit(
         pico_codecairn.get("commit"),
         "Pico handoff CodeCairn commit",
     )
@@ -134,7 +141,7 @@ def audit_pair_inputs(
             codecairn_section.get("commit"),
             "CodeCairn handoff commit",
         )
-        != codecairn_commit
+        != baseline_codecairn_commit
     ):
         raise PairIntegrityError("CodeCairn handoffs disagree on commit")
     install_spec = _string(
@@ -148,7 +155,7 @@ def audit_pair_inputs(
         )
         != install_spec
         or not _PINNED_INSTALL_RE.search(install_spec)
-        or not install_spec.endswith(codecairn_commit)
+        or not install_spec.endswith(baseline_codecairn_commit)
     ):
         raise PairIntegrityError("CodeCairn install specification is not immutable or consistent")
 
@@ -159,6 +166,8 @@ def audit_pair_inputs(
         pico_wheel_sha256=current_pico_sha,
     )
     codecairn_sha = _sha256(codecairn_wheel)
+    baseline_codecairn_wheel = codecairn_baseline_wheel or codecairn_wheel
+    baseline_codecairn_sha = _sha256(baseline_codecairn_wheel)
     implementation_sha = _sha256(pico_implementation_wheel)
     compatibility_sha = _sha256(pico_compatibility_wheel)
     expected_implementation_sha = _digest(
@@ -183,7 +192,7 @@ def audit_pair_inputs(
         raise PairIntegrityError("Pico implementation wheel digest mismatch")
     if compatibility_sha != expected_compatibility_sha:
         raise PairIntegrityError("CodeCairn compatibility Pico wheel digest mismatch")
-    if expected_codecairn != {codecairn_sha}:
+    if expected_codecairn != {baseline_codecairn_sha}:
         raise PairIntegrityError("CodeCairn wheel digest mismatch")
     codecairn_handoff_sha = _sha256(codecairn_handoff)
     if (
@@ -199,6 +208,9 @@ def audit_pair_inputs(
     implementation_metadata = _wheel_metadata(pico_implementation_wheel)
     compatibility_metadata = _wheel_metadata(pico_compatibility_wheel)
     codecairn_metadata = _wheel_metadata(codecairn_wheel)
+    baseline_codecairn_metadata = _wheel_metadata(
+        baseline_codecairn_wheel,
+    )
     expected_pico_identity = (
         _string(
             implementation_distribution.get("name"),
@@ -238,8 +250,16 @@ def audit_pair_inputs(
             ),
         )
         or codecairn_metadata != expected_codecairn_identity
+        or baseline_codecairn_metadata != expected_codecairn_identity
     ):
         raise PairIntegrityError("CodeCairn wheel distribution identity mismatch")
+
+    codecairn_commit = baseline_codecairn_commit
+    if codecairn_baseline_wheel is not None:
+        current_install_spec, codecairn_commit = _current_codecairn_install(
+            pico_wheel,
+        )
+        install_spec = current_install_spec
 
     contract = _mapping(pico_data, "plugin_contract")
     if contract != _EXPECTED_CONTRACT:
@@ -248,6 +268,7 @@ def audit_pair_inputs(
     return PairAudit(
         pico_commit=pico_commit,
         codecairn_commit=codecairn_commit,
+        baseline_codecairn_commit=baseline_codecairn_commit,
         codecairn_install_spec=install_spec,
         current_pico_wheel_sha256=current_pico_sha,
         pico_distribution_report_sha256=_sha256(
@@ -255,6 +276,7 @@ def audit_pair_inputs(
         ),
         pico_source_manifest_sha256=distribution["source_manifest_sha256"],
         codecairn_wheel_sha256=codecairn_sha,
+        baseline_codecairn_wheel_sha256=baseline_codecairn_sha,
         pico_handoff_sha256=_sha256(pico_handoff),
         codecairn_handoff_sha256=codecairn_handoff_sha,
         historical_pico_commits={
@@ -282,6 +304,7 @@ def run_continuity_gate(
     pico_source_root: Path,
     codecairn_source_root: Path,
     output_root: Path,
+    codecairn_baseline_wheel: Path | None = None,
 ) -> ContinuityGateResult:
     source_commit = _clean_source_commit(pico_source_root)
     if source_commit != pico_commit:
@@ -299,10 +322,19 @@ def run_continuity_gate(
         pico_compatibility_wheel=pico_compatibility_wheel,
         pico_distribution_report=pico_distribution_report,
         pico_commit=pico_commit,
+        codecairn_baseline_wheel=codecairn_baseline_wheel,
     )
     if codecairn_source_commit != audit.codecairn_commit:
         raise PairIntegrityError(
             "CodeCairn source checkout does not match the immutable handoff commit",
+        )
+    if not _commit_is_ancestor(
+        codecairn_source_root,
+        audit.baseline_codecairn_commit,
+        audit.codecairn_commit,
+    ):
+        raise PairIntegrityError(
+            "current CodeCairn commit does not descend from the immutable handoff",
         )
     output_root.mkdir(parents=True, exist_ok=True)
     if any(output_root.iterdir()):
@@ -1530,6 +1562,20 @@ def _clean_source_commit(
     return commit
 
 
+def _commit_is_ancestor(
+    root: Path,
+    ancestor: str,
+    descendant: str,
+) -> bool:
+    completed = _run(
+        ("git", "merge-base", "--is-ancestor", ancestor, descendant),
+        cwd=root,
+        env=os.environ.copy(),
+        check=False,
+    )
+    return completed.returncode == 0
+
+
 def _verify_pico_distribution_report(
     path: Path,
     *,
@@ -1637,6 +1683,36 @@ def _load_handoff(path: Path, *, kind: str) -> dict[str, Any]:
 
 
 def _wheel_metadata(path: Path) -> tuple[str, str]:
+    metadata = _wheel_metadata_message(path)
+    name = metadata.get("Name")
+    version = metadata.get("Version")
+    if not name or not version:
+        raise PairIntegrityError(f"wheel {path.name} has incomplete metadata")
+    return name, version
+
+
+def _current_codecairn_install(path: Path) -> tuple[str, str]:
+    metadata = _wheel_metadata_message(path)
+    requirements = metadata.get_all("Requires-Dist", [])
+    matches = [
+        requirement
+        for requirement in requirements
+        if requirement.lower().startswith("codecairn @ git+https://")
+    ]
+    if len(matches) != 1:
+        raise PairIntegrityError(
+            "current Pico wheel must contain one immutable CodeCairn requirement",
+        )
+    install_spec = matches[0]
+    match = _PINNED_INSTALL_RE.search(install_spec)
+    if match is None:
+        raise PairIntegrityError(
+            "current Pico CodeCairn requirement is not immutable",
+        )
+    return install_spec, install_spec[-40:]
+
+
+def _wheel_metadata_message(path: Path) -> Any:
     try:
         with zipfile.ZipFile(path) as archive:
             candidates = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
@@ -1645,11 +1721,7 @@ def _wheel_metadata(path: Path) -> tuple[str, str]:
             metadata = Parser().parsestr(archive.read(candidates[0]).decode("utf-8"))
     except (OSError, UnicodeError, zipfile.BadZipFile) as error:
         raise PairIntegrityError(f"cannot inspect wheel {path.name}") from error
-    name = metadata.get("Name")
-    version = metadata.get("Version")
-    if not name or not version:
-        raise PairIntegrityError(f"wheel {path.name} has incomplete metadata")
-    return name, version
+    return metadata
 
 
 def _wheel_entry_points(path: Path) -> dict[tuple[str, str], str]:

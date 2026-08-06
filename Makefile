@@ -161,6 +161,7 @@ verify-codecairn-continuity:
 	uv run --frozen --all-extras --exact python scripts/verify_codecairn_continuity.py \
 		--pico-wheel "$$PICO_CODECAIRN_PICO_WHEEL" \
 		--codecairn-wheel "$$PICO_CODECAIRN_WHEEL" \
+		$${PICO_CODECAIRN_BASELINE_WHEEL:+--codecairn-baseline-wheel "$$PICO_CODECAIRN_BASELINE_WHEEL"} \
 		--pico-handoff "$$PICO_CODECAIRN_PICO_HANDOFF" \
 		--codecairn-handoff "$$PICO_CODECAIRN_HANDOFF" \
 		--pico-implementation-wheel "$$PICO_CODECAIRN_IMPLEMENTATION_PICO_WHEEL" \
