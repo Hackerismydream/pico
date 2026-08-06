@@ -13,13 +13,13 @@ Pricing sources (in order):
        both.
     4. ``None`` — model unknown to all. Caller should degrade gracefully.
 
-Provider-native cache pricing is applied on top of the base rate:
+Anthropic ephemeral cache pricing is applied on top of the base rate:
     cache read  → 10% of prompt rate
     cache write → 125% of prompt rate (ephemeral 5-min TTL)
 
-DeepSeek V4 uses its published automatic disk-cache hit, miss, and output
-rates. Other providers pass ``cache_read_tokens=0``, ``cache_write_tokens=0``
-and the function collapses to the standard formula.
+DeepSeek V4 instead uses its published automatic disk-cache hit, miss, and
+output rates. Other providers pass ``cache_read_tokens=0``,
+``cache_write_tokens=0`` and the function collapses to the standard formula.
 """
 
 from __future__ import annotations
