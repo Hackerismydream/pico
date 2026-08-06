@@ -10,8 +10,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import httpx
-
 from benchmarks.picobench.canonical import canonical_bytes, canonical_digest
 from pico.agent.loop import AgentLoop
 from pico.agent.tools.base import Tool
@@ -60,53 +58,18 @@ class TrialArtifact:
 TrialExecutor = Callable[..., Awaitable[TrialArtifact]]
 
 
-def load_openrouter_key(*, config_path: Path | None = None) -> str:
-    key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+def load_deepseek_key(*, config_path: Path | None = None) -> str:
+    key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
     path = config_path or Path.home() / ".pico" / "config.json"
     if not key and path.is_file():
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
-            key = str(raw.get("providers", {}).get("openrouter", {}).get("apiKey", "")).strip()
+            key = str(raw.get("providers", {}).get("deepseek", {}).get("apiKey", "")).strip()
         except (OSError, json.JSONDecodeError, AttributeError):
             key = ""
-    if not key.startswith("sk-or-"):
-        raise CampaignError("OpenRouter credential is not configured")
+    if not key:
+        raise CampaignError("DeepSeek credential is not configured")
     return key
-
-
-async def fetch_and_validate_model_catalog() -> dict[str, Any]:
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        response = await client.get("https://openrouter.ai/api/v1/models")
-    response.raise_for_status()
-    payload = response.json()
-    validate_model_catalog(payload)
-    return payload
-
-
-def validate_model_catalog(payload: dict[str, Any]) -> None:
-    entries = payload.get("data")
-    if not isinstance(entries, list):
-        raise CampaignError("OpenRouter model catalog is malformed")
-    entry = next(
-        (item for item in entries if isinstance(item, dict) and item.get("id") == PRICE_SNAPSHOT["model"]), None
-    )
-    if entry is None:
-        raise CampaignError("frozen model is absent from the OpenRouter catalog")
-    pricing = entry.get("pricing")
-    if not isinstance(pricing, dict):
-        raise CampaignError("OpenRouter model pricing is missing")
-    expected = {
-        "prompt": PRICE_SNAPSHOT["input_usd_per_token"],
-        "completion": PRICE_SNAPSHOT["output_usd_per_token"],
-        "input_cache_read": PRICE_SNAPSHOT["cache_read_usd_per_token"],
-        "input_cache_write": PRICE_SNAPSHOT["cache_write_usd_per_token"],
-    }
-    try:
-        observed = {name: float(pricing[name]) for name in expected}
-    except (KeyError, TypeError, ValueError) as exc:
-        raise CampaignError("OpenRouter cache pricing is incomplete") from exc
-    if observed != expected:
-        raise CampaignError("OpenRouter price drift invalidates the frozen snapshot")
 
 
 async def run_formal_campaign(
@@ -118,8 +81,8 @@ async def run_formal_campaign(
     trial_executor: TrialExecutor | None = None,
     preflight_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if not api_key.startswith("sk-or-"):
-        raise CampaignError("OpenRouter credential is not configured")
+    if not api_key:
+        raise CampaignError("DeepSeek credential is not configured")
     if len(pico_commit) != 40:
         raise CampaignError("pico_commit must be a full Git commit")
     executor = trial_executor or execute_live_trial
@@ -200,99 +163,58 @@ async def run_cache_preflight(
     *,
     api_key: str,
     config: CampaignConfig,
-    ttl_wait_seconds: float = 310.0,
 ) -> dict[str, Any]:
-    if not api_key.startswith("sk-or-"):
-        raise CampaignError("OpenRouter credential is not configured")
-    await fetch_and_validate_model_catalog()
-    budget = CampaignBudget(hard_cap_usd=0.25, max_provider_calls=10)
-    namespace = canonical_digest({"model": config.model, "probe": "tokenwise-cache-preflight-v1"})[:24]
-    provider = _RecordingOpenRouterProvider(
+    if not api_key:
+        raise CampaignError("DeepSeek credential is not configured")
+    budget = CampaignBudget(hard_cap_usd=0.05, max_provider_calls=8)
+    namespace = canonical_digest(
+        {"model": config.model, "probe": "deepseek-tokenwise-cache-preflight-v2", "time": time.time_ns()}
+    )[:24]
+    stable_provider = _RecordingDeepSeekProvider(
         api_key=api_key,
         model=config.model,
         session_id=namespace,
-        provider_auto_cache=False,
         budget=budget,
     )
-    provider.generation = GenerationSettings(temperature=0.0, max_tokens=16)
-    arm = build_arm("tokenwise_adaptive_4")
-    if arm.strategy is None:
-        raise CampaignError("TokenWise adaptive strategy is unavailable")
-
-    async def call(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None) -> ProviderCallRecord:
-        marked_messages, marked_tools, marked_model = await arm.strategy.before_llm_call(
-            messages,
-            tools,
-            config.model,
-        )
-        await provider.chat(
-            messages=marked_messages,
-            tools=marked_tools,
-            model=marked_model,
-            max_tokens=16,
-            temperature=0.0,
-        )
-        return provider.records[-1]
-
-    short = await call(
-        [
-            {"role": "system", "content": f"Namespace {namespace}. Reply only OK."},
-            {"role": "user", "content": "Reply only OK."},
-        ]
+    disrupted_namespace = canonical_digest({"namespace": namespace, "arm": "disrupted"})[:24]
+    disrupted_provider = _RecordingDeepSeekProvider(
+        api_key=api_key,
+        model=config.model,
+        session_id=disrupted_namespace,
+        budget=budget,
     )
     long_system = _preflight_system(namespace)
     stable_messages = [
         {"role": "system", "content": long_system},
         {"role": "user", "content": "Reply only CACHE_OK."},
     ]
-    cold = await call(stable_messages)
-    warm = await call(stable_messages)
-    isolated_namespace = canonical_digest({"namespace": namespace})[:24]
-    isolated_provider = _RecordingOpenRouterProvider(
-        api_key=api_key,
-        model=config.model,
-        session_id=isolated_namespace,
-        provider_auto_cache=False,
-        budget=budget,
-    )
-    isolated_provider.generation = GenerationSettings(temperature=0.0, max_tokens=16)
-    isolated_messages, isolated_tools, isolated_model = await arm.strategy.before_llm_call(
-        [
-            {"role": "system", "content": long_system.replace(namespace, isolated_namespace, 1)},
-            {"role": "user", "content": "Reply only CACHE_OK."},
-        ],
-        None,
-        config.model,
-    )
-    await isolated_provider.chat(
-        messages=isolated_messages,
-        tools=isolated_tools,
-        model=isolated_model,
-        max_tokens=16,
-        temperature=0.0,
-    )
-    isolated = isolated_provider.records[-1]
-    changed_system = await call(
-        [
-            {"role": "system", "content": long_system.replace("stable rule 000", "changed rule 000", 1)},
-            {"role": "user", "content": "Reply only CACHE_OK."},
-        ]
-    )
-    base_tools = [_preflight_tool("schema_v1")]
-    await call(stable_messages, base_tools)
-    changed_tool = await call(stable_messages, [_preflight_tool("schema_v2")])
-    await _wait_for_cache_expiry(ttl_wait_seconds)
-    expired = await call(stable_messages)
+    for _ in range(2):
+        await stable_provider.chat(
+            messages=stable_messages,
+            model=config.model,
+            max_tokens=16,
+            temperature=0.0,
+        )
+    disruptor = build_arm("prefix_disrupted").strategy
+    if disruptor is None:
+        raise CampaignError("prefix disruption control is unavailable")
+    for _ in range(2):
+        messages, tools, model = await disruptor.before_llm_call(stable_messages, None, config.model)
+        await disrupted_provider.chat(
+            messages=messages,
+            tools=tools,
+            model=model,
+            max_tokens=16,
+            temperature=0.0,
+        )
 
-    records = tuple(provider.records + isolated_provider.records)
+    cold, warm = stable_provider.records
+    disrupted_cold, disrupted_warm = disrupted_provider.records
+    records = tuple(stable_provider.records + disrupted_provider.records)
     checks = {
-        "short_prefix_not_cached": short.cache_read_tokens == 0 and short.cache_write_tokens == 0,
-        "cold_call_writes_cache": cold.cache_write_tokens > 0,
         "warm_call_reads_cache": warm.cache_read_tokens > 0,
-        "cache_namespace_isolated": isolated.cache_write_tokens > 0 and isolated.cache_read_tokens == 0,
-        "changed_system_rewrites_cache": changed_system.cache_write_tokens > 0,
-        "changed_tool_schema_rewrites_cache": changed_tool.cache_write_tokens > 0,
-        "expired_prefix_rewrites_cache": expired.cache_write_tokens > 0,
+        "stable_prefix_improves_cache_hits": warm.cache_read_tokens > disrupted_warm.cache_read_tokens,
+        "cold_namespaces_are_isolated": cold.cache_read_tokens == 0 and disrupted_cold.cache_read_tokens == 0,
         "usage_complete": all(record.usage_complete for record in records),
         "model_exact": {record.actual_model for record in records} == {config.model},
     }
@@ -300,7 +222,6 @@ async def run_cache_preflight(
         "schema": "pico.picobench.tokenwise-cost.preflight.v1",
         "model": config.model,
         "price_snapshot": PRICE_SNAPSHOT,
-        "ttl_wait_seconds": ttl_wait_seconds,
         "checks": checks,
         "calls": [asdict(record) for record in records],
         "spent_usd": budget.spent_usd,
@@ -335,11 +256,10 @@ async def execute_live_trial(
     workspace = config.output_root / "workspaces" / _trial_key(task.task_id, repetition, arm.cache_policy)
     workspace.mkdir(parents=True, exist_ok=True)
     _seed_workspace(workspace, namespace=namespace, workload_class=task.workload_class)
-    provider = _RecordingOpenRouterProvider(
+    provider = _RecordingDeepSeekProvider(
         api_key=api_key,
         model=config.model,
         session_id=namespace,
-        provider_auto_cache=arm.provider_auto_cache,
         budget=budget,
     )
     provider.generation = GenerationSettings(temperature=0.0, max_tokens=96)
@@ -446,30 +366,21 @@ async def execute_live_trial(
     return TrialArtifact(result=result, provider_calls=records, outputs=tuple(outputs))
 
 
-class _RecordingOpenRouterProvider(LiteLLMProvider):
+class _RecordingDeepSeekProvider(LiteLLMProvider):
     def __init__(
         self,
         *,
         api_key: str,
         model: str,
         session_id: str,
-        provider_auto_cache: bool,
         budget: CampaignBudget,
     ) -> None:
         super().__init__(
             api_key=api_key,
-            api_base="https://openrouter.ai/api/v1",
             default_model=model,
-            provider_name="openrouter",
-            disable_auto_cache_control=not provider_auto_cache,
-            extra_body={
-                "provider": {
-                    "order": ["Anthropic"],
-                    "allow_fallbacks": False,
-                },
-                "session_id": session_id,
-            },
-            extra_headers={"X-OpenRouter-Cache": "false"},
+            provider_name="deepseek",
+            disable_auto_cache_control=True,
+            extra_body={"user_id": session_id, "thinking": {"type": "disabled"}},
         )
         self.set_transport_num_retries(0)
         self._budget = budget
@@ -504,21 +415,20 @@ class _RecordingOpenRouterProvider(LiteLLMProvider):
                 "prompt_tokens",
                 "completion_tokens",
                 "total_tokens",
+                "cache_read_input_tokens",
+                "cache_miss_input_tokens",
             )
         )
         prompt = int(usage.get("prompt_tokens", 0) or 0)
         output = int(usage.get("completion_tokens", 0) or 0)
         cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
-        cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
-        if prompt >= cache_read + cache_write and cache_read + cache_write > 0:
-            fresh = prompt - cache_read - cache_write
-        else:
-            fresh = prompt
+        fresh = int(usage.get("cache_miss_input_tokens", 0) or 0)
+        cache_write = 0
+        complete = complete and prompt == fresh + cache_read
         cost = (
-            fresh * float(PRICE_SNAPSHOT["input_usd_per_token"])
+            fresh * float(PRICE_SNAPSHOT["cache_miss_usd_per_token"])
             + output * float(PRICE_SNAPSHOT["output_usd_per_token"])
-            + cache_read * float(PRICE_SNAPSHOT["cache_read_usd_per_token"])
-            + cache_write * float(PRICE_SNAPSHOT["cache_write_usd_per_token"])
+            + cache_read * float(PRICE_SNAPSHOT["cache_hit_usd_per_token"])
         )
         self._budget.record_call(cost_usd=cost)
         actual_model = _canonical_model(response.model)
@@ -623,7 +533,10 @@ def _seed_history(loop: AgentLoop, *, session_key: str, turns: int) -> None:
 def _canonical_model(model: str | None) -> str | None:
     if not model:
         return None
-    return model.removeprefix("openrouter/")
+    normalized = model.removeprefix("openrouter/")
+    if normalized.startswith("deepseek-v4-"):
+        return f"deepseek/{normalized}"
+    return normalized
 
 
 def _preflight_system(namespace: str) -> str:
@@ -647,14 +560,6 @@ def _preflight_tool(version: str) -> dict[str, Any]:
             },
         },
     }
-
-
-async def _wait_for_cache_expiry(seconds: float) -> None:
-    if seconds < 0:
-        raise ValueError("ttl_wait_seconds must not be negative")
-    import asyncio
-
-    await asyncio.sleep(seconds)
 
 
 def _trial_key(task_id: str, repetition: int, cache_policy: str) -> str:
@@ -725,9 +630,7 @@ __all__ = [
     "ProviderCallRecord",
     "TrialArtifact",
     "execute_live_trial",
-    "fetch_and_validate_model_catalog",
-    "load_openrouter_key",
+    "load_deepseek_key",
     "run_cache_preflight",
     "run_formal_campaign",
-    "validate_model_catalog",
 ]

@@ -7,34 +7,28 @@ from typing import Any
 
 from benchmarks.picobench.canonical import canonical_digest, to_primitive
 from pico.token_wise.base import TokenStrategy
-from pico.token_wise.cache_optimizer import CacheOptimizer
-from pico.token_wise.system_and_tail_cache import SystemAndTailCacheStrategy
 
 from .models import TokenWiseCostMeasurement
 from .reducer import (
     CACHE_POLICIES,
-    CACHE_POLICY_ADAPTIVE_4,
-    CACHE_POLICY_NO_EXPLICIT,
-    CACHE_POLICY_PROVIDER_AUTO,
-    CACHE_POLICY_SYSTEM_AND_3,
+    CACHE_POLICY_PREFIX_DISRUPTED,
+    CACHE_POLICY_PREFIX_STABLE,
     assess_tokenwise_cost_claim,
 )
 
 TASK_CORPUS_SCHEMA = "pico.picobench.tokenwise-cost.tasks.v1"
 REPORT_SCHEMA = "pico.picobench.tokenwise-cost.report.v1"
-DEFAULT_MODEL = "anthropic/claude-sonnet-5"
-DEFAULT_HARD_CAP_USD = 25.0
+DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
+DEFAULT_HARD_CAP_USD = 2.0
 DEFAULT_MAX_PROVIDER_CALLS = 1_200
 
 PRICE_SNAPSHOT = {
-    "snapshot_id": "openrouter-anthropic-claude-sonnet-5-2026-08-06",
+    "snapshot_id": "deepseek-v4-flash-2026-08-06",
     "model": DEFAULT_MODEL,
-    "input_usd_per_token": 0.000002,
-    "output_usd_per_token": 0.00001,
-    "cache_read_usd_per_token": 0.0000002,
-    "cache_write_usd_per_token": 0.0000025,
-    "cache_ttl": "5m",
-    "source": "https://openrouter.ai/api/v1/models",
+    "cache_miss_usd_per_token": 0.14e-6,
+    "cache_hit_usd_per_token": 0.0028e-6,
+    "output_usd_per_token": 0.28e-6,
+    "source": "https://api-docs.deepseek.com/quick_start/pricing/",
 }
 
 
@@ -65,7 +59,43 @@ class TaskCorpus:
 class ArmConfig:
     cache_policy: str
     strategy: TokenStrategy | None
-    provider_auto_cache: bool
+
+
+class PrefixDisruptor(TokenStrategy):
+    """Benchmark-only negative control that changes the leading prompt bytes."""
+
+    def __init__(self) -> None:
+        self._call_index = 0
+
+    @property
+    def name(self) -> str:
+        return "prefix_disruptor"
+
+    async def before_llm_call(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        model: str,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None, str]:
+        self._call_index += 1
+        nonce = f"deepseek-cache-negative-control-{self._call_index:08d}"
+        rewritten_messages = [dict(message) for message in messages]
+        for index, message in enumerate(rewritten_messages):
+            if message.get("role") != "system":
+                continue
+            content = message.get("content", "")
+            if isinstance(content, str):
+                rewritten_messages[index] = {**message, "content": f"[{nonce}]\n{content}"}
+            break
+        rewritten_tools = tools
+        if tools:
+            rewritten_tools = []
+            for tool in tools:
+                function = dict(tool.get("function") or {})
+                description = str(function.get("description") or "")
+                function["description"] = f"[{nonce}] {description}"
+                rewritten_tools.append({**tool, "function": function})
+        return rewritten_messages, rewritten_tools, model
 
 
 @dataclass(frozen=True)
@@ -204,14 +234,10 @@ def _parse_task(value: Any) -> LiveTask:
 
 
 def build_arm(cache_policy: str) -> ArmConfig:
-    if cache_policy == CACHE_POLICY_NO_EXPLICIT:
-        return ArmConfig(cache_policy, None, False)
-    if cache_policy == CACHE_POLICY_PROVIDER_AUTO:
-        return ArmConfig(cache_policy, None, True)
-    if cache_policy == CACHE_POLICY_SYSTEM_AND_3:
-        return ArmConfig(cache_policy, SystemAndTailCacheStrategy(), False)
-    if cache_policy == CACHE_POLICY_ADAPTIVE_4:
-        return ArmConfig(cache_policy, CacheOptimizer(max_breakpoints=4), False)
+    if cache_policy == CACHE_POLICY_PREFIX_DISRUPTED:
+        return ArmConfig(cache_policy, PrefixDisruptor())
+    if cache_policy == CACHE_POLICY_PREFIX_STABLE:
+        return ArmConfig(cache_policy, None)
     raise CampaignError(f"unknown cache policy: {cache_policy}")
 
 
@@ -262,6 +288,7 @@ __all__ = [
     "CampaignError",
     "LiveTask",
     "LiveTrialResult",
+    "PrefixDisruptor",
     "TaskCorpus",
     "build_arm",
     "build_campaign_report",

@@ -575,22 +575,26 @@ class LiteLLMProvider(LLMProvider):
             #   - OpenRouter:        usage.prompt_tokens_details.cached_tokens
             #                        usage.prompt_tokens_details.cache_write_tokens
             details = getattr(response.usage, "prompt_tokens_details", None)
+            deepseek_cache_read = getattr(response.usage, "prompt_cache_hit_tokens", None)
             cache_read = (
-                getattr(response.usage, "cache_read_input_tokens", None)
+                deepseek_cache_read
+                if deepseek_cache_read is not None
+                else getattr(response.usage, "cache_read_input_tokens", None)
                 or getattr(response.usage, "_cache_read_input_tokens", None)
                 or (getattr(details, "cached_tokens", None) if details else None)
-                or 0
             )
             cache_write = (
                 getattr(response.usage, "cache_creation_input_tokens", None)
                 or getattr(response.usage, "_cache_creation_input_tokens", None)
                 or (getattr(details, "cache_write_tokens", None) if details else None)
-                or 0
             )
-            if cache_read:
+            cache_miss = getattr(response.usage, "prompt_cache_miss_tokens", None)
+            if cache_read is not None:
                 usage["cache_read_input_tokens"] = int(cache_read)
-            if cache_write:
+            if cache_write is not None:
                 usage["cache_creation_input_tokens"] = int(cache_write)
+            if cache_miss is not None:
+                usage["cache_miss_input_tokens"] = int(cache_miss)
 
         reasoning_content = getattr(message, "reasoning_content", None) or None
         thinking_blocks = getattr(message, "thinking_blocks", None) or None

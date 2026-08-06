@@ -7,10 +7,8 @@ from pathlib import Path
 import pytest
 
 from benchmarks.picobench.packs.tokenwise_cost import (
-    CACHE_POLICY_ADAPTIVE_4,
-    CACHE_POLICY_NO_EXPLICIT,
-    CACHE_POLICY_PROVIDER_AUTO,
-    CACHE_POLICY_SYSTEM_AND_3,
+    CACHE_POLICY_PREFIX_DISRUPTED,
+    CACHE_POLICY_PREFIX_STABLE,
     TokenWiseCostMeasurement,
     TokenWiseCostPack,
     assess_tokenwise_cost_claim,
@@ -27,8 +25,8 @@ def _experiment(tmp_path: Path) -> ExperimentSpec:
         output_root=tmp_path,
         identity={
             "pico_commit": "0" * 40,
-            "model": "anthropic/exact-model",
-            "provider": "anthropic",
+            "model": "deepseek/deepseek-v4-flash",
+            "provider": "deepseek",
         },
     )
 
@@ -37,16 +35,12 @@ def _measurements() -> tuple[TokenWiseCostMeasurement, ...]:
     measurements: list[TokenWiseCostMeasurement] = []
     tasks = TokenWiseCostPack().definition().tasks
     costs = {
-        CACHE_POLICY_NO_EXPLICIT: 1.0,
-        CACHE_POLICY_PROVIDER_AUTO: 0.8,
-        CACHE_POLICY_SYSTEM_AND_3: 0.7,
-        CACHE_POLICY_ADAPTIVE_4: 0.5,
+        CACHE_POLICY_PREFIX_DISRUPTED: 1.0,
+        CACHE_POLICY_PREFIX_STABLE: 0.5,
     }
     cache_reads = {
-        CACHE_POLICY_NO_EXPLICIT: 0,
-        CACHE_POLICY_PROVIDER_AUTO: 300,
-        CACHE_POLICY_SYSTEM_AND_3: 450,
-        CACHE_POLICY_ADAPTIVE_4: 600,
+        CACHE_POLICY_PREFIX_DISRUPTED: 0,
+        CACHE_POLICY_PREFIX_STABLE: 600,
     }
     for task in tasks:
         workload_class = str(task.payload["workload_class"])
@@ -61,11 +55,11 @@ def _measurements() -> tuple[TokenWiseCostMeasurement, ...]:
                         task_passed=True,
                         usage_complete=True,
                         cost_complete=True,
-                        requested_model="anthropic/exact-model",
-                        actual_model="anthropic/exact-model",
+                        requested_model="deepseek/deepseek-v4-flash",
+                        actual_model="deepseek/deepseek-v4-flash",
                         fallback_used=False,
                         fresh_input_tokens=1_000 - cache_reads[cache_policy],
-                        cache_write_tokens=100 if cache_policy != CACHE_POLICY_NO_EXPLICIT else 0,
+                        cache_write_tokens=0,
                         cache_read_tokens=cache_reads[cache_policy],
                         output_tokens=20,
                         cost_usd=cost_usd,
@@ -87,7 +81,7 @@ def _assess(
     )
 
 
-def test_tokenwise_cost_pack_freezes_four_workloads_and_four_arms(tmp_path: Path) -> None:
+def test_tokenwise_cost_pack_freezes_four_workloads_and_two_arms(tmp_path: Path) -> None:
     definition = TokenWiseCostPack().definition()
 
     assert definition.pack_id == "tokenwise-cost"
@@ -99,38 +93,36 @@ def test_tokenwise_cost_pack_freezes_four_workloads_and_four_arms(tmp_path: Path
         "intra_turn_tool_chain",
     }
     assert [variant.settings["cache_policy"] for variant in definition.variants] == [
-        CACHE_POLICY_NO_EXPLICIT,
-        CACHE_POLICY_PROVIDER_AUTO,
-        CACHE_POLICY_SYSTEM_AND_3,
-        CACHE_POLICY_ADAPTIVE_4,
+        CACHE_POLICY_PREFIX_DISRUPTED,
+        CACHE_POLICY_PREFIX_STABLE,
     ]
-    assert len(definition.pairs) == 4
+    assert len(definition.pairs) == 1
 
     plan = compile_plan(_experiment(tmp_path), (TokenWiseCostPack(),))
     assert len(plan.comparison_blocks) == 12 * 3 == 36
-    assert len(plan.trials) == 12 * 4 * 3 == 144
-    assert len(plan.pairs) == 12 * 4 * 3 == 144
+    assert len(plan.trials) == 12 * 2 * 3 == 72
+    assert len(plan.pairs) == 12 * 3 == 36
 
 
 def test_tokenwise_cost_claim_uses_conservative_hit_rate_and_success_cost() -> None:
     result = _assess(_measurements())
 
-    adaptive = result.arms[CACHE_POLICY_ADAPTIVE_4]
+    stable = result.arms[CACHE_POLICY_PREFIX_STABLE]
     assert result.claim_eligible is True
     assert result.valid_blocks == 36
-    assert adaptive.task_pass_rate == 1.0
-    assert adaptive.cost_per_verified_success_usd == 0.5
-    assert adaptive.conservative_cache_hit_rate == 600 / 1_100
-    assert result.cost_reduction_vs_no_explicit == 0.5
-    assert result.cost_reduction_vs_provider_auto == 0.375
+    assert stable.task_pass_rate == 1.0
+    assert stable.cost_per_verified_success_usd == 0.5
+    assert stable.conservative_cache_hit_rate == 0.6
+    assert result.cost_reduction_vs_disrupted == 0.5
+    assert result.cache_hit_rate_lift == 0.6
     assert result.cv_metrics == {
         "cost_per_verified_success_usd": 0.5,
-        "cost_reduction_vs_no_explicit": 0.5,
-        "cost_reduction_vs_provider_auto": 0.375,
-        "conservative_cache_hit_rate": 600 / 1_100,
+        "cost_reduction_vs_disrupted": 0.5,
+        "conservative_cache_hit_rate": 0.6,
+        "cache_hit_rate_lift": 0.6,
         "task_pass_rate": 1.0,
         "valid_comparison_blocks": 36,
-        "trial_count": 144,
+        "trial_count": 72,
     }
 
 
@@ -149,7 +141,7 @@ def test_tokenwise_cost_claim_rejects_incomplete_usage() -> None:
 def test_tokenwise_cost_claim_rejects_task_success_regression() -> None:
     measurements = list(_measurements())
     index = next(
-        index for index, measurement in enumerate(measurements) if measurement.cache_policy == CACHE_POLICY_ADAPTIVE_4
+        index for index, measurement in enumerate(measurements) if measurement.cache_policy == CACHE_POLICY_PREFIX_STABLE
     )
     measurements[index] = replace(measurements[index], task_passed=False)
 
@@ -163,7 +155,7 @@ def test_tokenwise_cost_claim_rejects_task_success_regression() -> None:
 def test_tokenwise_cost_claim_requires_observed_cache_reads() -> None:
     measurements = tuple(
         replace(measurement, cache_read_tokens=0)
-        if measurement.cache_policy == CACHE_POLICY_ADAPTIVE_4
+        if measurement.cache_policy == CACHE_POLICY_PREFIX_STABLE
         else measurement
         for measurement in _measurements()
     )
@@ -171,7 +163,7 @@ def test_tokenwise_cost_claim_requires_observed_cache_reads() -> None:
     result = _assess(measurements)
 
     assert result.claim_eligible is False
-    assert "no_tokenwise_cache_reads" in result.findings
+    assert "no_cache_hit_rate_lift" in result.findings
     assert result.cv_metrics == {}
 
 

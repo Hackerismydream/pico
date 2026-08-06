@@ -9,7 +9,7 @@ from pathlib import Path
 
 from benchmarks.picobench.packs.tokenwise_cost.live import CampaignConfig, CampaignError, load_task_corpus
 from benchmarks.picobench.packs.tokenwise_cost.runner import (
-    load_openrouter_key,
+    load_deepseek_key,
     run_cache_preflight,
     run_formal_campaign,
 )
@@ -41,7 +41,7 @@ def main() -> int:
 
 async def _run(mode: str, output_root: Path) -> dict:
     config = CampaignConfig(output_root=output_root)
-    api_key = load_openrouter_key()
+    api_key = load_deepseek_key()
     corpus = load_task_corpus(_CORPUS_PATH)
     if mode == "preflight":
         return await run_cache_preflight(api_key=api_key, config=config)

@@ -5,10 +5,8 @@ from benchmarks.picobench.records import TrialStatus, VerificationState, Verifie
 from benchmarks.picobench.schema import PackDefinition, PairSpec, TaskSpec, VariantSpec
 
 from .reducer import (
-    CACHE_POLICY_ADAPTIVE_4,
-    CACHE_POLICY_NO_EXPLICIT,
-    CACHE_POLICY_PROVIDER_AUTO,
-    CACHE_POLICY_SYSTEM_AND_3,
+    CACHE_POLICY_PREFIX_DISRUPTED,
+    CACHE_POLICY_PREFIX_STABLE,
 )
 
 _WORKLOAD_SHAPES = (
@@ -42,32 +40,15 @@ class TokenWiseCostPack:
             variants=tuple(
                 VariantSpec(variant_id=variant_id, settings={"cache_policy": policy})
                 for variant_id, policy in (
-                    ("tokenwise-no-explicit-cache", CACHE_POLICY_NO_EXPLICIT),
-                    ("tokenwise-provider-auto", CACHE_POLICY_PROVIDER_AUTO),
-                    ("tokenwise-system-and-3", CACHE_POLICY_SYSTEM_AND_3),
-                    ("tokenwise-adaptive-4", CACHE_POLICY_ADAPTIVE_4),
+                    ("tokenwise-prefix-disrupted", CACHE_POLICY_PREFIX_DISRUPTED),
+                    ("tokenwise-prefix-stable", CACHE_POLICY_PREFIX_STABLE),
                 )
             ),
             pairs=(
                 PairSpec(
                     treatment_axis="cache_policy",
-                    control_variant_id="tokenwise-no-explicit-cache",
-                    treatment_variant_id="tokenwise-provider-auto",
-                ),
-                PairSpec(
-                    treatment_axis="cache_policy",
-                    control_variant_id="tokenwise-no-explicit-cache",
-                    treatment_variant_id="tokenwise-system-and-3",
-                ),
-                PairSpec(
-                    treatment_axis="cache_policy",
-                    control_variant_id="tokenwise-no-explicit-cache",
-                    treatment_variant_id="tokenwise-adaptive-4",
-                ),
-                PairSpec(
-                    treatment_axis="cache_policy",
-                    control_variant_id="tokenwise-provider-auto",
-                    treatment_variant_id="tokenwise-adaptive-4",
+                    control_variant_id="tokenwise-prefix-disrupted",
+                    treatment_variant_id="tokenwise-prefix-stable",
                 ),
             ),
             identity={
@@ -75,7 +56,7 @@ class TokenWiseCostPack:
                 "workload_classes": [shape[0] for shape in _WORKLOAD_SHAPES],
                 "cache_hit_denominator": "fresh_plus_cache_write_plus_cache_read",
                 "primary_metric": "cost_per_verified_success_usd",
-                "result_scope": "contract_only_until_live_runner_and_frozen_tasks",
+                "result_scope": "deepseek_automatic_cache_with_negative_control",
             },
         )
 

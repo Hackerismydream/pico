@@ -54,8 +54,8 @@ class TokenWiseCostClaim:
     expected_blocks: int
     valid_blocks: int
     arms: dict[str, TokenWiseArmSummary]
-    cost_reduction_vs_no_explicit: float | None
-    cost_reduction_vs_provider_auto: float | None
+    cost_reduction_vs_disrupted: float | None
+    cache_hit_rate_lift: float | None
     findings: tuple[str, ...]
     cv_metrics: dict[str, int | float]
 
