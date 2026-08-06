@@ -9,7 +9,7 @@ provider:
 execution:
   timeout_seconds: 180
   retry_policy: symmetric
-  provider_call_max_attempts: 3
+  provider_call_max_attempts: 4
   max_comparison_block_attempts: 2
   max_retrieval_query_block_attempts: 1
 
@@ -19,7 +19,7 @@ budget:
   max_provider_calls_per_trial: 10
   max_input_tokens_per_call: 42000
   max_output_tokens_per_call: 1500
-  max_additional_provider_attempts: 64
+  max_additional_provider_attempts: 96
   input_cache_miss_usd_per_million: 0.14
   output_usd_per_million: 0.28
   conservative_usd_to_cny_multiplier: 7.5
