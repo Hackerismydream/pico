@@ -76,6 +76,8 @@ Compute the score from immutable formal and Runtime artifacts with:
 
 ```bash
 PICO_SCORECARD_FORMAL_SUMMARY=/absolute/path/to/summary.json \
+PICO_SCORECARD_RUNTIME_EVIDENCE=/absolute/path/to/runtime-evidence.json \
+PICO_SCORECARD_TOKENWISE_REPORT=/absolute/path/to/tokenwise-report.json \
 PICO_SCORECARD_MEMORY_SUMMARY=/absolute/path/to/memory-summary.json \
 PICO_SCORECARD_MEMORY_HANDOFF=/absolute/path/to/memory-handoff.json \
 PICO_SCORECARD_PREREGISTERED=1 \

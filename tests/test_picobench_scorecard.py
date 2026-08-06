@@ -6,7 +6,12 @@ import json
 import pytest
 
 from benchmarks.picobench.canonical import canonical_digest
-from benchmarks.picobench.scorecard import _memory_inputs, compute_scorecard
+from benchmarks.picobench.scorecard import (
+    _memory_inputs,
+    _runtime_inputs,
+    _tokenwise_inputs,
+    compute_scorecard,
+)
 
 
 def _formal_summary() -> dict[str, object]:
@@ -78,6 +83,43 @@ def test_scorecard_rejects_invalid_rates() -> None:
 
     with pytest.raises(ValueError, match="rates must be between"):
         compute_scorecard(summary, {"claim_eligible": True})
+
+
+def test_scorecard_accepts_current_negative_runtime_evidence() -> None:
+    pico_commit = "a" * 40
+    payload = {
+        "schema": "pico.picobench.runtime-scheduler-experiments.v1",
+        "source_commit": pico_commit,
+        "claim_eligible": False,
+    }
+    evidence = {**payload, "evidence_digest": canonical_digest(payload)}
+
+    assert _runtime_inputs(evidence, pico_commit=pico_commit) == (True, False)
+
+
+def test_scorecard_accepts_current_tokenwise_report() -> None:
+    pico_commit = "b" * 40
+    payload = {
+        "schema": "pico.picobench.tokenwise-cost.report.v1",
+        "campaign": {"pico_commit": pico_commit},
+        "claim": {"claim_eligible": True},
+    }
+    report = {**payload, "report_digest": canonical_digest(payload)}
+
+    assert _tokenwise_inputs(report, pico_commit=pico_commit) == (True, True)
+
+
+def test_scorecard_counts_negative_runtime_as_current_evidence() -> None:
+    result = compute_scorecard(
+        _formal_summary(),
+        {"claim_eligible": False},
+        runtime_current_evidence=True,
+        turn_efficiency_current_evidence=True,
+    )
+
+    assert result.dimensions["reliability"].earned == 0
+    assert result.evidence["runtime_current"] is True
+    assert result.evidence["turn_efficiency_current"] is True
 
 
 def test_scorecard_accepts_current_memory_handoff(tmp_path) -> None:

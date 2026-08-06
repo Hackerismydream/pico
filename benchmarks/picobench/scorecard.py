@@ -32,6 +32,7 @@ def compute_scorecard(
     formal_summary: Mapping[str, Any],
     runtime_evidence: Mapping[str, Any],
     *,
+    runtime_current_evidence: bool | None = None,
     memory_treatment_pass_rate: float | None = None,
     memory_safety_current: bool = False,
     tokenwise_current_evidence: bool = False,
@@ -66,8 +67,9 @@ def compute_scorecard(
     memory_rate = _rate(memory_treatment_pass_rate or 0.0)
     capability = 50.0 * (context_rate + tool_rate + memory_rate) / 3.0
 
-    runtime_current = runtime_evidence.get("claim_eligible") is True
-    reliability = 20.0 if runtime_current else 0.0
+    runtime_claim_eligible = runtime_evidence.get("claim_eligible") is True
+    runtime_current = bool(runtime_evidence) if runtime_current_evidence is None else runtime_current_evidence
+    reliability = 20.0 if runtime_claim_eligible else 0.0
 
     context_efficiency = metrics.get("context.positive_claim_eligible") is True
     tool_efficiency = metrics.get("tool_mcp.positive_claim_eligible") is True
@@ -231,6 +233,7 @@ def main() -> int:
     )
     parser.add_argument("--formal-summary", required=True, type=Path)
     parser.add_argument("--runtime-evidence", type=Path)
+    parser.add_argument("--tokenwise-report", type=Path)
     parser.add_argument("--memory-summary", type=Path)
     parser.add_argument("--memory-handoff", type=Path)
     parser.add_argument(
@@ -248,15 +251,97 @@ def main() -> int:
             args.memory_handoff,
             pico_commit=_current_pico_commit(),
         )
+    current_commit = _current_pico_commit()
+    runtime = _read_json(args.runtime_evidence) if args.runtime_evidence else {}
+    runtime_current = False
+    runtime_claim_eligible = False
+    if args.runtime_evidence is not None:
+        runtime_current, runtime_claim_eligible = _runtime_inputs(
+            runtime,
+            pico_commit=current_commit,
+        )
+    tokenwise_current = False
+    tokenwise_claim_eligible = False
+    if args.tokenwise_report is not None:
+        tokenwise_current, tokenwise_claim_eligible = _tokenwise_inputs(
+            _read_json(args.tokenwise_report),
+            pico_commit=current_commit,
+        )
     result = compute_scorecard(
         _read_json(args.formal_summary),
-        _read_json(args.runtime_evidence) if args.runtime_evidence else {},
+        runtime,
+        runtime_current_evidence=runtime_current,
         memory_treatment_pass_rate=memory_rate,
         memory_safety_current=memory_safety,
+        tokenwise_current_evidence=tokenwise_current,
+        tokenwise_current_claim_eligible=tokenwise_claim_eligible,
+        turn_efficiency_current_evidence=runtime_current,
+        turn_efficiency_current_claim_eligible=runtime_claim_eligible,
         scoring_spec_preregistered=args.scoring_spec_preregistered,
     )
     print(json.dumps(asdict(result), indent=2, sort_keys=True))
     return 0
+
+
+def _runtime_inputs(
+    evidence: Mapping[str, Any],
+    *,
+    pico_commit: str,
+) -> tuple[bool, bool]:
+    schema = evidence.get("schema")
+    commit_key = "pico_commit" if schema == "pico.picobench.runtime-evidence.v2" else "source_commit"
+    if schema not in {
+        "pico.picobench.runtime-evidence.v2",
+        "pico.picobench.runtime-scheduler-experiments.v1",
+        "pico.picobench.runtime-live-scheduler.v2",
+    }:
+        raise ValueError("runtime evidence has the wrong schema")
+    _verify_current_digest_bound_evidence(
+        evidence,
+        digest_key="evidence_digest",
+        commit_key=commit_key,
+        pico_commit=pico_commit,
+    )
+    return True, evidence.get("claim_eligible") is True
+
+
+def _tokenwise_inputs(
+    report: Mapping[str, Any],
+    *,
+    pico_commit: str,
+) -> tuple[bool, bool]:
+    if report.get("schema") != "pico.picobench.tokenwise-cost.report.v1":
+        raise ValueError("TokenWise report has the wrong schema")
+    campaign = _mapping(report.get("campaign"), "TokenWise campaign")
+    if campaign.get("pico_commit") != pico_commit:
+        raise ValueError("TokenWise report does not match the current Pico commit")
+    recorded_digest = report.get("report_digest")
+    if not isinstance(recorded_digest, str):
+        raise ValueError("TokenWise report is missing report_digest")
+    payload = dict(report)
+    payload.pop("report_digest")
+    if canonical_digest(payload) != recorded_digest:
+        raise ValueError("TokenWise report digest does not match")
+    claim = _mapping(report.get("claim"), "TokenWise claim")
+    return True, claim.get("claim_eligible") is True
+
+
+def _verify_current_digest_bound_evidence(
+    evidence: Mapping[str, Any],
+    *,
+    digest_key: str,
+    commit_key: str,
+    pico_commit: str,
+) -> None:
+    if evidence.get(commit_key) != pico_commit:
+        raise ValueError("evidence does not match the current Pico commit")
+    recorded_digest = evidence.get(digest_key)
+    if not isinstance(recorded_digest, str):
+        raise ValueError("evidence digest is missing")
+    payload = dict(evidence)
+    payload.pop(digest_key)
+    if canonical_digest(payload) != recorded_digest:
+        raise ValueError("evidence digest does not match")
 
 
 if __name__ == "__main__":
