@@ -1,4 +1,4 @@
-.PHONY: help install install-deps lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-codecairn-smoke picobench-codecairn-task-effect-smoke picobench-codecairn-task-effect-estimate picobench-codecairn-task-effect-ship picobench-codecairn-ship verify-codecairn-continuity verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
+.PHONY: help install install-deps lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-runtime-scheduler picobench-codecairn-smoke picobench-codecairn-task-effect-smoke picobench-codecairn-task-effect-estimate picobench-codecairn-task-effect-ship picobench-codecairn-ship verify-codecairn-continuity verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
 
 PYTHON ?= python3
 PYTHON_LINT_TARGETS ?= scripts/check_commit_file.py scripts/check_commit_messages.py scripts/check_pr_title.py scripts/check_large_files.py scripts/commit_lint.py tests/test_commit_lint.py tests/test_large_file_check.py
@@ -14,6 +14,7 @@ help:
 	@echo "  test           Run focused Python checks and TUI tests"
 	@echo "  test-retained  Run the deterministic Python suite without opt-in tests"
 	@echo "  picobench-smoke Run the credential-free PicoBench gate"
+	@echo "  picobench-runtime-scheduler Run deterministic scheduler A/B experiments"
 	@echo "  picobench      Run the frozen PicoBench calibration and formal campaign"
 	@echo "  picobench-codecairn-smoke Validate the credential-free CodeCairn Pack"
 	@echo "  picobench-codecairn-task-effect-smoke Validate the credential-free task-effect v2 Pack"
@@ -68,6 +69,9 @@ picobench-smoke:
 
 picobench:
 	uv run --frozen --all-extras --exact python -m benchmarks.picobench --mode ship
+
+picobench-runtime-scheduler:
+	uv run --frozen --all-extras --exact python -m benchmarks.picobench.packs.runtime.scheduler_experiments
 
 picobench-codecairn-smoke:
 	uv run --frozen --all-extras --exact pytest \
