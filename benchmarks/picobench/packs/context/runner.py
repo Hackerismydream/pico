@@ -47,12 +47,14 @@ _DISABLED_CONTEXT_TOOLS = [
 ]
 _CONTEXT_TOOL_NAMES = frozenset({"read_file", "write_file"})
 CONTEXT_BENCHMARK_WINDOW_TOKENS = 2_400
-CONTEXT_BENCHMARK_OUTPUT_TOKENS = 1_200
+CONTEXT_BENCHMARK_OUTPUT_TOKENS = 500
 CONTEXT_BENCHMARK_MAX_TOOL_ITERATIONS = 6
+CONTEXT_BENCHMARK_PROTECT_FIRST_N = 1
 _TASK_EXECUTION_NOTE = (
     "All values required for the artifact are in the conversation history. "
-    "The workspace has no additional source of task facts. Do not create "
-    "exploration or placeholder files."
+    "The target artifact does not exist yet. Write it directly, then read it "
+    "back. The workspace has no additional source of task facts. Do not "
+    "create exploration or placeholder files."
 )
 
 
@@ -337,6 +339,7 @@ def _trial_configs(
     trial_pico = pico_config.model_copy(deep=True)
     trial_pico.base = trial_config
     trial_pico.context.curator_model = model
+    trial_pico.context.protect_first_n = CONTEXT_BENCHMARK_PROTECT_FIRST_N
     trial_pico.memory.backend = None
     trial_pico.skill_forge.enabled = False
     trial_pico.skill_forge.router.enabled = False
@@ -439,6 +442,7 @@ def _trial_status(
 __all__ = [
     "CONTEXT_BENCHMARK_OUTPUT_TOKENS",
     "CONTEXT_BENCHMARK_MAX_TOOL_ITERATIONS",
+    "CONTEXT_BENCHMARK_PROTECT_FIRST_N",
     "CONTEXT_BENCHMARK_WINDOW_TOKENS",
     "RuntimeContextTrialRunner",
 ]

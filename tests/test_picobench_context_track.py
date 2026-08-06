@@ -8,6 +8,8 @@ import pytest
 from benchmarks.picobench.packs.context import (
     CALIBRATION_CONTEXT_TASK_COUNT,
     CONTEXT_BENCHMARK_CURATOR_MAX_STEPS,
+    CONTEXT_BENCHMARK_OUTPUT_TOKENS,
+    CONTEXT_BENCHMARK_PROTECT_FIRST_N,
     FORMAL_CONTEXT_TASK_COUNT,
     ContextPack,
     ContextPairMeasurement,
@@ -100,7 +102,7 @@ def test_context_trial_binds_curator_to_frozen_campaign_model(
     pico_config = PicoConfig(base=config)
     pico_config.context.curator_model = "gemini-2.5-flash"
 
-    _trial_config, trial_pico = _trial_configs(
+    trial_config, trial_pico = _trial_configs(
         config,
         pico_config,
         workspace=tmp_path,
@@ -108,6 +110,17 @@ def test_context_trial_binds_curator_to_frozen_campaign_model(
     )
 
     assert trial_pico.context.curator_model == "deepseek/deepseek-v4-flash"
+    assert trial_config.agents.defaults.max_tokens == 500
+    assert trial_pico.context.protect_first_n == 1
+
+
+def test_context_pack_freezes_prompt_budget_and_initial_protection() -> None:
+    identity = ContextPack().definition().identity
+
+    assert CONTEXT_BENCHMARK_OUTPUT_TOKENS == 500
+    assert CONTEXT_BENCHMARK_PROTECT_FIRST_N == 1
+    assert identity["reserved_output_tokens"] == 500
+    assert identity["protected_initial_turns"] == 1
 
 
 def test_context_pack_freezes_benchmark_curator_steps_only() -> None:

@@ -56,6 +56,8 @@ def test_scorecard_suite_freezes_expected_denominators_and_budget() -> None:
         "tool-mcp": 6,
     }
     assert estimate.estimated_cny <= suite.budget.hard_cap_cny
+    assert suite.execution.provider_call_max_attempts == 3
+    assert suite.budget.max_additional_provider_attempts == 64
 
 
 def test_makefile_exposes_scorecard_estimate_and_ship() -> None:

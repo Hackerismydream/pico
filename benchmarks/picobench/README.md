@@ -59,7 +59,10 @@ The v1 multidimensional score uses Capability 50, Reliability 20, Efficiency
 Tool/MCP, and Memory. Context capability is the average of four frozen checks:
 the early constraint is still present, the artifact applies it, the latest
 decision is applied, and the artifact is exactly correct. The strict external
-verifier pass rate is still reported separately and is not relaxed.
+verifier pass rate is still reported separately and is not relaxed. Context
+reserves 500 output tokens and protects its first constraint turn, leaving
+enough of the 2,400-token window for the latest decision. Empty Provider
+responses may be retried up to three times, symmetrically in both arms.
 Efficiency assigns five points to each eligible TokenWise, Context, Tool/MCP,
 and Turn-efficiency claim. Missing, ineligible, or commit-incompatible evidence
 contributes zero. Process checks MCP disclosure, transport, invalid-target,

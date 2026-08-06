@@ -18,6 +18,7 @@ from .models import ContextTask, ContextTrack
 from .runner import (
     CONTEXT_BENCHMARK_MAX_TOOL_ITERATIONS,
     CONTEXT_BENCHMARK_OUTPUT_TOKENS,
+    CONTEXT_BENCHMARK_PROTECT_FIRST_N,
     CONTEXT_BENCHMARK_WINDOW_TOKENS,
 )
 from .tasks import context_task_set_digest, load_context_tasks
@@ -94,6 +95,7 @@ class ContextPack:
                 "claim_reducer": "context_v1",
                 "context_window_tokens": (CONTEXT_BENCHMARK_WINDOW_TOKENS),
                 "reserved_output_tokens": (CONTEXT_BENCHMARK_OUTPUT_TOKENS),
+                "protected_initial_turns": (CONTEXT_BENCHMARK_PROTECT_FIRST_N),
                 "curator_max_steps": (CONTEXT_BENCHMARK_CURATOR_MAX_STEPS),
                 "main_agent_max_tool_iterations": (CONTEXT_BENCHMARK_MAX_TOOL_ITERATIONS),
                 "capability_criteria": (

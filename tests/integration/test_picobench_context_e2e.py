@@ -304,7 +304,7 @@ async def test_runtime_context_runner_excludes_plugin_tools_and_uses_sealed_veri
     assert execution.metrics["capability_criteria_total"] == 4
     assert execution.metrics["context_path"] in {"fast", "slow", "fallback"}
     assert execution.artifact_refs
-    assert set(provider.max_tokens_seen) == {1_200}
+    assert set(provider.max_tokens_seen) == {500}
     assert all(names == {"read_file", "write_file"} for names in provider.tool_names_seen)
     assert plugin_tool_builds == 0
 
