@@ -2,6 +2,8 @@ import asyncio
 import re
 from pathlib import Path
 
+import pytest
+
 from benchmarks.picobench.canonical import canonical_json
 from benchmarks.picobench.packs.runtime.live_scheduler_experiment import (
     LiveSchedulerConfig,
@@ -34,7 +36,7 @@ def _small_config() -> LiveSchedulerConfig:
         user_slots=2,
         hot_turns=1,
         foreground_sessions=3,
-        hard_cap_cny=0.2,
+        hard_cap_cny=0.5,
     )
 
 
@@ -48,10 +50,15 @@ def test_live_plan_freezes_workload_and_budget_without_credentials() -> None:
     )
 
     assert config.planned_turns == 156
-    assert config.maximum_provider_request_attempts == 312
-    assert config.maximum_cost_cny < config.hard_cap_cny == 2.0
+    assert config.maximum_provider_request_attempts == 936
+    assert config.maximum_cost_cny < config.hard_cap_cny == 10.0
     assert plan["budget"]["planned_turns"] == 156
     assert "api_key" not in canonical_json(plan).lower()
+
+
+def test_live_plan_reserves_the_agent_exhaustion_call() -> None:
+    with pytest.raises(ValueError, match="exhaustion synthesis"):
+        LiveSchedulerConfig(max_agent_iterations=2, max_logical_calls_per_turn=2)
 
 
 async def test_live_arm_runs_real_agent_loop_with_marker_verification(tmp_path) -> None:

@@ -58,12 +58,13 @@ class LiveSchedulerConfig:
     system_slots: int = 1
     hot_turns: int = 2
     foreground_sessions: int = 24
-    max_output_tokens_per_call: int = 64
-    max_input_tokens_per_call: int = 5_000
-    max_logical_calls_per_turn: int = 1
+    max_agent_iterations: int = 2
+    max_output_tokens_per_call: int = 256
+    max_input_tokens_per_call: int = 8_000
+    max_logical_calls_per_turn: int = 3
     max_attempts_per_call: int = 2
     timeout_seconds_per_arm: int = 180
-    hard_cap_cny: float = 2.0
+    hard_cap_cny: float = 10.0
     input_cache_miss_usd_per_million: float = 0.14
     output_usd_per_million: float = 0.28
     conservative_usd_to_cny_multiplier: float = 7.5
@@ -75,6 +76,7 @@ class LiveSchedulerConfig:
             self.system_slots,
             self.hot_turns,
             self.foreground_sessions,
+            self.max_agent_iterations,
             self.max_output_tokens_per_call,
             self.max_input_tokens_per_call,
             self.max_logical_calls_per_turn,
@@ -83,6 +85,8 @@ class LiveSchedulerConfig:
         )
         if any(value < 1 for value in counts):
             raise ValueError("live scheduler experiment limits must be positive")
+        if self.max_logical_calls_per_turn < self.max_agent_iterations + 1:
+            raise ValueError("Provider call budget must include the exhaustion synthesis call")
         if self.hard_cap_cny <= 0:
             raise ValueError("live scheduler experiment hard cap must be positive")
         if self.maximum_cost_cny > self.hard_cap_cny:
@@ -462,7 +466,7 @@ async def _run_live_arm(
     runtime_config.agents.defaults.workspace = str(workspace)
     runtime_config.agents.defaults.temperature = 0
     runtime_config.agents.defaults.max_tokens = config.max_output_tokens_per_call
-    runtime_config.agents.defaults.max_tool_iterations = config.max_logical_calls_per_turn
+    runtime_config.agents.defaults.max_tool_iterations = config.max_agent_iterations
     runtime_config.agents.defaults.enable_personalization = False
     runtime_config.tools.disabled_tools = list(_DISABLED_TOOLS)
     runtime_config.tools.mcp_servers = {}
@@ -524,6 +528,7 @@ async def _run_live_arm(
         "end_to_end_ms": to_primitive(LatencySummary.from_values(recorder.end_to_end_ms)),
         "task_failures": len(recorder.task_failures),
         "task_failure_categories": dict(Counter(recorder.task_failures.values())),
+        "task_failure_details": dict(recorder.task_failures),
         "runner_exceptions": runner_exceptions,
         "unexpected_duplicate_executions": duplicate_executions,
         "missing_executions": len(work) - len(recorder.invocations),
