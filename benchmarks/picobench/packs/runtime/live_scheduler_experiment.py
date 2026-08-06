@@ -58,13 +58,13 @@ class LiveSchedulerConfig:
     system_slots: int = 1
     hot_turns: int = 2
     foreground_sessions: int = 24
-    max_agent_iterations: int = 2
-    max_output_tokens_per_call: int = 256
+    max_agent_iterations: int = 3
+    max_output_tokens_per_call: int = 512
     max_input_tokens_per_call: int = 8_000
-    max_logical_calls_per_turn: int = 3
+    max_logical_calls_per_turn: int = 4
     max_attempts_per_call: int = 2
     timeout_seconds_per_arm: int = 180
-    hard_cap_cny: float = 10.0
+    hard_cap_cny: float = 12.0
     input_cache_miss_usd_per_million: float = 0.14
     output_usd_per_million: float = 0.28
     conservative_usd_to_cny_multiplier: float = 7.5
@@ -542,10 +542,7 @@ def _live_work(config: LiveSchedulerConfig, repetition: int) -> list[_LiveWork]:
     work = []
     for index in range(config.hot_turns):
         marker = f"PICO_LIVE_PERF_R{repetition:02d}_HOT_{index:02d}"
-        prompt = (
-            f"Begin with {marker}. Then write exactly 40 short English words about reliable "
-            "software scheduling. Do not call tools."
-        )
+        prompt = f"Reply with exactly {marker} and nothing else. Do not call tools."
         work.append(_make_work(marker, "hot", prompt, measured=False))
     for index in range(config.foreground_sessions):
         marker = f"PICO_LIVE_PERF_R{repetition:02d}_FG_{index:02d}"
