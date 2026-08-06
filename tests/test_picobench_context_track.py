@@ -457,6 +457,8 @@ def test_context_artifact_reducer_rebuilds_flat_claim_metrics() -> None:
     )
 
     assert result["context.measurement_valid"] is True
+    assert result["context.capability_measurement_valid"] is True
+    assert result["context.efficiency_measurement_valid"] is True
     assert result["context.positive_claim_eligible"] is True
     assert result["context.trial_total_input_token_reduction_percent"] == pytest.approx(20.0)
     assert result["context.coverage_valid"] is True
@@ -509,6 +511,8 @@ def test_context_artifact_reducer_reports_incomplete_measurable_usage() -> None:
     assert result["context.usage_complete"] is False
     assert result["context.valid_pair_measurement_count"] == 23
     assert result["context.measurement_valid"] is False
+    assert result["context.capability_measurement_valid"] is True
+    assert result["context.efficiency_measurement_valid"] is False
     assert any(str(finding).startswith("context_usage_incomplete:") for finding in result["context.findings"])
     assert not any(
         str(finding).startswith("context_usage_subtotal_exceeds_total:") for finding in result["context.findings"]

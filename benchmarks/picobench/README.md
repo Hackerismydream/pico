@@ -63,6 +63,9 @@ verifier pass rate is still reported separately and is not relaxed. Context
 reserves 500 output tokens and protects its first constraint turn, leaving
 enough of the 2,400-token window for the latest decision. Empty Provider
 responses may be retried up to four times, symmetrically in both arms.
+Context capability validity is independent from token-usage completeness.
+Missing usage invalidates only the Context efficiency claim; it is never
+coerced to zero and never blocks verifier-backed capability diagnostics.
 Efficiency assigns five points to each eligible TokenWise, Context, Tool/MCP,
 and Turn-efficiency claim. Missing, ineligible, or commit-incompatible evidence
 contributes zero. Process checks MCP disclosure, transport, invalid-target,

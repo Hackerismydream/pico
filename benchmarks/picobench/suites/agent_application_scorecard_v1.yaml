@@ -87,7 +87,7 @@ claim_rules:
     operator: ge
     threshold: 15
     prerequisites:
-      - context.measurement_valid
+      - context.efficiency_measurement_valid
       - context.coverage_valid
       - context.usage_complete
       - context.single_axis_valid
@@ -99,7 +99,7 @@ claim_rules:
     operator: ge
     threshold: 6
     prerequisites:
-      - context.measurement_valid
+      - context.efficiency_measurement_valid
       - context.coverage_valid
       - context.usage_complete
       - context.single_axis_valid

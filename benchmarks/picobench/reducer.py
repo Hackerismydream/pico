@@ -302,14 +302,16 @@ def _reduce_declared_pack_claims(
             )
             valid = False
             continue
-        if reducer_id == "context_v1":
+        if reducer_id in {"context_v1", "context_v2"}:
             from .packs.context import reduce_context_artifacts
 
             reduced = reduce_context_artifacts(
                 trial_records=trial_records.values(),
                 pair_results=pair_records.values(),
             )
-            validity_key = "context.measurement_valid"
+            validity_key = (
+                "context.capability_measurement_valid" if reducer_id == "context_v2" else "context.measurement_valid"
+            )
         elif reducer_id == "memory_skill_v1":
             from .packs.memory_skill import reduce_memory_skill_claims
 

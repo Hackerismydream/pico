@@ -92,7 +92,7 @@ class ContextPack:
                     "exploratory_eight_task_pack" if self.track is ContextTrack.FORMAL else "calibration_only"
                 ),
                 "verifier": "external_sealed_json",
-                "claim_reducer": "context_v1",
+                "claim_reducer": "context_v2",
                 "context_window_tokens": (CONTEXT_BENCHMARK_WINDOW_TOKENS),
                 "reserved_output_tokens": (CONTEXT_BENCHMARK_OUTPUT_TOKENS),
                 "protected_initial_turns": (CONTEXT_BENCHMARK_PROTECT_FIRST_N),

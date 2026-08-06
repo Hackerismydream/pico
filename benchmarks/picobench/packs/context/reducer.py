@@ -150,8 +150,27 @@ def reduce_context_artifacts(
         pack_ids=pair_pack_ids,
         planned_pair_keys=planned_pair_keys,
     )
+    capability_integrity_findings = (
+        "malformed_context_trial_key",
+        "malformed_context_trial_identity",
+        "duplicate_context_trial:",
+        "mixed_context_tracks",
+        "context_task_denominator_mismatch:",
+    )
+    capability_measurement_valid = bool(
+        capability_metrics["context.capability_evidence_complete"]
+        and len(planned_pair_keys) == expected_pairs
+        and single_axis_valid
+        and not any(
+            finding == prefix or finding.startswith(prefix)
+            for finding in structural_findings
+            for prefix in capability_integrity_findings
+        )
+    )
     return {
         "context.measurement_valid": measurement_valid,
+        "context.capability_measurement_valid": capability_measurement_valid,
+        "context.efficiency_measurement_valid": measurement_valid,
         "context.positive_claim_eligible": (measurement_valid and assessment.claim_eligible),
         "context.trial_total_input_token_reduction_percent": (reduction_percent),
         "context.coverage_valid": coverage_valid,
