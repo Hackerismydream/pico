@@ -121,3 +121,10 @@ The runner reads `DEEPSEEK_API_KEY`, then falls back to
 `providers.deepseek.apiKey` in Pico's config. It never writes credentials into
 artifacts. It stops before a new call at either 1,200 Provider calls or USD 2
 of observed estimated spend.
+
+## Proposed evidence expansion
+
+The current 72-Trial result is CV-eligible. A proposed 320-Trial successor
+would expand task diversity and add paired confidence intervals; it is not yet
+authorized or executed. See the
+[TokenWise evidence expansion analysis](../plan/analysis/tokenwise-evidence-expansion.md).
