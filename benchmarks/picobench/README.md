@@ -28,6 +28,32 @@ resolves exactly `deepseek / deepseek-v4-flash`, proves Tool Calling and
 complete usage fields with one live preflight, and freezes the tokenizer
 identity. Fallback models are forbidden.
 
+## Current Scorecard campaign
+
+The historical Ship-1 suite retains its EverOS-era Memory identity and must not
+be used as the current Pico entry point. The current Scorecard campaign runs
+only the still-current Context and Tool/MCP Packs. TokenWise, Runtime, and
+CodeCairn remain independent evidence tracks and are composed after their own
+Claim Gates are evaluated.
+
+Print the frozen worst-case budget with:
+
+```bash
+make picobench-scorecard-estimate
+```
+
+Run the paid campaign with an existing Runtime evidence artifact:
+
+```bash
+PICO_SCORECARD_RUNTIME_EVIDENCE=/absolute/path/to/cv-metrics-runtime.json \
+  make picobench-scorecard-ship
+```
+
+The Runtime artifact may come from an earlier commit only when Pico product
+code, dependency identity, and the Runtime Pack are byte-equivalent across the
+two commits. The campaign verifies that continuity before making a paid call;
+it does not rerun the completed Runtime experiment.
+
 ## Frozen scale and budget
 
 The suite at
