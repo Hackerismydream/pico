@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import math
+import random
 import shutil
 import subprocess
 import time
@@ -33,7 +35,8 @@ from ...schema import ExperimentRef
 from .models import LatencySummary
 from .scheduler_experiments import _GlobalFifoScheduler, _noop_emit
 
-LIVE_SCHEDULER_SCHEMA = "pico.picobench.runtime-live-scheduler.v1"
+LIVE_SCHEDULER_SCHEMA = "pico.picobench.runtime-live-scheduler.v2"
+LIVE_TURN_RECORD_SCHEMA = "pico.picobench.runtime-live-turn-record.v1"
 _DISABLED_TOOLS = [
     "read_file",
     "write_file",
@@ -53,18 +56,21 @@ _DISABLED_TOOLS = [
 
 @dataclass(frozen=True)
 class LiveSchedulerConfig:
-    repetitions: int = 3
+    repetitions: int = 20
     user_slots: int = 4
     system_slots: int = 1
     hot_turns: int = 2
-    foreground_sessions: int = 24
+    foreground_sessions: int = 100
     max_agent_iterations: int = 3
     max_output_tokens_per_call: int = 512
     max_input_tokens_per_call: int = 8_000
     max_logical_calls_per_turn: int = 4
     max_attempts_per_call: int = 2
     timeout_seconds_per_arm: int = 180
-    hard_cap_cny: float = 12.0
+    hard_cap_cny: float = 320.0
+    bootstrap_resamples: int = 10_000
+    bootstrap_seed: int = 20_260_806
+    confidence_level: float = 0.95
     input_cache_miss_usd_per_million: float = 0.14
     output_usd_per_million: float = 0.28
     conservative_usd_to_cny_multiplier: float = 7.5
@@ -82,11 +88,16 @@ class LiveSchedulerConfig:
             self.max_logical_calls_per_turn,
             self.max_attempts_per_call,
             self.timeout_seconds_per_arm,
+            self.bootstrap_resamples,
         )
         if any(value < 1 for value in counts):
             raise ValueError("live scheduler experiment limits must be positive")
         if self.max_logical_calls_per_turn < self.max_agent_iterations + 1:
             raise ValueError("Provider call budget must include the exhaustion synthesis call")
+        if self.repetitions % 2:
+            raise ValueError("live scheduler repetitions must be even for balanced arm order")
+        if not 0 < self.confidence_level < 1:
+            raise ValueError("live scheduler confidence level must be between zero and one")
         if self.hard_cap_cny <= 0:
             raise ValueError("live scheduler experiment hard cap must be positive")
         if self.maximum_cost_cny > self.hard_cap_cny:
@@ -123,16 +134,28 @@ class _LiveWork:
 class _LiveRecorder:
     def __init__(self, work: list[_LiveWork]) -> None:
         self.work = {_message_id(item.request): item for item in work}
+        self.submission_order = {_message_id(item.request): index for index, item in enumerate(work)}
         self.accepted_ns: dict[str, int] = {}
+        self.started_ns: dict[str, int] = {}
+        self.terminal_ns: dict[str, int] = {}
         self.end_to_end_ms: list[float] = []
         self.invocations: Counter[str] = Counter()
         self.task_failures: dict[str, str] = {}
+        self.outcomes: dict[str, dict[str, Any]] = {}
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.total_tokens = 0
 
     def accept(self, request: TurnRequest) -> None:
         self.accepted_ns[_message_id(request)] = time.perf_counter_ns()
+
+    def start(self, request: TurnRequest) -> None:
+        self.started_ns[_message_id(request)] = time.perf_counter_ns()
+
+    def fail(self, request: TurnRequest, reason: str) -> None:
+        message_id = _message_id(request)
+        self.terminal_ns[message_id] = time.perf_counter_ns()
+        self.task_failures[message_id] = reason
 
     def complete(
         self,
@@ -142,8 +165,9 @@ class _LiveRecorder:
     ) -> None:
         message_id = _message_id(request)
         item = self.work[message_id]
+        self.terminal_ns[message_id] = time.perf_counter_ns()
         if item.measured:
-            self.end_to_end_ms.append((time.perf_counter_ns() - self.accepted_ns[message_id]) / 1_000_000)
+            self.end_to_end_ms.append((self.terminal_ns[message_id] - self.accepted_ns[message_id]) / 1_000_000)
         self.prompt_tokens += outcome.usage.prompt_tokens
         self.completion_tokens += outcome.usage.completion_tokens
         self.total_tokens += outcome.usage.total_tokens
@@ -158,6 +182,50 @@ class _LiveRecorder:
             failures.append("unexpected_tool_activity")
         if failures:
             self.task_failures[message_id] = ",".join(failures)
+        self.outcomes[message_id] = {
+            "completion_tokens": outcome.usage.completion_tokens,
+            "context_fallback_reason": outcome.context_fallback_reason,
+            "context_path": outcome.context_path,
+            "explicit_reply": outcome.explicit_reply,
+            "memory_hits": outcome.memory_hits,
+            "prompt_tokens": outcome.usage.prompt_tokens,
+            "tool_calls": outcome.tool_calls,
+            "tool_failures": outcome.tool_failures,
+            "total_tokens": outcome.usage.total_tokens,
+        }
+
+    def turn_records(self) -> list[dict[str, Any]]:
+        origin_ns = min(self.accepted_ns.values()) if self.accepted_ns else 0
+        records = []
+        for message_id, item in sorted(
+            self.work.items(),
+            key=lambda entry: self.submission_order[entry[0]],
+        ):
+            accepted_ns = self.accepted_ns.get(message_id)
+            started_ns = self.started_ns.get(message_id)
+            terminal_ns = self.terminal_ns.get(message_id)
+            outcome = self.outcomes.get(message_id, {})
+            failures = self.task_failures.get(message_id)
+            records.append(
+                {
+                    "schema": LIVE_TURN_RECORD_SCHEMA,
+                    "submission_index": self.submission_order[message_id],
+                    "message_id": message_id,
+                    "conversation": item.request.conversation,
+                    "measured": item.measured,
+                    "metric_eligible": item.measured and message_id in self.outcomes,
+                    "accepted_offset_ms": _offset_ms(accepted_ns, origin_ns),
+                    "started_offset_ms": _offset_ms(started_ns, origin_ns),
+                    "terminal_offset_ms": _offset_ms(terminal_ns, origin_ns),
+                    "queue_wait_ms": _duration_ms(accepted_ns, started_ns),
+                    "execution_ms": _duration_ms(started_ns, terminal_ns),
+                    "end_to_end_ms": _duration_ms(accepted_ns, terminal_ns),
+                    "invocation_count": self.invocations[message_id],
+                    "verifier_failures": failures.split(",") if failures else [],
+                    **outcome,
+                }
+            )
+        return records
 
 
 class _LiveMeasuredRunner:
@@ -176,6 +244,7 @@ class _LiveMeasuredRunner:
     async def run(self, req, emit, drain) -> TurnOutcome:
         message_id = _message_id(req)
         self._recorder.invocations[message_id] += 1
+        self._recorder.start(req)
         response_parts: list[str] = []
 
         async def capture(event: object) -> None:
@@ -193,7 +262,7 @@ class _LiveMeasuredRunner:
             ):
                 outcome = await self._delegate.run(req, capture, drain)
         except Exception as exc:
-            self._recorder.task_failures[message_id] = f"runner_exception:{type(exc).__name__}"
+            self._recorder.fail(req, f"runner_exception:{type(exc).__name__}")
             raise
         self._recorder.complete(req, outcome, "\n".join(response_parts))
         return outcome
@@ -246,10 +315,18 @@ def build_live_scheduler_plan(
         "workload": {
             "control": "strict_global_fifo_with_session_serialization",
             "treatment": "pico_per_session_lanes",
+            "scenario": "adversarial_head_of_line_burst",
             "task_verifier": "unique_marker_and_complete_provider_usage",
             "primary_metric": "foreground_accept_to_terminal_p95_ms",
             "aggregation": "median_of_paired_repetition_reductions",
-            "arm_order": "alternating",
+            "arm_order": "balanced_alternating",
+            "raw_record_schema": LIVE_TURN_RECORD_SCHEMA,
+        },
+        "analysis": {
+            "confidence_interval": "paired_repetition_bootstrap_percentile",
+            "confidence_level": config.confidence_level,
+            "resamples": config.bootstrap_resamples,
+            "seed": config.bootstrap_seed,
         },
         "config": to_primitive(config),
         "budget": {
@@ -265,6 +342,7 @@ def build_live_scheduler_plan(
             "provider_failures_equal_zero": True,
             "actual_model_verified": True,
             "foreground_p95_reduction_percent_greater_than": 0,
+            "paired_reduction_ci_lower_bound_greater_than": 0,
             "clean_stable_checkout": True,
         },
     }
@@ -393,10 +471,14 @@ async def run_live_scheduler_experiment(
         for pair in pairs
         for arm in (pair["global_fifo"], pair["session_lanes"])
     )
-    reductions = [
-        pair["p95_reduction_percent"] for pair in pairs if isinstance(pair["p95_reduction_percent"], int | float)
-    ]
-    reduction = median(reductions) if len(reductions) == config.repetitions else None
+    summary = _analyze_live_pairs(
+        pairs,
+        bootstrap_resamples=config.bootstrap_resamples,
+        bootstrap_seed=config.bootstrap_seed,
+        confidence_level=config.confidence_level,
+    )
+    reduction = summary["foreground_p95_reduction_percent"]
+    confidence_interval = summary["paired_reduction_ci"]
     gates = {
         "all_tasks_verified": all_tasks_verified,
         "all_usage_complete": all(
@@ -406,6 +488,9 @@ async def run_live_scheduler_experiment(
         "actual_model_verified": bool(observed_provider.actual_models)
         and observed_provider.actual_models <= {model, model.split("/", 1)[-1]},
         "performance_direction": isinstance(reduction, int | float) and reduction > 0,
+        "paired_reduction_ci_lower_bound_positive": (
+            isinstance(confidence_interval["lower_percent"], int | float) and confidence_interval["lower_percent"] > 0
+        ),
         "budget_accounting_complete": budget.accounting_complete and budget.open_reservations == 0,
         "clean_stable_checkout": (
             clean_before and clean_after and source_commit == final_commit and environment_before == environment_after
@@ -422,21 +507,10 @@ async def run_live_scheduler_experiment(
             "logical_calls": observed_provider.logical_calls,
             "failure_categories": dict(observed_provider.failure_categories),
         },
+        "analysis": plan["analysis"],
         "evidence_scope": "live_provider_agent_end_to_end_scheduler_comparison",
         "repetitions": pairs,
-        "summary": {
-            "foreground_p95_reduction_percent": reduction,
-            "control_p95_ms": _median_p95(pairs, "global_fifo"),
-            "treatment_p95_ms": _median_p95(pairs, "session_lanes"),
-            "accepted_turns": sum(
-                arm["accepted_requests"] for pair in pairs for arm in (pair["global_fifo"], pair["session_lanes"])
-            ),
-            "verified_turns": sum(
-                arm["accepted_requests"] - arm["task_failures"]
-                for pair in pairs
-                for arm in (pair["global_fifo"], pair["session_lanes"])
-            ),
-        },
+        "summary": summary,
         "budget": to_primitive(budget),
         "gates": gates,
         "claim_eligible": all(gates.values()),
@@ -535,6 +609,7 @@ async def _run_live_arm(
         "prompt_tokens": recorder.prompt_tokens,
         "completion_tokens": recorder.completion_tokens,
         "total_tokens": recorder.total_tokens,
+        "turn_records": recorder.turn_records(),
     }
 
 
@@ -598,6 +673,151 @@ def _median_p95(pairs: list[dict[str, Any]], arm: str) -> float | None:
     )
 
 
+def _analyze_live_pairs(
+    pairs: list[dict[str, Any]],
+    *,
+    bootstrap_resamples: int,
+    bootstrap_seed: int,
+    confidence_level: float,
+) -> dict[str, Any]:
+    reductions = [
+        pair["p95_reduction_percent"] for pair in pairs if isinstance(pair["p95_reduction_percent"], int | float)
+    ]
+    reduction = median(reductions) if len(reductions) == len(pairs) and reductions else None
+    confidence_interval = _bootstrap_median_interval(
+        reductions,
+        resamples=bootstrap_resamples,
+        seed=bootstrap_seed,
+        confidence_level=confidence_level,
+    )
+    return {
+        "foreground_p95_reduction_percent": reduction,
+        "paired_reduction_ci": confidence_interval,
+        "control_p95_ms": _median_p95(pairs, "global_fifo"),
+        "treatment_p95_ms": _median_p95(pairs, "session_lanes"),
+        "accepted_turns": sum(
+            arm["accepted_requests"] for pair in pairs for arm in (pair["global_fifo"], pair["session_lanes"])
+        ),
+        "verified_turns": sum(
+            arm["accepted_requests"] - arm["task_failures"]
+            for pair in pairs
+            for arm in (pair["global_fifo"], pair["session_lanes"])
+        ),
+    }
+
+
+def _bootstrap_median_interval(
+    values: list[float],
+    *,
+    resamples: int,
+    seed: int,
+    confidence_level: float,
+) -> dict[str, Any]:
+    if not values:
+        return {
+            "method": "paired_repetition_bootstrap_percentile",
+            "confidence_level": confidence_level,
+            "resamples": resamples,
+            "seed": seed,
+            "lower_percent": None,
+            "upper_percent": None,
+        }
+    generator = random.Random(seed)
+    estimates = sorted(median(generator.choices(values, k=len(values))) for _ in range(resamples))
+    tail = (1 - confidence_level) / 2
+    return {
+        "method": "paired_repetition_bootstrap_percentile",
+        "confidence_level": confidence_level,
+        "resamples": resamples,
+        "seed": seed,
+        "lower_percent": _nearest_rank(estimates, tail),
+        "upper_percent": _nearest_rank(estimates, 1 - tail),
+    }
+
+
+def verify_live_scheduler_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(evidence)
+    evidence_digest = payload.pop("evidence_digest", None)
+    analysis = evidence.get("analysis", {})
+    pairs = evidence.get("repetitions", [])
+    raw_record_gates = []
+    raw_aggregate_gates = []
+    reduction_gates = []
+    for pair in pairs:
+        for arm_name in ("global_fifo", "session_lanes"):
+            arm = pair[arm_name]
+            records = arm.get("turn_records", [])
+            measured = [
+                record["end_to_end_ms"]
+                for record in records
+                if record.get("metric_eligible") and isinstance(record.get("end_to_end_ms"), int | float)
+            ]
+            submission_indices = [record.get("submission_index") for record in records]
+            message_ids = [record.get("message_id") for record in records]
+            raw_record_gates.append(
+                len(records) == arm["accepted_requests"]
+                and sum(bool(record.get("measured")) for record in records) == arm["measured_foreground_requests"]
+                and submission_indices == list(range(len(records)))
+                and len(set(message_ids)) == len(message_ids)
+                and all(record.get("schema") == LIVE_TURN_RECORD_SCHEMA for record in records)
+                and to_primitive(LatencySummary.from_values(measured)) == arm["end_to_end_ms"]
+            )
+            raw_aggregate_gates.append(
+                sum(int(record.get("prompt_tokens", 0)) for record in records) == arm["prompt_tokens"]
+                and sum(int(record.get("completion_tokens", 0)) for record in records) == arm["completion_tokens"]
+                and sum(int(record.get("total_tokens", 0)) for record in records) == arm["total_tokens"]
+                and sum(bool(record.get("verifier_failures")) for record in records) == arm["task_failures"]
+                and sum(max(0, int(record.get("invocation_count", 0)) - 1) for record in records)
+                == arm["unexpected_duplicate_executions"]
+                and sum(int(record.get("invocation_count", 0)) == 0 for record in records) == arm["missing_executions"]
+            )
+        control_p95 = _optional_p95(pair["global_fifo"])
+        treatment_p95 = _optional_p95(pair["session_lanes"])
+        recomputed_reduction = (
+            (control_p95 - treatment_p95) / control_p95 * 100
+            if control_p95 is not None and treatment_p95 is not None
+            else None
+        )
+        reduction_gates.append(_optional_float_equal(recomputed_reduction, pair["p95_reduction_percent"]))
+    recomputed_summary = _analyze_live_pairs(
+        pairs,
+        bootstrap_resamples=int(analysis.get("resamples", 0)),
+        bootstrap_seed=int(analysis.get("seed", 0)),
+        confidence_level=float(analysis.get("confidence_level", 0)),
+    )
+    gates = {
+        "evidence_digest_matches": isinstance(evidence_digest, str) and canonical_digest(payload) == evidence_digest,
+        "raw_records_complete": bool(raw_record_gates) and all(raw_record_gates),
+        "raw_aggregates_reproduce": bool(raw_aggregate_gates) and all(raw_aggregate_gates),
+        "paired_reductions_reproduce": bool(reduction_gates) and all(reduction_gates),
+        "summary_reproduces": recomputed_summary == evidence.get("summary"),
+    }
+    return {
+        "passed": all(gates.values()),
+        "gates": gates,
+        "recomputed_summary": recomputed_summary,
+    }
+
+
+def _nearest_rank(ordered: list[float], quantile: float) -> float:
+    index = min(len(ordered) - 1, max(0, math.ceil(quantile * len(ordered)) - 1))
+    return ordered[index]
+
+
+def _optional_float_equal(left: float | None, right: object) -> bool:
+    if left is None:
+        return right is None
+    return isinstance(right, int | float) and math.isclose(left, float(right), rel_tol=0, abs_tol=1e-9)
+
+
+def _offset_ms(value_ns: int | None, origin_ns: int) -> float | None:
+    return (value_ns - origin_ns) / 1_000_000 if value_ns is not None else None
+
+
+def _duration_ms(start_ns: int | None, end_ns: int | None) -> float | None:
+    return (end_ns - start_ns) / 1_000_000 if start_ns is not None and end_ns is not None else None
+
+
 async def _close_provider(provider: LLMProvider) -> None:
     client = getattr(provider, "_client", None)
     close = getattr(client, "close", None)
@@ -652,7 +872,7 @@ def _format_metric(value: object) -> str:
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Plan or run the live Agent scheduler experiment")
+    parser = argparse.ArgumentParser(description="Plan, run, or verify the live Agent scheduler experiment")
     parser.add_argument(
         "--output-root",
         type=Path,
@@ -663,6 +883,8 @@ def _parse_args() -> argparse.Namespace:
     run = subparsers.add_parser("run")
     run.add_argument("--approval-digest", required=True)
     run.add_argument("--approved-cny", required=True, type=float)
+    verify = subparsers.add_parser("verify")
+    verify.add_argument("--evidence", required=True, type=Path)
     return parser.parse_args()
 
 
@@ -671,6 +893,17 @@ async def _main() -> int:
 
     args = _parse_args()
     repository_root = Path(__file__).resolve().parents[4]
+    if args.command == "verify":
+        evidence = json.loads(args.evidence.read_text(encoding="utf-8"))
+        result = verify_live_scheduler_evidence(evidence)
+        summary = result["recomputed_summary"]
+        print(f"evidence: {args.evidence}")
+        print(f"verified: {str(result['passed']).lower()}")
+        print(f"foreground_p95_reduction_percent: {_format_metric(summary['foreground_p95_reduction_percent'])}")
+        interval = summary["paired_reduction_ci"]
+        print(f"paired_reduction_ci_lower_percent: {_format_metric(interval['lower_percent'])}")
+        print(f"paired_reduction_ci_upper_percent: {_format_metric(interval['upper_percent'])}")
+        return 0 if result["passed"] else 1
     config = LiveSchedulerConfig()
     base_config, provider_name, model = _load_subject()
     plan, path = write_live_scheduler_plan(
@@ -712,6 +945,9 @@ async def _main() -> int:
     print(f"control_p95_ms: {_format_metric(summary['control_p95_ms'])}")
     print(f"treatment_p95_ms: {_format_metric(summary['treatment_p95_ms'])}")
     print(f"foreground_p95_reduction_percent: {_format_metric(summary['foreground_p95_reduction_percent'])}")
+    interval = summary["paired_reduction_ci"]
+    print(f"paired_reduction_ci_lower_percent: {_format_metric(interval['lower_percent'])}")
+    print(f"paired_reduction_ci_upper_percent: {_format_metric(interval['upper_percent'])}")
     print(f"provider_charged_cny: {evidence['budget']['provider_charged_cny']:.6f}")
     return 0 if evidence["claim_eligible"] else 1
 

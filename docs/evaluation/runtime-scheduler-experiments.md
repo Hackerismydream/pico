@@ -64,10 +64,20 @@ reply contains that marker, Provider usage is complete, no Tool is called, and
 the Runtime reaches a terminal result.
 
 The control and treatment receive the same prompts in the same order, use the
-same Provider and model, and alternate arm order across three repetitions. The
-primary metric is foreground accept-to-terminal P95 latency. The result is
-eligible only if all 156 Turns pass their task Verifiers and every Provider,
-usage, budget, checkout, and performance-direction Gate passes.
+same Provider and model, and use a balanced alternating arm order across 20
+paired repetitions. Each arm contains two consecutive Turns from one hot
+conversation followed by 100 foreground conversations, for 4,080 real Agent
+Turns in total. The primary metric is foreground accept-to-terminal P95
+latency. The reported effect is the median paired P95 reduction with a
+deterministic 10,000-resample bootstrap 95% confidence interval.
+
+Every Turn is retained as a raw record with its submission index, conversation,
+accept/start/terminal offsets, queue wait, execution time, end-to-end latency,
+usage, invocation count, and Verifier failures. The result is eligible only if
+all Turns pass their task Verifiers, the confidence interval lower bound is
+positive, and every Provider, usage, budget, checkout, and performance Gate
+passes. This is an adversarial head-of-line burst benchmark, not a production
+traffic model or service-level objective.
 
 Live execution is a separately approved paid action. First freeze the clean
 commit, exact manifest, maximum request attempts, and CNY hard cap:
@@ -82,4 +92,12 @@ Then pass the exact approved manifest digest and amount:
 PICO_LIVE_PERF_APPROVAL_DIGEST=<digest> \
 PICO_LIVE_PERF_APPROVED_CNY=<amount> \
 make picobench-runtime-live-run
+```
+
+Rebuild the summaries and confidence interval from the retained raw Turn
+records without calling the Provider:
+
+```bash
+PICO_LIVE_PERF_EVIDENCE=<run-artifact.json> \
+make picobench-runtime-live-verify
 ```
