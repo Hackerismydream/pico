@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .canonical import canonical_digest
+from .plan import validate_manifest_identity
 
 
 @dataclass(frozen=True)
@@ -157,6 +158,37 @@ def _read_json(path: Path) -> Mapping[str, Any]:
     return _mapping(value, str(path))
 
 
+def _formal_inputs(
+    summary_path: Path,
+    *,
+    pico_commit: str,
+) -> Mapping[str, Any]:
+    summary = _read_json(summary_path)
+    manifest_path = summary_path.with_name("manifest.json")
+    if not manifest_path.is_file():
+        raise ValueError("formal summary manifest is missing")
+    manifest = _read_json(manifest_path)
+    experiment_id = summary.get("experiment_id")
+    if not isinstance(experiment_id, str):
+        raise ValueError("formal summary experiment identity is missing")
+    validate_manifest_identity(manifest, experiment_id=experiment_id)
+    spec = manifest.get("spec")
+    identity = spec.get("identity") if isinstance(spec, Mapping) else None
+    if (
+        not isinstance(identity, Mapping)
+        or identity.get("pico_commit") != pico_commit
+        or identity.get("campaign_suite") != "agent-application-scorecard-v1"
+        or identity.get("campaign_mode") != "formal"
+    ):
+        raise ValueError("formal summary does not match the current Scorecard subject")
+    report_digest = summary.get("report_digest")
+    payload = dict(summary)
+    payload.pop("report_digest", None)
+    if not isinstance(report_digest, str) or canonical_digest(payload) != report_digest:
+        raise ValueError("formal summary digest does not match")
+    return summary
+
+
 def _memory_inputs(
     summary_path: Path,
     handoff_path: Path,
@@ -243,15 +275,19 @@ def main() -> int:
     args = parser.parse_args()
     if (args.memory_summary is None) != (args.memory_handoff is None):
         parser.error("--memory-summary and --memory-handoff must be used together")
+    current_commit = _current_pico_commit()
+    formal_summary = _formal_inputs(
+        args.formal_summary,
+        pico_commit=current_commit,
+    )
     memory_rate = None
     memory_safety = False
     if args.memory_summary is not None and args.memory_handoff is not None:
         memory_rate, memory_safety = _memory_inputs(
             args.memory_summary,
             args.memory_handoff,
-            pico_commit=_current_pico_commit(),
+            pico_commit=current_commit,
         )
-    current_commit = _current_pico_commit()
     runtime = _read_json(args.runtime_evidence) if args.runtime_evidence else {}
     runtime_current = False
     runtime_claim_eligible = False
@@ -268,7 +304,7 @@ def main() -> int:
             pico_commit=current_commit,
         )
     result = compute_scorecard(
-        _read_json(args.formal_summary),
+        formal_summary,
         runtime,
         runtime_current_evidence=runtime_current,
         memory_treatment_pass_rate=memory_rate,
