@@ -7,6 +7,7 @@ import pytest
 
 from benchmarks.picobench.canonical import canonical_digest
 from benchmarks.picobench.scorecard import (
+    _formal_inputs,
     _memory_inputs,
     _runtime_inputs,
     _tokenwise_inputs,
@@ -107,6 +108,40 @@ def test_scorecard_accepts_current_tokenwise_report() -> None:
     report = {**payload, "report_digest": canonical_digest(payload)}
 
     assert _tokenwise_inputs(report, pico_commit=pico_commit) == (True, True)
+
+
+def test_scorecard_requires_formal_manifest_from_current_commit(tmp_path) -> None:
+    pico_commit = "a" * 40
+    spec = {
+        "schema": "pico.picobench.experiment.v1",
+        "evidence_schema": "pico.picobench.evidence.v1",
+        "identity": {
+            "campaign_mode": "formal",
+            "campaign_suite": "agent-application-scorecard-v1",
+            "pico_commit": pico_commit,
+        },
+    }
+    experiment_id = canonical_digest({"spec": spec, "pack_definitions": []})
+    manifest = {
+        "schema": spec["schema"],
+        "evidence_schema": spec["evidence_schema"],
+        "experiment_id": experiment_id,
+        "plan_digest": experiment_id,
+        "spec": spec,
+        "pack_definitions": [],
+    }
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    payload = {**_formal_summary(), "experiment_id": experiment_id}
+    summary_path = tmp_path / "summary.json"
+    summary_path.write_text(
+        json.dumps({**payload, "report_digest": canonical_digest(payload)}),
+        encoding="utf-8",
+    )
+
+    assert _formal_inputs(summary_path, pico_commit=pico_commit)["experiment_id"] == experiment_id
+
+    with pytest.raises(ValueError, match="current Scorecard subject"):
+        _formal_inputs(summary_path, pico_commit="b" * 40)
 
 
 def test_scorecard_counts_negative_runtime_as_current_evidence() -> None:

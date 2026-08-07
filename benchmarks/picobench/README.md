@@ -36,6 +36,50 @@ only the still-current Context and Tool/MCP Packs. TokenWise, Runtime, and
 CodeCairn remain independent evidence tracks and are composed after their own
 Claim Gates are evaluated.
 
+Run or resume the complete multidimensional workflow with:
+
+```bash
+PICO_BENCH_EXECUTE_PAID=1 make picobench-reproduce
+```
+
+The command performs a full preflight before any paid call, then runs Runtime,
+TokenWise, CodeCairn Memory, and the Context plus Tool/MCP Scorecard tracks. It
+composes the multidimensional score, renders a terminal table, and writes
+`report.json`, `REPORT.md`, `score.json`, and stage logs under
+`.pico/evidence/picobench-reproduction/<pico-commit>/`. Repeating the command
+validates and resumes retained stage artifacts instead of rerunning completed
+work.
+
+A fresh Memory run still requires the installed Pico-CodeCairn Pair inputs
+used by `make picobench-codecairn-ship`:
+
+- `PICO_CODECAIRN_PICO_WHEEL`;
+- `PICO_CODECAIRN_WHEEL`;
+- `PICO_CODECAIRN_PAIR_MANIFEST`;
+- `PICO_CODECAIRN_CONTINUITY_SUMMARY`.
+
+These inputs must come from the credential-free continuity Gate. The one-command
+runner fails during preflight when they are missing or do not match the current
+Pico commit; it never skips Memory or prints a complete-looking partial score.
+
+Existing current-commit evidence can be reused without paid execution:
+
+```bash
+PICO_SCORECARD_FORMAL_SUMMARY=/absolute/path/to/summary.json \
+PICO_SCORECARD_RUNTIME_EVIDENCE=/absolute/path/to/runtime-evidence.json \
+PICO_SCORECARD_TOKENWISE_REPORT=/absolute/path/to/tokenwise-report.json \
+PICO_SCORECARD_MEMORY_SUMMARY=/absolute/path/to/memory-summary.json \
+PICO_SCORECARD_MEMORY_HANDOFF=/absolute/path/to/memory-handoff.json \
+  make picobench-reproduce
+```
+
+The runner copies these compact inputs into its output directory and verifies
+their commit identities and digests before composing the score. The formal
+summary must remain beside the `manifest.json` from the same experiment so its
+Scorecard identity can be rebuilt. A diagnostic score is always labeled
+separately from a certified score, and the terminal and Markdown reports list
+every failed certification check in plain language.
+
 Print the frozen worst-case budget with:
 
 ```bash

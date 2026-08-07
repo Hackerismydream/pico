@@ -193,6 +193,7 @@ The default operator adapters are:
 ```text
 make picobench-smoke
 make picobench
+make picobench-reproduce
 make picobench-codecairn-task-effect-smoke
 make picobench-codecairn-task-effect-estimate
 make picobench-codecairn-task-effect-ship
@@ -203,6 +204,11 @@ deterministic Tracks, local MCP transport, and report rebuild.
 `make picobench` performs the live Provider preflight and executes or resumes
 the frozen Ship-1 plan. Re-running a complete plan performs no model calls and
 rebuilds the report from the immutable manifest and stored evidence records.
+`make picobench-reproduce` is the current multidimensional Scorecard operator
+entry point. It runs or reuses the independent Runtime, TokenWise, CodeCairn
+Memory, Context, and Tool/MCP evidence tracks, then emits one terminal summary
+and one digest-bound local report directory. It requires explicit paid execution
+consent whenever any paid track is missing.
 `make picobench-codecairn-task-effect-smoke` is the separate credential-free
 v2 task-validity, retrieval, regression, and report-rebuild Gate.
 `make picobench-codecairn-task-effect-estimate` prints the calibration plus

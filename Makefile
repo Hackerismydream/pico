@@ -1,4 +1,4 @@
-.PHONY: help install install-deps lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-scorecard-estimate picobench-scorecard-ship picobench-scorecard-score picobench-runtime-scheduler picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify picobench-codecairn-smoke picobench-codecairn-task-effect-smoke picobench-codecairn-task-effect-estimate picobench-codecairn-task-effect-ship picobench-codecairn-ship verify-codecairn-continuity verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
+.PHONY: help install install-deps lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-reproduce picobench-scorecard-estimate picobench-scorecard-ship picobench-scorecard-score picobench-runtime-scheduler picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify picobench-codecairn-smoke picobench-codecairn-task-effect-smoke picobench-codecairn-task-effect-estimate picobench-codecairn-task-effect-ship picobench-codecairn-ship verify-codecairn-continuity verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
 
 PYTHON ?= python3
 PYTHON_LINT_TARGETS ?= scripts/check_commit_file.py scripts/check_commit_messages.py scripts/check_pr_title.py scripts/check_large_files.py scripts/commit_lint.py tests/test_commit_lint.py tests/test_large_file_check.py
@@ -19,6 +19,7 @@ help:
 	@echo "  picobench-runtime-live-run Run the approved real-Agent scheduler experiment"
 	@echo "  picobench-runtime-live-verify Rebuild live scheduler metrics from raw Turn records"
 	@echo "  picobench      Run the frozen PicoBench calibration and formal campaign"
+	@echo "  picobench-reproduce Run or reuse every Scorecard track and render one report"
 	@echo "  picobench-scorecard-estimate Print the current Scorecard worst-case budget"
 	@echo "  picobench-scorecard-ship Run the current Context and Tool/MCP Scorecard campaign"
 	@echo "  picobench-scorecard-score Compute the multidimensional diagnostic score"
@@ -75,6 +76,9 @@ picobench-smoke:
 
 picobench:
 	uv run --frozen --all-extras --exact python -m benchmarks.picobench --mode ship
+
+picobench-reproduce:
+	uv run --frozen --all-extras --exact python -m benchmarks.picobench.reproduce
 
 picobench-scorecard-estimate:
 	uv run --frozen --all-extras --exact python -m benchmarks.picobench.scorecard_campaign estimate
