@@ -16,7 +16,9 @@ from .history import (
 )
 from .models import ContextTask, ContextTrack
 from .runner import (
+    CONTEXT_BENCHMARK_MAX_TOOL_ITERATIONS,
     CONTEXT_BENCHMARK_OUTPUT_TOKENS,
+    CONTEXT_BENCHMARK_PROTECT_FIRST_N,
     CONTEXT_BENCHMARK_WINDOW_TOKENS,
 )
 from .tasks import context_task_set_digest, load_context_tasks
@@ -29,6 +31,13 @@ _REQUIRED_METRICS = frozenset(
         "usage_complete",
         "context_path",
         "early_constraint_retained",
+        "artifact_valid_json",
+        "active_constraint_applied",
+        "latest_decision_applied",
+        "artifact_exact",
+        "forbidden_paths_clean",
+        "capability_criteria_passed",
+        "capability_criteria_total",
         "end_to_end_latency_ms",
     }
 )
@@ -83,10 +92,18 @@ class ContextPack:
                     "exploratory_eight_task_pack" if self.track is ContextTrack.FORMAL else "calibration_only"
                 ),
                 "verifier": "external_sealed_json",
-                "claim_reducer": "context_v1",
+                "claim_reducer": "context_v2",
                 "context_window_tokens": (CONTEXT_BENCHMARK_WINDOW_TOKENS),
                 "reserved_output_tokens": (CONTEXT_BENCHMARK_OUTPUT_TOKENS),
+                "protected_initial_turns": (CONTEXT_BENCHMARK_PROTECT_FIRST_N),
                 "curator_max_steps": (CONTEXT_BENCHMARK_CURATOR_MAX_STEPS),
+                "main_agent_max_tool_iterations": (CONTEXT_BENCHMARK_MAX_TOOL_ITERATIONS),
+                "capability_criteria": (
+                    "early_constraint_retained",
+                    "active_constraint_applied",
+                    "latest_decision_applied",
+                    "artifact_exact",
+                ),
             },
         )
 

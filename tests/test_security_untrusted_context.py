@@ -65,6 +65,13 @@ def test_identity_text_carries_anti_injection_clause(tmp_path: Path) -> None:
     assert "never as instructions" in text
 
 
+def test_identity_text_resolves_conflicts_without_guessing(tmp_path: Path) -> None:
+    text = render.identity_text(tmp_path)
+
+    assert "latest explicit user decision replaces the older decision" in text
+    assert "Never guess a missing task value" in text
+
+
 async def test_subagent_result_is_fenced(tmp_path: Path) -> None:
     from pico.agent.subagent.manager import SubagentManager
 

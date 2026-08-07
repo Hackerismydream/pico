@@ -344,6 +344,8 @@ Rules:
 - Preserve the current user message; Python will add it after your plan.
 - Preserve valid tool-call adjacency by selecting related message ids together.
 - Prefer recent messages, explicit user constraints, unresolved tasks, decisions, and facts referenced by the current user message.
+- When messages conflict about the same subject, keep the latest explicit user decision active and omit the superseded decision when structure permits.
+- Store only the active version of a decision in working state.
 - Archive old low-relevance messages losslessly before dropping them from live context when useful.
 - Retrieve archived content only when needed.
 - Finish by calling curator_build_context.

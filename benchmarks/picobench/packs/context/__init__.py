@@ -16,7 +16,9 @@ from .models import ContextTask, ContextTrack
 from .pack import ContextPack, ContextTrialRunner
 from .reducer import reduce_context_artifacts
 from .runner import (
+    CONTEXT_BENCHMARK_MAX_TOOL_ITERATIONS,
     CONTEXT_BENCHMARK_OUTPUT_TOKENS,
+    CONTEXT_BENCHMARK_PROTECT_FIRST_N,
     CONTEXT_BENCHMARK_WINDOW_TOKENS,
     RuntimeContextTrialRunner,
 )
@@ -33,6 +35,8 @@ __all__ = [
     "FORMAL_CONTEXT_TASK_COUNT",
     "ContextClaimAssessment",
     "CONTEXT_BENCHMARK_OUTPUT_TOKENS",
+    "CONTEXT_BENCHMARK_PROTECT_FIRST_N",
+    "CONTEXT_BENCHMARK_MAX_TOOL_ITERATIONS",
     "CONTEXT_BENCHMARK_CURATOR_MAX_STEPS",
     "CONTEXT_BENCHMARK_WINDOW_TOKENS",
     "ContextPack",

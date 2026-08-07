@@ -8,6 +8,8 @@ import pytest
 from benchmarks.picobench.packs.context import (
     CALIBRATION_CONTEXT_TASK_COUNT,
     CONTEXT_BENCHMARK_CURATOR_MAX_STEPS,
+    CONTEXT_BENCHMARK_OUTPUT_TOKENS,
+    CONTEXT_BENCHMARK_PROTECT_FIRST_N,
     FORMAL_CONTEXT_TASK_COUNT,
     ContextPack,
     ContextPairMeasurement,
@@ -100,7 +102,7 @@ def test_context_trial_binds_curator_to_frozen_campaign_model(
     pico_config = PicoConfig(base=config)
     pico_config.context.curator_model = "gemini-2.5-flash"
 
-    _trial_config, trial_pico = _trial_configs(
+    trial_config, trial_pico = _trial_configs(
         config,
         pico_config,
         workspace=tmp_path,
@@ -108,6 +110,17 @@ def test_context_trial_binds_curator_to_frozen_campaign_model(
     )
 
     assert trial_pico.context.curator_model == "deepseek/deepseek-v4-flash"
+    assert trial_config.agents.defaults.max_tokens == 500
+    assert trial_pico.context.protect_first_n == 1
+
+
+def test_context_pack_freezes_prompt_budget_and_initial_protection() -> None:
+    identity = ContextPack().definition().identity
+
+    assert CONTEXT_BENCHMARK_OUTPUT_TOKENS == 500
+    assert CONTEXT_BENCHMARK_PROTECT_FIRST_N == 1
+    assert identity["reserved_output_tokens"] == 500
+    assert identity["protected_initial_turns"] == 1
 
 
 def test_context_pack_freezes_benchmark_curator_steps_only() -> None:
@@ -147,6 +160,10 @@ def test_every_context_task_materializes_required_long_session_shape(
         assert max(len(str(result["content"])) for result in tool_results) >= 800
         assert any("[irrelevant-noise:" in str(message.get("content", "")) for message in history)
         assert task.expected_path.is_file()
+        assert set(task.constraint_keys).isdisjoint(task.decision_keys)
+        assert set(task.constraint_keys) | set(task.decision_keys) == set(
+            json.loads(task.expected_path.read_text(encoding="utf-8")),
+        )
         assert task.history_digest == task.compute_history_digest()
 
 
@@ -350,6 +367,29 @@ async def test_every_formal_context_verifier_reports_own_tampering_as_infrastruc
     assert execution.infrastructure_error == "verifier_digest_changed"
 
 
+@pytest.mark.asyncio
+async def test_context_verifier_reports_constraint_and_decision_separately(
+    tmp_path: Path,
+) -> None:
+    task = load_context_tasks(ContextTrack.FORMAL)[0]
+    expected = json.loads(task.expected_path.read_text(encoding="utf-8"))
+    expected[task.decision_keys[0]] = "stale-value"
+    artifact = tmp_path / task.artifact_path
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text(json.dumps(expected), encoding="utf-8")
+    verifier = SealedContextTaskVerifier.capture(task)
+
+    metrics = verifier.diagnostic_metrics(tmp_path)
+
+    assert metrics == {
+        "artifact_valid_json": True,
+        "active_constraint_applied": True,
+        "latest_decision_applied": False,
+        "artifact_exact": False,
+        "forbidden_paths_clean": True,
+    }
+
+
 def _positive_measurements() -> tuple[ContextPairMeasurement, ...]:
     return tuple(
         ContextPairMeasurement(
@@ -417,11 +457,19 @@ def test_context_artifact_reducer_rebuilds_flat_claim_metrics() -> None:
     )
 
     assert result["context.measurement_valid"] is True
+    assert result["context.capability_measurement_valid"] is True
+    assert result["context.efficiency_measurement_valid"] is True
     assert result["context.positive_claim_eligible"] is True
     assert result["context.trial_total_input_token_reduction_percent"] == pytest.approx(20.0)
     assert result["context.coverage_valid"] is True
     assert result["context.usage_complete"] is True
     assert result["context.single_axis_valid"] is True
+    assert result["context.capability_evidence_complete"] is True
+    assert result["context.treatment_capability_score_rate"] == 1.0
+    assert result["context.treatment_early_constraint_retained_rate"] == 1.0
+    assert result["context.treatment_active_constraint_applied_rate"] == 1.0
+    assert result["context.treatment_latest_decision_applied_rate"] == 1.0
+    assert result["context.treatment_artifact_exact_rate"] == 1.0
     assert result["context.findings"] == []
 
 
@@ -463,6 +511,8 @@ def test_context_artifact_reducer_reports_incomplete_measurable_usage() -> None:
     assert result["context.usage_complete"] is False
     assert result["context.valid_pair_measurement_count"] == 23
     assert result["context.measurement_valid"] is False
+    assert result["context.capability_measurement_valid"] is True
+    assert result["context.efficiency_measurement_valid"] is False
     assert any(str(finding).startswith("context_usage_incomplete:") for finding in result["context.findings"])
     assert not any(
         str(finding).startswith("context_usage_subtotal_exceeds_total:") for finding in result["context.findings"]
@@ -607,6 +657,10 @@ def _positive_context_artifacts(
                             "trial_total_input_tokens": total_tokens,
                             "context_auxiliary_input_tokens": (auxiliary_tokens),
                             "usage_complete": True,
+                            "early_constraint_retained": True,
+                            "active_constraint_applied": True,
+                            "latest_decision_applied": True,
+                            "artifact_exact": True,
                         },
                     }
                 )
@@ -655,6 +709,13 @@ async def test_context_pack_resolves_factory_and_rejects_observed_axis_drift(
                 "usage_complete": True,
                 "context_path": "fifo_tail",
                 "early_constraint_retained": False,
+                "artifact_valid_json": True,
+                "active_constraint_applied": True,
+                "latest_decision_applied": True,
+                "artifact_exact": True,
+                "forbidden_paths_clean": True,
+                "capability_criteria_passed": 3,
+                "capability_criteria_total": 4,
                 "end_to_end_latency_ms": 1,
             },
         )

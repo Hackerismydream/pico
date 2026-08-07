@@ -212,7 +212,16 @@ def reduce_experiment(ref: ExperimentRef) -> Reduction:
         )
         pack_metrics = {key: value for key, value in pack_metrics.items() if key not in base_collisions}
     metrics = {**base_metrics, **pack_metrics}
-    all_pair_coverage = all(summary.coverage_valid for summary in pair_summaries)
+    capability_only_pair_packs = {
+        str(definition.get("pack_id"))
+        for definition in manifest.get("pack_definitions", ())
+        if isinstance(definition, dict)
+        and isinstance(definition.get("identity"), dict)
+        and definition["identity"].get("claim_reducer") == "context_v2"
+    }
+    all_pair_coverage = all(
+        summary.coverage_valid or summary.pack_id in capability_only_pair_packs for summary in pair_summaries
+    )
     invalid_retrieval = any(
         retrieval_statuses[status]
         for status in (
@@ -302,14 +311,16 @@ def _reduce_declared_pack_claims(
             )
             valid = False
             continue
-        if reducer_id == "context_v1":
+        if reducer_id in {"context_v1", "context_v2"}:
             from .packs.context import reduce_context_artifacts
 
             reduced = reduce_context_artifacts(
                 trial_records=trial_records.values(),
                 pair_results=pair_records.values(),
             )
-            validity_key = "context.measurement_valid"
+            validity_key = (
+                "context.capability_measurement_valid" if reducer_id == "context_v2" else "context.measurement_valid"
+            )
         elif reducer_id == "memory_skill_v1":
             from .packs.memory_skill import reduce_memory_skill_claims
 

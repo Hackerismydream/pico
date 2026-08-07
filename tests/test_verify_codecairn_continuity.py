@@ -16,7 +16,13 @@ from benchmarks.picobench.codecairn_continuity import (
 def test_pair_audit_verifies_current_and_historical_artifacts(
     tmp_path: Path,
 ) -> None:
-    current_pico = _wheel(tmp_path / "pico-current.whl", "pico-harness", "0.1.7")
+    current_codecairn_commit = "e" * 40
+    current_pico = _wheel(
+        tmp_path / "pico-current.whl",
+        "pico-harness",
+        "0.1.7",
+        requires_dist=("codecairn @ git+https://example.invalid/CodeCairn.git@" + current_codecairn_commit),
+    )
     implementation_pico = _wheel(
         tmp_path / "pico-implementation.whl",
         "pico-harness",
@@ -27,11 +33,19 @@ def test_pair_audit_verifies_current_and_historical_artifacts(
         "pico-harness",
         "0.1.7",
     )
+    baseline_codecairn = _wheel(
+        tmp_path / "codecairn-baseline.whl",
+        "codecairn",
+        "0.1.0",
+        entry_points="[pico.plugins]\ncodecairn = codecairn.integrations.pico\n",
+        marker="baseline",
+    )
     codecairn = _wheel(
         tmp_path / "codecairn.whl",
         "codecairn",
         "0.1.0",
         entry_points="[pico.plugins]\ncodecairn = codecairn.integrations.pico\n",
+        marker="current",
     )
     codecairn_commit = "c" * 40
     implementation_commit = "a" * 40
@@ -55,7 +69,7 @@ def test_pair_audit_verifies_current_and_historical_artifacts(
                 "distribution_name": "codecairn",
                 "distribution_version": "0.1.0",
                 "handoff_sha256": "",
-                "wheel_sha256": _sha256(codecairn),
+                "wheel_sha256": _sha256(baseline_codecairn),
             },
             "plugin_contract": _contract(),
         },
@@ -70,7 +84,7 @@ def test_pair_audit_verifies_current_and_historical_artifacts(
                 "install_spec": ("codecairn @ git+https://example.invalid/CodeCairn.git@" + codecairn_commit),
                 "distribution": {"name": "codecairn", "version": "0.1.0"},
                 "wheel": {
-                    "sha256": _sha256(codecairn),
+                    "sha256": _sha256(baseline_codecairn),
                 },
             },
             "pico": {
@@ -118,12 +132,17 @@ def test_pair_audit_verifies_current_and_historical_artifacts(
         pico_compatibility_wheel=compatibility_pico,
         pico_distribution_report=distribution_report,
         pico_commit="d" * 40,
+        codecairn_baseline_wheel=baseline_codecairn,
     )
 
     assert result.pico_commit == "d" * 40
-    assert result.codecairn_commit == codecairn_commit
+    assert result.codecairn_commit == current_codecairn_commit
+    assert result.baseline_codecairn_commit == codecairn_commit
     assert result.current_pico_wheel_sha256 == _sha256(current_pico)
     assert result.codecairn_wheel_sha256 == _sha256(codecairn)
+    assert result.baseline_codecairn_wheel_sha256 == _sha256(
+        baseline_codecairn,
+    )
     assert result.plugin_contract == _contract()
     assert result.historical_pico_wheel_sha256 == {
         "codecairn_compatibility": _sha256(compatibility_pico),
@@ -271,15 +290,20 @@ def _wheel(
     version: str,
     *,
     entry_points: str | None = None,
+    marker: str | None = None,
+    requires_dist: str | None = None,
 ) -> Path:
     dist_info = f"{name.replace('-', '_')}-{version}.dist-info"
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr(
             f"{dist_info}/METADATA",
-            f"Metadata-Version: 2.3\nName: {name}\nVersion: {version}\n",
+            f"Metadata-Version: 2.3\nName: {name}\nVersion: {version}\n"
+            + (f"Requires-Dist: {requires_dist}\n" if requires_dist else ""),
         )
         if entry_points is not None:
             archive.writestr(f"{dist_info}/entry_points.txt", entry_points)
+        if marker is not None:
+            archive.writestr("marker.txt", marker)
     return path
 
 

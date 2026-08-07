@@ -12,6 +12,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pico-wheel", type=Path, required=True)
     parser.add_argument("--codecairn-wheel", type=Path, required=True)
+    parser.add_argument("--codecairn-baseline-wheel", type=Path)
     parser.add_argument("--pico-handoff", type=Path, required=True)
     parser.add_argument("--codecairn-handoff", type=Path, required=True)
     parser.add_argument(
@@ -46,6 +47,7 @@ def main() -> None:
         pico_source_root=args.pico_source_root,
         codecairn_source_root=args.codecairn_source_root,
         output_root=args.output_root,
+        codecairn_baseline_wheel=args.codecairn_baseline_wheel,
     )
     print(
         json.dumps(

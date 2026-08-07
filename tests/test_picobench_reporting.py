@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -418,6 +419,26 @@ class _DeclaredContextReducerPack:
                 "usage_complete": True,
             },
         )
+
+
+class _DeclaredContextCapabilityReducerPack(_DeclaredContextReducerPack):
+    def definition(self) -> PackDefinition:
+        definition = super().definition()
+        return replace(
+            definition,
+            identity={"claim_reducer": "context_v2"},
+        )
+
+    async def run_trial(self, context: TrialContext) -> TrialExecution:
+        if context.variant.variant_id == "context-fifo":
+            return TrialExecution(
+                status=TrialStatus.TASK_FAILED,
+                runtime_state=TurnTerminalState.COMPLETED,
+                delivery_state=DeliveryOutcome.DELIVERED,
+                verification=VerifierResult(state=VerificationState.FAILED),
+                observed_variant_settings=dict(context.variant.settings),
+            )
+        return await super().run_trial(context)
 
 
 class _UnknownDeclaredReducerPack:
@@ -1140,6 +1161,38 @@ async def test_declared_pack_reducer_metrics_are_in_report(
     assert report.metrics["context.measurement_valid"] is True
     assert report.metrics["context.expected_pair_count"] == 8
     assert report.metrics["context.trial_total_input_token_reduction_percent"] == pytest.approx(45.454545)
+
+
+@pytest.mark.asyncio
+async def test_context_v2_capability_validity_does_not_require_efficiency_pair_coverage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = ExperimentSpec(
+        suite="context-capability-reducer-suite",
+        repetitions=2,
+        pack_ids=("context-calibration",),
+        output_root=tmp_path,
+        identity={"pico_commit": "e" * 40, "model": "scripted/report"},
+    )
+    registry = PackRegistry()
+    registry.register(_DeclaredContextCapabilityReducerPack())
+    monkeypatch.setattr(
+        "benchmarks.picobench.packs.context.reduce_context_artifacts",
+        lambda **_kwargs: {
+            "context.capability_measurement_valid": True,
+            "context.efficiency_measurement_valid": False,
+        },
+    )
+
+    ref = await run(spec, registry=registry)
+    report = rebuild_full_report(ref)
+
+    assert report.ship_complete is True
+    assert report.measurement_valid is True
+    assert report.metrics["context.capability_measurement_valid"] is True
+    assert report.metrics["context.efficiency_measurement_valid"] is False
+    assert "pair_coverage_below_gate" not in report.findings
 
 
 @pytest.mark.asyncio

@@ -40,15 +40,22 @@ _DISABLED_CONTEXT_TOOLS = [
     "grep",
     "list_dir",
     "message",
-    "read_file",
     "spawn",
     "understand_media",
     "web_fetch",
     "web_search",
 ]
-_CONTEXT_TOOL_NAMES = frozenset({"write_file"})
+_CONTEXT_TOOL_NAMES = frozenset({"read_file", "write_file"})
 CONTEXT_BENCHMARK_WINDOW_TOKENS = 2_400
-CONTEXT_BENCHMARK_OUTPUT_TOKENS = 1_200
+CONTEXT_BENCHMARK_OUTPUT_TOKENS = 500
+CONTEXT_BENCHMARK_MAX_TOOL_ITERATIONS = 6
+CONTEXT_BENCHMARK_PROTECT_FIRST_N = 1
+_TASK_EXECUTION_NOTE = (
+    "All values required for the artifact are in the conversation history. "
+    "The target artifact does not exist yet. Write it directly, then read it "
+    "back. The workspace has no additional source of task facts. Do not "
+    "create exploration or placeholder files."
+)
 
 
 class _CapturingProvider(RecordingProvider):
@@ -223,6 +230,9 @@ class RuntimeContextTrialRunner:
                 await host.close()
         latency_ms = (time.perf_counter() - started) * 1_000
         verification = await verifier.verify(isolation.workspace)
+        artifact_diagnostics = verifier.diagnostic_metrics(
+            isolation.workspace,
+        )
         aggregate = recorder.aggregate()
         records = recorder.records()
         findings: list[str] = []
@@ -240,6 +250,19 @@ class RuntimeContextTrialRunner:
             status = TrialStatus.INFRASTRUCTURE_FAILURE
         relative_root = isolation.root.relative_to(
             context.experiment.output_root,
+        )
+        early_constraint_retained = _constraint_retained(
+            provider.message_windows,
+            final_prompt=task.final_prompt,
+            constraint=task.early_constraint,
+        )
+        capability_criteria_passed = sum(
+            (
+                early_constraint_retained,
+                artifact_diagnostics["active_constraint_applied"],
+                artifact_diagnostics["latest_decision_applied"],
+                artifact_diagnostics["artifact_exact"],
+            )
         )
         return TrialExecution(
             status=status,
@@ -261,11 +284,10 @@ class RuntimeContextTrialRunner:
                 ),
                 "usage_complete": aggregate.usage_complete,
                 "context_path": (observation.outcome.context_path if observation.outcome is not None else None),
-                "early_constraint_retained": _constraint_retained(
-                    provider.message_windows,
-                    final_prompt=task.final_prompt,
-                    constraint=task.early_constraint,
-                ),
+                "early_constraint_retained": early_constraint_retained,
+                **artifact_diagnostics,
+                "capability_criteria_passed": capability_criteria_passed,
+                "capability_criteria_total": 4,
                 "end_to_end_latency_ms": latency_ms,
             },
             findings=tuple(findings),
@@ -306,7 +328,7 @@ def _trial_configs(
     trial_config.agents.defaults.model = model
     trial_config.agents.defaults.context_window_tokens = CONTEXT_BENCHMARK_WINDOW_TOKENS
     trial_config.agents.defaults.max_tokens = CONTEXT_BENCHMARK_OUTPUT_TOKENS
-    trial_config.agents.defaults.max_tool_iterations = 4
+    trial_config.agents.defaults.max_tool_iterations = CONTEXT_BENCHMARK_MAX_TOOL_ITERATIONS
     trial_config.agents.defaults.enable_personalization = False
     trial_config.routing.enabled = False
     trial_config.tools.restrict_to_workspace = True
@@ -317,6 +339,7 @@ def _trial_configs(
     trial_pico = pico_config.model_copy(deep=True)
     trial_pico.base = trial_config
     trial_pico.context.curator_model = model
+    trial_pico.context.protect_first_n = CONTEXT_BENCHMARK_PROTECT_FIRST_N
     trial_pico.memory.backend = None
     trial_pico.skill_forge.enabled = False
     trial_pico.skill_forge.router.enabled = False
@@ -359,7 +382,7 @@ def _turn_request(
             sender_id="picobench",
             chat_type=ChatType.DM,
         ),
-        text=task.final_prompt,
+        text=f"{task.final_prompt}\n\n{_TASK_EXECUTION_NOTE}",
         message_id=f"{task.task_id}-message",
         conversation=conversation,
     )
@@ -418,6 +441,8 @@ def _trial_status(
 
 __all__ = [
     "CONTEXT_BENCHMARK_OUTPUT_TOKENS",
+    "CONTEXT_BENCHMARK_MAX_TOOL_ITERATIONS",
+    "CONTEXT_BENCHMARK_PROTECT_FIRST_N",
     "CONTEXT_BENCHMARK_WINDOW_TOKENS",
     "RuntimeContextTrialRunner",
 ]

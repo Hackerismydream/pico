@@ -24,6 +24,8 @@ class ContextTask:
     early_constraint: str
     superseded_before: str
     superseded_after: str
+    constraint_keys: tuple[str, ...]
+    decision_keys: tuple[str, ...]
     noise_topic: str
     first_tool_label: str
     second_tool_label: str
@@ -169,6 +171,8 @@ class ContextTask:
                 "message_count": self.message_count,
                 "history_digest": self.history_digest,
                 "final_prompt": self.final_prompt,
+                "constraint_keys": list(self.constraint_keys),
+                "decision_keys": list(self.decision_keys),
                 "artifact_path": self.artifact_path,
                 "forbidden_paths": list(self.forbidden_paths),
                 "expected_digest": self.expected_digest,

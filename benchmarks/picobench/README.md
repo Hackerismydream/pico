@@ -28,6 +28,68 @@ resolves exactly `deepseek / deepseek-v4-flash`, proves Tool Calling and
 complete usage fields with one live preflight, and freezes the tokenizer
 identity. Fallback models are forbidden.
 
+## Current Scorecard campaign
+
+The historical Ship-1 suite retains its EverOS-era Memory identity and must not
+be used as the current Pico entry point. The current Scorecard campaign runs
+only the still-current Context and Tool/MCP Packs. TokenWise, Runtime, and
+CodeCairn remain independent evidence tracks and are composed after their own
+Claim Gates are evaluated.
+
+Print the frozen worst-case budget with:
+
+```bash
+make picobench-scorecard-estimate
+```
+
+Run the paid campaign with:
+
+```bash
+make picobench-scorecard-ship
+```
+
+Runtime evidence is not required to measure the independent Context and
+Tool/MCP Packs. When `PICO_SCORECARD_RUNTIME_EVIDENCE` is supplied, the
+campaign verifies that its Pico product code, dependency identity, and Runtime
+Pack are byte-equivalent before making a paid call. It never silently reruns
+the Runtime experiment.
+
+The v1 multidimensional score uses Capability 50, Reliability 20, Efficiency
+20, and Process 10. Capability averages current treatment rates for Context,
+Tool/MCP, and Memory. Context capability is the average of four frozen checks:
+the early constraint is still present, the artifact applies it, the latest
+decision is applied, and the artifact is exactly correct. The strict external
+verifier pass rate is still reported separately and is not relaxed. Context
+reserves 500 output tokens and protects its first constraint turn, leaving
+enough of the 2,400-token window for the latest decision. Empty Provider
+responses may be retried up to four times, symmetrically in both arms.
+Context capability validity is independent from token-usage completeness.
+Missing usage invalidates only the Context efficiency claim; it is never
+coerced to zero and never blocks verifier-backed capability diagnostics.
+Efficiency assigns five points to each eligible TokenWise, Context, Tool/MCP,
+and Turn-efficiency claim. Missing, ineligible, or commit-incompatible evidence
+contributes zero. Process checks MCP disclosure, transport, invalid-target,
+and exact-repeat gates. Safety and full evidence coverage are certification
+gates, not bonus points.
+
+Compute the score from immutable formal and Runtime artifacts with:
+
+```bash
+PICO_SCORECARD_FORMAL_SUMMARY=/absolute/path/to/summary.json \
+PICO_SCORECARD_RUNTIME_EVIDENCE=/absolute/path/to/runtime-evidence.json \
+PICO_SCORECARD_TOKENWISE_REPORT=/absolute/path/to/tokenwise-report.json \
+PICO_SCORECARD_MEMORY_SUMMARY=/absolute/path/to/memory-summary.json \
+PICO_SCORECARD_MEMORY_HANDOFF=/absolute/path/to/memory-handoff.json \
+PICO_SCORECARD_PREREGISTERED=1 \
+  make picobench-scorecard-score
+```
+
+Runtime, Memory, and preregistration inputs are optional. The Memory summary
+is accepted only with a digest-bound handoff that names the current Pico
+commit. The scorer always emits a diagnostic score and assigns zero to missing
+dimensions. It emits a certified score only when the scoring specification was
+preregistered and every evidence and safety gate is complete.
+
 ## Frozen scale and budget
 
 The suite at
