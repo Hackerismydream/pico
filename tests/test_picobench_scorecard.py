@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 
 import pytest
@@ -8,7 +7,6 @@ import pytest
 from benchmarks.picobench.canonical import canonical_digest
 from benchmarks.picobench.scorecard import (
     _formal_inputs,
-    _memory_inputs,
     _runtime_inputs,
     _tokenwise_inputs,
     compute_scorecard,
@@ -155,75 +153,3 @@ def test_scorecard_counts_negative_runtime_as_current_evidence() -> None:
     assert result.dimensions["reliability"].earned == 0
     assert result.evidence["runtime_current"] is True
     assert result.evidence["turn_efficiency_current"] is True
-
-
-def test_scorecard_accepts_current_memory_handoff(tmp_path) -> None:
-    pico_commit = "a" * 40
-    summary = {
-        "ship_complete": True,
-        "measurement_valid": True,
-        "metrics": {
-            "codecairn_memory.ship_complete": True,
-            "codecairn_memory.measurement_valid": True,
-            "codecairn_memory.treatment_pass_rate": 0.75,
-            "codecairn_memory.production_evidence_complete": True,
-            "codecairn_memory.irrelevant_injection_rate": 0.04,
-            "codecairn_memory.stale_injection_count": 0,
-            "codecairn_memory.cross_repository_leakage_count": 0,
-            "codecairn_memory.memory_off_operation_calls": 0,
-        },
-    }
-    summary_path = tmp_path / "SUMMARY.json"
-    summary_path.write_text(json.dumps(summary), encoding="utf-8")
-    handoff = {
-        "schema_version": 1,
-        "kind": "codecairn.pico.joint-evidence.handoff",
-        "pico": {"commit": pico_commit},
-        "campaign": {
-            "experiments": [
-                {
-                    "summary_sha256": hashlib.sha256(
-                        summary_path.read_bytes(),
-                    ).hexdigest(),
-                }
-            ]
-        },
-        "result": {
-            "ship_complete": True,
-            "measurement_valid": True,
-        },
-    }
-    handoff["aggregate_digest"] = canonical_digest(handoff)
-    handoff_path = tmp_path / "handoff.json"
-    handoff_path.write_text(json.dumps(handoff), encoding="utf-8")
-
-    assert _memory_inputs(
-        summary_path,
-        handoff_path,
-        pico_commit=pico_commit,
-    ) == (0.75, True)
-
-
-def test_scorecard_rejects_memory_from_another_commit(tmp_path) -> None:
-    summary_path = tmp_path / "SUMMARY.json"
-    summary_path.write_text(
-        json.dumps({"metrics": {}}),
-        encoding="utf-8",
-    )
-    handoff = {
-        "schema_version": 1,
-        "kind": "codecairn.pico.joint-evidence.handoff",
-        "pico": {"commit": "a" * 40},
-        "campaign": {"experiments": [{}]},
-        "result": {},
-    }
-    handoff["aggregate_digest"] = canonical_digest(handoff)
-    handoff_path = tmp_path / "handoff.json"
-    handoff_path.write_text(json.dumps(handoff), encoding="utf-8")
-
-    with pytest.raises(ValueError, match="current Pico commit"):
-        _memory_inputs(
-            summary_path,
-            handoff_path,
-            pico_commit="b" * 40,
-        )

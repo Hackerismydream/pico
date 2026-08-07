@@ -340,28 +340,6 @@ def _reduce_declared_pack_claims(
                 pair_records,
             )
             validity_key = "semantic_memory_effect.measurement_valid"
-        elif reducer_id == "codecairn_memory_v1":
-            from .packs.codecairn_memory import (
-                reduce_codecairn_memory_claims,
-            )
-
-            reduced = reduce_codecairn_memory_claims(
-                trial_records,
-                pair_records,
-            )
-            validity_key = "codecairn_memory.measurement_valid"
-        elif reducer_id == "codecairn_task_effect_v2":
-            from .packs.codecairn_task_effect import (
-                reduce_task_effect_claims,
-            )
-
-            reduced = reduce_task_effect_claims(
-                trial_records,
-                retrieval_records,
-                pair_records,
-                manifest=manifest,
-            )
-            validity_key = "codecairn_task_effect_v2.measurement_valid"
         elif reducer_id == "tool_mcp_v1":
             from .packs.tool_mcp import (
                 reduce_tool_mcp_claim_from_artifacts,

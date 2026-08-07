@@ -1,4 +1,4 @@
-"""Historical fixture Runtime kept separate from the current CodeCairn path."""
+"""Historical fixture Runtime kept separate from installed Memory backends."""
 
 from __future__ import annotations
 

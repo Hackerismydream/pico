@@ -22,7 +22,6 @@ from .canonical import canonical_digest
 from .scorecard import (
     ScorecardResult,
     _formal_inputs,
-    _memory_inputs,
     _read_json,
     _runtime_inputs,
     _tokenwise_inputs,
@@ -45,8 +44,6 @@ class ReproductionConfig:
     formal_summary: Path | None = None
     runtime_evidence: Path | None = None
     tokenwise_report: Path | None = None
-    memory_summary: Path | None = None
-    memory_handoff: Path | None = None
     scoring_spec_preregistered: bool = True
 
 
@@ -64,7 +61,6 @@ _STAGE_LABELS = {
     "preflight": "Preflight",
     "runtime": "Runtime",
     "tokenwise": "TokenWise",
-    "memory": "Memory",
     "context_tool": "Context + Tool/MCP",
     "score": "Score",
 }
@@ -139,7 +135,6 @@ def _run_reproduction_locked(
         for value in (
             config.formal_summary,
             config.tokenwise_report,
-            config.memory_summary,
         )
     )
     if paid_stages_required and not config.execute_paid_campaign:
@@ -154,12 +149,6 @@ def _run_reproduction_locked(
         )
         _write_report(report)
         return report
-    if (config.memory_summary is None) != (config.memory_handoff is None):
-        return _failed_report(
-            pico_commit,
-            output_root,
-            "memory summary and handoff must be supplied together",
-        )
     try:
         inputs_root = output_root / "inputs"
         formal_summary = _copy_formal_input(
@@ -174,21 +163,11 @@ def _run_reproduction_locked(
             config.tokenwise_report,
             inputs_root / "tokenwise-report.json",
         )
-        memory_summary = _copy_input(
-            config.memory_summary,
-            inputs_root / "memory-summary.json",
-        )
-        memory_handoff = _copy_input(
-            config.memory_handoff,
-            inputs_root / "memory-handoff.json",
-        )
         _validate_reused_inputs(
             pico_commit=pico_commit,
             formal_summary=formal_summary,
             runtime_evidence=runtime_evidence,
             tokenwise_report=tokenwise_report,
-            memory_summary=memory_summary,
-            memory_handoff=memory_handoff,
         )
         (validate_environment or _validate_environment)(config)
         _freeze_manifest(
@@ -202,8 +181,6 @@ def _run_reproduction_locked(
                 ),
                 "runtime": runtime_evidence,
                 "tokenwise": tokenwise_report,
-                "memory_summary": memory_summary,
-                "memory_handoff": memory_handoff,
             },
         )
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
@@ -232,16 +209,6 @@ def _run_reproduction_locked(
             logs_root=output_root / "logs",
         )
         stages.append(StageResult("tokenwise", tokenwise_status, tokenwise_report))
-        active_stage = "memory"
-        memory_summary, memory_handoff, memory_status = _memory_stage(
-            memory_summary,
-            memory_handoff,
-            root=output_root / "memory",
-            pico_commit=pico_commit,
-            execute_command=execute_command,
-            logs_root=output_root / "logs",
-        )
-        stages.append(StageResult("memory", memory_status, memory_summary))
         active_stage = "context_tool"
         formal_summary, formal_status = _scorecard_stage(
             formal_summary,
@@ -258,17 +225,10 @@ def _run_reproduction_locked(
             _read_json(tokenwise_report),
             pico_commit=pico_commit,
         )
-        memory_rate, memory_safety = _memory_inputs(
-            memory_summary,
-            memory_handoff,
-            pico_commit=pico_commit,
-        )
         score = compute_scorecard(
             _read_json(formal_summary),
             runtime_record,
             runtime_current_evidence=runtime_current,
-            memory_treatment_pass_rate=memory_rate,
-            memory_safety_current=memory_safety,
             tokenwise_current_evidence=tokenwise_current,
             tokenwise_current_claim_eligible=tokenwise_claim,
             turn_efficiency_current_evidence=runtime_current,
@@ -308,8 +268,6 @@ def _validate_reused_inputs(
     formal_summary: Path | None,
     runtime_evidence: Path | None,
     tokenwise_report: Path | None,
-    memory_summary: Path | None,
-    memory_handoff: Path | None,
 ) -> None:
     if formal_summary is not None:
         _validate_formal_summary(formal_summary, pico_commit=pico_commit)
@@ -317,8 +275,6 @@ def _validate_reused_inputs(
         _runtime_inputs(_read_json(runtime_evidence), pico_commit=pico_commit)
     if tokenwise_report is not None:
         _tokenwise_inputs(_read_json(tokenwise_report), pico_commit=pico_commit)
-    if memory_summary is not None and memory_handoff is not None:
-        _memory_inputs(memory_summary, memory_handoff, pico_commit=pico_commit)
 
 
 def _validate_environment(config: ReproductionConfig) -> None:
@@ -343,24 +299,15 @@ def _validate_environment(config: ReproductionConfig) -> None:
     retained_scorecard = _campaign_artifacts(
         config.output_root.resolve() / "context-tool",
         pico_commit=pico_commit,
-        memory=False,
     )
     if config.formal_summary is None and isinstance(retained_scorecard, Path):
         _validate_formal_summary(retained_scorecard, pico_commit=pico_commit)
     scorecard_pending = config.formal_summary is None and retained_scorecard is None
-    retained_memory = _campaign_artifacts(
-        config.output_root.resolve() / "memory",
-        pico_commit=pico_commit,
-        memory=True,
-    )
-    if config.memory_summary is None and isinstance(retained_memory, tuple):
-        _memory_inputs(*retained_memory, pico_commit=pico_commit)
-    memory_pending = config.memory_summary is None and retained_memory is None
-    if tokenwise_pending or scorecard_pending or memory_pending:
+    if tokenwise_pending or scorecard_pending:
         from .packs.tokenwise_cost.runner import load_deepseek_key
 
         load_deepseek_key()
-    if scorecard_pending or memory_pending:
+    if scorecard_pending:
         from .campaign import (
             _validate_resolved_provider,
             default_campaign_services,
@@ -375,17 +322,6 @@ def _validate_environment(config: ReproductionConfig) -> None:
                 load_campaign_suite(DEFAULT_SCORECARD_SUITE_PATH),
                 resolved,
             )
-        if memory_pending:
-            from .codecairn_campaign import DEFAULT_CODECAIRN_SUITE_PATH
-
-            _validate_resolved_provider(
-                load_campaign_suite(DEFAULT_CODECAIRN_SUITE_PATH),
-                resolved,
-            )
-    if memory_pending:
-        from .codecairn_campaign import _campaign_paths
-
-        _campaign_paths()
 
 
 def _runtime_stage(
@@ -455,44 +391,6 @@ def _tokenwise_stage(
     return report, "completed"
 
 
-def _memory_stage(
-    reused_summary: Path | None,
-    reused_handoff: Path | None,
-    *,
-    root: Path,
-    pico_commit: str,
-    execute_command: CommandExecutor,
-    logs_root: Path,
-) -> tuple[Path, Path, str]:
-    if reused_summary is not None and reused_handoff is not None:
-        return reused_summary, reused_handoff, "reused"
-    existing = _campaign_artifacts(root, pico_commit=pico_commit, memory=True)
-    if existing is not None:
-        summary, handoff = existing
-        _memory_inputs(summary, handoff, pico_commit=pico_commit)
-        return summary, handoff, "resumed"
-    script = Path(__file__).resolve().parents[2] / "scripts" / "run_codecairn_campaign.py"
-    _run_command(
-        "memory",
-        (
-            sys.executable,
-            str(script),
-            "--mode",
-            "ship",
-            "--output-root",
-            str(root),
-        ),
-        execute_command=execute_command,
-        logs_root=logs_root,
-    )
-    artifacts = _campaign_artifacts(root, pico_commit=pico_commit, memory=True)
-    if artifacts is None:
-        raise ReproductionError("Memory stage produced no formal summary and handoff")
-    summary, handoff = artifacts
-    _memory_inputs(summary, handoff, pico_commit=pico_commit)
-    return summary, handoff, "completed"
-
-
 def _scorecard_stage(
     reused: Path | None,
     *,
@@ -505,7 +403,7 @@ def _scorecard_stage(
     if reused is not None:
         _validate_formal_summary(reused, pico_commit=pico_commit)
         return reused, "reused"
-    existing = _campaign_artifacts(root, pico_commit=pico_commit, memory=False)
+    existing = _campaign_artifacts(root, pico_commit=pico_commit)
     if existing is not None:
         _validate_formal_summary(existing, pico_commit=pico_commit)
         return existing, "resumed"
@@ -524,7 +422,7 @@ def _scorecard_stage(
         execute_command=execute_command,
         logs_root=logs_root,
     )
-    summary = _campaign_artifacts(root, pico_commit=pico_commit, memory=False)
+    summary = _campaign_artifacts(root, pico_commit=pico_commit)
     if summary is None:
         raise ReproductionError("Context and Tool/MCP stage produced no formal summary")
     _validate_formal_summary(summary, pico_commit=pico_commit)
@@ -561,8 +459,7 @@ def _campaign_artifacts(
     root: Path,
     *,
     pico_commit: str,
-    memory: bool,
-) -> tuple[Path, Path] | Path | None:
+) -> Path | None:
     outcomes = sorted(root.glob(f"campaigns/*/{pico_commit}/ship/campaign-outcome.json"))
     if not outcomes:
         return None
@@ -582,12 +479,7 @@ def _campaign_artifacts(
     summary = (experiment_root / "summary.json").resolve()
     if not summary.is_file():
         raise ReproductionError("formal campaign summary is missing")
-    if not memory:
-        return summary
-    handoff = outcome_path.with_name("codecairn-v02-003-handoff.json")
-    if not handoff.is_file():
-        raise ReproductionError("Memory campaign handoff is missing")
-    return summary, handoff
+    return summary
 
 
 def _copy_input(source: Path | None, destination: Path) -> Path | None:
@@ -879,8 +771,6 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--formal-summary", type=Path)
     parser.add_argument("--runtime-evidence", type=Path)
     parser.add_argument("--tokenwise-report", type=Path)
-    parser.add_argument("--memory-summary", type=Path)
-    parser.add_argument("--memory-handoff", type=Path)
     return parser
 
 
@@ -899,8 +789,6 @@ def main() -> int:
             formal_summary=(args.formal_summary or _environment_path("PICO_SCORECARD_FORMAL_SUMMARY")),
             runtime_evidence=(args.runtime_evidence or _environment_path("PICO_SCORECARD_RUNTIME_EVIDENCE")),
             tokenwise_report=(args.tokenwise_report or _environment_path("PICO_SCORECARD_TOKENWISE_REPORT")),
-            memory_summary=(args.memory_summary or _environment_path("PICO_SCORECARD_MEMORY_SUMMARY")),
-            memory_handoff=(args.memory_handoff or _environment_path("PICO_SCORECARD_MEMORY_HANDOFF")),
         ),
         execute_command=_execute_command,
     )

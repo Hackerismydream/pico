@@ -95,8 +95,6 @@ picobench-scorecard-score:
 		--formal-summary "$$PICO_SCORECARD_FORMAL_SUMMARY" \
 		$(if $(PICO_SCORECARD_RUNTIME_EVIDENCE),--runtime-evidence "$(PICO_SCORECARD_RUNTIME_EVIDENCE)",) \
 		$(if $(PICO_SCORECARD_TOKENWISE_REPORT),--tokenwise-report "$(PICO_SCORECARD_TOKENWISE_REPORT)",) \
-		$(if $(PICO_SCORECARD_MEMORY_SUMMARY),--memory-summary "$(PICO_SCORECARD_MEMORY_SUMMARY)",) \
-		$(if $(PICO_SCORECARD_MEMORY_HANDOFF),--memory-handoff "$(PICO_SCORECARD_MEMORY_HANDOFF)",) \
 		$(if $(PICO_SCORECARD_PREREGISTERED),--scoring-spec-preregistered,)
 
 picobench-runtime-scheduler:

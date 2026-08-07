@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from pico.cli._plugin_stack import MynaSetupError, maybe_build_memory_backend
+from pico.cli._plugin_stack import MynaSetupError, build_plugin_registry, maybe_build_memory_backend
 from pico.config.pico import MemoryConfig, PicoConfig, PluginsConfig
 from pico.memory_engine import MemoryBackend
 from pico.plugin import (
@@ -114,11 +114,16 @@ def test_unknown_backend_raises(tmp_path: Path) -> None:
 def test_retired_backend_fails_without_rewrite(
     tmp_path: Path,
     retired: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config_path = tmp_path / "config.json"
     data = {"memory": {"backend": retired}}
     config_path.write_text(json.dumps(data), encoding="utf-8")
     config = _config(retired)
+    monkeypatch.setattr(
+        "pico.cli._plugin_stack.build_plugin_registry",
+        lambda _config: pytest.fail("retired backend must be rejected before plugin discovery"),
+    )
 
     with pytest.raises(
         PluginNotFoundError,
@@ -145,3 +150,39 @@ def test_myna_backend_requires_frozen_public_manifest_identity(
 
     with pytest.raises(PluginIdentityError, match="Myna plugin manifest identity"):
         maybe_build_memory_backend(tmp_path, _config(), registry=registry)
+
+
+def test_myna_manifest_identity_is_validated_before_factory_import(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin_dir = tmp_path / "plugins" / "myna-memory"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "pico-plugin.toml").write_text(
+        """
+[plugin]
+id = "myna-memory"
+version = "0.1.1rc3"
+pico = ">=0.1,<0.2"
+enabled_by_default = true
+
+[[plugin.contributes.memory_backends]]
+name = "myna"
+factory = "_must_not_import:make_backend"
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "pico.cli._plugin_stack.plugin_discovery_sources",
+        lambda: {
+            "bundled_dir": None,
+            "user_dir": tmp_path / "plugins",
+            "project_dir": None,
+            "entry_points_group": None,
+        },
+    )
+
+    with pytest.raises(PluginIdentityError, match="Myna plugin manifest identity"):
+        build_plugin_registry(_config())
+
+    assert "_must_not_import" not in sys.modules

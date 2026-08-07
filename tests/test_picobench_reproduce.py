@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import subprocess
 from io import StringIO
@@ -27,7 +26,6 @@ def test_reproduction_report_renders_score_dimensions_and_artifact_path(tmp_path
         stages=(
             StageResult("runtime", "reused", tmp_path / "runtime.json"),
             StageResult("tokenwise", "completed", tmp_path / "tokenwise.json"),
-            StageResult("memory", "completed", tmp_path / "memory.json"),
             StageResult("context_tool", "completed", tmp_path / "formal.json"),
         ),
         score=ScorecardResult(
@@ -121,26 +119,6 @@ def test_reproduction_reuses_current_evidence_without_running_commands(tmp_path:
         json.dumps({**tokenwise_payload, "report_digest": canonical_digest(tokenwise_payload)}),
         encoding="utf-8",
     )
-    memory_summary = inputs / "memory-summary.json"
-    memory_summary.write_text(json.dumps(_memory_summary()), encoding="utf-8")
-    memory_handoff = inputs / "memory-handoff.json"
-    handoff_payload = {
-        "schema_version": 1,
-        "kind": "codecairn.pico.joint-evidence.handoff",
-        "pico": {"commit": pico_commit},
-        "campaign": {
-            "experiments": [
-                {
-                    "summary_sha256": hashlib.sha256(memory_summary.read_bytes()).hexdigest(),
-                }
-            ]
-        },
-        "result": {"ship_complete": True, "measurement_valid": True},
-    }
-    memory_handoff.write_text(
-        json.dumps({**handoff_payload, "aggregate_digest": canonical_digest(handoff_payload)}),
-        encoding="utf-8",
-    )
     commands: list[tuple[str, ...]] = []
 
     report = run_reproduction(
@@ -149,8 +127,6 @@ def test_reproduction_reuses_current_evidence_without_running_commands(tmp_path:
             formal_summary=formal_summary,
             runtime_evidence=runtime_evidence,
             tokenwise_report=tokenwise_report,
-            memory_summary=memory_summary,
-            memory_handoff=memory_handoff,
         ),
         execute_command=lambda command: commands.append(command) or "",
         validate_environment=lambda _config: None,
@@ -158,12 +134,11 @@ def test_reproduction_reuses_current_evidence_without_running_commands(tmp_path:
 
     assert report.status == "completed", report.error
     assert report.score is not None
-    assert report.score.diagnostic_score == 100.0
-    assert report.score.certified_score == 100.0
+    assert report.score.diagnostic_score == 83.3333
+    assert report.score.certified_score is None
     assert commands == []
     assert [stage.status for stage in report.stages] == [
         "completed",
-        "reused",
         "reused",
         "reused",
         "reused",
@@ -187,8 +162,6 @@ def test_reproduction_reuses_current_evidence_without_running_commands(tmp_path:
             formal_summary=formal_summary,
             runtime_evidence=runtime_evidence,
             tokenwise_report=tokenwise_report,
-            memory_summary=memory_summary,
-            memory_handoff=memory_handoff,
         ),
         execute_command=lambda command: commands.append(command) or "",
         validate_environment=lambda _config: None,
@@ -239,19 +212,11 @@ def test_reproduction_runs_all_missing_stages_and_composes_score(tmp_path: Path)
                     json.dumps({**payload, "report_digest": canonical_digest(payload)}),
                     encoding="utf-8",
                 )
-        elif command[-4:-2] == ("--mode", "ship"):
-            _write_campaign_artifacts(
-                output_root,
-                pico_commit=pico_commit,
-                summary=_memory_summary(),
-                memory=True,
-            )
         else:
             _write_campaign_artifacts(
                 output_root,
                 pico_commit=pico_commit,
                 summary=_formal_summary(),
-                memory=False,
             )
         return "completed"
 
@@ -266,13 +231,12 @@ def test_reproduction_runs_all_missing_stages_and_composes_score(tmp_path: Path)
 
     assert report.status == "completed", report.error
     assert report.score is not None
-    assert report.score.diagnostic_score == 100.0
-    assert len(commands) == 5
+    assert report.score.diagnostic_score == 83.3333
+    assert len(commands) == 4
     assert [stage.name for stage in report.stages] == [
         "preflight",
         "runtime",
         "tokenwise",
-        "memory",
         "context_tool",
         "score",
     ]
@@ -292,7 +256,6 @@ def test_reproduction_runs_all_missing_stages_and_composes_score(tmp_path: Path)
     assert commands == []
     assert [stage.status for stage in resumed.stages] == [
         "completed",
-        "resumed",
         "resumed",
         "resumed",
         "resumed",
@@ -346,41 +309,20 @@ def _formal_summary() -> dict[str, object]:
     }
 
 
-def _memory_summary() -> dict[str, object]:
-    return {
-        "ship_complete": True,
-        "measurement_valid": True,
-        "metrics": {
-            "codecairn_memory.ship_complete": True,
-            "codecairn_memory.measurement_valid": True,
-            "codecairn_memory.treatment_pass_rate": 1.0,
-            "codecairn_memory.production_evidence_complete": True,
-            "codecairn_memory.irrelevant_injection_rate": 0.0,
-            "codecairn_memory.stale_injection_count": 0,
-            "codecairn_memory.cross_repository_leakage_count": 0,
-            "codecairn_memory.memory_off_operation_calls": 0,
-        },
-    }
-
-
 def _write_campaign_artifacts(
     output_root: Path,
     *,
     pico_commit: str,
     summary: dict[str, object],
-    memory: bool,
 ) -> None:
-    experiment_root = output_root / ("memory-formal" if memory else "scorecard-formal")
+    experiment_root = output_root / "scorecard-formal"
     experiment_root.mkdir(parents=True)
     summary_path = experiment_root / "summary.json"
-    if memory:
-        summary_path.write_text(json.dumps(summary), encoding="utf-8")
-    else:
-        _write_formal_summary(
-            summary_path,
-            pico_commit=pico_commit,
-            summary=summary,
-        )
+    _write_formal_summary(
+        summary_path,
+        pico_commit=pico_commit,
+        summary=summary,
+    )
     outcome_root = output_root / "campaigns" / "suite" / pico_commit / "ship"
     outcome_root.mkdir(parents=True)
     outcome = {
@@ -392,24 +334,6 @@ def _write_campaign_artifacts(
         json.dumps(outcome),
         encoding="utf-8",
     )
-    if memory:
-        handoff = {
-            "schema_version": 1,
-            "kind": "codecairn.pico.joint-evidence.handoff",
-            "pico": {"commit": pico_commit},
-            "campaign": {
-                "experiments": [
-                    {
-                        "summary_sha256": hashlib.sha256(summary_path.read_bytes()).hexdigest(),
-                    }
-                ]
-            },
-            "result": {"ship_complete": True, "measurement_valid": True},
-        }
-        (outcome_root / "codecairn-v02-003-handoff.json").write_text(
-            json.dumps({**handoff, "aggregate_digest": canonical_digest(handoff)}),
-            encoding="utf-8",
-        )
 
 
 def _write_formal_summary(

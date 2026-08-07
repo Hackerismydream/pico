@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import shutil
 import subprocess
@@ -189,62 +188,6 @@ def _formal_inputs(
     return summary
 
 
-def _memory_inputs(
-    summary_path: Path,
-    handoff_path: Path,
-    *,
-    pico_commit: str,
-) -> tuple[float, bool]:
-    summary = _read_json(summary_path)
-    handoff = _read_json(handoff_path)
-    if handoff.get("kind") != "codecairn.pico.joint-evidence.handoff":
-        raise ValueError("memory handoff has the wrong kind")
-    if handoff.get("schema_version") != 1:
-        raise ValueError("memory handoff has the wrong schema version")
-    recorded_digest = handoff.get("aggregate_digest")
-    if not isinstance(recorded_digest, str):
-        raise ValueError("memory handoff is missing aggregate_digest")
-    payload = dict(handoff)
-    payload.pop("aggregate_digest")
-    if canonical_digest(payload) != recorded_digest:
-        raise ValueError("memory handoff aggregate_digest does not match")
-    pico = _mapping(handoff.get("pico"), "memory handoff pico")
-    if pico.get("commit") != pico_commit:
-        raise ValueError("memory handoff does not match the current Pico commit")
-    campaign = _mapping(handoff.get("campaign"), "memory handoff campaign")
-    experiments = campaign.get("experiments")
-    if not isinstance(experiments, list) or not experiments:
-        raise ValueError("memory handoff has no experiments")
-    formal = _mapping(experiments[-1], "memory handoff formal experiment")
-    summary_digest = hashlib.sha256(summary_path.read_bytes()).hexdigest()
-    if formal.get("summary_sha256") != summary_digest:
-        raise ValueError("memory summary does not match the handoff")
-    result = _mapping(handoff.get("result"), "memory handoff result")
-    metrics = _mapping(summary.get("metrics"), "memory summary metrics")
-    rate = metrics.get("codecairn_memory.treatment_pass_rate")
-    if not isinstance(rate, (int, float)):
-        raise ValueError("memory treatment pass rate must be numeric")
-    current = (
-        summary.get("ship_complete") is True
-        and summary.get("measurement_valid") is True
-        and metrics.get("codecairn_memory.ship_complete") is True
-        and metrics.get("codecairn_memory.measurement_valid") is True
-        and result.get("ship_complete") is True
-        and result.get("measurement_valid") is True
-    )
-    if not current:
-        raise ValueError("memory evidence is incomplete")
-    safety_current = (
-        metrics.get("codecairn_memory.production_evidence_complete") is True
-        and metrics.get("codecairn_memory.irrelevant_injection_rate") is not None
-        and float(metrics["codecairn_memory.irrelevant_injection_rate"]) <= 0.05
-        and metrics.get("codecairn_memory.stale_injection_count") == 0
-        and metrics.get("codecairn_memory.cross_repository_leakage_count") == 0
-        and metrics.get("codecairn_memory.memory_off_operation_calls") == 0
-    )
-    return _rate(float(rate)), safety_current
-
-
 def _current_pico_commit() -> str:
     git = shutil.which("git")
     if git is None:
@@ -266,28 +209,16 @@ def main() -> int:
     parser.add_argument("--formal-summary", required=True, type=Path)
     parser.add_argument("--runtime-evidence", type=Path)
     parser.add_argument("--tokenwise-report", type=Path)
-    parser.add_argument("--memory-summary", type=Path)
-    parser.add_argument("--memory-handoff", type=Path)
     parser.add_argument(
         "--scoring-spec-preregistered",
         action="store_true",
     )
     args = parser.parse_args()
-    if (args.memory_summary is None) != (args.memory_handoff is None):
-        parser.error("--memory-summary and --memory-handoff must be used together")
     current_commit = _current_pico_commit()
     formal_summary = _formal_inputs(
         args.formal_summary,
         pico_commit=current_commit,
     )
-    memory_rate = None
-    memory_safety = False
-    if args.memory_summary is not None and args.memory_handoff is not None:
-        memory_rate, memory_safety = _memory_inputs(
-            args.memory_summary,
-            args.memory_handoff,
-            pico_commit=current_commit,
-        )
     runtime = _read_json(args.runtime_evidence) if args.runtime_evidence else {}
     runtime_current = False
     runtime_claim_eligible = False
@@ -307,8 +238,6 @@ def main() -> int:
         formal_summary,
         runtime,
         runtime_current_evidence=runtime_current,
-        memory_treatment_pass_rate=memory_rate,
-        memory_safety_current=memory_safety,
         tokenwise_current_evidence=tokenwise_current,
         tokenwise_current_claim_eligible=tokenwise_claim_eligible,
         turn_efficiency_current_evidence=runtime_current,

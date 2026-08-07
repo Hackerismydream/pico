@@ -9,9 +9,10 @@ metadata is `0.1.7`; see [Project status](project-status.md) for the current
 claim boundary.
 
 The separate Pico Harness v0.1 portfolio/engineering milestone is complete.
-The former CodeCairn implementation and its joint evidence campaign remain a
-historical engineering record; they are not the current Memory integration.
-Pico now targets Myna through the public Plugin and `MemoryBackend` seams.
+The former CodeCairn executable implementation and campaign source have been
+removed. Their dated delivery and evidence records remain historical and are
+not the current Memory integration. Pico now targets Myna through the public
+Plugin and `MemoryBackend` seams.
 
 ## Read this first
 

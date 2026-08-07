@@ -28,11 +28,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pico.plugin import (
+    DiscoveredPlugin,
+    PluginDiscovery,
     PluginIdentityError,
     PluginNotFoundError,
     PluginRegistry,
     ServiceLocator,
-    assemble_plugin_registry,
 )
 from pico.product import get_product_home, get_workspace_state_dir
 
@@ -141,10 +142,11 @@ def build_plugin_registry(
       third-party pip-installed plugins register their factories.
     """
     disabled = frozenset(config.plugins.disabled)
-    return assemble_plugin_registry(
-        **plugin_discovery_sources(),
-        disabled=disabled,
-    )
+    discovered = PluginDiscovery(**plugin_discovery_sources()).discover()
+    _validate_discovered_myna_identity(discovered, disabled=disabled)
+    registry = PluginRegistry()
+    registry.activate(discovered, disabled=disabled)
+    return registry
 
 
 def maybe_build_memory_backend(
@@ -172,26 +174,23 @@ def maybe_build_memory_backend(
     name = config.memory.backend
     if name is None:
         return None
+    if name in {"codecairn", "everos"}:
+        raise PluginNotFoundError(
+            f"memory.backend={name!r} is no longer supported; install and initialize Myna, then set "
+            "memory.backend to 'myna', or set it to null. Existing memory data is left untouched"
+        )
     if registry is None:
         registry = build_plugin_registry(config)
     if name == _MYNA_BACKEND:
         _validate_myna_identity(registry)
     plugin_slice = _resolve_plugin_config_slice(registry, config, name)
     services = ServiceLocator(workspace=workspace)
-    try:
-        backend = registry.build_memory_backend(
-            name,
-            config=plugin_slice,
-            services=services,
-        )
-        return _MynaBackendGuard(backend) if name == _MYNA_BACKEND else backend
-    except PluginNotFoundError as exc:
-        if name in {"codecairn", "everos"}:
-            raise PluginNotFoundError(
-                f"memory.backend={name!r} is no longer supported; install and initialize Myna, then set "
-                "memory.backend to 'myna', or set it to null. Existing memory data is left untouched"
-            ) from exc
-        raise
+    backend = registry.build_memory_backend(
+        name,
+        config=plugin_slice,
+        services=services,
+    )
+    return _MynaBackendGuard(backend) if name == _MYNA_BACKEND else backend
 
 
 def inspect_memory_backend(config: "PicoConfig") -> MemoryBackendStatus:
@@ -241,6 +240,28 @@ def _validate_myna_identity(registry: PluginRegistry) -> None:
             "Myna plugin manifest identity is invalid; reinstall the official myna-memory distribution "
             "before starting Pico"
         )
+
+
+def _validate_discovered_myna_identity(
+    discovered: list[DiscoveredPlugin],
+    *,
+    disabled: frozenset[str],
+) -> None:
+    expected = [(_MYNA_BACKEND, _MYNA_FACTORY)]
+    for plugin in discovered:
+        manifest = plugin.manifest
+        if manifest.id in disabled:
+            continue
+        contributions = [
+            (contribution.name, contribution.factory) for contribution in manifest.contributes.memory_backends
+        ]
+        if manifest.id != _MYNA_PLUGIN_ID and not any(name == _MYNA_BACKEND for name, _ in contributions):
+            continue
+        if manifest.id != _MYNA_PLUGIN_ID or contributions != expected:
+            raise PluginIdentityError(
+                "Myna plugin manifest identity is invalid; reinstall the official myna-memory distribution "
+                "before starting Pico"
+            )
 
 
 def build_plugin_tools(

@@ -8,6 +8,11 @@
 > installed campaign, immutable inputs, and separate paid authority. The final
 > calibration produced no eligible task-effect, retrieval, or efficiency
 > result, so the formal matrix did not run.
+>
+> **Archive notice:** the executable Pack, campaign runner, task inputs, and
+> tests described below are no longer present in the current checkout. Commands
+> and paths in this document record the completed historical campaign and are
+> not current operator entry points.
 
 PicoBench task-effect v2 preserves the completed CodeCairn continuity tracer
 and adds a separate experiment identity for realistic next-task effect. It asks

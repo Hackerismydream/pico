@@ -300,9 +300,9 @@ guards as a secure sandbox.
 
 ### F9: historical EverOS-to-CodeCairn replacement
 
-CodeCairn was Pico's v0.2 Memory milestone. Its implementation and joint
-evidence campaign remain immutable historical records; CodeCairn is no longer
-the current product backend.
+CodeCairn was Pico's v0.2 Memory milestone. Its executable implementation and
+campaign source have been removed; immutable delivery and evidence records
+remain historical. CodeCairn is no longer the current product backend.
 
 The public result is:
 
@@ -311,7 +311,7 @@ memory.backend = codecairn  # historical configuration, now rejected
 memory.backend = null       # retained Memory-off behavior
 ```
 
-Ownership remains narrow:
+Historical ownership was narrow:
 
 - Pico owns Runtime, Session, Context, Tool/MCP, Local Skills, default
   selection, onboarding, base-distribution compatibility, continuity, and

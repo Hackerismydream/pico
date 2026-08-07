@@ -6,13 +6,13 @@ import hashlib
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
 import textwrap
 from importlib import metadata
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 EXPECTED_PLUGIN_ID = "myna-memory"
@@ -218,6 +218,14 @@ def _assert_discovery_contract() -> None:
 
     _require(PicoConfig().memory.backend == EXPECTED_BACKEND, "Myna is not the default backend")
     _require(MemoryConfig(backend=None).backend is None, "explicit Memory-off was not preserved")
+    entry_points = [
+        entry_point
+        for entry_point in metadata.entry_points(group="pico.plugins")
+        if getattr(getattr(entry_point, "dist", None), "name", None) == "myna-memory"
+    ]
+    _require(len(entry_points) == 1, "installed Myna distribution did not expose exactly one Pico entry point")
+    _require(entry_points[0].name == "myna", "installed Myna entry-point name mismatch")
+    _require(entry_points[0].value == "myna.integrations.pico", "installed Myna entry-point target mismatch")
     _require("myna.integrations.pico.app" not in sys.modules, "Myna App loaded before discovery")
     discovered = PluginDiscovery(entry_points_group="pico.plugins").discover()
     record = next(item for item in discovered if item.manifest.id == EXPECTED_PLUGIN_ID)
@@ -276,12 +284,7 @@ def _assert_incompatible_plugin_is_transactional(root: Path) -> None:
     _require(registry.memory_backend_names() == [], "incompatible backend partially registered")
 
 
-async def _assert_fail_closed(repository: Path, root: Path) -> None:
-    from myna.configuration import resolve_runtime_config
-    from myna.integrations.pico import journal as journal_module
-    from myna.integrations.pico.backend import MynaPicoBackend
-    from myna.integrations.pico.base import PicoAdapterError
-
+async def _assert_fail_closed(repository: Path, runtime: Path, root: Path) -> None:
     from pico.cli._plugin_stack import MynaSetupError
 
     uninitialized = root / "uninitialized"
@@ -299,56 +302,80 @@ async def _assert_fail_closed(repository: Path, root: Path) -> None:
     other = root / "other-repository"
     other.mkdir()
     _git(other, "init", "-q")
-    context = SimpleNamespace(config={}, services=SimpleNamespace(workspace=other))
-    resolved = resolve_runtime_config(start=repository)
-    mismatch = MynaPicoBackend(context, config_resolver=lambda **_: resolved)
+    embedded_runtime = other / ".myna"
+    myna = Path(sys.executable).parent / "myna"
+    subprocess.run(
+        (
+            str(myna),
+            "init",
+            "--root",
+            str(embedded_runtime),
+            "--repo-key",
+            "example/pico-mismatch-smoke",
+            "--retrieval-profile",
+            "fastembed",
+            "--semantic-profile",
+            "none",
+        ),
+        cwd=other,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    mismatch = _backend(other)
+    _require(mismatch is not None, "repository-mismatch Myna backend was not constructed")
     try:
         await mismatch.start()
-    except PicoAdapterError as exc:
-        _require(exc.code == "myna_repository_mismatch", "repository mismatch returned the wrong error code")
+    except Exception as exc:
+        _require(
+            getattr(exc, "code", None) == "myna_repository_mismatch",
+            "repository mismatch returned the wrong error code",
+        )
     else:
         raise AssertionError("repository mismatch was admitted")
-
-    class FailingIndex:
-        def import_checkpoint(self, *_args: Any, **_kwargs: Any) -> None:
-            return None
-
-        def sync_index(self, *_args: Any, **_kwargs: Any) -> None:
-            return None
-
-        def index_status(self):
-            return SimpleNamespace(pending=0, leased=0, failed=1, stale=False)
-
-    index_backend = MynaPicoBackend(
-        SimpleNamespace(config={}, services=SimpleNamespace(workspace=repository)),
-        application_factory=lambda *_args, **_kwargs: FailingIndex(),
-    )
-    try:
-        await index_backend.start()
-    except PicoAdapterError as exc:
-        _require(exc.code == "index_not_ready", "failed index returned the wrong error code")
-    else:
-        raise AssertionError("failed index was admitted")
 
     live = _backend(repository)
     _require(live is not None, "initialized Myna backend was not constructed")
     await live.start()
-    original_commit = journal_module.PicoSourceJournal.commit
+    try:
+        before = set((runtime / "sources" / "pico").glob("*/*.jsonl"))
+        await live.store("journal-failure", [{"role": "user", "content": "Create a journal for corruption testing."}])
+    finally:
+        await live.stop()
+    created = set((runtime / "sources" / "pico").glob("*/*.jsonl")) - before
+    _require(len(created) == 1, "journal fault setup did not create exactly one source")
+    with next(iter(created)).open("ab") as handle:
+        handle.write(b"unterminated")
 
-    def fail_commit(*_args: Any, **_kwargs: Any):
-        raise OSError("injected journal failure")
-
-    journal_module.PicoSourceJournal.commit = fail_commit
+    journal_backend = _backend(repository)
+    _require(journal_backend is not None, "journal-failure Myna backend was not constructed")
+    await journal_backend.start()
     try:
         try:
-            await live.store("journal-failure", [{"role": "user", "content": "This must fail."}])
-        except PicoAdapterError as exc:
-            _require(exc.code == "myna_store_failed", "journal failure returned the wrong error code")
+            await journal_backend.store("journal-failure", [{"role": "user", "content": "This must fail."}])
+        except Exception as exc:
+            _require(
+                getattr(exc, "code", None) in {"pico_journal_invalid", "source_rewritten", "myna_store_failed"},
+                "journal failure returned the wrong error code",
+            )
         else:
             raise AssertionError("journal failure was swallowed")
     finally:
-        journal_module.PicoSourceJournal.commit = original_commit
-        await live.stop()
+        await journal_backend.stop()
+
+    with sqlite3.connect(runtime / "state.sqlite3") as connection:
+        updated = connection.execute(
+            "UPDATE index_jobs SET status = 'failed', attempt_count = 3 WHERE status = 'indexed'"
+        ).rowcount
+    _require(updated > 0, "index fault setup found no completed index job")
+    index_backend = _backend(repository)
+    _require(index_backend is not None, "index-failure Myna backend was not constructed")
+    try:
+        await index_backend.start()
+    except Exception as exc:
+        _require(getattr(exc, "code", None) == "index_not_ready", "failed index returned the wrong error code")
+    else:
+        raise AssertionError("failed index was admitted")
 
 
 def _child(args: argparse.Namespace) -> int:
@@ -490,7 +517,7 @@ def main() -> int:
         recalled = json.loads(recall.stdout.splitlines()[-1])
         _require(json.loads(store.stdout.splitlines()[-1]) == {"stored": True}, "store child did not complete")
         _require(bool(recalled["source_uris"]), "fresh-process recall has no provenance")
-        asyncio.run(_assert_fail_closed(repository, root))
+        asyncio.run(_assert_fail_closed(repository, runtime, root))
 
     print(
         json.dumps(
