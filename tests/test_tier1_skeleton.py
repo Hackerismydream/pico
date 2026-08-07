@@ -152,9 +152,9 @@ def test_config_safe_defaults():
     assert not hasattr(cfg.skill_forge, "auto_evolve")
     assert cfg.token_wise.smart_routing.enabled is False
     # Baseline memory/skill feature layer defaults ON: a fresh install runs the
-    # CodeCairn memory backend, the SkillForgeRouter, and
+    # Myna memory backend, the SkillForgeRouter, and
     # empty-response recovery. Pinned so a future silent flip gets caught.
-    assert cfg.memory.backend == "codecairn"
+    assert cfg.memory.backend == "myna"
     assert cfg.skill_forge.router.enabled is True
     assert cfg.base.agents.defaults.empty_recovery_enabled is True
     # Safe/cheap defaults can be ON.

@@ -32,7 +32,7 @@ class TestDefaults:
 
     def test_memory_defaults(self) -> None:
         c = MemoryConfig()
-        assert c.backend == "codecairn"
+        assert c.backend == "myna"
         assert c.user_id == "default"
         assert c.memory_top_k == 5
 
@@ -163,7 +163,7 @@ class TestLoaderIntegration:
         cfg = load_pico_config(path)
         # All three default-construct without raising.
         assert cfg.plugins.disabled == []
-        assert cfg.memory.backend == "codecairn"
+        assert cfg.memory.backend == "myna"
         assert cfg.skill_forge.router.enabled is True
 
     def test_explicit_null_section_uses_defaults(

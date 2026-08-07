@@ -119,7 +119,7 @@ LAYERS: tuple[LayerSpec, ...] = (
     LayerSpec("v_lp", "V-LP", LIVE, 2400),
     LayerSpec("v_c0_s0", "V-C0/V-S0", DETERMINISTIC, 2400),
     LayerSpec("v_lf", "V-LF", LIVE, 5400),
-    LayerSpec("memory_continuity", "CodeCairn M2/M4", PACKAGE, 0),
+    LayerSpec("memory_continuity", "Myna installed composition", PACKAGE, 0),
     LayerSpec("v_te0", "V-TE0", DETERMINISTIC, 1200),
     LayerSpec("v_e0", "V-E0", DETERMINISTIC, 2400),
     LayerSpec("deps_audit", "dependency audit", AUDIT, 2400),
@@ -796,10 +796,11 @@ def run_memory_continuity(
     del context
     return skipped_record(
         spec,
-        gap="codecairn_joint_evidence_not_authorized",
+        gap="myna_release_unavailable",
         detail=(
-            "codecairn-003 is blocked; no joint installed continuity Gate is "
-            "authorized, so V-R0 cannot claim a release candidate"
+            "the compatible myna-memory distribution is not available from a "
+            "formal artifact source, so V-R0 cannot reproduce the installed "
+            "composition from publishable dependencies"
         ),
         status=INCONCLUSIVE,
     )

@@ -275,11 +275,11 @@ def init_extension_block_defaults(*, config_path: Path | None = None) -> None:
     source. Each field is only written when absent (``setdefault``), so this is
     idempotent and never clobbers a value the user (or an earlier wizard step)
     already set. ``memory.backend`` is seeded to its schema default
-    (``"codecairn"``). The onboarding flow keeps that selection and directs
-    operators to initialize CodeCairn in the configured Workspace.
+    (``"myna"``). The onboarding flow keeps that selection and directs
+    operators to initialize Myna in the configured Workspace.
 
     Defaults are pulled from the Pydantic models so this seed can't drift from
-    the schema. Plugin configuration stays empty because CodeCairn owns
+    the schema. Plugin configuration stays empty because Myna owns
     repository, profile, runtime-root, and credential selection.
 
     The optional service fields on ``SkillForgeConfig`` (``embedding_url`` /
@@ -328,7 +328,7 @@ def set_memory_backend(
 ) -> str | None:
     """Patch ``memory.backend`` on the on-disk config. Returns previous value.
 
-    ``"codecairn"`` selects repository Memory; ``None`` disables implicit
+    ``"myna"`` selects repository Memory; ``None`` disables implicit
     Memory while preserving Sessions and Local Skills.
     """
     path = config_path or get_config_path()

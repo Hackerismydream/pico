@@ -1,4 +1,4 @@
-.PHONY: help install install-deps lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-reproduce picobench-scorecard-estimate picobench-scorecard-ship picobench-scorecard-score picobench-runtime-scheduler picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify picobench-codecairn-smoke picobench-codecairn-task-effect-smoke picobench-codecairn-task-effect-estimate picobench-codecairn-task-effect-ship picobench-codecairn-ship verify-codecairn-continuity verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
+.PHONY: help install install-deps format check lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-reproduce picobench-scorecard-estimate picobench-scorecard-ship picobench-scorecard-score picobench-runtime-scheduler picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify verify-myna-integration verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
 
 PYTHON ?= python3
 PYTHON_LINT_TARGETS ?= scripts/check_commit_file.py scripts/check_commit_messages.py scripts/check_pr_title.py scripts/check_large_files.py scripts/commit_lint.py tests/test_commit_lint.py tests/test_large_file_check.py
@@ -8,6 +8,8 @@ help:
 	@echo "Targets:"
 	@echo "  install        Install Python deps, Node deps, and git hooks"
 	@echo "  install-deps   Install Python deps only (CI uses this)"
+	@echo "  format         Format Python sources"
+	@echo "  check          Run the complete local deterministic acceptance gate"
 	@echo "  lint           Run Python and TUI lint gates"
 	@echo "  lint-python    Ruff-check the current lint target set"
 	@echo "  lint-tui       TypeScript lint + RPC drift check"
@@ -23,12 +25,7 @@ help:
 	@echo "  picobench-scorecard-estimate Print the current Scorecard worst-case budget"
 	@echo "  picobench-scorecard-ship Run the current Context and Tool/MCP Scorecard campaign"
 	@echo "  picobench-scorecard-score Compute the multidimensional diagnostic score"
-	@echo "  picobench-codecairn-smoke Validate the credential-free CodeCairn Pack"
-	@echo "  picobench-codecairn-task-effect-smoke Validate the credential-free task-effect v2 Pack"
-	@echo "  picobench-codecairn-task-effect-estimate Print the task-effect v2 worst-case budget"
-	@echo "  picobench-codecairn-task-effect-ship Run the frozen task-effect v2 campaign"
-	@echo "  picobench-codecairn-ship Run the frozen paid CodeCairn campaign"
-	@echo "  verify-codecairn-continuity Run installed Pico-CodeCairn J0-J2"
+	@echo "  verify-myna-integration Verify installed Pico and Myna wheels in Python 3.12"
 	@echo "  verify-runtime-hosts Verify CLI, TUI, and Gateway from PICO_WHEEL"
 	@echo "  verify-live-provider Run V-LP against one live Provider"
 	@echo "  verify-channels Run the deterministic V-C0 contract and V-S0 security Channel gates"
@@ -50,6 +47,11 @@ install: install-deps
 	uv run pre-commit install --hook-type commit-msg
 	npm ci
 	npm ci --prefix ui-tui
+
+format:
+	uv run --extra dev ruff format pico scripts tests
+
+check: lint test-retained test-tui build
 
 lint: lint-python lint-tui
 
@@ -115,66 +117,22 @@ picobench-runtime-live-verify:
 	uv run --frozen --all-extras --exact python -m benchmarks.picobench.packs.runtime.live_scheduler_experiment verify \
 			--evidence "$$PICO_LIVE_PERF_EVIDENCE"
 
-picobench-codecairn-smoke:
-	uv run --frozen --all-extras --exact pytest \
-		tests/test_picobench_codecairn_memory.py \
-		tests/test_verify_codecairn_continuity.py \
-		-q --strict-markers
-
-picobench-codecairn-task-effect-smoke:
-	uv run --frozen --all-extras --exact pytest \
-		tests/test_picobench_codecairn_memory.py \
-		tests/integration/test_picobench_codecairn_task_effect_e2e.py \
-		tests/test_picobench_contract.py \
-		tests/test_picobench_reporting.py \
-		-q --strict-markers
-
-picobench-codecairn-task-effect-estimate:
-	uv run --frozen --all-extras --exact python -m benchmarks.picobench.codecairn_task_effect_campaign estimate
-
-picobench-codecairn-task-effect-ship:
-	@test -n "$$PICO_TASK_EFFECT_PICO_WHEEL" || (echo "PICO_TASK_EFFECT_PICO_WHEEL is required" >&2; exit 2)
-	@test -n "$$PICO_TASK_EFFECT_CODECAIRN_WHEEL" || (echo "PICO_TASK_EFFECT_CODECAIRN_WHEEL is required" >&2; exit 2)
-	@test -n "$$PICO_TASK_EFFECT_STAGE_C_SUMMARY" || (echo "PICO_TASK_EFFECT_STAGE_C_SUMMARY is required" >&2; exit 2)
-	@test -n "$$PICO_TASK_EFFECT_AUTHORIZATION" || (echo "PICO_TASK_EFFECT_AUTHORIZATION is required" >&2; exit 2)
-	@test -n "$$PICO_TASK_EFFECT_CAMPAIGN_OUTPUT" || (echo "PICO_TASK_EFFECT_CAMPAIGN_OUTPUT is required" >&2; exit 2)
-	uv run --frozen --all-extras --exact python -m benchmarks.picobench.codecairn_task_effect_campaign ship \
-		--output-root "$$PICO_TASK_EFFECT_CAMPAIGN_OUTPUT"
-
-picobench-codecairn-ship:
-	@test -n "$$PICO_CODECAIRN_PICO_WHEEL" || (echo "PICO_CODECAIRN_PICO_WHEEL is required" >&2; exit 2)
-	@test -n "$$PICO_CODECAIRN_WHEEL" || (echo "PICO_CODECAIRN_WHEEL is required" >&2; exit 2)
-	@test -n "$$PICO_CODECAIRN_PAIR_MANIFEST" || (echo "PICO_CODECAIRN_PAIR_MANIFEST is required" >&2; exit 2)
-	@test -n "$$PICO_CODECAIRN_CONTINUITY_SUMMARY" || (echo "PICO_CODECAIRN_CONTINUITY_SUMMARY is required" >&2; exit 2)
-	@test -n "$$PICO_CODECAIRN_CAMPAIGN_OUTPUT" || (echo "PICO_CODECAIRN_CAMPAIGN_OUTPUT is required" >&2; exit 2)
-	uv run --frozen --all-extras --exact python scripts/run_codecairn_campaign.py \
-		--mode ship \
-		--output-root "$$PICO_CODECAIRN_CAMPAIGN_OUTPUT"
-
-verify-codecairn-continuity:
-	@test -n "$$PICO_CODECAIRN_PICO_WHEEL" || (echo "PICO_CODECAIRN_PICO_WHEEL is required" >&2; exit 2)
-	@test -n "$$PICO_CODECAIRN_WHEEL" || (echo "PICO_CODECAIRN_WHEEL is required" >&2; exit 2)
-	@test -n "$$PICO_CODECAIRN_PICO_HANDOFF" || (echo "PICO_CODECAIRN_PICO_HANDOFF is required" >&2; exit 2)
-	@test -n "$$PICO_CODECAIRN_HANDOFF" || (echo "PICO_CODECAIRN_HANDOFF is required" >&2; exit 2)
-	@test -n "$$PICO_CODECAIRN_IMPLEMENTATION_PICO_WHEEL" || (echo "PICO_CODECAIRN_IMPLEMENTATION_PICO_WHEEL is required" >&2; exit 2)
-	@test -n "$$PICO_CODECAIRN_COMPATIBILITY_PICO_WHEEL" || (echo "PICO_CODECAIRN_COMPATIBILITY_PICO_WHEEL is required" >&2; exit 2)
-	@test -n "$$PICO_CODECAIRN_PICO_DISTRIBUTION_REPORT" || (echo "PICO_CODECAIRN_PICO_DISTRIBUTION_REPORT is required" >&2; exit 2)
-	@test -n "$$PICO_CODECAIRN_COMMIT" || (echo "PICO_CODECAIRN_COMMIT is required" >&2; exit 2)
-	@test -n "$$PICO_CODECAIRN_SOURCE_ROOT" || (echo "PICO_CODECAIRN_SOURCE_ROOT is required" >&2; exit 2)
-	@test -n "$$PICO_CODECAIRN_OUTPUT_ROOT" || (echo "PICO_CODECAIRN_OUTPUT_ROOT is required" >&2; exit 2)
-	uv run --frozen --all-extras --exact python scripts/verify_codecairn_continuity.py \
-		--pico-wheel "$$PICO_CODECAIRN_PICO_WHEEL" \
-		--codecairn-wheel "$$PICO_CODECAIRN_WHEEL" \
-		$${PICO_CODECAIRN_BASELINE_WHEEL:+--codecairn-baseline-wheel "$$PICO_CODECAIRN_BASELINE_WHEEL"} \
-		--pico-handoff "$$PICO_CODECAIRN_PICO_HANDOFF" \
-		--codecairn-handoff "$$PICO_CODECAIRN_HANDOFF" \
-		--pico-implementation-wheel "$$PICO_CODECAIRN_IMPLEMENTATION_PICO_WHEEL" \
-		--pico-compatibility-wheel "$$PICO_CODECAIRN_COMPATIBILITY_PICO_WHEEL" \
-		--pico-distribution-report "$$PICO_CODECAIRN_PICO_DISTRIBUTION_REPORT" \
-		--pico-commit "$$PICO_CODECAIRN_COMMIT" \
-		--pico-source-root "$$PWD" \
-		--codecairn-source-root "$$PICO_CODECAIRN_SOURCE_ROOT" \
-		--output-root "$$PICO_CODECAIRN_OUTPUT_ROOT"
+verify-myna-integration:
+	@test -n "$$PICO_MYNA_PICO_WHEEL" || (echo "PICO_MYNA_PICO_WHEEL is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_WHEEL" || (echo "PICO_MYNA_WHEEL is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_SOURCE_ROOT" || (echo "PICO_MYNA_SOURCE_ROOT is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_WHEEL_SHA256" || (echo "PICO_MYNA_WHEEL_SHA256 is required" >&2; exit 2)
+	@tmp=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	uv venv --python 3.12 "$$tmp/venv"; \
+	uv pip install --python "$$tmp/venv/bin/python" "$$PICO_MYNA_PICO_WHEEL" "$$PICO_MYNA_WHEEL"; \
+	cd "$$tmp"; \
+	"$$tmp/venv/bin/python" "$(CURDIR)/scripts/verify_myna_integration.py" \
+		--pico-wheel "$$PICO_MYNA_PICO_WHEEL" \
+		--myna-wheel "$$PICO_MYNA_WHEEL" \
+		--source-root "$(CURDIR)" \
+		--myna-source-root "$$PICO_MYNA_SOURCE_ROOT" \
+		--myna-sha256 "$$PICO_MYNA_WHEEL_SHA256"
 
 test-tui:
 	npm test --prefix ui-tui

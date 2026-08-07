@@ -1,266 +1,108 @@
 # Memory and Plugin architecture
 
-> Status: current Pico implementation contract.
+Pico owns the Agent Harness and the generic `MemoryBackend` Interface. Myna
+owns durable Memory, repository identity, source capture, indexing, recall,
+and its operator-facing application. The integration is an installed public
+Plugin seam; neither product vendors or privately imports the other.
 
-This document describes the public `MemoryBackend` Protocol, Plugin discovery,
-Runtime lifecycle, and installed CodeCairn adapter. For the full state and
-Context relationship, read
-[State, Context, Memory, and Skills](architecture/state-and-intelligence.md).
+## Runtime contract
 
-## Design goals
-
-1. Pico selects one repository-scoped CodeCairn Memory backend by default.
-2. A user can explicitly disable Memory with `memory.backend = null`.
-3. A selected backend fails visibly instead of silently losing recall or
-   persistence.
-4. Plugin discovery remains cheap and normally does not import heavy backend
-   code.
-5. Third-party backends and Tools use a narrow manifest/factory seam.
-6. Local Skills and Sessions remain usable when Memory is disabled.
-7. CodeCairn owns its journal, repository identity, import, ranking, packing,
-   and index; Pico does not reimplement those responsibilities.
-
-## MemoryBackend Protocol
-
-`pico/memory_engine/backend.py` defines the structural Protocol:
+`pico.memory_engine.backend.MemoryBackend` is the complete host contract:
 
 ```python
-class MemoryBackend(Protocol):
-    async def recall(
-        self,
-        query: str,
-        *,
-        user_id: str | None = None,
-        agent_id: str | None = None,
-        top_k: int,
-    ) -> list[Memory]: ...
-
-    async def store(self, session_id: str, messages: list[dict]) -> None: ...
-    async def feedback(self, signals: dict) -> None: ...
-    async def start(self) -> None: ...
-    async def stop(self) -> None: ...
+async def start() -> None: ...
+async def recall(query, *, user_id=None, agent_id=None, top_k=5) -> list[Memory]: ...
+async def store(session_id, messages) -> None: ...
+async def feedback(signals) -> None: ...
+async def stop() -> None: ...
 ```
 
-The active Pico host calls `recall(..., user_id=...)` for the Context Memory
-segment. The selected Workspace, not `user_id` or process cwd, determines the
-initialized CodeCairn repository. Local Skill retrieval is independent of the
-Memory backend, so the host does not use the Agent lane for remembered Skills
-and does not dispatch backend feedback.
+Before each Turn, the Context Memory segment calls `recall()` and injects only
+the returned `Memory.text`. After a persisted Turn, Agent Loop calls `store()`
+with the normalized Session slice. Exceptions are not converted into empty
+results or successful writes. `memory.backend = null` bypasses Plugin lookup
+and preserves Sessions and Local Skills.
 
-`agent_id` and `feedback()` remain in the structural Protocol for third-party
-Plugin compatibility. A backend may return no Agent-lane hits. Pico does not
-expose a third world-knowledge argument or add namespace prefixes to ids.
+## Installed Myna Plugin
 
-## Runtime construction and lifecycle
+Pico discovers Myna through installed distribution metadata and the public
+`pico.plugins` entry-point group.
 
-`pico/cli/_plugin_stack.py` and
-`pico/cli/_runtime_assembly.py` divide ownership:
-
-```text
-build_plugin_registry()
-  -> discover and activate manifests
-
-maybe_build_memory_backend()
-  -> resolve configured contribution
-  -> build backend, not started
-
-assemble_runtime()
-  -> pass backend into Agent Loop and Context Engine
-  -> return RuntimeAssembly
-
-RuntimeAssembly.start_memory_backend()
-  -> start once; cache and re-raise failure
-
-RuntimeAssembly.close()
-  -> close MCP/Agent resources
-  -> stop backend and expose any stop failure after other cleanup
-```
-
-`memory.backend = null` returns no backend and is the only implicit-Memory
-disable path. It invokes no backend factory, lifecycle, recall, store,
-feedback, journal, importer, or index operation.
-
-Selected backend behavior is fail-closed:
-
-- missing contribution raises with installation remediation;
-- factory, import, or configuration error raises;
-- startup error raises;
-- required recall or store error fails the Turn;
-- shutdown continues other cleanup and then exposes the backend stop failure.
-
-There is no production no-op or empty-Memory fallback. Plugin Tool
-construction is intentionally different: one optional Tool factory may return
-`None` or raise, and Pico logs and skips that Tool.
-
-## Plugin discovery
-
-`pico/plugin/discover.py` scans:
-
-| Priority | Source | Location |
-| ---: | --- | --- |
-| 4 | bundled | `pico/plugin/memory/<plugin-id>/` |
-| 3 | user | `~/.pico/plugins/<plugin-id>/` |
-| 2 | project | `<process-cwd>/.pico/plugins/<plugin-id>/` |
-| 1 | entry points | group `pico.plugins` |
-
-The highest-priority manifest wins for one Plugin id. Different ids coexist.
-A bundled Plugin cannot be shadowed by a user or third-party package with the
-same id.
-
-Directory sources parse `pico-plugin.toml` without importing implementation
-code. Entry-point resource discovery can import the entry-point package, so
-its top-level module must remain lightweight.
-
-The project Plugin directory is based on process cwd, not the configured Agent
-Workspace. CodeCairn repository binding does not use this discovery location;
-the Adapter receives the configured Workspace through `PluginContext`.
-
-## Manifest and factories
-
-A Plugin manifest can contribute Memory backends and Tools:
-
-```toml
-[plugin]
-id = "example-memory"
-version = "1.0.0"
-bundled = false
-
-[[plugin.contributes.memory_backends]]
-name = "example"
-factory = "example_plugin.backend:make_backend"
-
-[[plugin.contributes.tools]]
-name = "example_tool"
-factory = "example_plugin.tools:make_tool"
-```
-
-The factory receives `PluginContext`:
-
-- `config`: the free-form slice from `plugins.config[plugin-id]`, falling back
-  to the contribution name for Memory backends;
-- `services`: a narrow locator containing the configured Workspace;
-- `logger`: Plugin-scoped logger.
-
-The manifest `config_schema` is metadata/passthrough. The Registry does not
-perform general schema validation from it, so a backend must validate the
-fields it consumes. Duplicate contribution names fail registry activation.
-Plugins marked `enabled_by_default = false` are skipped.
-
-## Installed CodeCairn Plugin
-
-Pico's base distribution pins CodeCairn to the accepted immutable Git commit.
-The installed distribution contributes these fixed public identifiers:
-
-| Identifier | Value |
+| Field | Required value |
 | --- | --- |
-| entry-point group | `pico.plugins` |
-| entry-point name | `codecairn` |
-| resource package | `codecairn.integrations.pico` |
-| manifest id | `codecairn-memory` |
-| backend name | `codecairn` |
-| factory | `codecairn.integrations.pico.backend:make_backend` |
+| distribution | `myna-memory` |
+| entry point | `myna = myna.integrations.pico` |
+| manifest | `myna/integrations/pico/pico-plugin.toml` |
+| Plugin id | `myna-memory` |
+| compatible Pico | `>=0.1,<0.2` |
+| Memory backend | `myna` |
+| factory | `myna.integrations.pico.backend:make_backend` |
 
-The operator initializes the target Git repository explicitly:
+Discovery reads the manifest from the owning distribution file inventory. It
+checks distribution name and version against the manifest and checks the
+manifest's Pico version interval before importing the factory module. Invalid
+identity or compatibility fails closed with remediation. Registry activation
+commits no manifest or contribution until every declared factory resolves.
 
-```bash
-codecairn init
-```
+The entry-point package is import-cheap. Discovery and backend activation do
+not load Myna's App module. Calling Myna's public `descriptor()` is the point
+where the App descriptor and its consent-bound setup contract load. Pico does
+not embed the Myna Local App or Hub in this integration.
 
-Fresh Pico config selects:
+## Configuration and first use
+
+Fresh Pico configuration selects:
 
 ```json
 {
   "memory": {
-    "backend": "codecairn",
+    "backend": "myna",
+    "userId": "default",
     "memoryTopK": 5
+  },
+  "plugins": {
+    "disabled": [],
+    "config": {}
   }
 }
 ```
 
-Pico has no CodeCairn runtime-root, repository, retrieval-profile, or
-credential override. Those values remain in the CodeCairn configuration
-selected by `codecairn init`.
-
-At `start()`, the Adapter resolves the configured Pico Workspace, validates
-the initialized Git repository and CodeCairn requirements, and imports any
-durable journal suffix. Configuration, provider, journal, index, and identity
-failures abort startup with remediation.
-
-`recall()` returns one compiled, source-attributed Pico `Memory` for
-repository-scoped context. Pico does not rerank or repack the result.
-`store()` receives the same normalized after-Turn slice that Session
-persistence accepted, without Runtime preambles or recovery scaffolding.
-CodeCairn durably journals and imports that slice and returns only when the
-write is recall-visible or fails. Blocking operations run off the host event
-loop.
-
-The former `memory.backend = "everos"` value is a migration error, not an
-alias. Pico tells the operator to initialize CodeCairn and select
-`codecairn`, or explicitly select `null`. It does not silently rewrite config,
-read the removed backend's state, migrate it, or delete it. The removed
-adapter and its `understand_media` Tool are not bundled in the Pico wheel.
-
-## Adding a third-party Memory backend
-
-Recommended distribution:
-
-```text
-pico-example-memory/
-  pyproject.toml
-  src/pico_example_memory/
-    __init__.py
-    backend.py
-    pico-plugin.toml
-```
-
-Register a `pico.plugins` entry point, keep package import cheap, and expose a
-factory returning a structural `MemoryBackend`. Installation in this
-repository must use `uv`, for example:
+Myna configuration is not duplicated under Pico's `plugins.config`. From the
+target Git repository, initialize the Myna-owned binding explicitly:
 
 ```bash
-uv add pico-example-memory
+myna init
 ```
 
-Backend rules:
+Pico never silently initializes Myna, scans agent history, imports historical
+sessions, migrates prior data, or rewrites a retired backend selection. An
+uninitialized repository, repository mismatch, degraded index, or journal
+failure aborts the Memory lifecycle with a Myna remediation command.
 
-- validate the Plugin Config it consumes;
-- implement explicit start/stop;
-- accept the public user/Agent-lane shape, returning no Agent hits if unused;
-- propagate configured persistence failure;
-- never import Pico CLI composition;
-- test through the public Protocol and a real integration layer.
+## Ownership and persistence
 
-Drop-in user and project directories are also supported, but the operator must
-make their Python dependencies available.
+Pico Session JSONL remains transcript truth. Myna's append-only Pico Source
+Journal records accepted after-Turn slices under the Myna runtime root, imports
+them through Myna's public application contract, and returns source-linked
+Recall Context. A `pico_turn_end` source boundary says that a slice ended; it
+does not assert that the task succeeded.
 
-## Verification
+Session persistence and Myna persistence are separate failure domains. A
+Session save can precede a failed Myna store. Pico reports that failure rather
+than claiming an atomic cross-product transaction.
 
-Deterministic coverage includes:
+## Verification boundary
 
-- Runtime Assembly construction, lifecycle, and fail-closed behavior;
-- Agent Loop normalized store-slice and Memory-off zero-call behavior;
-- Local Skill parity with CodeCairn selected and with Memory off;
-- generic third-party manifest, factory, and backend Protocol tests;
-- installed CodeCairn entry-point and manifest discovery;
-- wheel metadata and content checks rejecting bundled EverOS Runtime files or
-  direct EverOS dependencies.
+The installed composition Gate builds a Pico wheel, installs that wheel and a
+frozen Myna wheel into an isolated Python 3.12 environment, and verifies:
 
-The installed integration smoke uses real CodeCairn in a temporary initialized
-Git repository and verifies start, store, fresh recall, and stop without source
-checkout leakage. It uses no local Adapter stub and makes no task-level
-improvement claim.
+- distribution and manifest identity;
+- compatibility rejection before activation;
+- discovery without source-checkout imports;
+- explicit Memory-off behavior;
+- uninitialized and degraded failure paths;
+- store followed by recall in a fresh process;
+- `myna://` source provenance and unrelated-query abstention.
 
-Historical EverOS continuity and PicoBench reports remain evidence only for
-their recorded commits and experiments. They are not relabeled as CodeCairn
-proof.
-
-## Known limitations
-
-- no cross-domain transaction across Session, Curator, CodeCairn, and Tracing;
-- Plugin `config_schema` is descriptive, not generally enforced;
-- entry-point discovery may import a third-party package;
-- project Plugin discovery uses process cwd;
-- no remote Plugin or Skill marketplace;
-- no automatic Memory deletion cascade when a Session is deleted;
-- CodeCairn does not currently abstain on the frozen hard-negative queries, so
-  the completed paired measurement is not eligible for a positive claim.
+These checks establish the package and lifecycle contract only. They are not
+Pico task-effect, latency, cost, reliability, or production-success evidence.

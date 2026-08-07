@@ -192,7 +192,7 @@ def test_onboard_non_interactive_minimum_flags(tmp_env: Path, stub_verify, stub_
 
 
 def test_onboard_non_interactive_skips_optional_steps(tmp_env: Path, stub_verify, stub_step3) -> None:
-    """Non-interactive setup keeps CodeCairn selected and explains initialization."""
+    """Non-interactive setup keeps Myna selected and explains initialization."""
     r = runner.invoke(
         app,
         [
@@ -207,11 +207,11 @@ def test_onboard_non_interactive_skips_optional_steps(tmp_env: Path, stub_verify
     )
     assert r.exit_code == 0, r.stdout
     assert "Keeping run location: host" in r.stdout
-    assert "codecairn init" in r.stdout
+    assert "myna init" in r.stdout
     assert "Pico will fail closed" in r.stdout
     assert "Setup complete" in r.stdout
     data = json.loads(tmp_env.read_text())
-    assert data["memory"]["backend"] == "codecairn"
+    assert data["memory"]["backend"] == "myna"
 
 
 def test_onboard_skip_channel_default(tmp_env: Path, stub_verify, stub_step3) -> None:
@@ -956,7 +956,7 @@ def test_memory_skip_sets_backend_null(
     assert load_pico_config().memory.backend is None
 
 
-def test_memory_step_selects_codecairn_without_pico_side_overrides(
+def test_memory_step_selects_myna_without_pico_side_overrides(
     tmp_env: Path,
 ) -> None:
     """Onboarding chooses the installed Adapter without writing its configuration."""
@@ -968,12 +968,12 @@ def test_memory_step_selects_codecairn_without_pico_side_overrides(
     )
 
     data = json.loads(tmp_env.read_text())
-    assert data["memory"]["backend"] == "codecairn"
-    assert "codecairn" not in data.get("plugins", {}).get("config", {})
-    assert "codecairn-memory" not in data.get("plugins", {}).get("config", {})
+    assert data["memory"]["backend"] == "myna"
+    assert "myna" not in data.get("plugins", {}).get("config", {})
+    assert "myna-memory" not in data.get("plugins", {}).get("config", {})
     from pico.config.pico import load_pico_config
 
-    assert load_pico_config().memory.backend == "codecairn"
+    assert load_pico_config().memory.backend == "myna"
 
 
 def test_retained_channels_do_not_use_interactive_login() -> None:
@@ -1240,14 +1240,14 @@ def test_skip_memory_disables_backend_effective(tmp_env: Path, stub_verify, stub
     assert load_pico_config().memory.backend is None
 
 
-def test_fresh_bootstrap_defaults_memory_backend_codecairn(
+def test_fresh_bootstrap_defaults_memory_backend_myna(
     tmp_env: Path, stub_verify, stub_step3, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A fresh config selects the installed CodeCairn contribution."""
+    """A fresh config selects the installed Myna contribution."""
     onboard_commands._bootstrap_empty_config()
     from pico.config.pico import load_pico_config
 
-    assert load_pico_config().memory.backend == "codecairn"
+    assert load_pico_config().memory.backend == "myna"
 
 
 def test_fresh_bootstrap_seeds_extension_blocks(tmp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1257,7 +1257,7 @@ def test_fresh_bootstrap_seeds_extension_blocks(tmp_env: Path, monkeypatch: pyte
     onboard_commands._bootstrap_empty_config()
     data = json.loads(tmp_env.read_text())
 
-    assert data["memory"]["backend"] == "codecairn"
+    assert data["memory"]["backend"] == "myna"
     assert data["memory"]["memoryTopK"] == 5
     assert data["plugins"]["config"] == {}
     assert data["skillForge"]["router"] == {"enabled": True}

@@ -22,6 +22,10 @@ def register(app: typer.Typer) -> None:
         config_path = get_config_path()
         config = load_config()
         paths = resolve_foreground_paths(config)
+        from pico.cli._plugin_stack import inspect_memory_backend
+        from pico.config.pico import load_pico_config
+
+        memory = inspect_memory_backend(load_pico_config(config_path))
 
         console.print(f"{__logo__} Pico Status\n")
 
@@ -30,6 +34,15 @@ def register(app: typer.Typer) -> None:
             f"Workspace: {paths.workspace} {'[green]✓[/green]' if paths.workspace.exists() else '[red]✗[/red]'}"
         )
         console.print(f"State: {paths.state} {'[green]✓[/green]' if paths.state.exists() else '[yellow]new[/yellow]'}")
+        if memory.state == "disabled":
+            console.print("Memory: [dim]disabled[/dim]")
+        elif memory.state == "available":
+            console.print(
+                f"Memory: [green]{memory.backend}[/green] [dim]({memory.plugin_id} {memory.plugin_version})[/dim]"
+            )
+        else:
+            console.print(f"Memory: [red]{memory.backend} unavailable[/red]")
+            console.print(f"  {memory.error}")
 
         if config_path.exists():
             from pico.providers.registry import PROVIDERS

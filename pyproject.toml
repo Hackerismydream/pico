@@ -46,7 +46,7 @@ dependencies = [
     # working if upstream ever drops it.
     "numpy>=2.0,<3.0",
     "pillow>=12.3,<13.0",
-    "codecairn @ git+https://github.com/Hackerismydream/CodeCairn.git@a501fe29782e69dd7fc9a9277ba6743b2f2b4bc6",
+    "packaging>=24.0,<26.0",
 ]
 
 [project.optional-dependencies]

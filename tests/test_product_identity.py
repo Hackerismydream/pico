@@ -33,17 +33,16 @@ def test_public_distribution_cli_and_plugin_identity() -> None:
     assert not (repo_root / "pico" / "config" / "update_everos.py").exists()
 
 
-def test_distribution_pins_the_codecairn_handoff() -> None:
+def test_distribution_has_no_unpublished_or_retired_memory_dependency() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     metadata = tomllib.loads(
         (repo_root / "pyproject.toml").read_text(encoding="utf-8"),
     )
 
-    assert (
-        "codecairn @ git+https://github.com/Hackerismydream/"
-        "CodeCairn.git@a501fe29782e69dd7fc9a9277ba6743b2f2b4bc6" in metadata["project"]["dependencies"]
-    )
-    assert "codecairn" not in metadata["tool"]["uv"]["sources"]
+    dependencies = metadata["project"]["dependencies"]
+    assert not any("codecairn" in dependency.lower() for dependency in dependencies)
+    assert not any("myna" in dependency.lower() for dependency in dependencies)
+    assert not any("file://" in dependency.lower() for dependency in dependencies)
 
 
 def test_clean_defaults_use_pico_state(tmp_path: Path, monkeypatch) -> None:

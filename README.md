@@ -16,7 +16,7 @@ candidate without an explicit human decision.
 - **One Runtime:** CLI, native TUI, Gateway, Cron, and Channels submit the same
   Turn contract through the Spine.
 - **Durable context:** Sessions persist as JSONL, Context is budgeted before
-  each model call, and CodeCairn provides repository-scoped Memory through the
+  each model call, and Myna provides repository-scoped Memory through the
   public Plugin interface.
 - **Controlled tools:** Filesystem, Shell, Web, MCP, messaging, and Subagent
   Tools share confirmation, Sandbox, and tracing boundaries.
@@ -98,7 +98,7 @@ CLI / TUI / Gateway / Cron / Channel
 
 The Context Engine retrieves and budgets relevant state instead of blindly
 truncating old messages. Local Skills remain available when Memory is disabled.
-CodeCairn owns its repository binding and storage; Pico consumes it through the
+Myna owns its repository binding and storage; Pico consumes it through the
 installed Memory Plugin contract.
 
 Feishu is live-gated against the configured Pico bot. QQ and WeCom are Beta and
@@ -113,7 +113,7 @@ claim. Evidence applies only to the commit and scenario recorded by its Gate.
 | Foreground project | Current directory |
 | Foreground project state | `~/.pico/projects/<project-id>` |
 | Gateway Workspace | `~/.pico/workspace` |
-| CodeCairn repository binding | CodeCairn configuration selected by `codecairn init` |
+| Myna repository binding | Myna configuration selected by `myna init` |
 
 `PICO_HOME` relocates Pico's global root. Project state stays outside the
 repository, so normal startup does not dirty Git or trust repository-controlled

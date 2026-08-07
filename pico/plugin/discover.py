@@ -20,15 +20,27 @@ import logging
 from dataclasses import dataclass
 from enum import IntEnum
 from importlib import metadata
-from importlib.resources import as_file, files
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from packaging.utils import canonicalize_name
+from packaging.version import InvalidVersion, Version
+
+from pico import __version__ as _installed_pico_version
 from pico.plugin.manifest import PluginManifest
 
 logger = logging.getLogger(__name__)
 
 
 _MANIFEST_FILENAME = "pico-plugin.toml"
+
+
+class PluginCompatibilityError(RuntimeError):
+    """A plugin manifest excludes the installed Pico version."""
+
+
+class PluginIdentityError(RuntimeError):
+    """Installed distribution metadata disagrees with its plugin manifest."""
 
 
 class Source(IntEnum):
@@ -69,11 +81,13 @@ class PluginDiscovery:
         user_dir: Path | None = None,
         project_dir: Path | None = None,
         entry_points_group: str | None = None,
+        pico_version: str = _installed_pico_version,
     ) -> None:
         self._bundled_dir = bundled_dir
         self._user_dir = user_dir
         self._project_dir = project_dir
         self._entry_points_group = entry_points_group
+        self._pico_version = pico_version
 
     def discover(self) -> list[DiscoveredPlugin]:
         """Run all enabled sources and resolve conflicts.
@@ -128,6 +142,7 @@ class PluginDiscovery:
                     e,
                 )
                 continue
+            self._validate_compatibility(mf)
             if mf.id != sub.name:
                 logger.info(
                     "plugin %s lives in directory %s — id and dir name differ",
@@ -149,12 +164,9 @@ class PluginDiscovery:
         """Resolve every entry point in ``group`` and read the manifest
         shipped inside that entry point's package.
 
-        Entry-point value is the bare package name (e.g. a third-party
-        ``pico_mem0``). We use ``importlib.resources`` to locate
-        ``pico-plugin.toml`` inside that package. The package's
-        ``__init__.py`` is imported as part of resource resolution —
-        side-effects there would betray the "manifest-only" promise, so
-        plugin packages are expected to keep ``__init__`` empty / cheap.
+        Entry-point value names the package that owns ``pico-plugin.toml``.
+        The manifest is located through the owning distribution's installed
+        file inventory, so discovery does not import the plugin package.
         """
         out: list[DiscoveredPlugin] = []
         try:
@@ -166,32 +178,91 @@ class PluginDiscovery:
         for ep in eps:
             package_name = ep.value.split(":", 1)[0]
             try:
-                resource_root = files(package_name)
-                manifest_resource = resource_root.joinpath(_MANIFEST_FILENAME)
-                with as_file(manifest_resource) as manifest_path:
-                    if not manifest_path.is_file():
-                        logger.warning(
-                            "entry-point %s points at package %s but no %s found; skipping",
-                            ep.name,
-                            package_name,
-                            _MANIFEST_FILENAME,
-                        )
-                        continue
-                    mf = PluginManifest.from_toml_path(manifest_path)
-                    out.append(
-                        DiscoveredPlugin(
-                            manifest=mf,
-                            source=Source.ENTRY_POINTS,
-                            location=None,
-                        ),
+                manifest_path = self._entry_point_manifest_path(ep, package_name)
+                if manifest_path is None:
+                    logger.warning(
+                        "entry-point %s points at package %s but no %s found; skipping",
+                        ep.name,
+                        package_name,
+                        _MANIFEST_FILENAME,
                     )
+                    continue
+                mf = PluginManifest.from_toml_path(manifest_path)
             except Exception as e:
+                if isinstance(e, (PluginCompatibilityError, PluginIdentityError)):
+                    raise
                 logger.warning(
                     "failed to load manifest for entry-point %s (%s); skipping",
                     ep.name,
                     e,
                 )
+                continue
+            self._validate_entry_point_identity(ep, mf)
+            self._validate_compatibility(mf)
+            out.append(
+                DiscoveredPlugin(
+                    manifest=mf,
+                    source=Source.ENTRY_POINTS,
+                    location=None,
+                ),
+            )
         return out
+
+    @staticmethod
+    def _entry_point_manifest_path(ep, package_name: str) -> Path | None:
+        distribution = getattr(ep, "dist", None)
+        distribution_files = getattr(distribution, "files", None)
+        if distribution is None or distribution_files is None:
+            raise PluginIdentityError(
+                f"entry-point {ep.name!r} has no owning distribution file inventory; reinstall the plugin"
+            )
+        expected = PurePosixPath(*package_name.split("."), _MANIFEST_FILENAME)
+        for item in distribution_files:
+            if PurePosixPath(str(item)) == expected:
+                path = Path(distribution.locate_file(item))
+                return path if path.is_file() else None
+        return None
+
+    @staticmethod
+    def _validate_entry_point_identity(ep, manifest: PluginManifest) -> None:
+        distribution = getattr(ep, "dist", None)
+        if distribution is None:
+            raise PluginIdentityError(
+                f"entry-point {ep.name!r} has no owning distribution metadata; reinstall the plugin"
+            )
+        distribution_name = getattr(distribution, "name", None)
+        distribution_version = getattr(distribution, "version", None)
+        if not distribution_name or canonicalize_name(distribution_name) != canonicalize_name(manifest.id):
+            raise PluginIdentityError(
+                f"entry-point {ep.name!r} distribution {distribution_name!r} does not match "
+                f"manifest id {manifest.id!r}; reinstall the plugin from its official distribution"
+            )
+        try:
+            version_matches = Version(str(distribution_version)) == Version(manifest.version)
+        except InvalidVersion as exc:
+            raise PluginIdentityError(
+                f"entry-point {ep.name!r} has invalid distribution or manifest version metadata"
+            ) from exc
+        if not version_matches:
+            raise PluginIdentityError(
+                f"entry-point {ep.name!r} distribution version {distribution_version} does not match "
+                f"manifest version {manifest.version}; reinstall the plugin"
+            )
+
+    def _validate_compatibility(self, manifest: PluginManifest) -> None:
+        if not manifest.pico:
+            return
+        try:
+            compatible = Version(self._pico_version) in SpecifierSet(manifest.pico)
+        except (InvalidSpecifier, InvalidVersion) as exc:
+            raise PluginCompatibilityError(
+                f"plugin {manifest.id!r} has invalid Pico compatibility metadata; reinstall a compatible plugin"
+            ) from exc
+        if not compatible:
+            raise PluginCompatibilityError(
+                f"plugin {manifest.id!r} {manifest.version} requires Pico {manifest.pico}, but installed Pico is "
+                f"{self._pico_version}; install a compatible plugin version or set memory.backend to null"
+            )
 
     # ── Conflict resolution ────────────────────────────────────────
 
@@ -227,4 +298,10 @@ class PluginDiscovery:
         return sorted(by_id.values(), key=lambda p: p.manifest.id)
 
 
-__all__ = ["DiscoveredPlugin", "PluginDiscovery", "Source"]
+__all__ = [
+    "DiscoveredPlugin",
+    "PluginCompatibilityError",
+    "PluginDiscovery",
+    "PluginIdentityError",
+    "Source",
+]

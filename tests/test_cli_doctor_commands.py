@@ -39,6 +39,17 @@ def healthy_config(tmp_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyP
     tui_bundle = tmp_path / "entry.js"
     tui_bundle.write_text("", encoding="utf-8")
     monkeypatch.setattr("pico.cli.tui_commands.resolve_dist_entry", lambda: tui_bundle)
+    from pico.cli._plugin_stack import MemoryBackendStatus
+
+    monkeypatch.setattr(
+        "pico.cli._plugin_stack.inspect_memory_backend",
+        lambda _config: MemoryBackendStatus(
+            backend="myna",
+            state="available",
+            plugin_id="myna-memory",
+            plugin_version="0.1.1rc3",
+        ),
+    )
 
     cfg = Config()
     cfg.agents.defaults.model = "anthropic/claude-sonnet-4-5"
@@ -78,6 +89,30 @@ def test_doctor_default_healthy_exit0(healthy_config: Path) -> None:
     # Routing section should mention the resolved provider name
     assert "anthropic" in r.stdout.lower()
     assert "Configuration looks healthy" in r.stdout or "All checks passed" in r.stdout
+    assert "myna-memory 0.1.1rc3" in r.stdout
+
+
+def test_doctor_memory_plugin_error_fails_closed(
+    healthy_config: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pico.cli._plugin_stack import MemoryBackendStatus
+
+    monkeypatch.setattr(
+        "pico.cli._plugin_stack.inspect_memory_backend",
+        lambda _config: MemoryBackendStatus(
+            backend="myna",
+            state="error",
+            error="install the myna-memory distribution and run 'myna init'",
+        ),
+    )
+
+    r = runner.invoke(app, ["doctor", "--json"])
+
+    assert r.exit_code == 1, r.stdout
+    data = json.loads(r.stdout)
+    assert data["memory"]["state"] == "error"
+    assert "myna init" in data["memory"]["error"]
 
 
 def test_doctor_checks_current_project_workspace_and_state(
@@ -97,6 +132,9 @@ def test_doctor_checks_current_project_workspace_and_state(
     cfg.agents.defaults.model = "anthropic/claude-sonnet-4-5"
     cfg.providers.anthropic.api_key = "sk-fake"
     save_config(cfg)
+    from pico.config.update import set_memory_backend
+
+    set_memory_backend(None)
 
     r = runner.invoke(app, ["doctor", "--json"])
 

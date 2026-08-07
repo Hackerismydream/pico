@@ -1,9 +1,9 @@
 # EverOS memory — extraction & retrieval E2E test plan
 
-> Status: historical pre-CodeCairn verification plan. Current `main` no longer
+> Status: historical EverOS verification plan. Current `main` no longer
 > bundles EverOS, and the commands and test files named below have been removed.
 > This document records the old Gate only; it is not a current release path or
-> CodeCairn verification procedure.
+> Myna verification procedure.
 
 This plan covered Pico's former bundled `EverosBackend` adapter over a real
 `everos` Runtime. It validated dual-track recall (user-side memory +

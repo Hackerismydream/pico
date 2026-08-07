@@ -112,7 +112,7 @@ must fail the Gate.
 | V-LF | `make verify-live-feishu` | operator-in-the-loop real Feishu tracer bullet; passed against the real Pico bot on 2026-07-27 |
 | V-TE0 | `make verify-turn-evidence` | deterministic Turn trace, usage, delivery, and terminal-state correlation |
 | V-E0 | `make verify-evolver` | deterministic Evolver lifecycle, Gates, evidence, activation artifacts, rollback |
-| V-R0 | `make verify-release` | one clean release commit satisfying every required layer; currently fail-closed on the blocked CodeCairn continuity layer |
+| V-R0 | `make verify-release` | one clean release commit satisfying every required layer; currently fail-closed until the compatible Myna artifact is formally available |
 
 `--help`, a successful import, a mock, a fixture, or a model-list endpoint is
 not a substitute for these behavior-level Gates.
@@ -134,8 +134,8 @@ green. Remove its tests or retarget them to the retained contract.
 
 ## Test isolation
 
-- use temporary Pico roots and initialized temporary Git repositories for
-  CodeCairn integration tests;
+- use temporary Pico roots and initialized temporary Git repositories for Myna
+  integration tests;
 - never write real keys into fixtures, command output, or reports;
 - bind evidence to the tested commit;
 - use synthetic ids and content for live services;

@@ -60,7 +60,7 @@ documented in [docs/dev.md](docs/dev.md).
 | V-R0 | `make verify-release` | Every layer below, assembled into one commit-bound release report |
 | V-D0 | `make test-retained` | The retained deterministic Runtime suite |
 | V-C0, V-S0 | `make verify-channels` | Channel contract bundle and Channel security and isolation bundle |
-| Memory continuity | blocked pending separately authorized `codecairn-003` | CodeCairn joint evidence must replace the historical V-O0 Gate before V-R0 can pass |
+| Memory continuity | blocked until `myna-memory` is formally available | Reproduce the installed Pico plus Myna composition from publishable artifacts before V-R0 can pass |
 | V-TE0 | `make verify-turn-evidence` | Tracing, usage, and delivery correlation for one Turn |
 | V-E0 | `make verify-evolver` | The opt-in Evolver Beta surface |
 | V-P0 | `scripts/verify_distribution.py` | Wheel and source distribution build, manifest, and install probes |
@@ -74,9 +74,10 @@ release notes rather than leaving live coverage implied. The current
 capability-to-Gate mapping is
 [docs/feature-evidence.md](docs/feature-evidence.md).
 
-The historical EverOS V-O0 command was removed with that integration. V-R0
-records the replacement `memory_continuity` layer as inconclusive until
-`codecairn-003` receives separate authority and lands an executable joint Gate.
+The historical EverOS and CodeCairn commands were removed with those
+integrations. V-R0 records the replacement `memory_continuity` layer as
+inconclusive until the compatible Myna distribution can be resolved from a
+formal artifact source and the installed composition is reproducible.
 
 ## Flow
 

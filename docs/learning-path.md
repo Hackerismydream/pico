@@ -124,7 +124,7 @@ overhead, with the Curator as its Segment 6. The Curator is where token
 pressure is handled without silent loss: a Fast Path passes history through
 untouched, a Slow Path plans archives and retrievals, and a deterministic
 Fail-Safe takes over whenever that plan is missing or invalid. Memory is
-reached through the public backend contract, with the installed CodeCairn
+reached through the public backend contract, with the installed Myna
 Plugin providing repository-scoped recall and durable post-Turn storage.
 Reading these together answers the question the layers exist for: what a Turn
 remembers, what it can retrieve verbatim, and what it can never lose silently.
@@ -138,10 +138,10 @@ uv run pico sessions list
 uv run pico sessions export <session-id>
 ```
 
-Gate: the retained V-D0 Session and Context subsets plus the Issue #65
-installed CodeCairn checks. They prove normalized storage, fail-closed
-selection, and Memory-off isolation, but do not substitute for the blocked
-joint continuity campaign.
+Gate: the retained V-D0 Session and Context subsets plus the installed Myna
+composition verifier. They prove normalized storage, fail-closed selection,
+cross-process provenance, and Memory-off isolation. They do not prove task
+effect, performance, or production success.
 
 ## 4. Skills and Plugins
 

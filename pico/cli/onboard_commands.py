@@ -2,14 +2,14 @@
 
 Goal: get a new user from ``pip install`` to a working agent in a few
 minutes, without ever opening ``~/.pico/config.json`` or
-the CodeCairn repository binding.
+the Myna repository binding.
 
 Steps (mirrors ``my_docs/temp/onboard-flow.mermaid``):
   0. Welcome
   1. LLM provider (required; multi-provider, in-step connectivity + test probe)
   2. Sandbox / run location (optional, single-select)
   3. Chat channel (optional, stackable)
-  4. CodeCairn repository memory (selected by default; explicit init required)
+  4. Myna repository memory (selected by default; explicit init required)
   5. Done
 
 All writes go through the ``update_providers`` / ``update_channels`` /
@@ -309,7 +309,7 @@ def _bootstrap_empty_config() -> None:
     """Make sure ``~/.pico/config.json`` + workspace dir exist before we patch.
 
     We seed the user-facing extension defaults (memory / plugins / skillForge),
-    including ``memory.backend = "codecairn"``. Step 4 keeps that selection or
+    including ``memory.backend = "myna"``. Step 4 keeps that selection or
     writes ``None`` when the user explicitly disables Memory.
 
     Seeding runs on EVERY onboard, not just a brand-new config: the writer is
@@ -2017,17 +2017,17 @@ def _init_extension_block_defaults() -> None:
 
 
 def _memory_enabled() -> bool:
-    """Return whether the configured Runtime selects CodeCairn Memory."""
+    """Return whether the configured Runtime selects Myna Memory."""
     data = _load_raw_config()
-    return (data.get("memory") or {}).get("backend") == "codecairn"
+    return (data.get("memory") or {}).get("backend") == "myna"
 
 
 def _step4_memory(
     *, skip: bool, non_interactive: bool, main_model: Optional[str], warnings: list[str], skip_test: bool = False
 ) -> object:
-    """Select CodeCairn and explain the explicit repository initialization."""
+    """Select Myna and explain the explicit repository initialization."""
     del non_interactive, main_model, warnings, skip_test
-    _step_header(4, _t("CodeCairn repository memory", "CodeCairn 仓库记忆"))
+    _step_header(4, _t("Myna repository memory", "Myna 仓库记忆"))
     if skip:
         _set_memory_backend(None)
         console.print(
@@ -2037,16 +2037,16 @@ def _step4_memory(
             )
         )
         return None
-    _set_memory_backend("codecairn")
+    _set_memory_backend("myna")
     console.print(
         _t(
-            "  [dim]Pico uses CodeCairn for long-term repository memory. "
+            "  [dim]Pico uses Myna for long-term repository memory. "
             "From the configured Git workspace, run:[/dim]\n"
-            "  [#fbe23f]codecairn init --prefetch[/#fbe23f]\n"
+            "  [#fbe23f]myna init[/#fbe23f]\n"
             "  [dim]Pico will fail closed until initialization and health checks pass. "
             "Set memory.backend to null to disable Memory explicitly.[/dim]",
-            "  [dim]Pico 使用 CodeCairn 提供长期仓库记忆。请在已配置的 Git 工作区运行：[/dim]\n"
-            "  [#fbe23f]codecairn init --prefetch[/#fbe23f]\n"
+            "  [dim]Pico 使用 Myna 提供长期仓库记忆。请在已配置的 Git 工作区运行：[/dim]\n"
+            "  [#fbe23f]myna init[/#fbe23f]\n"
             "  [dim]初始化和健康检查通过前，Pico 会拒绝启动。"
             "如需明确关闭记忆，请将 memory.backend 设为 null。[/dim]",
         )
@@ -2105,7 +2105,7 @@ def _print_next_steps(*, warnings: list[str]) -> None:
         else _t("Sandbox (boxlite)", "沙箱(boxlite)")
     )
     chans = ", ".join(_enabled_channels()) or _t("none", "无")
-    mem = _t("CodeCairn", "CodeCairn") if _memory_enabled() else _t("disabled", "已关闭")
+    mem = _t("Myna", "Myna") if _memory_enabled() else _t("disabled", "已关闭")
     recap = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
     recap.add_column(style="dim", no_wrap=True)
     recap.add_column()

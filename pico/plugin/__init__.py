@@ -23,7 +23,13 @@ from __future__ import annotations
 
 from pico.plugin.bootstrap import assemble_plugin_registry
 from pico.plugin.context import PluginContext, ServiceLocator
-from pico.plugin.discover import DiscoveredPlugin, PluginDiscovery, Source
+from pico.plugin.discover import (
+    DiscoveredPlugin,
+    PluginCompatibilityError,
+    PluginDiscovery,
+    PluginIdentityError,
+    Source,
+)
 from pico.plugin.manifest import (
     Contributes,
     MemoryBackendContribution,
@@ -47,10 +53,12 @@ __all__ = [
     "MemoryBackendContribution",
     "MemoryBackendFactory",
     "PluginConflictError",
+    "PluginCompatibilityError",
     "PluginContext",
     "PluginDiscovery",
     "PluginError",
     "PluginFactoryImportError",
+    "PluginIdentityError",
     "PluginManifest",
     "PluginNotFoundError",
     "PluginRegistry",

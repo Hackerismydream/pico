@@ -14,7 +14,7 @@ Pico 是通用 Agent Harness，不是 Coding Agent。可选的 Evolver 可以生
 - **一套 Runtime：** CLI、原生 TUI、Gateway、Cron 和 Channels 都通过 Spine
   提交相同的 Turn 契约。
 - **持久上下文：** Session 以 JSONL 保存，每次模型调用前都会进行 Context 预算；
-  CodeCairn 通过公共 Plugin 接口提供仓库级 Memory。
+  Myna 通过公共 Plugin 接口提供仓库级 Memory。
 - **受控工具：** Filesystem、Shell、Web、MCP、消息和 Subagent Tools 共用确认、
   Sandbox 与 Tracing 边界。
 - **先有证据，再有结论：** 确定性检查、真实集成、基础设施失败和无结论结果分别
@@ -94,7 +94,7 @@ CLI / TUI / Gateway / Cron / Channel
 ```
 
 Context Engine 会检索并预算相关状态，而不是直接截断旧消息。关闭 Memory 后，
-本地 Skills 仍然可用。CodeCairn 管理自己的仓库绑定和存储，Pico 只通过已安装的
+本地 Skills 仍然可用。Myna 管理自己的仓库绑定和存储，Pico 只通过已安装的
 Memory Plugin 契约使用它。
 
 飞书渠道通过真实 Pico bot 的 Gate 管理 live claim。QQ 和企业微信仍是 Beta：
@@ -109,7 +109,7 @@ commit 和场景。
 | 前台项目 | 当前目录 |
 | 前台项目状态 | `~/.pico/projects/<project-id>` |
 | Gateway Workspace | `~/.pico/workspace` |
-| CodeCairn 仓库绑定 | 由 `codecairn init` 选择的 CodeCairn 配置 |
+| Myna 仓库绑定 | 由 `myna init` 选择的 Myna 配置 |
 
 `PICO_HOME` 可以移动 Pico 的全局根目录。项目状态保存在仓库之外，因此正常启动
 不会污染 Git，也不会信任仓库控制的 bootstrap 文件。显式传入 `--workspace` 或
