@@ -12,6 +12,7 @@ from pico.agent.loop import AgentLoop
 from pico.config.pico import (
     ContextConfig,
     MemoryConfig,
+    SkillForgeConfig,
     SkillForgeRouterConfig,
 )
 from pico.context_engine import ContextAssembler, TurnContext
@@ -45,13 +46,18 @@ class _FakeBackend:
 class _StubProvider:
     api_key = "test"
 
+    def __init__(self) -> None:
+        self.calls = 0
+
     def get_default_model(self) -> str:
         return "stub"
 
     async def chat(self, *args, **kwargs):
+        self.calls += 1
         raise NotImplementedError
 
     async def chat_with_retry(self, *args, **kwargs):
+        self.calls += 1
         raise NotImplementedError
 
 
@@ -65,19 +71,22 @@ def _build_engine(
     backend=None,
     memory_config: MemoryConfig | None = None,
     router_config: SkillForgeRouterConfig | None = None,
+    skill_forge_config: SkillForgeConfig | None = None,
+    provider: _StubProvider | None = None,
 ) -> ContextAssembler:
     builder = ContextBuilder(workspace=tmp_path)
     engine = build_context_engine(
         workspace=tmp_path,
         config=ContextConfig(),
         builder=builder,
-        provider=_StubProvider(),
+        provider=provider or _StubProvider(),
         model="stub",
         context_window_tokens=8192,
         get_tool_definitions=_stub_get_defs,
         backend=backend,
         memory_config=memory_config or MemoryConfig(),
         skill_forge_router_config=router_config or SkillForgeRouterConfig(),
+        skill_forge_config=skill_forge_config,
     )
     assert isinstance(engine, ContextAssembler)
     return engine
@@ -113,6 +122,48 @@ class TestFactory:
 
 
 class TestSkillForgeRouterAssembly:
+    async def test_first_turn_skill_resolution_never_calls_provider(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        skill_dir = tmp_path / "skills" / "release-helper"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\n"
+            "name: release-helper\n"
+            "description: Prepare and verify a production release\n"
+            "---\n"
+            "Prepare and verify a production release.\n",
+            encoding="utf-8",
+        )
+        provider = _StubProvider()
+        engine = _build_engine(
+            tmp_path,
+            backend=None,
+            skill_forge_config=SkillForgeConfig(
+                rewrite_enabled=True,
+                llm_gate_enabled=True,
+            ),
+            provider=provider,
+        )
+
+        await engine.assemble(
+            "first-turn",
+            [],
+            TokenBudget(
+                context_length=32_000,
+                reserved_output=4_000,
+                reserved_tools=2_000,
+                reserved_system=2_000,
+                available_history=24_000,
+            ),
+            turn=TurnContext(
+                current_message="prepare and verify a production release",
+            ),
+        )
+
+        assert provider.calls == 0
+
     async def test_real_local_skill_injects_body_and_resolves_bundled_files(
         self,
         tmp_path: Path,
@@ -155,6 +206,44 @@ class TestSkillForgeRouterAssembly:
         assert "Run " + str(skill_dir / "scripts" / "release.sh") in system
         assert f"[the checklist]({skill_dir / 'references' / 'CHECKLIST.md'})" in system
         assert "{baseDir}" not in system
+
+    async def test_summary_mode_exposes_reference_without_body(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        skill_dir = tmp_path / "skills" / "release-helper"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\n"
+            "name: release-helper\n"
+            "description: Prepare and verify a production release\n"
+            "---\n"
+            "Run the private release procedure.\n",
+            encoding="utf-8",
+        )
+        engine = _build_engine(
+            tmp_path,
+            backend=None,
+            skill_forge_config=SkillForgeConfig(injection_mode="summary"),
+        )
+
+        assembled = await engine.assemble(
+            "summary-mode",
+            [],
+            TokenBudget(
+                context_length=32_000,
+                reserved_output=4_000,
+                reserved_tools=2_000,
+                reserved_system=2_000,
+                available_history=24_000,
+            ),
+            turn=TurnContext(current_message="use release-helper"),
+        )
+
+        system = assembled.messages[0]["content"]
+        assert "local/release-helper" in assembled.metadata["referenced_skill_ids"]
+        assert "Run the private release procedure." not in system
+        assert "skill_read" in system
 
     def test_local_source_always_present(self, tmp_path: Path) -> None:
         types, _ = _router_sources(_build_engine(tmp_path, backend=_FakeBackend()))
@@ -235,6 +324,9 @@ def _make_loop(tmp_path: Path, *, backend=None) -> AgentLoop:
 
 
 class TestAgentLoopEngineDetection:
+    def test_registers_skill_read_tool(self, tmp_path: Path) -> None:
+        assert _make_loop(tmp_path, backend=None).tools.has("skill_read")
+
     def test_uses_default_engine_always_true(self, tmp_path: Path) -> None:
         assert _make_loop(tmp_path, backend=_FakeBackend())._uses_default_engine() is True
 

@@ -18,6 +18,7 @@ the build_tui bundle (``scheduler`` / ``turn_ids`` / ``submission_ids`` /
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -39,6 +40,7 @@ if TYPE_CHECKING:
     from pico.tui_rpc.dispatcher import Dispatcher
 
 _TURN_FAILED_CODE = -32099
+SchedulerFactory = Callable[[], Awaitable[Scheduler]]
 
 # ---------------------------------------------------------------------------
 # Module-level state
@@ -131,6 +133,7 @@ async def turn_send(
     *,
     emitter: SubscriptionEmitter | None = None,
     scheduler: Scheduler | None = None,
+    scheduler_factory: SchedulerFactory | None = None,
     turn_ids: dict[int, str] | None = None,
     submission_ids: dict[int, str] | None = None,
     build_error: RpcError | None = None,
@@ -151,6 +154,12 @@ async def turn_send(
     except ValidationError as exc:
         # Re-raise as-is; dispatcher will catch and emit -32603 internal_error.
         raise exc
+
+    if scheduler is None and scheduler_factory is not None:
+        try:
+            scheduler = await scheduler_factory()
+        except RpcError as exc:
+            build_error = exc
 
     # Fail-fast: model availability before the active-turn slot, so a -32008
     # reject does not lock the session out of subsequent sends.
@@ -349,6 +358,7 @@ def register_turn_methods(
     *,
     emitter: SubscriptionEmitter | None = None,
     scheduler: Scheduler | None = None,
+    scheduler_factory: SchedulerFactory | None = None,
     turn_ids: dict[int, str] | None = None,
     submission_ids: dict[int, str] | None = None,
     build_error: RpcError | None = None,
@@ -366,6 +376,7 @@ def register_turn_methods(
             params,
             emitter=emitter,
             scheduler=scheduler,
+            scheduler_factory=scheduler_factory,
             turn_ids=turn_ids,
             submission_ids=submission_ids,
             build_error=build_error,

@@ -7,10 +7,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from pico.agent.context import ContextBuilder
 from pico.context_engine.assembler import ContextAssembler
 from pico.context_engine.base import AssemblyContext, ContextEngine, Segment
-from pico.context_engine.factory import (
-    _build_rewriter_and_gate,
-    _build_router,
-)
+from pico.context_engine.factory import _build_router
 from pico.context_engine.history_trimmer import HistoryTrimmer
 from pico.context_engine.segments import (
     ActiveSkillsSegmentBuilder,
@@ -254,11 +251,11 @@ def _build_benchmark_context_engine(
         builder=builder,
         skill_forge_router_config=resolved_router,
     )
-    rewriter, gate = _build_rewriter_and_gate(
-        provider=provider,
-        skill_forge_config=skill_forge_config,
-        skill_forge_router_config=resolved_router,
+    configured_inject_max = int(getattr(skill_forge_config, "inject_max", 2)) if skill_forge_config is not None else 2
+    summary_only = (
+        skill_forge_config is not None and getattr(skill_forge_config, "injection_mode", "full_body") == "summary"
     )
+    activation_max = 0 if summary_only else configured_inject_max or resolved_router.top_k
     builders = [
         IdentitySegmentBuilder(workspace),
         BootstrapSegmentBuilder(workspace),
@@ -273,12 +270,7 @@ def _build_benchmark_context_engine(
         SkillsSegmentBuilder(
             router,
             skill_top_k=resolved_router.top_k,
-            rewriter=rewriter,
-            gate=gate,
-            gate_pool_size=(
-                int(getattr(skill_forge_config, "llm_gate_pool_size", 10)) if skill_forge_config is not None else 10
-            ),
-            get_tool_definitions=get_tool_definitions,
+            activation_max=activation_max,
         ),
         history_manager,
     ]

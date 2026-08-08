@@ -119,6 +119,26 @@ async def test_turn_send_happy_path_returns_turn_id_and_accepted() -> None:
     assert emitter.types() == []
 
 
+async def test_turn_send_acquires_scheduler_from_runtime_host() -> None:
+    scheduler = FakeScheduler()
+    acquired: list[str] = []
+
+    async def _acquire_scheduler():
+        acquired.append("ready")
+        return scheduler
+
+    result = await turn_send(
+        {"session_key": "tui:default", "content": "hello"},
+        scheduler_factory=_acquire_scheduler,
+        turn_ids={},
+        submission_ids={},
+    )
+
+    assert result["accepted"] is True
+    assert acquired == ["ready"]
+    assert len(scheduler.submitted) == 1
+
+
 async def test_turn_send_generates_unique_turn_ids() -> None:
     scheduler = FakeScheduler()
     turn_ids: dict[int, str] = {}

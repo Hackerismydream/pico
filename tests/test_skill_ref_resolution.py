@@ -199,3 +199,36 @@ def test_multi_skill_each_own_dir(svc, tmp_path):
 
 def test_empty_body_skipped(svc, skill_dir):
     assert render(svc, skill_dir, "") == ""
+
+
+async def test_skill_read_loads_registered_skill_outside_agent_workspace(
+    tmp_path: Path,
+) -> None:
+    from pico.agent.tools.skill import SkillReadTool
+    from pico.config.pico import SkillForgeConfig
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    external = tmp_path / "external"
+    skill_dir = external / "release-helper"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: release-helper\ndescription: Release workflow\n---\nRun the release workflow.\n",
+        encoding="utf-8",
+    )
+    builtin = tmp_path / "builtin"
+    builtin.mkdir()
+    catalog = LocalSkillCatalog(
+        workspace,
+        config=SkillForgeConfig(
+            local_dirs=[{"path": str(external), "name": "external"}],
+        ),
+        builtin_skills_dir=builtin,
+        start_watcher=False,
+    )
+    tool = SkillReadTool(catalog)
+
+    result = await tool.execute(name="release-helper")
+
+    assert "Run the release workflow." in result
+    assert str(skill_dir) in result

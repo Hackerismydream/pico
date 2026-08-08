@@ -193,20 +193,15 @@ class LocalDirConfig(_Base):
 class SkillForgeConfig(_Base):
     """SkillForge configuration.
 
-    ``enabled=True`` (default, R8) activates the SkillForge retrieval/
-    injection pipeline. Set ``enabled=False`` to fall back to the
-    pre-refactor behavior of handing the full skill directory to the LLM
-    (component stubs that return empty lists also cause ``ContextBuilder``
-    to fall back to the full directory automatically).
-
-    Repository Memory is independent of this subsystem. SkillForge retrieves
-    only operator-managed Local Skills.
+    The active Runtime resolves operator-managed Local Skills without Provider
+    calls. Repository Memory is independent of this subsystem. Legacy remote
+    retrieval and LLM-selection fields remain loadable for old evaluation
+    configurations but do not participate in the active Runtime path.
     """
 
     # --- Master switch + location ---
     enabled: bool = True
-    """Master switch (R8: default True). Activates the SkillForge
-    retrieval/injection pipeline."""
+    """Compatibility switch used while discovering configured Local Skill directories."""
 
     router: "SkillForgeRouterConfig" = Field(
         default_factory=lambda: SkillForgeRouterConfig(),
@@ -285,9 +280,12 @@ class SkillForgeConfig(_Base):
     """When reranker is enabled, mass pool fetches this many candidates
     for rescoring, then truncates to ``mass_pool_top_k`` before RRF."""
 
-    # --- Query rewrite knobs ---
-    rewrite_enabled: bool = True
-    """Enable a second retrieval path with LLM-rewritten queries."""
+    # --- Legacy query rewrite knobs ---
+    rewrite_enabled: bool = False
+    """Legacy evaluation knob retained for config compatibility.
+
+    The active Runtime never rewrites Local Skill queries with a Provider;
+    Skill resolution is local-only so it cannot delay the main model call."""
 
     rewrite_max_tokens: int = 8192
     """Output token budget for the rewriter LLM call. Defaults to 8192 to
@@ -303,17 +301,11 @@ class SkillForgeConfig(_Base):
     injection_mode: str = "full_body"
     """How selected skills are surfaced to the agent.
 
-    - ``"full_body"`` (default, OpenSpace style): load_skills_for_context
-      inlines the full SKILL.md body of up to ``inject_max`` LLM-gate-
-      selected candidates into the system prompt. Higher token cost but
-      guarantees content visibility. Pairs with ``llm_gate_enabled=True``
-      below — the gate cuts a 15-skill candidate pool down to ~2 truly
-      relevant ones, so per-turn token cost stays bounded (~2-10K).
-    - ``"summary"``: build_skills_summary renders an XML directory of
-      (name, description, available) tuples. Agent must call ``read_file``
-      on a skill's SKILL.md to access its body — progressive disclosure,
-      cheaper in tokens but Round-D eval showed agents often skip the
-      read step entirely (top1_kw rate ~0.62 vs ~0.80 with full_body)."""
+    - ``"full_body"`` (default): inline the body of up to ``inject_max``
+      explicit local matches and expose ambiguous matches as compact
+      references.
+    - ``"summary"``: expose all relevant matches as compact references.
+      The Agent Loop calls ``skill_read`` to load a selected body."""
 
     inject_max: int = 2
     """Max skills inlined when ``injection_mode='full_body'``. Each skill body
@@ -328,15 +320,13 @@ class SkillForgeConfig(_Base):
     by local_dirs list order + alphabetical, with a WARN listing dropped
     skill names."""
 
-    # --- LLM gate selector (default-on, mirrors openspace select_skills_with_llm) ---
-    llm_gate_enabled: bool = True
-    """When ``True`` (default), ``select()`` resolves a pool of
-    ``llm_gate_pool_size`` candidates after RRF merge, then asks an LLM to
-    plan + filter down to ``llm_gate_max_select`` skills. Empty result is
-    valid ("inject nothing"). Costs one LLM call per ``select()`` invocation
-    but eliminates the ~30% noise-injection rate of pure-RRF top-K (Round D
-    obs.: irrelevant skills polluting the prompt). Disable to skip the
-    extra LLM call (rare; useful when LLM provider is unavailable)."""
+    # --- Legacy LLM gate selector ---
+    llm_gate_enabled: bool = False
+    """Legacy evaluation knob retained for config compatibility.
+
+    The active Runtime uses deterministic local confidence instead of an LLM
+    gate. Ambiguous candidates become compact references that the main Agent
+    Loop can inspect with ``skill_read``."""
 
     llm_gate_max_select: int = 2
     """Upper bound on skills the gate may select. Mirrors ``inject_max``."""

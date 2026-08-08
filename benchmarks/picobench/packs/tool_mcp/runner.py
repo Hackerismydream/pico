@@ -71,6 +71,7 @@ _DISABLED_DEFAULT_TOOLS = [
     "list_dir",
     "message",
     "read_file",
+    "skill_read",
     "spawn",
     "understand_media",
     "web_fetch",

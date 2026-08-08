@@ -48,6 +48,8 @@ class TestDefaults:
 
     def test_skill_forge_public_defaults(self) -> None:
         c = SkillForgeConfig()
+        assert c.rewrite_enabled is False
+        assert c.llm_gate_enabled is False
         assert c.embedding_model == "default"
         assert c.embedding_url == "http://localhost:1357"
         assert c.embedding_api_key is None
