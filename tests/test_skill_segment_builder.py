@@ -1,47 +1,18 @@
-"""End-to-end tests for SkillsSegmentBuilder.
-
-The builder owns the rewriter, router, gate, local-reference resolution,
-and render pipeline. Tests use stub sources to exercise each stage
-without network or LLM calls.
-"""
+"""End-to-end tests for the local-only SkillsSegmentBuilder path."""
 
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from pico.context_engine.base import AssemblyContext, TokenBudget
 from pico.context_engine.segments.skills import SkillsSegmentBuilder
-from pico.memory_engine.skill_forge import (
-    LLMGateFilter,
-    QueryRewriter,
-    SkillForgeRouter,
-)
+from pico.memory_engine.skill_forge import SkillForgeRouter
 from pico.memory_engine.skill_forge.types import RouterHit
 
 # ----------------------------------------------------------------------
 # Stub doubles
 # ----------------------------------------------------------------------
-
-
-@dataclass
-class _Resp:
-    content: str
-    finish_reason: str = "stop"
-
-
-class _StubProvider:
-    def __init__(self, response: Any) -> None:
-        self._response = response
-
-    async def chat_with_retry(self, **_kwargs: Any) -> _Resp:
-        if isinstance(self._response, Exception):
-            raise self._response
-        if isinstance(self._response, _Resp):
-            return self._response
-        return _Resp(content=str(self._response))
 
 
 class _StubSource:
@@ -120,116 +91,83 @@ async def test_no_router_returns_empty_segment() -> None:
     assert seg.meta["injected_skill_ids"] == []
 
 
-# ----------------------------------------------------------------------
-# Rewriter stage
-# ----------------------------------------------------------------------
-
-
-async def test_rewriter_skip_short_circuits_segment() -> None:
-    src = _StubSource("local", [_hit("local/foo", "foo", body="b")])
-    router = SkillForgeRouter([src])
-    rewriter = QueryRewriter(_StubProvider(json.dumps({"need_retrieval": False})))
-    builder = SkillsSegmentBuilder(router, rewriter=rewriter)
-    seg = await builder.build(_ctx("hello there"))
-    assert seg.text == ""
-    assert seg.meta.get("rewriter_skipped") is True
-    assert seg.meta["injected_skill_ids"] == []
-
-
-async def test_rewriter_rewrite_passes_through() -> None:
-    """When rewriter returns a rewritten_query, the router should be
-    invoked with it (not the original)."""
-    received: list[str] = []
-
-    class _SpySource:
-        name = "local"
-        weight = 1.0
-
-        async def search(self, query, history, k):  # noqa: D401
-            received.append(query)
-            return []
-
-    router = SkillForgeRouter([_SpySource()])
-    rewriter = QueryRewriter(
-        _StubProvider(
-            json.dumps(
-                {
-                    "need_retrieval": True,
-                    "rewritten_query": "pdf gen",
-                }
-            )
-        )
-    )
-    builder = SkillsSegmentBuilder(router, rewriter=rewriter)
-    await builder.build(_ctx("please generate me a pdf report"))
-    assert received == ["pdf gen"]
-
-
-async def test_rewriter_provider_failure_is_visible_in_segment_metadata() -> None:
-    src = _StubSource("local", [_hit("local/foo", "foo", body="b")])
-    builder = SkillsSegmentBuilder(
-        SkillForgeRouter([src]),
-        rewriter=QueryRewriter(_StubProvider(TimeoutError("provider timeout"))),
-    )
-
-    seg = await builder.build(_ctx("specialized task"))
-
-    assert seg.meta["skill_rewriter_fallback_reason"] == "provider_exception"
-    assert seg.meta["skill_rewriter_failure_type"] == "TimeoutError"
-    assert seg.meta["injected_skill_ids"] == ["local/foo"]
-
-
-# ----------------------------------------------------------------------
-# Gate stage
-# ----------------------------------------------------------------------
-
-
-async def test_gate_filters_pool_down_to_selected() -> None:
+async def test_ambiguous_local_hit_is_referenced_without_body(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "release-helper"
+    skill_dir.mkdir()
+    skill_path = skill_dir / "SKILL.md"
+    skill_path.write_text("release body", encoding="utf-8")
     src = _StubSource(
         "local",
         [
-            _hit("local/keep", "keep", body="k"),
-            _hit("local/drop", "drop", body="d"),
+            _hit(
+                "local/release-helper",
+                "release-helper",
+                body="SECRET FULL BODY",
+                description="Prepare and verify a production release",
+                skill_dir=str(skill_dir),
+            )
         ],
     )
-    gate = LLMGateFilter(
-        _StubProvider(json.dumps({"plan": "p", "skills": ["local/keep"]})),
-        max_select=2,
-    )
-    builder = SkillsSegmentBuilder(
-        SkillForgeRouter([src]),
-        gate=gate,
-        gate_pool_size=5,
-    )
-    seg = await builder.build(_ctx("task"))
-    assert seg.meta["injected_skill_ids"] == ["local/keep"]
-    assert "drop" not in seg.text
+    builder = SkillsSegmentBuilder(SkillForgeRouter([src]))
+
+    seg = await builder.build(_ctx("verify production readiness"))
+
+    assert "SECRET FULL BODY" not in seg.text
+    assert "skill_read" in seg.text
+    assert "release-helper" in seg.text
+    assert seg.meta["injected_skill_ids"] == []
+    assert seg.meta["referenced_skill_ids"] == ["local/release-helper"]
 
 
-async def test_gate_empty_selection_yields_empty_segment() -> None:
-    src = _StubSource("local", [_hit("local/foo", "foo", body="x")])
-    gate = LLMGateFilter(
-        _StubProvider(json.dumps({"plan": "none fits", "skills": []})),
+async def test_unrelated_local_hit_is_omitted(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "weather-helper"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text("weather body", encoding="utf-8")
+    src = _StubSource(
+        "local",
+        [
+            _hit(
+                "local/weather-helper",
+                "weather-helper",
+                body="weather forecasts and temperature",
+                description="Look up the weather forecast",
+                skill_dir=str(skill_dir),
+            )
+        ],
     )
-    builder = SkillsSegmentBuilder(SkillForgeRouter([src]), gate=gate)
-    seg = await builder.build(_ctx("task"))
+    builder = SkillsSegmentBuilder(SkillForgeRouter([src]))
+
+    seg = await builder.build(_ctx("fix the database migration"))
+
     assert seg.text == ""
     assert seg.meta["injected_skill_ids"] == []
+    assert seg.meta["referenced_skill_ids"] == []
 
 
-async def test_gate_provider_failure_is_visible_in_segment_metadata() -> None:
-    src = _StubSource("local", [_hit("local/foo", "foo", body="x")])
-    gate = LLMGateFilter(
-        _StubProvider(ConnectionError("provider unavailable")),
-        legacy_top_k=1,
+async def test_activation_limit_keeps_overflow_hits_as_references(tmp_path: Path) -> None:
+    hits = []
+    for name in ("pdf-tool", "chart-tool"):
+        skill_dir = tmp_path / name
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(f"{name} body", encoding="utf-8")
+        hits.append(
+            _hit(
+                f"local/{name}",
+                name,
+                body=f"{name} body",
+                description=f"Use {name}",
+                skill_dir=str(skill_dir),
+            )
+        )
+    builder = SkillsSegmentBuilder(
+        SkillForgeRouter([_StubSource("local", hits)]),
+        activation_max=1,
     )
-    builder = SkillsSegmentBuilder(SkillForgeRouter([src]), gate=gate)
 
-    seg = await builder.build(_ctx("task"))
+    seg = await builder.build(_ctx("use pdf-tool and chart-tool"))
 
-    assert seg.meta["skill_gate_fallback_reason"] == "provider_exception"
-    assert seg.meta["skill_gate_failure_type"] == "ConnectionError"
-    assert seg.meta["injected_skill_ids"] == ["local/foo"]
+    assert seg.meta["injected_skill_ids"] == ["local/pdf-tool"]
+    assert seg.meta["referenced_skill_ids"] == ["local/chart-tool"]
 
 
 # ----------------------------------------------------------------------
@@ -237,7 +175,7 @@ async def test_gate_provider_failure_is_visible_in_segment_metadata() -> None:
 # ----------------------------------------------------------------------
 
 
-async def test_post_gate_resolves_local_refs(tmp_path: Path) -> None:
+async def test_activated_skill_resolves_local_refs(tmp_path: Path) -> None:
     skill_dir = tmp_path / "skill"
     (skill_dir / "references").mkdir(parents=True)
     (skill_dir / "references" / "x.md").write_text("ref body")
@@ -255,45 +193,6 @@ async def test_post_gate_resolves_local_refs(tmp_path: Path) -> None:
         ],
     )
     builder = SkillsSegmentBuilder(SkillForgeRouter([src]), skill_top_k=1)
-    seg = await builder.build(_ctx("anything"))
+    seg = await builder.build(_ctx("use foo"))
     assert f"{skill_dir}/references/x.md" in seg.text
     assert "{baseDir}" not in seg.text
-
-
-# ----------------------------------------------------------------------
-# Tool-names collection
-# ----------------------------------------------------------------------
-
-
-async def test_get_tool_names_extracts_from_openai_schema() -> None:
-    captured: list[list[str] | None] = []
-
-    class _CaptureGate(LLMGateFilter):  # type: ignore[misc]
-        async def filter(
-            self,
-            task,
-            candidates,
-            available_tools=None,
-            *,
-            diagnostics=None,
-        ):  # type: ignore[override]
-            captured.append(available_tools)
-            return []
-
-    gate = _CaptureGate(_StubProvider(json.dumps({"plan": "", "skills": []})))
-    src = _StubSource("local", [_hit("local/a", "a")])
-
-    def tool_defs() -> list[dict]:
-        return [
-            {"type": "function", "function": {"name": "read_file"}},
-            {"type": "function", "function": {"name": "exec"}},
-            {"name": "flat_form"},
-        ]
-
-    builder = SkillsSegmentBuilder(
-        SkillForgeRouter([src]),
-        gate=gate,
-        get_tool_definitions=tool_defs,
-    )
-    await builder.build(_ctx("task"))
-    assert captured == [["read_file", "exec", "flat_form"]]

@@ -699,7 +699,7 @@ def llm_call_stream(span, bound: dict[str, Any], result: Any, exc: BaseException
 def tool_call(span, bound: dict[str, Any], result: Any, exc: BaseException | None) -> None:
     """Extractor for ``ToolRegistry.execute``.
 
-    Retypes to ``skill.read`` when ``read_file`` targets a SKILL.md;
+    Retypes explicit ``skill_read`` calls and ``read_file`` calls targeting a SKILL.md;
     otherwise stays ``tool.call``. The originating tool is preserved in
     ``skill.read.via_tool``.
     """
@@ -708,8 +708,20 @@ def tool_call(span, bound: dict[str, Any], result: Any, exc: BaseException | Non
     call_id = bound.get("call_id")
     if call_id:
         span.set({"tool.call_id": call_id})
+    skill_name = params.get("name") if name == "skill_read" and isinstance(params, dict) else None
     skill_read_path = _skill_read_path(name, params)
-    if skill_read_path:
+    if isinstance(skill_name, str) and skill_name:
+        span.retype("skill.read", "skill")
+        span.set(
+            {
+                "skill.tool": name,
+                "skill.read.via_tool": "skill_read",
+                "skill.injected_via": "skill_read",
+                "skill.name": skill_name,
+                "skill.result_preview": _preview(result),
+            }
+        )
+    elif skill_read_path:
         span.retype("skill.read", "skill")
         span.set(
             {

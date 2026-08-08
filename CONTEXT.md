@@ -56,6 +56,12 @@ MCP, and Sandbox teardown.
 _Avoid_: "Runtime factory" or "lifecycle Interface" — this is one concrete composition
 with three real host consumers, not an implementation hierarchy.
 
+**TUI Runtime Host** (`cli/_runtime_host.py`):
+The TUI-owned lifecycle module that builds Runtime Assembly off the TUI-RPC
+event loop, exposes it through ``start`` / ``acquire`` / ``close``, and keeps
+handshake readiness independent from Runtime construction. It does not replace
+Runtime Assembly or change the other Runtime hosts.
+
 **Turn Runner**:
 The behavioural `Protocol` seam between Spine and an agent implementation:
 `async run(req, emit, drain) → TurnOutcome`. Spine never imports the agent side; the agent
@@ -375,11 +381,13 @@ Pico Session JSONL and does not provide mid-Turn recovery.
 _Avoid_: Session mirror, Task journal.
 
 **SkillForge** (`memory_engine/skill_forge/`):
-A Local Skill retrieval and injection subsystem. The active Runtime queries the
-local BM25/CJK-aware source, optionally rewrites the query or applies an LLM
-gate, and injects bounded survivors into the prompt. It does not retrieve
-remembered Skills from the Memory backend. Generic RRF helpers remain for
-historical benchmark reconstruction and third-party callers.
+A Local Skill retrieval and injection subsystem. The active Runtime resolves
+the local BM25/CJK-aware source without Provider calls: explicit matches inject
+bounded Skill bodies, ambiguous matches expose compact ``SKILL.md`` references
+for the main Agent Loop to read, and unrelated matches abstain. It does not
+retrieve remembered Skills from the Memory backend. The rewriter, LLM gate, and
+generic RRF helpers remain for historical benchmark reconstruction and
+third-party callers, outside the active first-Turn path.
 
 **Episode**:
 A distilled event note the Consolidation step writes to `episodes.md`.

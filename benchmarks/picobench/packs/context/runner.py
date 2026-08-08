@@ -40,6 +40,7 @@ _DISABLED_CONTEXT_TOOLS = [
     "grep",
     "list_dir",
     "message",
+    "skill_read",
     "spawn",
     "understand_media",
     "web_fetch",

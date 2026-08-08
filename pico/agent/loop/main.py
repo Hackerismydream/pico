@@ -29,6 +29,7 @@ from pico.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool,
 from pico.agent.tools.message import MessageTool
 from pico.agent.tools.registry import ToolRegistry
 from pico.agent.tools.shell import ExecTool
+from pico.agent.tools.skill import SkillReadTool
 from pico.agent.tools.spawn import SpawnTool
 from pico.agent.tools.web import WebFetchTool, WebSearchTool
 from pico.memory_engine.base import TokenBudget
@@ -477,6 +478,7 @@ class AgentLoop:
         allowed_dir = self.workspace if self.restrict_to_workspace else None
         for cls in (ReadFileTool, WriteFileTool, EditFileTool, ListDirTool, GrepTool, FindTool):
             self.tools.register(cls(workspace=self.workspace, allowed_dir=allowed_dir))
+        self.tools.register(SkillReadTool(self.context.skills))
         self.tools.register(
             ExecTool(
                 working_dir=str(self.workspace),

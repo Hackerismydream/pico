@@ -51,11 +51,11 @@ class _FallbackProvider:
 
 def _budget() -> TokenBudget:
     return TokenBudget(
-        context_length=2_400,
+        context_length=2_000,
         reserved_output=400,
         reserved_tools=0,
         reserved_system=300,
-        available_history=1_700,
+        available_history=1_300,
     )
 
 
@@ -75,7 +75,7 @@ async def test_fifo_and_curator_factories_share_phase_a_and_swap_phase_b(
         "builder": builder,
         "provider": provider,
         "model": "scripted/context",
-        "context_window_tokens": 2_400,
+        "context_window_tokens": 2_000,
         "get_tool_definitions": lambda: [],
     }
 

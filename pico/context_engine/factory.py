@@ -45,11 +45,7 @@ if TYPE_CHECKING:
         SkillForgeRouterConfig,
     )
     from pico.memory_engine.backend import MemoryBackend
-    from pico.memory_engine.skill_forge import (
-        LLMGateFilter,
-        QueryRewriter,
-        SkillForgeRouter,
-    )
+    from pico.memory_engine.skill_forge import SkillForgeRouter
 
 
 class ContextEngineFactory(Protocol):
@@ -110,12 +106,11 @@ def build_context_engine(
         builder=builder,
         skill_forge_router_config=skill_forge_router_config,
     )
-
-    rewriter, gate = _build_rewriter_and_gate(
-        provider=provider,
-        skill_forge_config=skill_forge_config,
-        skill_forge_router_config=skill_forge_router_config,
+    configured_inject_max = int(getattr(skill_forge_config, "inject_max", 2)) if skill_forge_config is not None else 2
+    summary_only = (
+        skill_forge_config is not None and getattr(skill_forge_config, "injection_mode", "full_body") == "summary"
     )
+    activation_max = 0 if summary_only else configured_inject_max or skill_forge_router_config.top_k
 
     builders = [
         IdentitySegmentBuilder(workspace, builder.state),
@@ -131,12 +126,7 @@ def build_context_engine(
         SkillsSegmentBuilder(
             router,
             skill_top_k=skill_forge_router_config.top_k,
-            rewriter=rewriter,
-            gate=gate,
-            gate_pool_size=(
-                int(getattr(skill_forge_config, "llm_gate_pool_size", 10)) if skill_forge_config is not None else 10
-            ),
-            get_tool_definitions=get_tool_definitions,
+            activation_max=activation_max,
         ),
         CuratorSegmentBuilder(
             workspace=builder.state,
@@ -169,46 +159,3 @@ def _build_router(
         min_score=skill_forge_router_config.local_min_score,
     )
     return SkillForgeRouter(sources=[local_source])
-
-
-def _build_rewriter_and_gate(
-    *,
-    provider: LLMProvider,
-    skill_forge_config: "SkillForgeConfig | None",
-    skill_forge_router_config: "SkillForgeRouterConfig",
-) -> "tuple[QueryRewriter | None, LLMGateFilter | None]":
-    """Construct the optional rewriter + gate from the parent SkillForge
-    config. Both fall to ``None`` when their respective flag is off or
-    no provider is wired — :class:`SkillsSegmentBuilder` then skips that
-    stage.
-
-    Per-stage isolation matters: gate-off + rewriter-on is a valid
-    deployment (cheap retrieval, no LLM selector); rewriter-off + gate-on
-    is also valid (always retrieve, then filter)."""
-    if skill_forge_config is None or provider is None:
-        return None, None
-
-    from pico.memory_engine.skill_forge import LLMGateFilter, QueryRewriter
-
-    rewriter: "QueryRewriter | None" = None
-    if bool(getattr(skill_forge_config, "rewrite_enabled", False)):
-        rewriter = QueryRewriter(
-            provider,
-            max_tokens=int(getattr(skill_forge_config, "rewrite_max_tokens", 8192) or 8192),
-        )
-
-    gate: "LLMGateFilter | None" = None
-    if bool(getattr(skill_forge_config, "llm_gate_enabled", False)):
-        # ``legacy_top_k`` is the gate's failure-fallback size — must match
-        # what the no-gate path renders (i.e. ``skill_top_k``) so a gate
-        # outage doesn't change injection volume vs. having gate disabled.
-        gate = LLMGateFilter(
-            provider,
-            max_select=int(getattr(skill_forge_config, "llm_gate_max_select", 2) or 2),
-            legacy_top_k=int(skill_forge_router_config.top_k or 5),
-            model=getattr(skill_forge_config, "llm_gate_model", None) or None,
-            temperature=float(getattr(skill_forge_config, "llm_gate_temperature", 0.0)),
-            max_tokens=int(getattr(skill_forge_config, "llm_gate_max_tokens", 8192) or 8192),
-        )
-
-    return rewriter, gate

@@ -373,6 +373,8 @@ def build_tui(
     user_pool: int = 1,
     system_pool: int = 1,
     await_runtime_ready: Callable[[], Awaitable[None]] | None = None,
+    turn_ids: dict[int, str] | None = None,
+    submission_ids: dict[int, str] | None = None,
 ) -> tuple[Scheduler, DeliveryHub, dict[int, str], dict[int, str], Callable[[], Awaitable[None]]]:
     """Wire the spine pieces a TUI turn flows through: a hub with the channel's
     TuiOutlet, and a Scheduler whose runner streams the agent loop and whose sink
@@ -388,8 +390,8 @@ def build_tui(
     hub = DeliveryHub()
     outlet = TuiOutlet(channel, emitter)
     hub.register(outlet)
-    turn_ids: dict[int, str] = {}
-    submission_ids: dict[int, str] = {}
+    turn_ids = turn_ids if turn_ids is not None else {}
+    submission_ids = submission_ids if submission_ids is not None else {}
     usages: dict[int, dict[str, Any]] = {}
     running_requests: dict[str, int] = {}
     rpc_errors: dict[int, RpcError] = {}

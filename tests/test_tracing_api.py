@@ -297,6 +297,23 @@ def test_read_file_of_skill_retypes_to_skill(trace_dir):
     assert sp["attributes"]["skill.read.via_tool"] == "read_file"
 
 
+def test_skill_read_tool_retypes_to_skill(trace_dir):
+    from pico.tracing import semconv
+
+    with trace.span("tool.call") as s:
+        semconv.tool_call(
+            s,
+            {"name": "skill_read", "params": {"name": "release-helper"}},
+            "## release-helper\nbody",
+            None,
+        )
+    sp = _spans_written(trace_dir)[0]
+    assert sp["name"] == "skill.read"
+    assert sp["attributes"]["span.type"] == "skill"
+    assert sp["attributes"]["skill.name"] == "release-helper"
+    assert sp["attributes"]["skill.read.via_tool"] == "skill_read"
+
+
 def test_tool_error_result_marks_status(trace_dir):
     from pico.tracing import semconv
 

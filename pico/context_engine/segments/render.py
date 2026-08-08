@@ -178,6 +178,30 @@ def render_router_skills(hits: list[Any]) -> str:
     return "\n\n".join(parts)
 
 
+def render_skill_references(hits: list[Any]) -> str:
+    """Render compact Local Skill references for main-model selection."""
+    if not hits:
+        return ""
+    from html import escape
+
+    lines = [
+        "Potentially relevant Local Skills are listed below. Read a matching skill with skill_read before applying it.",
+        "",
+        "<skills>",
+    ]
+    for hit in hits:
+        lines.extend(
+            (
+                "  <skill>",
+                f"    <name>{escape(hit.name)}</name>",
+                f"    <description>{escape(str(hit.meta.get('description') or hit.name))}</description>",
+                "  </skill>",
+            )
+        )
+    lines.append("</skills>")
+    return "\n".join(lines)
+
+
 def build_runtime_context(
     now_fn: Callable[[], datetime],
     channel: str | None,

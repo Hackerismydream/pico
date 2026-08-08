@@ -476,23 +476,12 @@ async def _run_rpc_server_until_done(
     # clarify.request and awaits clarify.respond, mirroring ConfirmBroker.
     question_broker = QuestionBroker(send_frame=server.send_frame)
 
-    # Wire AgentLoop for turn.send streaming (CAP-CHAT-1). Runtime Assembly
-    # supplies the retained common composition while this host keeps its TUI
-    # policy. Eager build at server bring-up so a
-    # bad provider config surfaces immediately rather than on first chat.
-    # An init crash is latched into ``build_error`` and re-raised by the
-    # factory closure on first ``turn.send``; ``_spawn_agent_loop_task`` emits
-    # the typed -32603 error event to the UI through the subscription emitter.
+    from pico.cli._runtime_host import TuiRuntimeHost
     from pico.tui_rpc.errors import InternalError, RpcError
 
-    runtime = None
     agent_loop = None
     build_error: RpcError | None = None
-    try:
-        runtime = _build_tui_runtime()
-        agent_loop = runtime.agent_loop
-    except RpcError as e:
-        build_error = e
+    runtime_host = TuiRuntimeHost(_build_tui_runtime)
 
     def _agent_loop_factory():
         if agent_loop is not None:
@@ -506,17 +495,80 @@ async def _run_rpc_server_until_done(
     submission_ids: dict[int, str] = {}
     turn_teardown = None
     serve_task: asyncio.Task | None = None
-    runtime_start_task: asyncio.Task | None = None
+    runtime_bind_task: asyncio.Task | None = None
+    runtime_services_task: asyncio.Task | None = None
+    runtime_bound = asyncio.Event()
     backend_ready = asyncio.Event()
     backend_start_error: InternalError | None = None
     cleanup_done = False
 
-    if runtime is None:
-        backend_ready.set()
+    async def _bind_runtime() -> None:
+        nonlocal agent_loop, build_error, turn_scheduler, turn_teardown
+        try:
+            runtime = await runtime_host.acquire()
+            agent_loop = runtime.agent_loop
+            if (ask_tool := agent_loop.tools.get("ask_user")) is not None and hasattr(ask_tool, "set_broker"):
+                ask_tool.set_broker(question_broker)
+
+            from types import SimpleNamespace
+
+            from pico.cli._cron_handler import make_on_cron_job
+            from pico.tui_rpc.methods import turn as turn_module
+
+            cron_readback: dict[str, str] = {}
+            turn_scheduler, turn_hub, _, _, turn_teardown = build_tui(
+                agent_loop,
+                emitter,
+                on_turn_end=turn_module.clear_active,
+                readback_texts=cron_readback,
+                await_runtime_ready=_await_runtime_ready,
+                turn_ids=turn_ids,
+                submission_ids=submission_ids,
+            )
+            agent_loop.subagents.set_submit(turn_scheduler.submit)
+            if agent_loop.cron_service is not None:
+                base_on_cron = make_on_cron_job(
+                    turn_hub,
+                    submit=turn_scheduler.submit,
+                    readback_texts=cron_readback,
+                    channel_manager=SimpleNamespace(enabled_channels=["tui"]),
+                    default_channel="tui",
+                )
+                agent_loop.cron_service.on_job = _build_cron_callback_spine(base_on_cron, emitter)
+        except RpcError as exc:
+            build_error = exc
+        except Exception as exc:
+            build_error = InternalError(
+                detail="runtime binding failed",
+                data={"reason": "runtime_binding_failed"},
+            )
+            from loguru import logger as _logger
+
+            _logger.exception("tui: runtime binding failed: {}", type(exc).__name__)
+        finally:
+            runtime_bound.set()
+
+    async def _acquire_turn_scheduler():
+        await runtime_bound.wait()
+        if build_error is not None:
+            raise build_error
+        if turn_scheduler is None:
+            raise InternalError(
+                detail="runtime scheduler unavailable",
+                data={"reason": "runtime_scheduler_unavailable"},
+            )
+        return turn_scheduler
 
     async def _start_runtime_services() -> None:
         nonlocal backend_start_error
         try:
+            await handshake_done.wait()
+            await runtime_bound.wait()
+            if build_error is not None:
+                return
+            runtime = runtime_host.get_now()
+            if runtime is None or agent_loop is None:
+                return
             await runtime.start_memory_backend()
             _strip_tty_stream_handlers()
             if agent_loop.cron_service is not None:
@@ -558,6 +610,18 @@ async def _run_rpc_server_until_done(
             question_broker.cancel_all()
         except Exception:
             pass
+        if runtime_services_task is not None:
+            if not runtime_services_task.done():
+                runtime_services_task.cancel()
+            try:
+                await runtime_services_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        if runtime_bind_task is not None:
+            try:
+                await runtime_bind_task
+            except (asyncio.CancelledError, Exception):
+                pass
         if agent_loop is not None and agent_loop.cron_service is not None:
             try:
                 agent_loop.cron_service.stop()
@@ -568,51 +632,9 @@ async def _run_rpc_server_until_done(
                 await turn_teardown()
             except Exception:
                 pass
-        if runtime_start_task is not None:
-            if not runtime_start_task.done():
-                runtime_start_task.cancel()
-            try:
-                await runtime_start_task
-            except (asyncio.CancelledError, Exception):
-                pass
-        if runtime is not None:
-            await runtime.close()
+        await runtime_host.close()
 
     try:
-        # Late-bind the QuestionBroker into ask_user now that the loop exists.
-        if agent_loop is not None:
-            if (ask_tool := agent_loop.tools.get("ask_user")) is not None and hasattr(ask_tool, "set_broker"):
-                ask_tool.set_broker(question_broker)
-
-        # Wire the spine turn path: build_tui assembles the Scheduler + delivery
-        # hub + streaming sink the turn.* handlers submit onto. Only when an
-        # agent loop exists; otherwise turn.send surfaces the build error.
-        from pico.tui_rpc.methods import turn as turn_module
-
-        if agent_loop is not None:
-            from types import SimpleNamespace
-
-            from pico.cli._cron_handler import make_on_cron_job
-
-            cron_readback: dict[str, str] = {}
-            turn_scheduler, turn_hub, turn_ids, submission_ids, turn_teardown = build_tui(
-                agent_loop,
-                emitter,
-                on_turn_end=turn_module.clear_active,
-                readback_texts=cron_readback,
-                await_runtime_ready=_await_runtime_ready,
-            )
-            agent_loop.subagents.set_submit(turn_scheduler.submit)
-            if agent_loop.cron_service is not None:
-                base_on_cron = make_on_cron_job(
-                    turn_hub,
-                    submit=turn_scheduler.submit,
-                    readback_texts=cron_readback,
-                    channel_manager=SimpleNamespace(enabled_channels=["tui"]),
-                    default_channel="tui",
-                )
-                agent_loop.cron_service.on_job = _build_cron_callback_spine(base_on_cron, emitter)
-
         # Wrap system.hello to latch the handshake event; the umbrella below
         # registers the retained conversational RPC surface.
         dispatcher.register("system.hello", hello_then_signal)
@@ -624,10 +646,9 @@ async def _run_rpc_server_until_done(
             agent_loop_factory=_agent_loop_factory,
             confirm_broker=confirm_broker,
             question_broker=question_broker,
-            scheduler=turn_scheduler,
+            scheduler_factory=_acquire_turn_scheduler,
             turn_ids=turn_ids,
             submission_ids=submission_ids,
-            build_error=build_error,
         )
 
         from pico.config.paths import get_logs_dir
@@ -637,6 +658,8 @@ async def _run_rpc_server_until_done(
         with redirect_terminal_fds_to_file(get_logs_dir() / "tui.log"):
             _strip_tty_stream_handlers()
             serve_task = asyncio.create_task(server.serve_forever())
+            runtime_bind_task = asyncio.create_task(_bind_runtime())
+            runtime_services_task = asyncio.create_task(_start_runtime_services())
 
             try:
                 # Wait until EITHER handshake completes OR deadline expires OR child exits.
@@ -659,10 +682,6 @@ async def _run_rpc_server_until_done(
 
                 if not handshake_done.is_set():
                     return False
-                # Handshake OK (UI rendered) — bring up the memory backend now, in the
-                # background, so its heavy import + lifespan happens after render.
-                if runtime is not None:
-                    runtime_start_task = asyncio.create_task(_start_runtime_services())
                 # Continue serving until child exits.
                 await proc_done.wait()
                 return True

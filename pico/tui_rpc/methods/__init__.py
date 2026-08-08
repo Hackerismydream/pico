@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from pico.tui_rpc.dispatcher import Dispatcher
     from pico.tui_rpc.errors import RpcError
     from pico.tui_rpc.methods.session import AgentLoopFactory
+    from pico.tui_rpc.methods.turn import SchedulerFactory
     from pico.tui_rpc.question_broker import QuestionBroker
     from pico.tui_rpc.subscriptions import SubscriptionEmitter
 
@@ -33,6 +34,7 @@ def register_aligned_methods(
     confirm_broker: "ConfirmBroker | None" = None,
     question_broker: "QuestionBroker | None" = None,
     scheduler: "Scheduler | None" = None,
+    scheduler_factory: "SchedulerFactory | None" = None,
     turn_ids: "dict[int, str] | None" = None,
     submission_ids: "dict[int, str] | None" = None,
     build_error: "RpcError | None" = None,
@@ -53,6 +55,7 @@ def register_aligned_methods(
         confirm_broker=confirm_broker,
         question_broker=question_broker,
         scheduler=scheduler,
+        scheduler_factory=scheduler_factory,
         turn_ids=turn_ids,
         submission_ids=submission_ids,
         build_error=build_error,
@@ -67,6 +70,7 @@ def register_aligned_methods_except_system(
     confirm_broker: "ConfirmBroker | None" = None,
     question_broker: "QuestionBroker | None" = None,
     scheduler: "Scheduler | None" = None,
+    scheduler_factory: "SchedulerFactory | None" = None,
     turn_ids: "dict[int, str] | None" = None,
     submission_ids: "dict[int, str] | None" = None,
     build_error: "RpcError | None" = None,
@@ -87,6 +91,7 @@ def register_aligned_methods_except_system(
             dispatcher,
             emitter=emitter,
             scheduler=scheduler,
+            scheduler_factory=scheduler_factory,
             turn_ids=turn_ids,
             submission_ids=submission_ids,
             build_error=build_error,

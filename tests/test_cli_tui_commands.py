@@ -8,6 +8,7 @@ in ``test_cli_agent_commands.py``.
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, sentinel
 
@@ -445,6 +446,30 @@ async def _run_until_done_with_handshake(monkeypatch, ctx):
     return await runner
 
 
+async def test_rpc_server_starts_before_runtime_build_finishes(
+    rpc_server_deps,
+    monkeypatch,
+) -> None:
+    moments: dict[str, float] = {}
+
+    def _slow_build():
+        moments["build_start"] = time.monotonic()
+        time.sleep(0.05)
+        moments["build_end"] = time.monotonic()
+        return rpc_server_deps["runtime"]
+
+    async def _serve_forever():
+        moments["serve_start"] = time.monotonic()
+        await asyncio.sleep(0)
+
+    monkeypatch.setattr("pico.cli.tui_commands._build_tui_runtime", _slow_build)
+    rpc_server_deps["fake_server"].serve_forever = _serve_forever
+
+    await _run_until_done_with_immediate_proc_done(monkeypatch, rpc_server_deps)
+
+    assert moments["serve_start"] < moments["build_end"]
+
+
 async def test_rpc_runner_starts_backend_after_handshake(rpc_server_deps, monkeypatch) -> None:
     """``backend.start()`` runs once, in the background after the handshake (off
     the render path), when ``agent_loop.backend`` is not None."""
@@ -521,7 +546,7 @@ async def test_rpc_runner_closes_mcp_and_sandbox_on_exit(rpc_server_deps, monkey
     rpc_server_deps["agent_loop"].close_mcp.assert_awaited_once()
 
 
-async def test_rpc_runner_closes_runtime_when_spine_build_fails(
+async def test_rpc_runner_latches_spine_build_failure_and_closes_runtime(
     rpc_server_deps,
     monkeypatch,
 ) -> None:
@@ -535,14 +560,20 @@ async def test_rpc_runner_closes_runtime_when_spine_build_fails(
 
     from pico.cli.tui_commands import _run_rpc_server_until_done
 
-    with pytest.raises(_SpineBuildFailure):
-        await _run_rpc_server_until_done(
-            MagicMock(),
-            "test-token",
-            0.01,
-            asyncio.Event(),
-        )
+    proc_done = asyncio.Event()
+    proc_done.set()
+    result = await _run_rpc_server_until_done(
+        MagicMock(),
+        "test-token",
+        0.01,
+        proc_done,
+    )
 
+    scheduler_factory = rpc_server_deps["aligned_register"].call_args.kwargs["scheduler_factory"]
+    with pytest.raises(Exception, match="runtime binding failed"):
+        await scheduler_factory()
+
+    assert result is False
     rpc_server_deps["agent_loop"].close_mcp.assert_awaited_once()
     assert rpc_server_deps["stop_calls"] == ["stop"]
 
