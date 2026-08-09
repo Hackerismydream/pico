@@ -286,7 +286,7 @@ class TrajectoryCompressor:
             # Find immediately-following tool calls + results, with
             # collapse of identical runs.
             i += 1
-            i = self._emit_tool_section(events_list, i, out, turn_idx)
+            i = self._emit_tool_section(events_list, i, out, ev)
 
         # Anomaly summary
         anomaly_block = []
@@ -319,7 +319,7 @@ class TrajectoryCompressor:
         events: list[Event],
         start_idx: int,
         out: list[str],
-        turn_idx: int,
+        assistant: Event,
     ) -> int:
         """Emit pending tool calls + results following an assistant turn.
 
@@ -330,7 +330,7 @@ class TrajectoryCompressor:
         Returns the index where the tool section ends (so the outer loop
         can continue from there).
 
-        Collapse logic: we look at the PREVIOUS assistant's ``tool_calls``
+        Collapse logic: we look at the assistant's ``tool_calls``
         list and emit one summary per call. If the calls in this run match
         a recent identical call within a small window, we annotate
         "× N repetitions".
@@ -338,18 +338,14 @@ class TrajectoryCompressor:
         cfg = self._cfg
         i = start_idx
 
-        # Look back at last assistant for its tool_calls (already past it in i-1)
-        prev_assistant = self._find_last_assistant(events, start_idx)
-        if prev_assistant is None:
-            return i
-        if not prev_assistant.tool_calls:
+        if not assistant.tool_calls:
             # No tool calls promised — skip any stray tool events (rare)
             while i < len(events) and events[i].event_type == "tool":
                 i += 1
             return i
 
         # Emit each tool call with truncated args
-        for tc in prev_assistant.tool_calls:
+        for tc in assistant.tool_calls:
             fn = tc.get("function") or {}
             name = fn.get("name", "?")
             args_raw = fn.get("arguments", "") or ""
@@ -367,13 +363,6 @@ class TrajectoryCompressor:
             i += 1
 
         return i
-
-    def _find_last_assistant(self, events: list[Event], current_idx: int) -> Optional[Event]:
-        """The most recent assistant event strictly before ``current_idx``."""
-        for j in range(current_idx - 1, -1, -1):
-            if events[j].event_type == "assistant":
-                return events[j]
-        return None
 
     def _summarize_tool_result(self, content: str) -> str:
         cfg = self._cfg
