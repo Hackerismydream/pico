@@ -305,6 +305,53 @@ async def test_quiesce_intake_seals_every_channel_before_waiting() -> None:
     assert events == ["seal:first", "seal:second", "wait:first", "wait:second"]
 
 
+async def test_quiesce_intake_preserves_caller_cancellation_over_barrier_failure() -> None:
+    wait_started = asyncio.Event()
+    release_wait = asyncio.Event()
+
+    class _FailingIntake:
+        def __init__(self) -> None:
+            self.sealed = False
+            self.cancel_calls = 0
+
+        def seal(self) -> None:
+            self.sealed = True
+
+        async def wait_idle(self) -> None:
+            wait_started.set()
+            await release_wait.wait()
+            raise RuntimeError("wait_idle failed")
+
+        def cancel_inflight(self) -> int:
+            self.cancel_calls += 1
+            return 0
+
+    intake = _FailingIntake()
+    manager = object.__new__(ChannelManager)
+    manager.channels = {"telegram": SimpleNamespace(intake=intake)}
+    quiescing = asyncio.create_task(manager.quiesce_intake())
+    await wait_started.wait()
+    quiescing.cancel()
+    await asyncio.sleep(0)
+
+    try:
+        assert not quiescing.done()
+        release_wait.set()
+        with pytest.raises(asyncio.CancelledError) as exc_info:
+            await asyncio.wait_for(quiescing, timeout=0.2)
+    finally:
+        release_wait.set()
+        if not quiescing.done():
+            quiescing.cancel()
+        await asyncio.gather(quiescing, return_exceptions=True)
+
+    assert quiescing.cancelled()
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert str(exc_info.value.__cause__) == "wait_idle failed"
+    assert intake.sealed
+    assert intake.cancel_calls == 1
+
+
 # ── _missing_dep_hint (install-mode / OS split) ───────────────────────
 
 _EDITABLE_JSON = '{"url": "file:///src", "dir_info": {"editable": true}}'

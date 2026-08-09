@@ -3,9 +3,12 @@
 import asyncio
 
 
-async def finish_barrier(task: asyncio.Task[None]) -> None:
+async def finish_barrier(
+    task: asyncio.Task[None],
+    *,
+    cancellation: asyncio.CancelledError | None = None,
+) -> None:
     """Finish ``task`` and keep caller cancellation above barrier failure."""
-    cancellation: asyncio.CancelledError | None = None
     failure: BaseException | None = None
     while not task.done():
         try:

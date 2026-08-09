@@ -18,6 +18,7 @@ from loguru import logger
 from pico.channels.contract import Channel
 from pico.config.schema import Config
 from pico.product import DISTRIBUTION_NAME
+from pico.spine._barrier import finish_barrier
 
 _INTAKE_DRAIN_TIMEOUT_S = 5.0
 _CHANNEL_STOP_TIMEOUT_S = 5.0
@@ -27,19 +28,6 @@ def _consume_task_result(task: asyncio.Task[Any]) -> None:
     if task.cancelled():
         return
     task.exception()
-
-
-async def _finish_barrier(task: asyncio.Task[None]) -> asyncio.CancelledError | None:
-    """Finish a safety barrier while retaining repeated caller cancellation."""
-    cancellation: asyncio.CancelledError | None = None
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError as exc:
-            if cancellation is None:
-                cancellation = exc
-    await task
-    return cancellation
 
 
 def _missing_dep_hint(modname: str) -> str:
@@ -177,21 +165,19 @@ class ChannelManager:
                 _INTAKE_DRAIN_TIMEOUT_S,
                 cancelled,
             )
-            delayed_cancellation = await _finish_barrier(drain)
-            if delayed_cancellation is not None:
-                raise delayed_cancellation
+            await finish_barrier(drain)
             raise TimeoutError(
                 f"channel intake drain timed out after {_INTAKE_DRAIN_TIMEOUT_S}s; "
                 f"cancelled {cancelled} admitted publish(es)"
             ) from exc
-        except asyncio.CancelledError:
+        except asyncio.CancelledError as cancellation:
             cancelled = sum(intake.cancel_inflight() for intake in intakes)
             logger.warning(
                 "channel intake drain cancelled; cancelling {} admitted publish(es) before spine teardown",
                 cancelled,
             )
-            await _finish_barrier(drain)
-            raise
+            await finish_barrier(drain, cancellation=cancellation)
+            raise cancellation
 
     async def _stop_channel(self, name: str, channel: Channel) -> None:
         # wait_for can exceed its timeout while waiting for an inner coroutine
