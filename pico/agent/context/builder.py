@@ -254,7 +254,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
                 heading = Path(filename).name
                 parts.append(f"## {heading}\n\n{content}")
 
-        return "\n\n".join(parts) if parts else ""
+        return "\n\n".join(parts)
 
     def build_messages(
         self,

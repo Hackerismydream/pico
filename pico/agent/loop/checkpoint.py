@@ -160,7 +160,6 @@ class CheckpointService:
                 f"under the {root_label} ({state_root}); got {candidate}"
             )
         self._git_dir = candidate
-        self._shadow_rel = shadow_dir
         self._ready = False
         self._commit_count = 0
 
@@ -277,7 +276,7 @@ class CheckpointService:
                 logger.debug("checkpoint add failed: {}", err.strip())
                 return None, []
             # Files staged this turn = this turn's changes. Capture before commit.
-            rc, out, _ = await self._git("diff", "--cached", "--name-only")
+            _, out, _ = await self._git("diff", "--cached", "--name-only")
             changed = [ln for ln in out.splitlines() if ln.strip()]
             if not changed:
                 return None, []  # nothing to snapshot

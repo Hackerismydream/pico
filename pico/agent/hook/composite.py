@@ -60,8 +60,7 @@ class CompositeHook(AgentHook):
 
     def extend(self, hooks: Iterable[AgentHook]) -> None:
         """Add multiple hooks (in order) to the end of the chain."""
-        for h in hooks:
-            self._hooks.append(h)
+        self._hooks.extend(hooks)
 
     # ─────────────────────────────────────────────────────────────────
     # Phase dispatchers
