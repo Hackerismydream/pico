@@ -407,7 +407,7 @@ class SkillRegistry:
             except ValueError:
                 continue
             parts = rel.parts
-            if len(parts) == 0:
+            if not parts:
                 continue
             if len(parts) > max_depth:
                 continue

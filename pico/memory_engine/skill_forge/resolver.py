@@ -121,9 +121,7 @@ class LocalSkillResolver:
             )
         )
         shared = query_tokens & candidate_tokens
-        if any(len(token) >= 2 and token not in _STOP_WORDS for token in shared):
-            return True
-        return len(shared) >= 2
+        return any(len(token) >= 2 and token not in _STOP_WORDS for token in shared) or len(shared) >= 2
 
     @staticmethod
     def _skill_path(hit: "RouterHit") -> Path | None:

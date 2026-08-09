@@ -379,8 +379,6 @@ def _is_semantic_duplicate_foresight(
         if not ex_tokens:
             continue
         union = new_tokens | ex_tokens
-        if not union:
-            continue
         jaccard = len(new_tokens & ex_tokens) / len(union)
         if jaccard >= _FORESIGHT_SEMANTIC_DUP_JACCARD:
             return True
@@ -543,7 +541,7 @@ def _ensure_foresight_at_end(content: str) -> str:
     if _FORESIGHT_HEADING not in sections:
         return content
     h2_order = list(sections.keys())
-    if h2_order and h2_order[-1] == _FORESIGHT_HEADING:
+    if h2_order[-1] == _FORESIGHT_HEADING:
         return content
     body = sections[_FORESIGHT_HEADING]
     return _splice_h2_section_at_end(content, _FORESIGHT_HEADING, body)
@@ -1558,7 +1556,11 @@ class MemoryConsolidator:
 
     def get_lock(self, session_key: str) -> asyncio.Lock:
         """Return the shared consolidation lock for one session."""
-        return self._locks.setdefault(session_key, asyncio.Lock())
+        lock = self._locks.get(session_key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._locks[session_key] = lock
+        return lock
 
     async def consolidate_messages(self, messages: list[dict[str, object]]) -> bool:
         """Light path: annotate a selected message chunk into episodes.md.
