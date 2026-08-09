@@ -133,11 +133,7 @@ class CacheOptimizer(TokenStrategy):
         # N = remaining budget. This is the rolling-window approach that
         # covers both intra-turn tool chains and cross-turn prefix reuse.
         if budget > 0:
-            non_sys = [
-                i
-                for i in range(len(new_messages))
-                if new_messages[i].get("role") != "system"
-            ]
+            non_sys = [i for i in range(len(new_messages)) if new_messages[i].get("role") != "system"]
             for idx in non_sys[-budget:]:
                 new_messages[idx] = _mark_message_tail(new_messages[idx])
                 budget -= 1
