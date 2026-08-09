@@ -479,7 +479,4 @@ def find_gateway(
 
 def find_by_name(name: str) -> ProviderSpec | None:
     """Find a provider spec by config field name, e.g. "dashscope"."""
-    for spec in PROVIDERS:
-        if spec.name == name:
-            return spec
-    return None
+    return next((spec for spec in PROVIDERS if spec.name == name), None)
