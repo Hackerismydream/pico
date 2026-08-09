@@ -413,8 +413,10 @@ class CronService:
         """Get the earliest next run time across all jobs."""
         if not self._store:
             return None
-        times = [j.state.next_run_at_ms for j in self._store.jobs if j.enabled and j.state.next_run_at_ms]
-        return min(times) if times else None
+        return min(
+            (j.state.next_run_at_ms for j in self._store.jobs if j.enabled and j.state.next_run_at_ms),
+            default=None,
+        )
 
     def _arm_timer(self) -> None:
         """Schedule the next timer tick.
