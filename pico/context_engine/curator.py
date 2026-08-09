@@ -178,7 +178,6 @@ class CuratorArchiveStore:
         previous = self.load_relevance(session_key)
         manifest: list[ManifestItem] = []
         turn_id = 0
-        tool_parent: dict[str, int] = {}
         for idx, message in enumerate(messages):
             if message.get("role") == "user":
                 turn_id += 1
@@ -189,7 +188,6 @@ class CuratorArchiveStore:
                     call_id = tc.get("id") if isinstance(tc, dict) else None
                     if call_id:
                         call_ids.append(str(call_id))
-                        tool_parent[str(call_id)] = idx
                 group_id = "tool:" + ",".join(call_ids) if call_ids else None
             elif message.get("role") == "tool" and message.get("tool_call_id"):
                 group_id = f"tool:{message.get('tool_call_id')}"

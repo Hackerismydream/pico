@@ -85,15 +85,14 @@ class ContextAssembler(ContextEngine):
         # ── Phase A — independent segment builders, concurrent ──────
         a_segs = await asyncio.gather(*[b.build(ctx) for b in self._phase_a])
         meta: dict[str, Any] = {}
-        prefix_parts: list[tuple[int, str]] = []
-        for builder, seg in zip(self._phase_a, a_segs):
+        prefix_parts: list[str] = []
+        for seg in a_segs:
             if seg is None:
                 continue
             meta |= seg.meta
             if seg.text:
-                prefix_parts.append((builder.order, seg.text))
-        prefix_parts.sort(key=lambda t: t[0])
-        system_prefix = "\n\n---\n\n".join(text for _, text in prefix_parts)
+                prefix_parts.append(seg.text)
+        system_prefix = "\n\n---\n\n".join(prefix_parts)
 
         user_msg = self._build_user(ctx)
 
@@ -110,17 +109,16 @@ class ContextAssembler(ContextEngine):
 
         system = system_prefix
         history: list[dict[str, Any]] = []
-        seg6_parts: list[tuple[int, str]] = []
-        for builder, seg in zip(self._phase_b, b_segs):
+        seg6_parts: list[str] = []
+        for seg in b_segs:
             if seg is None:
                 continue
             meta |= seg.meta
             if seg.text:
-                seg6_parts.append((builder.order, seg.text))
+                seg6_parts.append(seg.text)
             if seg.history is not None:
                 history = seg.history
-        seg6_parts.sort(key=lambda t: t[0])
-        for _, text in seg6_parts:
+        for text in seg6_parts:
             system = system + "\n\n---\n\n" + text
 
         messages = [{"role": "system", "content": system}, *history, user_msg]
