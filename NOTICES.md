@@ -4,6 +4,18 @@ Pico is licensed under the Apache License 2.0. It incorporates code from the
 following MIT-licensed projects. Their copyright notices and license texts are
 retained in `LICENSES/`.
 
+## Raven (fork source)
+- Source: https://github.com/EverMind-AI/Raven
+- Copyright (c) 2026 EverMind AI contributors
+- License: Apache-2.0 — the same license as Pico (see the root LICENSE)
+- Scope: Pico is a fork of Raven. The `pico/` Runtime layout (agent, channels,
+  cli, config, context_engine, evolver, memory_engine, providers, sandbox,
+  security, session, spine, tui_rpc, ...), the `ui-tui/` TUI layer, tests,
+  benchmarks, and tooling derive from Raven, with Pico branding, naming, and
+  module restructuring applied on top. Raven's own third-party attribution
+  (nanobot, hermes-agent, ink) is retained in the sections below; Raven's
+  NOTICE content is incorporated into this file.
+
 ## nanobot (base agent runtime)
 - Source: https://github.com/HKUDS/nanobot
 - Copyright (c) 2025 nanobot contributors
