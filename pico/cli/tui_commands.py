@@ -1,10 +1,8 @@
 """Native TUI launcher for the bare ``pico`` entry point.
 
-Bootstrap stage (L2-α `tui-bootstrap`): pure Node spawn, no IPC.
-IPC stage (`tui-ipc-bridge`): we additionally open two POSIX
-pipes (request + notify), pass them to the Node child as fd 3 / fd 4, and
-run a `RpcServer` in an asyncio task that handles `system.hello` (5 s
-handshake timeout → exit 3) plus subsequent business RPC methods.
+Interactive launches connect the Node child to an authenticated loopback
+socket and run ``RpcServer`` in an asyncio task. Diagnostic launches inherit
+stdio and skip RPC.
 
 Exit codes (in addition to bootstrap's 0/1/2):
     3  — RPC handshake timeout / failure
@@ -174,31 +172,18 @@ def run_subprocess(
 
 
 # ---------------------------------------------------------------------------
-# tui-ipc-bridge: RPC handshake + asyncio server loop
+# RPC handshake + asyncio server loop
 # ---------------------------------------------------------------------------
-#
-# Topology:
-#   parent ─── os.pipe() ──▶ Node (child fd 3) — child writes JSON-RPC requests
-#   parent ◀── os.pipe() ─── Node (child fd 4) — parent writes responses + notif
-#
-# `pass_fds=(req_r, notif_w)` keeps the FDs open across fork+exec. Inside the
-# child, Node maps them to fixed numbers (3 / 4) via the PICO_RPC_FD_*
-# environment variables.
 
 # Handshake budget: spec 5.1 — Node must send `system.hello` within 5 s of
 # spawn or the parent aborts with exit 3.
 _RPC_HANDSHAKE_TIMEOUT_S: float = 5.0
 _RPC_HANDSHAKE_EXIT_CODE: int = 3
 
-# Q11 (2026-05-14): production transport was a per-session unix domain socket.
-# CROSS-PLATFORM (2026-06-30): switched to a TCP loopback socket bound to
-# 127.0.0.1:<ephemeral> because Windows has no usable AF_UNIX in CPython and
-# cannot os.dup a socket fd. The Node child connects to the host:port exported
-# in PICO_RPC_SOCKET and authenticates with the PICO_RPC_TOKEN shared secret
-# (loopback is reachable by any local process, unlike an AF_UNIX file guarded
-# by 0600 perms, so the token restores the trust boundary). The pass_fds /
-# os.pipe variant is retained for `--check` smoke parity and the Python-only
-# handshake-timeout test.
+# The Node child connects to the TCP loopback address exported in
+# PICO_RPC_SOCKET and authenticates with the PICO_RPC_TOKEN shared secret.
+# Loopback is reachable by any local process, so the token preserves the trust
+# boundary before the server dispatches any request.
 _RPC_SOCKET_ENV: str = "PICO_RPC_SOCKET"
 _RPC_TOKEN_ENV: str = "PICO_RPC_TOKEN"  # noqa: S105 -- env var name, not a secret
 
@@ -216,48 +201,6 @@ def _drop_watcher_spam(record: dict) -> bool:
     """Sink filter dropping watchfiles poll-timeout chatter (TUI-only, so the
     shared gateway sink is unaffected)."""
     return "rust notify timeout" not in record["message"]
-
-
-def _spawn_with_rpc_pipes(
-    argv: list[str],
-    cwd: Path,
-) -> tuple[subprocess.Popen[bytes], int, int]:
-    """Spawn `argv` with two private pipes wired for JSON-RPC.
-
-    Returns (popen, parent_request_read_fd, parent_notify_write_fd).
-    The two parent-side FDs are owned by the caller and must be closed.
-    """
-    # Pipe 1: Node → Python (requests). Node writes; Python reads.
-    req_r, req_w = os.pipe()
-    # Pipe 2: Python → Node (responses + notifications).
-    notif_r, notif_w = os.pipe()
-
-    # We must NOT inherit cloexec on the FDs we pass; Popen(pass_fds=...) will
-    # clear cloexec on those automatically. We DO want cloexec on our parent-
-    # side ends so a future fork doesn't leak them.
-    for fd in (req_r, notif_w):
-        os.set_inheritable(fd, False)
-
-    env = os.environ.copy()
-    # Inside the child these will appear as fd 3 / 4 (Popen remaps in order).
-    env["PICO_RPC_FD_REQUEST"] = "3"
-    env["PICO_RPC_FD_NOTIFY"] = "4"
-
-    proc = subprocess.Popen(
-        argv,
-        cwd=str(cwd),
-        stdin=None,
-        stdout=None,
-        stderr=None,
-        env=env,
-        pass_fds=(req_w, notif_r),
-    )
-
-    # Child has dup'd the inheritable ends; close them in the parent.
-    os.close(req_w)
-    os.close(notif_r)
-
-    return proc, req_r, notif_w
 
 
 # Narrow exception classes that represent recoverable init-time crashes —
@@ -1055,7 +998,7 @@ def launch_tui(
         dist_cwd = dist_entry.parent
         # `--check` smoke path keeps the simple stdio-only spawn so the
         # bootstrap-era tests (which don't speak JSON-RPC) still pass; the
-        # interactive run path opens the RPC pipes and enforces handshake.
+        # interactive run path opens the RPC socket and enforces handshake.
         if no_rpc:
             exit_code = run_subprocess(node_path, [str(dist_entry)], cwd=dist_cwd)
         else:

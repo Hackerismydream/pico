@@ -29,10 +29,6 @@ _KIND_FILES = {
 }
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
 def _date_key(dt: datetime | None = None) -> str:
     return (dt or datetime.now(timezone.utc)).strftime("%Y-%m-%d")
 
