@@ -15,8 +15,11 @@ import pytest
 from pydantic import ValidationError
 
 from pico.agent.subagent import manager as manager_mod
-from pico.agent.subagent.manager import SubagentManager
+from pico.agent.subagent.manager import SubagentManager, SubagentStatus
+from pico.agent.tools.registry import ToolRegistry
+from pico.agent.tools.spawn import SpawnTool
 from pico.config.schema import AgentDefaults
+from pico.providers.base import LLMResponse, ToolCallRequest
 
 
 class _StubProvider:
@@ -134,6 +137,26 @@ async def test_spawn_rate_limit_refuses_within_window(monkeypatch):
     assert "2 per hour" in r3
 
 
+async def test_spawn_tool_reports_rate_limit_as_failed_without_starting_task(monkeypatch):
+    _fixed_clock(monkeypatch)
+    mgr = _stub_mgr(monkeypatch, max_spawns_per_hour=1)
+    spawn_tool = SpawnTool(mgr)
+    spawn_tool.set_context("cli", "direct", "cli:test")
+    tools = ToolRegistry()
+    tools.register(spawn_tool)
+
+    accepted = await tools.execute("spawn", {"task": "first"})
+    assert accepted.failed is False
+    await asyncio.gather(*mgr._running_tasks.values(), return_exceptions=True)
+    await asyncio.sleep(0)
+
+    refused = await tools.execute("spawn", {"task": "second"})
+
+    assert "Spawn refused" in refused
+    assert refused.failed is True
+    assert mgr.get_running_count() == 0
+
+
 async def test_spawn_rate_limit_recovers_after_window(monkeypatch):
     """Older spawns age out of the rolling window, so the limit auto-recovers
     without any explicit /stop."""
@@ -184,6 +207,8 @@ async def test_cancel_by_session_cancels_live_task(monkeypatch):
         await release.wait()  # never set — keeps the task live until cancelled
 
     monkeypatch.setattr(mgr, "_run_subagent_inner", _blocking_inner)
+    submitted = []
+    mgr.set_submit(submitted.append)
 
     assert "started" in await mgr.spawn(task="long", session_key="sessLive")
     await _settle(entered.is_set)
@@ -194,6 +219,7 @@ async def test_cancel_by_session_cancels_live_task(monkeypatch):
     assert cancelled == 1
     assert live_task.cancelled()
     await _settle(lambda: mgr.get_running_count() == 0)
+    assert submitted == []
 
 
 async def test_announce_result_routes_to_tui_session_key(monkeypatch):
@@ -211,7 +237,7 @@ async def test_announce_result_routes_to_tui_session_key(monkeypatch):
         task="task",
         result="result",
         origin={"channel": "tui", "chat_id": "default", "session_key": "tui:sess123"},
-        status="ok",
+        status=SubagentStatus.COMPLETED,
     )
 
     assert len(submitted) == 1
@@ -231,11 +257,49 @@ async def test_announce_result_routes_non_tui_origin_unchanged(monkeypatch):
         task="task",
         result="result",
         origin={"channel": "feishu", "chat_id": "ou_12345", "session_key": "feishu:ou_12345"},
-        status="ok",
+        status=SubagentStatus.COMPLETED,
     )
 
     assert len(submitted) == 1
     assert submitted[0].conversation == "feishu:ou_12345"
+
+
+async def test_iteration_exhaustion_is_announced_as_failure(monkeypatch, tmp_path):
+    class _ToolOnlyProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def get_default_model(self) -> str:
+            return "stub-model"
+
+        async def chat_with_retry(self, **kwargs) -> LLMResponse:
+            self.calls += 1
+            return LLMResponse(
+                content=None,
+                tool_calls=[
+                    ToolCallRequest(
+                        id=f"call-{self.calls}",
+                        name="missing",
+                        arguments={},
+                    )
+                ],
+                finish_reason="tool_calls",
+            )
+
+    monkeypatch.setattr(manager_mod, "build_executor", lambda *a, **k: _DummyExecutor())
+    provider = _ToolOnlyProvider()
+    mgr = SubagentManager(provider=provider, workspace=tmp_path, max_concurrent=1)
+    submitted = []
+    mgr.set_submit(submitted.append)
+
+    await mgr.spawn(task="keep using tools", label="loop", session_key="cli:test")
+    (background_task,) = list(mgr._running_tasks.values())
+    await background_task
+
+    assert provider.calls == 15
+    assert len(submitted) == 1
+    assert "completed successfully" not in submitted[0].text
+    assert "exhausted" in submitted[0].text.lower()
 
 
 def test_build_subagent_prompt_does_not_start_skill_watcher(monkeypatch):

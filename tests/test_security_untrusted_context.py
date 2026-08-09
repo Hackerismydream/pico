@@ -73,7 +73,7 @@ def test_identity_text_resolves_conflicts_without_guessing(tmp_path: Path) -> No
 
 
 async def test_subagent_result_is_fenced(tmp_path: Path) -> None:
-    from pico.agent.subagent.manager import SubagentManager
+    from pico.agent.subagent.manager import SubagentManager, SubagentStatus
 
     class _Provider:
         def get_default_model(self) -> str:
@@ -91,7 +91,7 @@ async def test_subagent_result_is_fenced(tmp_path: Path) -> None:
         "do a thing",
         poison,
         {"channel": "cli", "chat_id": "direct", "session_key": "cli:direct"},
-        "ok",
+        SubagentStatus.COMPLETED,
     )
 
     assert captured, "announce should submit a turn"

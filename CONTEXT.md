@@ -83,7 +83,10 @@ _Avoid_: "callback" or "middleware" — neither captures the phase-specific, cha
 **Subagent** (`agent/subagent/`):
 A background agent task spawned by `SubagentManager`. Runs with its own tool set; its result
 re-enters the session as a `SUBAGENT`-origin `TurnRequest` via Spine submit. Bounded by
-`max_concurrent` (default 4) and a per-session hourly rate limit.
+`max_concurrent` (default 4) and a per-session hourly rate limit. A completed result,
+execution failure, and exhausted Iteration budget are distinct typed outcomes before
+re-entry; quota refusal is a failed Tool result and starts no task. Session cancellation
+propagates to the background task without re-entering the parent Session.
 _Avoid_: conflating with a Turn — a Subagent lives outside the main turn and re-enters via Spine.
 
 **Tool** (`agent/tools/`):
