@@ -153,7 +153,7 @@ class GeminiProviderConfig(ProviderConfig):
         import itertools
 
         if not hasattr(self, "_key_cycle"):
-            keys = self.api_key_list if self.api_key_list else ([self.api_key] if self.api_key else [])
+            keys = self.api_key_list or ([self.api_key] if self.api_key else [])
             object.__setattr__(self, "_key_cycle", itertools.cycle(keys) if keys else None)
         cycle = getattr(self, "_key_cycle", None)
         if cycle is None:

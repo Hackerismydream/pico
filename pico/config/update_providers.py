@@ -43,12 +43,11 @@ from pico.providers.registry import ProviderSpec, find_by_name
 
 def _provider_names() -> list[str]:
     """Return provider field names declared on ``ProvidersConfig``."""
-    out: list[str] = []
-    for fname, finfo in ProvidersConfig.model_fields.items():
-        ann = _unwrap_optional(finfo.annotation)
-        if _is_model_class(ann):
-            out.append(fname)
-    return out
+    return [
+        name
+        for name, field in ProvidersConfig.model_fields.items()
+        if _is_model_class(_unwrap_optional(field.annotation))
+    ]
 
 
 def _provider_schema_cls(name: str) -> type[BaseModel]:
@@ -559,9 +558,8 @@ def test_provider(
             "error": "api_base is empty and provider has no default",
         }
 
-    url = api_base.rstrip("/") + "/models"
-    if "/v1" not in api_base:
-        url = api_base.rstrip("/") + "/v1/models"
+    base_url = api_base.rstrip("/")
+    url = f"{base_url}/models" if "/v1" in api_base else f"{base_url}/v1/models"
 
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
 

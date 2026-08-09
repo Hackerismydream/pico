@@ -32,12 +32,11 @@ from pico.config.update import (
 
 def _channel_names() -> list[str]:
     """Return channel field names defined on ChannelsConfig (BaseModel subfields only)."""
-    out: list[str] = []
-    for fname, finfo in ChannelsConfig.model_fields.items():
-        ann = _unwrap_optional(finfo.annotation)
-        if _is_model_class(ann):
-            out.append(fname)
-    return out
+    return [
+        name
+        for name, field in ChannelsConfig.model_fields.items()
+        if _is_model_class(_unwrap_optional(field.annotation))
+    ]
 
 
 def _channel_schema_cls(name: str) -> type[BaseModel]:
