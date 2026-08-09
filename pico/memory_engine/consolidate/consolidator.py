@@ -642,25 +642,6 @@ class MemoryStore:
     def write_long_term(self, content: str) -> None:
         self.memory_file.write_text(content, encoding="utf-8")
 
-    def _safe_write_long_term(self, new_content: str, expected_prev: str) -> bool:
-        """Compare-and-set write under the lock. Used by consolidate() to avoid
-        clobbering a concurrent writer's update during the LLM call.
-
-        Returns True if the write happened; False if MEMORY.md changed under
-        us (we lose the race; caller should log + move on).
-        """
-        with self.locked():
-            current = self.read_long_term()
-            if current != expected_prev:
-                logger.info(
-                    "MemoryStore: consolidate skipped write — concurrent "
-                    "modification detected (lost race with another writer); "
-                    "next consolidation will fold our turn back in"
-                )
-                return False
-            self.write_long_term(new_content)
-            return True
-
     def append_history(self, entry: str) -> None:
         with open(self.history_file, "a", encoding="utf-8") as f:
             f.write(entry.rstrip() + "\n\n")

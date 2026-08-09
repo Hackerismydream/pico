@@ -1,7 +1,4 @@
-"""Unit tests for MemoryStore.locked() + _safe_write_long_term — the
-cross-process user.md locking primitive shared by Personalizer and
-MemoryConsolidator.
-"""
+"""Unit tests for MemoryStore locking and active profile CAS writes."""
 
 from __future__ import annotations
 
@@ -30,25 +27,36 @@ def test_lock_path_is_sibling(tmp_path: Path) -> None:
     assert store.memory_lock_path.parent == store.memory_file.parent
 
 
-def test_safe_write_returns_true_when_unchanged(tmp_path: Path) -> None:
+def test_splice_write_returns_true_when_unchanged(tmp_path: Path) -> None:
     store = MemoryStore(tmp_path)
-    store.write_long_term("v1\n")
-    ok = store._safe_write_long_term("v2\n", expected_prev="v1\n")
+    original = "## Profile\n\nbefore\n"
+    store.write_long_term(original)
+
+    ok = store._splice_section_and_write(
+        "## Profile",
+        "after",
+        expected_prev=original,
+    )
+
     assert ok is True
-    assert store.read_long_term() == "v2\n"
+    assert store.read_long_term() == "## Profile\n\nafter\n"
 
 
-def test_safe_write_skips_when_concurrent_modification(tmp_path: Path) -> None:
-    """If another writer changed MEMORY.md between our read and write, the
-    cas-style _safe_write_long_term refuses to clobber and returns False."""
+def test_splice_write_skips_when_concurrent_modification(tmp_path: Path) -> None:
     store = MemoryStore(tmp_path)
-    store.write_long_term("original\n")
-    # Simulate another writer: directly mutate the file before we attempt write.
-    store.memory_file.write_text("changed-by-other\n", encoding="utf-8")
-    ok = store._safe_write_long_term("our-update\n", expected_prev="original\n")
+    original = "## Profile\n\noriginal\n"
+    changed_by_other = "## Profile\n\nchanged-by-other\n"
+    store.write_long_term(original)
+    store.memory_file.write_text(changed_by_other, encoding="utf-8")
+
+    ok = store._splice_section_and_write(
+        "## Profile",
+        "our-update",
+        expected_prev=original,
+    )
+
     assert ok is False
-    # The other writer's content is preserved; ours is dropped.
-    assert store.read_long_term() == "changed-by-other\n"
+    assert store.read_long_term() == changed_by_other
 
 
 # ---------------------------------------------------------------------------
