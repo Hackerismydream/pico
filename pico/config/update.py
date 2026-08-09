@@ -12,11 +12,15 @@ from __future__ import annotations
 
 import json
 import os
+import types
+import typing
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
+from pydantic import BaseModel
 from pydantic.alias_generators import to_camel
+from pydantic_core import PydanticUndefined
 
 from pico.config.loader import get_config_path, read_raw_or_raise
 from pico.config.schema import CronConfig
@@ -27,6 +31,133 @@ def _write_atomic(path: Path, data: dict[str, Any]) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
     os.replace(tmp, path)
+
+
+def _unwrap_optional(annotation: Any) -> Any:
+    origin = typing.get_origin(annotation)
+    if origin is typing.Union or origin is types.UnionType:
+        args = [arg for arg in typing.get_args(annotation) if arg is not type(None)]
+        if len(args) == 1:
+            return args[0]
+    return annotation
+
+
+def _is_model_class(annotation: Any) -> bool:
+    return isinstance(annotation, type) and issubclass(annotation, BaseModel)
+
+
+def _annotation_str(annotation: Any) -> str:
+    annotation = _unwrap_optional(annotation)
+    origin = typing.get_origin(annotation)
+    if origin is typing.Literal:
+        return "Literal"
+    if origin is list:
+        args = typing.get_args(annotation)
+        return f"list[{_annotation_str(args[0])}]" if args else "list"
+    if origin is dict:
+        args = typing.get_args(annotation)
+        if args and len(args) == 2:
+            return f"dict[{_annotation_str(args[0])}, {_annotation_str(args[1])}]"
+        return "dict"
+    if hasattr(annotation, "__name__"):
+        return annotation.__name__
+    return str(annotation)
+
+
+def _coerce_value(value: Any, annotation: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+
+    base = _unwrap_optional(annotation)
+    if base is bool:
+        value_lower = value.strip().lower()
+        if value_lower in ("true", "1", "yes", "on"):
+            return True
+        if value_lower in ("false", "0", "no", "off"):
+            return False
+        return value
+    if base is int:
+        try:
+            return int(value)
+        except ValueError:
+            return value
+    if base is float:
+        try:
+            return float(value)
+        except ValueError:
+            return value
+
+    origin = typing.get_origin(base)
+    if origin is list:
+        stripped = value.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            try:
+                return json.loads(stripped)
+            except json.JSONDecodeError:
+                pass
+        return [item.strip() for item in value.split(",") if item.strip()]
+    if origin is dict:
+        stripped = value.strip()
+        if stripped.startswith("{") and stripped.endswith("}"):
+            try:
+                return json.loads(stripped)
+            except json.JSONDecodeError:
+                pass
+    return value
+
+
+def _field_default(field_info: Any) -> Any:
+    if field_info.default_factory is not None:
+        try:
+            return field_info.default_factory()
+        except Exception:
+            return None
+    if field_info.default is PydanticUndefined:
+        return None
+    return field_info.default
+
+
+def _flatten_instance(instance: BaseModel, prefix: str = "") -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for field_name in type(instance).model_fields:
+        value = getattr(instance, field_name)
+        path = f"{prefix}{field_name}"
+        if isinstance(value, BaseModel):
+            out.update(_flatten_instance(value, prefix=f"{path}."))
+        else:
+            out[path] = value
+    return out
+
+
+def _walk_nested_path(model_cls: type[BaseModel], dotted_key: str) -> tuple[type[BaseModel], str]:
+    segments = dotted_key.split(".")
+    cls = model_cls
+    for segment in segments[:-1]:
+        field_info = cls.model_fields.get(segment)
+        if field_info is None:
+            raise KeyError(f"Unknown nested field '{segment}' in {cls.__name__}")
+        annotation = _unwrap_optional(field_info.annotation)
+        if not _is_model_class(annotation):
+            raise KeyError(f"Field '{segment}' in {cls.__name__} is not a nested model")
+        cls = annotation
+    leaf = segments[-1]
+    if leaf not in cls.model_fields:
+        raise KeyError(f"Unknown field '{leaf}' in {cls.__name__}")
+    return cls, leaf
+
+
+def _set_nested(dotted_key: str, value: Any, target: dict[str, Any]) -> Any:
+    segments = dotted_key.split(".")
+    cursor = target
+    for segment in segments[:-1]:
+        child = cursor.get(segment)
+        if not isinstance(child, dict):
+            child = {}
+            cursor[segment] = child
+        cursor = child
+    previous = cursor.get(segments[-1])
+    cursor[segments[-1]] = value
+    return previous
 
 
 def update_cron_config(

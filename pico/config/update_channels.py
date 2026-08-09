@@ -8,46 +8,26 @@ the channels section is forbidden -- see plan rule.
 
 from __future__ import annotations
 
-import json
-import os
 import typing
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 from loguru import logger
 from pydantic import BaseModel, ValidationError
-from pydantic_core import PydanticUndefined
 
 from pico.config.loader import get_config_path, read_raw_or_raise
 from pico.config.schema import ChannelsConfig
-
-# ---------------------------------------------------------------------------
-# Private helpers
-# ---------------------------------------------------------------------------
-
-
-def _write_atomic(path: Path, data: dict[str, Any]) -> None:
-    """Atomic write: temp-file then os.replace. Preserves indent=2, UTF-8."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, path)
-
-
-def _unwrap_optional(annotation: Any) -> Any:
-    """Strip ``Optional[X]`` / ``X | None`` down to ``X``."""
-    import types as _types
-
-    origin = typing.get_origin(annotation)
-    if origin is Union or origin is getattr(_types, "UnionType", None):
-        args = [a for a in typing.get_args(annotation) if a is not type(None)]
-        if len(args) == 1:
-            return args[0]
-    return annotation
-
-
-def _is_model_class(ann: Any) -> bool:
-    return isinstance(ann, type) and issubclass(ann, BaseModel)
+from pico.config.update import (
+    _annotation_str,
+    _coerce_value,
+    _field_default,
+    _flatten_instance,
+    _is_model_class,
+    _set_nested,
+    _unwrap_optional,
+    _walk_nested_path,
+    _write_atomic,
+)
 
 
 def _channel_names() -> list[str]:
@@ -69,29 +49,6 @@ def _channel_schema_cls(name: str) -> type[BaseModel]:
     if not _is_model_class(ann):
         raise KeyError(f"'{name}' is not a channel section. Available channels: {sorted(_channel_names())}")
     return ann
-
-
-def _annotation_str(ann: Any) -> str:
-    """Compact human-readable string for a type annotation.
-
-    Literal renders as the bare keyword; concrete choices are surfaced
-    via the description column (see ``_flatten_fields``).
-    """
-    ann = _unwrap_optional(ann)
-    origin = typing.get_origin(ann)
-    if origin is typing.Literal:
-        return "Literal"
-    if origin is list:
-        args = typing.get_args(ann)
-        return f"list[{_annotation_str(args[0])}]" if args else "list"
-    if origin is dict:
-        args = typing.get_args(ann)
-        if args and len(args) == 2:
-            return f"dict[{_annotation_str(args[0])}, {_annotation_str(args[1])}]"
-        return "dict"
-    if hasattr(ann, "__name__"):
-        return ann.__name__
-    return str(ann)
 
 
 _SECRET_EXACT = {"token", "secret", "password", "api_key"}
@@ -128,98 +85,6 @@ def _is_required_field(field_info: Any) -> bool:
     return isinstance(extra, dict) and extra.get("required") is True
 
 
-def _walk_nested_path(model_cls: type[BaseModel], dotted_key: str) -> tuple[type[BaseModel], str]:
-    """Walk ``a.b.c`` into nested ``BaseModel`` classes.
-
-    Returns the nested model class and leaf field for a dotted path.
-
-    Raises:
-        KeyError: when a segment does not exist or is not a nested model.
-    """
-    segs = dotted_key.split(".")
-    cls: type[BaseModel] = model_cls
-    for seg in segs[:-1]:
-        finfo = cls.model_fields.get(seg)
-        if finfo is None:
-            raise KeyError(f"Unknown nested field '{seg}' in {cls.__name__}")
-        ann = _unwrap_optional(finfo.annotation)
-        if not _is_model_class(ann):
-            raise KeyError(f"Field '{seg}' in {cls.__name__} is not a nested model")
-        cls = ann
-    leaf = segs[-1]
-    if leaf not in cls.model_fields:
-        raise KeyError(f"Unknown field '{leaf}' in {cls.__name__}")
-    return cls, leaf
-
-
-def _coerce_value(value: Any, annotation: Any) -> Any:
-    """Pre-Pydantic coercion for CLI string inputs.
-
-    - ``"true"/"false"/"1"/"0"`` -> bool
-    - ``"a,b,c"`` -> ``["a","b","c"]`` (when annotation is ``list[...]``)
-    - ``'["a","b"]'`` -> ``["a","b"]`` (JSON form for lists)
-    - ``'{"k":"v"}'`` -> ``{"k":"v"}`` (JSON form for dicts)
-    - everything else -> leave as-is and let Pydantic coerce / report
-    """
-    if not isinstance(value, str):
-        return value
-
-    base = _unwrap_optional(annotation)
-
-    if base is bool:
-        v = value.strip().lower()
-        if v in ("true", "1", "yes", "on"):
-            return True
-        if v in ("false", "0", "no", "off"):
-            return False
-        return value
-
-    if base is int:
-        try:
-            return int(value)
-        except ValueError:
-            return value
-
-    if base is float:
-        try:
-            return float(value)
-        except ValueError:
-            return value
-
-    origin = typing.get_origin(base)
-    if origin is list:
-        v = value.strip()
-        if v.startswith("[") and v.endswith("]"):
-            try:
-                return json.loads(v)
-            except json.JSONDecodeError:
-                pass
-        return [item.strip() for item in value.split(",") if item.strip()]
-
-    if origin is dict:
-        v = value.strip()
-        if v.startswith("{") and v.endswith("}"):
-            try:
-                return json.loads(v)
-            except json.JSONDecodeError:
-                pass
-        return value
-
-    return value
-
-
-def _field_default(field_info: Any) -> Any:
-    """Resolve a Pydantic FieldInfo's effective default (call factory if any)."""
-    if field_info.default_factory is not None:
-        try:
-            return field_info.default_factory()
-        except Exception:
-            return None
-    if field_info.default is PydanticUndefined:
-        return None
-    return field_info.default
-
-
 def _flatten_fields(cls: type[BaseModel], prefix: str = "") -> dict[str, dict[str, Any]]:
     """Recurse into nested ``BaseModel`` fields, producing a flat dict of specs.
 
@@ -246,34 +111,6 @@ def _flatten_fields(cls: type[BaseModel], prefix: str = "") -> dict[str, dict[st
             "description": description,
         }
     return out
-
-
-def _flatten_instance(instance: BaseModel, prefix: str = "") -> dict[str, Any]:
-    """Flatten a Pydantic instance to dotted-path -> value (skipping nested-model nodes)."""
-    out: dict[str, Any] = {}
-    for fname in type(instance).model_fields:
-        val = getattr(instance, fname)
-        path = f"{prefix}{fname}"
-        if isinstance(val, BaseModel):
-            out.update(_flatten_instance(val, prefix=f"{path}."))
-        else:
-            out[path] = val
-    return out
-
-
-def _set_nested(dotted_key: str, value: Any, target: dict[str, Any]) -> Any:
-    """Set ``target[a][b][...][leaf] = value``, returning the previous value (or None)."""
-    segs = dotted_key.split(".")
-    cursor = target
-    for seg in segs[:-1]:
-        nxt = cursor.get(seg)
-        if not isinstance(nxt, dict):
-            nxt = {}
-            cursor[seg] = nxt
-        cursor = nxt
-    prev = cursor.get(segs[-1])
-    cursor[segs[-1]] = value
-    return prev
 
 
 # ---------------------------------------------------------------------------
