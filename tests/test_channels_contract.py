@@ -10,6 +10,7 @@ from pico.channels import (
     SupportsStreaming,
 )
 from pico.channels.contract import capability_violations
+from pico.channels.intake import Intake
 
 # ── minimal conforming channel + opt-in variants (test doubles) ───────
 
@@ -17,6 +18,7 @@ from pico.channels.contract import capability_violations
 class _Min:
     name = "min"
     capabilities = Capabilities()
+    intake = Intake("min", object())
 
     async def start(self) -> None: ...
     async def stop(self) -> None: ...

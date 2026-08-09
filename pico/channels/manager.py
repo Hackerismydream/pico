@@ -134,15 +134,27 @@ class ChannelManager:
 
         await asyncio.gather(*tasks, return_exceptions=True)
 
+    async def quiesce_intake(self) -> None:
+        """Seal every inbound Intake, then wait for admitted publishes."""
+        intakes = [channel.intake for channel in self.channels.values()]
+        for intake in intakes:
+            intake.seal()
+        await asyncio.gather(*(intake.wait_idle() for intake in intakes))
+
     async def stop_all(self) -> None:
         """Stop all channels."""
         logger.info("Stopping all channels...")
+        first_error: BaseException | None = None
         for name, channel in self.channels.items():
             try:
                 await channel.stop()
                 logger.info("Stopped {} channel", name)
-            except Exception as e:
-                logger.error("Error stopping {}: {}", name, e)
+            except BaseException as exc:
+                logger.opt(exception=exc).error("Error stopping {}", name)
+                if first_error is None:
+                    first_error = exc
+        if first_error is not None:
+            raise first_error
 
     def get_channel(self, name: str) -> Channel | None:
         """Get a channel by name."""

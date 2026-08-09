@@ -7,6 +7,7 @@ submit.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -37,6 +38,10 @@ class Intake:
         self.config = config
         self._allow_check = allow_check
         self._submit: Callable[[TurnRequest], Awaitable[None]] | None = None
+        self._sealed = False
+        self._inflight = 0
+        self._idle = asyncio.Event()
+        self._idle.set()
 
     def set_submit(self, submit: Callable[[TurnRequest], Awaitable[None]]) -> None:
         """Wire the spine inbound dispatch (gateway). ``publish`` submits a
@@ -53,6 +58,14 @@ class Intake:
             return self._allow_check(sender_id)
         return is_allowed(self.channel_name, sender_id, getattr(self.config, "allow_from", None))
 
+    def seal(self) -> None:
+        """Permanently reject new inbound publishes during gateway shutdown."""
+        self._sealed = True
+
+    async def wait_idle(self) -> None:
+        """Wait until every publish admitted before ``seal`` has returned."""
+        await self._idle.wait()
+
     async def publish(
         self,
         sender_id: str,
@@ -64,6 +77,13 @@ class Intake:
     ) -> None:
         """Check permission, then submit the message to the spine dispatch as a
         TurnRequest."""
+        if self._sealed:
+            logger.info(
+                "Intake for channel {} is sealed; dropping inbound from {}",
+                self.channel_name,
+                sender_id,
+            )
+            return
         if not self.is_allowed(sender_id):
             logger.warning(
                 "Access denied for sender {} on channel {}. Add them to allowFrom list in config to grant access.",
@@ -80,24 +100,31 @@ class Intake:
             )
             return
 
-        meta = metadata or {}
-        await self._submit(
-            TurnRequest(
-                origin=Origin.USER,
-                source=Source(
-                    channel=self.channel_name,
-                    chat_id=str(chat_id),
-                    sender_id=str(sender_id),
-                    # Not load-bearing for processing (channels read the real
-                    # chat_type from metadata, which rides extras); a best-effort
-                    # shape for the spine. group when the channel says so, else DM.
-                    chat_type=ChatType.GROUP if meta.get("chat_type") == "group" else ChatType.DM,
-                    extras=meta,
-                ),
-                text=content,
-                media=[Media(path=p, mime="application/octet-stream", kind="file") for p in (media or [])],
-                # session_key_override -> conversation: run_turn's cid is
-                # `conversation or channel:chat_id`.
-                conversation=session_key,
+        self._inflight += 1
+        self._idle.clear()
+        try:
+            meta = metadata or {}
+            await self._submit(
+                TurnRequest(
+                    origin=Origin.USER,
+                    source=Source(
+                        channel=self.channel_name,
+                        chat_id=str(chat_id),
+                        sender_id=str(sender_id),
+                        # Not load-bearing for processing (channels read the real
+                        # chat_type from metadata, which rides extras); a best-effort
+                        # shape for the spine. group when the channel says so, else DM.
+                        chat_type=ChatType.GROUP if meta.get("chat_type") == "group" else ChatType.DM,
+                        extras=meta,
+                    ),
+                    text=content,
+                    media=tuple(Media(path=p, mime="application/octet-stream", kind="file") for p in (media or [])),
+                    # session_key_override -> conversation: run_turn's cid is
+                    # `conversation or channel:chat_id`.
+                    conversation=session_key,
+                )
             )
-        )
+        finally:
+            self._inflight -= 1
+            if self._inflight == 0:
+                self._idle.set()

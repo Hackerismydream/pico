@@ -32,39 +32,34 @@ _CLEANUP_ORDER = [
     "health_close",
     "cron_stop",
     "question_cancel",
+    "intake_quiesce",
+    "spine_teardown",
     "channel_stop_started",
     "channel_stop_finished",
-    "spine_teardown",
     "agent_stop",
     "runtime_close",
 ]
 
 
-def _gateway_cleanup_dependencies(*, failures=(), last_inbound=False):
+def _gateway_cleanup_dependencies(*, failures=()):
     events: list[str] = []
     errors = {name: RuntimeError(f"{name} failed") for name in failures}
-    scheduler = SimpleNamespace(accepting=True)
 
     def run_step(name: str) -> None:
         events.append(name)
         if error := errors.get(name):
             raise error
 
-    def submit_inbound() -> None:
-        if not scheduler.accepting:
-            raise RuntimeError("submission reached a stopped scheduler")
-        events.append("inbound_submitted")
+    async def quiesce_intake() -> None:
+        run_step("intake_quiesce")
 
     async def stop_channels() -> None:
         events.append("channel_stop_started")
-        if last_inbound:
-            submit_inbound()
         events.append("channel_stop_finished")
         if error := errors.get("channel_stop"):
             raise error
 
     async def teardown_spine() -> None:
-        scheduler.accepting = False
         run_step("spine_teardown")
 
     async def close_runtime() -> None:
@@ -74,7 +69,7 @@ def _gateway_cleanup_dependencies(*, failures=(), last_inbound=False):
         "health_server": SimpleNamespace(close=lambda: run_step("health_close")),
         "cron": SimpleNamespace(stop=lambda: run_step("cron_stop")),
         "question_broker": SimpleNamespace(cancel_all=lambda: run_step("question_cancel")),
-        "channels": SimpleNamespace(stop_all=stop_channels),
+        "channels": SimpleNamespace(quiesce_intake=quiesce_intake, stop_all=stop_channels),
         "gw_teardown": teardown_spine,
         "agent": SimpleNamespace(stop=lambda: run_step("agent_stop")),
         "runtime": SimpleNamespace(close=close_runtime),
@@ -276,15 +271,14 @@ def test_gateway_refuses_second_instance(tmp_config: Path, monkeypatch) -> None:
     assert "4242" in r.stdout
 
 
-async def test_gateway_stops_channel_intake_before_spine_teardown() -> None:
+async def test_gateway_quiesces_intake_before_spine_and_stops_transports_afterward() -> None:
     from pico.cli.gateway_commands import _cleanup_gateway
 
-    dependencies, events, _errors = _gateway_cleanup_dependencies(last_inbound=True)
+    dependencies, events, _errors = _gateway_cleanup_dependencies()
 
     await _cleanup_gateway(run_error=None, **dependencies)
 
-    assert events.index("inbound_submitted") < events.index("spine_teardown")
-    assert events.index("channel_stop_finished") < events.index("spine_teardown")
+    assert events == _CLEANUP_ORDER
 
 
 async def test_gateway_attempts_every_cleanup_and_raises_the_first_failure() -> None:
@@ -294,6 +288,7 @@ async def test_gateway_attempts_every_cleanup_and_raises_the_first_failure() -> 
         "health_close",
         "cron_stop",
         "question_cancel",
+        "intake_quiesce",
         "channel_stop",
         "spine_teardown",
         "agent_stop",

@@ -3,6 +3,7 @@
 isolation, allow_from validation, and status accessors. Outbound delivery moved
 to the spine outlets (no longer the manager's job)."""
 
+import asyncio
 from contextlib import contextmanager
 from importlib.metadata import PackageNotFoundError
 from types import SimpleNamespace
@@ -179,6 +180,74 @@ def test_gateway_still_constructs_when_every_channel_fails(monkeypatch):
     assert mgr.enabled_channels == []
     assert mgr.get_status() == {}
     assert mgr.get_channel("broken") is None
+
+
+@pytest.mark.parametrize(
+    "first_error",
+    [RuntimeError("first stop failed"), asyncio.CancelledError()],
+    ids=["exception", "cancelled"],
+)
+async def test_stop_all_attempts_every_channel_and_raises_first_failure(
+    first_error: BaseException,
+) -> None:
+    events: list[str] = []
+    later_error = RuntimeError("later stop failed")
+
+    class _Channel:
+        def __init__(self, name: str, error: BaseException | None = None) -> None:
+            self.name = name
+            self.error = error
+
+        async def stop(self) -> None:
+            events.append(self.name)
+            if self.error is not None:
+                raise self.error
+
+    manager = object.__new__(ChannelManager)
+    manager.channels = {
+        "first": _Channel("first", first_error),
+        "second": _Channel("second", later_error),
+        "last": _Channel("last"),
+    }
+
+    with _logs() as lines:
+        with pytest.raises(BaseException) as exc_info:
+            await manager.stop_all()
+
+    assert exc_info.value is first_error
+    assert events == ["first", "second", "last"]
+    logged = "".join(lines)
+    assert "Error stopping first" in logged
+    assert "Error stopping second" in logged
+
+
+async def test_quiesce_intake_seals_every_channel_before_waiting() -> None:
+    events: list[str] = []
+    intakes = []
+
+    class _Intake:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.sealed = False
+            intakes.append(self)
+
+        def seal(self) -> None:
+            self.sealed = True
+            events.append(f"seal:{self.name}")
+
+        async def wait_idle(self) -> None:
+            assert all(intake.sealed for intake in intakes)
+            events.append(f"wait:{self.name}")
+
+    manager = object.__new__(ChannelManager)
+    manager.channels = {
+        "first": SimpleNamespace(intake=_Intake("first")),
+        "second": SimpleNamespace(intake=_Intake("second")),
+    }
+
+    await manager.quiesce_intake()
+
+    assert events == ["seal:first", "seal:second", "wait:first", "wait:second"]
 
 
 # ── _missing_dep_hint (install-mode / OS split) ───────────────────────

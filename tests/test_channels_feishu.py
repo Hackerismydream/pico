@@ -296,6 +296,34 @@ def test_stop_blocks_zombie_inbound(monkeypatch):
     assert len(calls) == 1  # zombie delivery dropped
 
 
+async def test_quiesced_intake_drops_scheduled_handler_that_resumes_after_stop():
+    ch = _channel()
+    ch.config.allow_from = ["*"]
+    ch._running = True
+    ch._react = AsyncMock()
+    extraction_started = asyncio.Event()
+    resume_extraction = asyncio.Event()
+
+    async def extract(msg_type, message, message_id):
+        extraction_started.set()
+        await resume_extraction.wait()
+        return "late inbound", []
+
+    ch._extract = extract
+    submit = AsyncMock()
+    ch.intake.set_submit(submit)
+    handler = asyncio.create_task(ch._on_message(_inbound_event()))
+    await extraction_started.wait()
+
+    ch.intake.seal()
+    await ch.intake.wait_idle()
+    await ch.stop()
+    resume_extraction.set()
+    await handler
+
+    submit.assert_not_awaited()
+
+
 # ── contract conformance ───────────────────────────────────────────────
 
 

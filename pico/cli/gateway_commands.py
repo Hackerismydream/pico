@@ -129,10 +129,10 @@ async def _cleanup_gateway(
     await attempt("cron", cron.stop)
     if question_broker is not None:
         await attempt("question broker", question_broker.cancel_all)
-    # Channel stop is the inbound barrier; Spine must remain open until it returns.
-    await attempt("channels", channels.stop_all)
+    await attempt("channel intake", channels.quiesce_intake)
     if gw_teardown is not None:
         await attempt("spine", gw_teardown)
+    await attempt("channel transports", channels.stop_all)
     await attempt("agent", agent.stop)
     await attempt("runtime", runtime.close)
     # The run failure explains why the gateway exited; cleanup failures

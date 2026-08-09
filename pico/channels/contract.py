@@ -15,11 +15,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 # Capabilities and SupportsStreaming live in spine.delivery (their consumer is
 # the delivery hub); re-exported here so channels keep importing from one place.
 from pico.spine.delivery import Capabilities, SupportsStreaming
+
+if TYPE_CHECKING:
+    from pico.channels.intake import Intake
 
 
 @runtime_checkable
@@ -28,6 +31,7 @@ class Channel(Protocol):
 
     name: str
     capabilities: Capabilities
+    intake: Intake
 
     async def start(self) -> None: ...
     async def stop(self) -> None: ...
