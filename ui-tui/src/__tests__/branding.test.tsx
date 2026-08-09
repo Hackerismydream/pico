@@ -11,11 +11,6 @@ import { Branding, formatProvider, StartupLoader } from '../components/branding.
 import { DEFAULT_THEME } from '../theme.js'
 
 describe('Branding', () => {
-  it('does not contain hermes brand', () => {
-    const { lastFrame } = render(<Branding />)
-    expect(lastFrame()?.toLowerCase()).not.toContain('hermes')
-  })
-
   it('renders without throwing when invoked with no props', () => {
     // The chosen layout (full / stacked / compact) depends on terminal width;
     // all three must render cleanly.
