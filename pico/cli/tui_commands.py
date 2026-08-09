@@ -852,28 +852,6 @@ def _is_abnormal_child_exit(exit_code: int) -> bool:
     return exit_code not in (0, 129, 130, 143, _RPC_HANDSHAKE_EXIT_CODE)
 
 
-def _diagnose_crash(node_path: str, dist_entry: Path, cwd: Path) -> None:
-    """When `tui` child exits non-zero, re-run capturing stderr for diagnosis."""
-    try:
-        proc = subprocess.run(
-            [node_path, str(dist_entry)],
-            cwd=str(cwd),
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-        stderr_tail = "\n".join(proc.stderr.splitlines()[-20:])
-        if stderr_tail:
-            print(
-                f"\n--- child stderr (last 20 lines) ---\n{stderr_tail}\n",
-                file=sys.stderr,
-            )
-    except (subprocess.SubprocessError, OSError):
-        # Diagnose failure is best-effort; never raise.
-        pass
-
-
 def launch_tui(
     *,
     check: bool = False,
@@ -1003,8 +981,6 @@ def launch_tui(
             exit_code = run_subprocess(node_path, [str(dist_entry)], cwd=dist_cwd)
         else:
             exit_code = run_subprocess_with_rpc(node_path, [str(dist_entry)], cwd=dist_cwd)
-        if _is_abnormal_child_exit(exit_code):
-            _diagnose_crash(node_path, dist_entry, dist_cwd)
 
     # tui.log stays silent on a clean run; surface it only when the child
     # exited abnormally (see _is_abnormal_child_exit).
