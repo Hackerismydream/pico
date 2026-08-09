@@ -764,11 +764,16 @@ def test_tui_announces_log_path_only_on_abnormal_exit(
     monkeypatch.setattr(tui_commands, "resolve_dist_entry", lambda: tmp_path / "entry.js")
     monkeypatch.setattr(tui_commands, "_suppress_noisy_watchers", lambda: None)
     monkeypatch.setattr(tui_commands, "redirect_loguru_to_file", lambda *a, **k: tmp_path / "tui.log")
-    monkeypatch.setattr(tui_commands, "run_subprocess_with_rpc", lambda *a, **k: exit_code)
+    run_child = MagicMock(return_value=exit_code)
+    relaunch = MagicMock(side_effect=AssertionError("TUI must not be relaunched after exit"))
+    monkeypatch.setattr(tui_commands, "run_subprocess_with_rpc", run_child)
+    monkeypatch.setattr(tui_commands.subprocess, "run", relaunch)
 
     result = CliRunner().invoke(app, [])
 
     assert result.exit_code == exit_code
+    run_child.assert_called_once()
+    relaunch.assert_not_called()
     if should_announce:
         assert "TUI logs" in result.stderr
         assert f"(exit {exit_code})" in result.stderr
