@@ -194,7 +194,7 @@ class PluginRegistry:
         Manifest validation already enforced the ``module.path:callable``
         shape, so this just splits and imports.
         """
-        module_path, _, attr = ref.partition(":")
+        module_path, attr = ref.split(":", 1)
         try:
             mod = importlib.import_module(module_path)
         except Exception as e:
