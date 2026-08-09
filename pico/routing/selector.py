@@ -81,8 +81,7 @@ def _score_model(
     if task_score is None:
         return None
     profile = ROUTING_PROFILES[profile_name]
-    cost_val = model.cost
-    cost_score = _normalize(cost_val, cost_min, cost_max, invert=True)
+    cost_score = _normalize(model.cost, cost_min, cost_max, invert=True)
     composite = profile.quality_weight * (task_score / 100.0) + profile.cost_weight * cost_score
     return ModelScore(
         model=model.model,
