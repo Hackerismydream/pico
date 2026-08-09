@@ -19,7 +19,7 @@ import type { TurnEvent, TurnSendParams, TurnSendResult, TurnSubscribeParams } f
 import { createChatStream, type ChatStreamRpcClient } from '../app/chatStream.js'
 import { turnController } from '../app/turnController.js'
 import { getTurnState, resetTurnState } from '../app/turnStore.js'
-import { getUiState, resetUiState } from '../app/uiStore.js'
+import { getUiState, patchUiState, resetUiState } from '../app/uiStore.js'
 
 type FakeUnsubscribe = () => Promise<void>
 
@@ -162,6 +162,25 @@ describe('createChatStream', () => {
 
     await stream.detach()
     expect(fake.__unsubscribeCalls).toBe(1)
+  })
+
+  it('clears a prior cost when the completed turn has unknown pricing', async () => {
+    patchUiState(state => ({ ...state, usage: { ...state.usage, cost_usd: 0.25 } }))
+    const fake = makeFakeRpc()
+    const stream = createChatStream({ rpcClient: fake, sessionKey: 'tui:default' })
+    await stream.attach()
+    await stream.send('hello')
+
+    fake.__pushEvent({ type: 'message.start', payload: { turn_id: 'turn-1' } })
+    fake.__pushEvent({
+      type: 'message.complete',
+      payload: {
+        turn_id: 'turn-1',
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+      }
+    })
+
+    expect(getUiState().usage.cost_usd).toBeUndefined()
   })
 
   it('restores the input prompt when the server reports cancelled_by_client', async () => {

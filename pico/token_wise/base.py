@@ -28,6 +28,9 @@ class UsageSnapshot:
     Turn that spent it (see ``docs/specs/turn-evidence-correlation.md``). Both
     stay ``None`` when tracing is disabled, and rows written before they existed
     read back as unjoinable rather than mis-joined.
+
+    ``estimated_cost_usd`` is ``None`` when pricing is unavailable. Zero is
+    reserved for calls whose known rates produce a real zero cost.
     """
 
     model: str
@@ -36,7 +39,7 @@ class UsageSnapshot:
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
     reasoning_tokens: int = 0
-    estimated_cost_usd: float = 0.0
+    estimated_cost_usd: float | None = None
     session_key: str | None = None
     trace_id: str | None = None
     turn_span_id: str | None = None

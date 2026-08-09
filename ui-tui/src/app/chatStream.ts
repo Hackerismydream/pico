@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto'
 
 import type { Msg } from '../types.js'
 
+import { mergeUsage } from '../domain/usage.js'
 import {
   RpcError,
   type ErrorEvent,
@@ -271,7 +272,7 @@ const onMessageComplete = (
   // the caller must commit into history — without this the streamed tokens
   // appear during the turn but vanish when the turn closes.
   if (ev.payload.usage) {
-    patchUiState(s => ({ ...s, usage: { ...s.usage, ...ev.payload.usage } }))
+    patchUiState(s => ({ ...s, usage: mergeUsage(s.usage, ev.payload.usage) }))
   }
   const { finalMessages, finalText, wasInterrupted } = turnController.recordMessageComplete({})
   if (!wasInterrupted && appendMessage) {
