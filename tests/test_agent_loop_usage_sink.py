@@ -121,6 +121,38 @@ async def test_usage_sink_keeps_known_zero_cost(workspace):
 
 
 @pytest.mark.asyncio
+async def test_usage_sink_clears_known_cost_when_next_model_is_unpriced(workspace):
+    model = "deepseek/deepseek-v4-flash"
+    provider = UsageProvider(model, prompt_tokens=100, completion_tokens=50)
+    agent = _make_agent(workspace, provider, model=model, window=40000)
+    sink: dict = {}
+
+    await agent._process_message(
+        TurnRequest(
+            origin=Origin.USER,
+            source=Source(channel="test", chat_id="priced", sender_id="user", chat_type=ChatType.DM),
+            text="priced",
+        ),
+        session_key="priced",
+        usage_sink=sink,
+    )
+    assert sink["cost_usd"] > 0
+
+    agent.model = "unpriced/model"
+    await agent._process_message(
+        TurnRequest(
+            origin=Origin.USER,
+            source=Source(channel="test", chat_id="unpriced", sender_id="user", chat_type=ChatType.DM),
+            text="unpriced",
+        ),
+        session_key="unpriced",
+        usage_sink=sink,
+    )
+
+    assert "cost_usd" not in sink
+
+
+@pytest.mark.asyncio
 async def test_usage_sink_context_max_from_live_openrouter(workspace, monkeypatch):
     """An OpenRouter model LiteLLM lags on gets its real window from /models."""
     models = [

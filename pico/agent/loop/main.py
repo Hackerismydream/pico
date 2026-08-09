@@ -1224,6 +1224,8 @@ class AgentLoop:
                 usage_sink["total_tokens"] = int(response.usage.get("total_tokens", 0) or 0)
                 if usage_snapshot.estimated_cost_usd is not None:
                     usage_sink["cost_usd"] = usage_snapshot.estimated_cost_usd
+                else:
+                    usage_sink.pop("cost_usd", None)
                 usage_sink["context_max"] = context_max
                 usage_sink["context_used"] = context_used
                 usage_sink["context_percent"] = round(100 * context_used / context_max) if context_max else 0
