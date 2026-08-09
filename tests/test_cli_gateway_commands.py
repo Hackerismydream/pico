@@ -1,13 +1,15 @@
 """CLI tests for ``pico gateway``.
 
 The ``gateway`` command spawns the agent loop, channel manager, cron service,
-and optional background services, then runs forever. Smoke-level coverage only:
-``--help`` works, options are surfaced, and the no-API-key path exits cleanly.
+and optional background services, then runs forever. Coverage includes startup
+smoke checks, configuration assembly, and deterministic shutdown ordering.
 """
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
@@ -24,6 +26,60 @@ def tmp_config(tmp_path: Path) -> Path:
     set_config_path(cfg)
     yield cfg
     set_config_path(None)  # type: ignore[arg-type]
+
+
+_CLEANUP_ORDER = [
+    "health_close",
+    "cron_stop",
+    "question_cancel",
+    "channel_stop_started",
+    "channel_stop_finished",
+    "spine_teardown",
+    "agent_stop",
+    "runtime_close",
+]
+
+
+def _gateway_cleanup_dependencies(*, failures=(), last_inbound=False):
+    events: list[str] = []
+    errors = {name: RuntimeError(f"{name} failed") for name in failures}
+    scheduler = SimpleNamespace(accepting=True)
+
+    def run_step(name: str) -> None:
+        events.append(name)
+        if error := errors.get(name):
+            raise error
+
+    def submit_inbound() -> None:
+        if not scheduler.accepting:
+            raise RuntimeError("submission reached a stopped scheduler")
+        events.append("inbound_submitted")
+
+    async def stop_channels() -> None:
+        events.append("channel_stop_started")
+        if last_inbound:
+            submit_inbound()
+        events.append("channel_stop_finished")
+        if error := errors.get("channel_stop"):
+            raise error
+
+    async def teardown_spine() -> None:
+        scheduler.accepting = False
+        run_step("spine_teardown")
+
+    async def close_runtime() -> None:
+        run_step("runtime_close")
+
+    dependencies = {
+        "health_server": SimpleNamespace(close=lambda: run_step("health_close")),
+        "cron": SimpleNamespace(stop=lambda: run_step("cron_stop")),
+        "question_broker": SimpleNamespace(cancel_all=lambda: run_step("question_cancel")),
+        "channels": SimpleNamespace(stop_all=stop_channels),
+        "gw_teardown": teardown_spine,
+        "agent": SimpleNamespace(stop=lambda: run_step("agent_stop")),
+        "runtime": SimpleNamespace(close=close_runtime),
+    }
+    return dependencies, events, errors
 
 
 def test_gateway_help_works() -> None:
@@ -218,6 +274,58 @@ def test_gateway_refuses_second_instance(tmp_config: Path, monkeypatch) -> None:
     assert r.exit_code == 1
     assert "already running for this instance" in r.stdout
     assert "4242" in r.stdout
+
+
+async def test_gateway_stops_channel_intake_before_spine_teardown() -> None:
+    from pico.cli.gateway_commands import _cleanup_gateway
+
+    dependencies, events, _errors = _gateway_cleanup_dependencies(last_inbound=True)
+
+    await _cleanup_gateway(run_error=None, **dependencies)
+
+    assert events.index("inbound_submitted") < events.index("spine_teardown")
+    assert events.index("channel_stop_finished") < events.index("spine_teardown")
+
+
+async def test_gateway_attempts_every_cleanup_and_raises_the_first_failure() -> None:
+    from pico.cli.gateway_commands import _cleanup_gateway
+
+    failures = {
+        "health_close",
+        "cron_stop",
+        "question_cancel",
+        "channel_stop",
+        "spine_teardown",
+        "agent_stop",
+        "runtime_close",
+    }
+    dependencies, events, errors = _gateway_cleanup_dependencies(failures=failures)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await _cleanup_gateway(run_error=None, **dependencies)
+
+    assert exc_info.value is errors["health_close"]
+    assert events == _CLEANUP_ORDER
+
+
+@pytest.mark.parametrize(
+    "run_error",
+    [RuntimeError("gateway run failed"), asyncio.CancelledError()],
+)
+async def test_gateway_preserves_run_failure_over_cleanup_failures(
+    run_error: BaseException,
+) -> None:
+    from pico.cli.gateway_commands import _cleanup_gateway
+
+    dependencies, events, _errors = _gateway_cleanup_dependencies(
+        failures={"health_close", "cron_stop", "runtime_close"}
+    )
+
+    with pytest.raises(BaseException) as exc_info:
+        await _cleanup_gateway(run_error=run_error, **dependencies)
+
+    assert exc_info.value is run_error
+    assert events == _CLEANUP_ORDER
 
 
 def test_gateway_log_config_defaults() -> None:
