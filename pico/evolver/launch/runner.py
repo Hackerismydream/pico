@@ -228,7 +228,7 @@ def _meta_guard(spec: RunSpec, *, force: bool) -> RunMeta:
     return meta
 
 
-def _run_rounds(spec: RunSpec, bundle: BenchBundle):
+def _run_rounds(bundle: BenchBundle):
     from pico.evolver.orchestrator.state.journal import RoundJournal
 
     orch = bundle.build_orchestrator()
@@ -349,7 +349,7 @@ def _cmd_run(spec: RunSpec, *, force: bool) -> int:
         f"{spec.work_dir}/journal/rounds.jsonl (checkpoints)"
     )
     try:
-        orch, journal, result = _run_rounds(spec, bundle)
+        orch, journal, result = _run_rounds(bundle)
     except KeyboardInterrupt:
         _refresh_summary(spec)
         _say(

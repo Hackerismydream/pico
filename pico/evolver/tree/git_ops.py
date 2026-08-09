@@ -304,13 +304,6 @@ def apply_patch_as_commit(
     if not commit_exists(repo_root, parent_sha):
         raise ValueError(f"parent_sha {parent_sha!r} is not a known commit in {repo_root}")
 
-    git_dir = (repo_root / ".git").resolve()
-    if not git_dir.exists():
-        # Worktrees have .git as a file pointing to gitdir; fall back to
-        # asking git itself.
-        git_dir_str = _run(repo_root, "rev-parse", "--git-dir").strip()
-        git_dir = (repo_root / git_dir_str).resolve()
-
     with _temp_index() as idx:
         # The custom index file is selected via GIT_INDEX_FILE env var
         # for the duration of each plumbing call.

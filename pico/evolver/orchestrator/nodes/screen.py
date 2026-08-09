@@ -48,23 +48,6 @@ class ScreenResult:
         return self.candidate_mean - self.vanilla_mean
 
 
-def _vanilla_anchor_mean(vanilla_evals: dict[str, TaskEval], anchor_task_ids: list[str]) -> float:
-    """Mean vanilla per-task pass rate over the anchor subset (control arm).
-
-    A control arm that is a fresh eval (e.g. a same-session paired baseline) can
-    legitimately be missing an anchor task that failed to launch, so a missing id
-    contributes 0.0 — symmetric with the candidate side (``anchor_mean_pass_rate``)
-    and safe for a wide-pass screen (a lower vanilla mean only advances more
-    candidates). Frozen ledger baselines have every anchor id, so this is a no-op
-    there.
-    """
-    total = 0.0
-    for task_id in anchor_task_ids:
-        ev = vanilla_evals.get(task_id)
-        total += ev.pass_rate if ev is not None else 0.0
-    return total / len(anchor_task_ids)
-
-
 def screen_candidate(
     *,
     candidate_evals: dict[str, TaskEval],
@@ -73,7 +56,7 @@ def screen_candidate(
 ) -> ScreenResult:
     """Apply the wide-pass screen cut to one candidate's K=1 anchor eval."""
     candidate_mean = anchor_mean_pass_rate(candidate_evals, anchor.task_ids)
-    vanilla_mean = _vanilla_anchor_mean(vanilla_evals, anchor.task_ids)
+    vanilla_mean = anchor_mean_pass_rate(vanilla_evals, anchor.task_ids)
     margin = candidate_mean - vanilla_mean
     cull = anchor.cull_threshold
 
