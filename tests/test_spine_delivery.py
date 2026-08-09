@@ -76,6 +76,22 @@ def test_fake_outlet_satisfies_the_outlet_protocol():
     assert not isinstance(object(), Outlet)
 
 
+async def test_register_rejects_a_duplicate_outlet_name(hub):
+    first = FakeOutlet("tg")
+    replacement = FakeOutlet("tg")
+    hub.register(first)
+    await hub.dispatch(Text(content="one", source=_src("tg")))
+    await hub.wait_idle("tg")
+
+    with pytest.raises(ValueError, match="outlet 'tg' is already registered"):
+        hub.register(replacement)
+
+    await hub.dispatch(Text(content="two", source=_src("tg")))
+    await hub.wait_idle("tg")
+    assert [item.content for item in first.received] == ["one", "two"]
+    assert replacement.received == []
+
+
 async def _settle(predicate, *, tries: int = 2000) -> None:
     # Delivery is asynchronous (the per-outlet worker), so wait for the worker to
     # act by yielding the loop until the condition holds.
@@ -331,6 +347,18 @@ class FakeStreamingOutlet:
         self.chunks.append((chat_id, stream_id, delta, done))
 
 
+class GatedStreamingOutlet(FakeStreamingOutlet):
+    def __init__(self, name: str = "tg") -> None:
+        super().__init__(name)
+        self.entered = asyncio.Event()
+        self.gate = asyncio.Event()
+
+    async def send_stream_chunk(self, chat_id, stream_id, delta, *, done=False) -> None:
+        self.entered.set()
+        await self.gate.wait()
+        await super().send_stream_chunk(chat_id, stream_id, delta, done=done)
+
+
 async def test_streaming_outlet_gets_chunks_then_a_done_close(hub):
     outlet = FakeStreamingOutlet("tg")
     hub.register(outlet)
@@ -406,6 +434,194 @@ async def test_dispatch_after_aclose_is_rejected_without_restarting_worker(hub):
 
     assert hub._workers == {}
     assert [item.content for item in outlet.received] == ["before"]
+
+
+async def test_concurrent_aclose_calls_share_worker_shutdown_barrier(hub):
+    cancellation_swallowed = asyncio.Event()
+    release_delivery = asyncio.Event()
+
+    class _SwallowOnceOutlet(FakeOutlet):
+        async def deliver(self, out) -> None:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancellation_swallowed.set()
+                await release_delivery.wait()
+
+    hub.register(_SwallowOnceOutlet("tg"))
+    await hub.dispatch(Text(content="in flight", source=_src("tg")))
+    worker = hub._workers["tg"]
+    first_close = asyncio.create_task(hub.aclose())
+    await cancellation_swallowed.wait()
+    second_close = asyncio.create_task(hub.aclose())
+    await asyncio.sleep(0)
+
+    try:
+        assert not second_close.done()
+        release_delivery.set()
+        await asyncio.wait_for(asyncio.gather(first_close, second_close), timeout=0.2)
+    finally:
+        release_delivery.set()
+        for task in (first_close, second_close, worker):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(first_close, second_close, worker, return_exceptions=True)
+
+    assert worker.done()
+    assert hub._workers == {}
+
+
+async def test_aclose_delays_caller_cancellation_until_worker_shutdown(hub):
+    cancellation_swallowed = asyncio.Event()
+    release_delivery = asyncio.Event()
+
+    class _DelayedCancellationOutlet(FakeOutlet):
+        async def deliver(self, out) -> None:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancellation_swallowed.set()
+                await release_delivery.wait()
+
+    hub.register(_DelayedCancellationOutlet("tg"))
+    await hub.dispatch(Text(content="in flight", source=_src("tg")))
+    worker = hub._workers["tg"]
+    closing = asyncio.create_task(hub.aclose())
+    await cancellation_swallowed.wait()
+    closing.cancel()
+    await asyncio.sleep(0)
+
+    try:
+        assert not closing.done()
+        release_delivery.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(closing, timeout=0.2)
+    finally:
+        release_delivery.set()
+        for task in (closing, worker):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(closing, worker, return_exceptions=True)
+
+    assert closing.cancelled()
+    assert worker.done()
+    assert hub._workers == {}
+
+
+async def test_aclose_preserves_caller_cancellation_over_barrier_failure(monkeypatch):
+    cancellation_swallowed = asyncio.Event()
+    release_delivery = asyncio.Event()
+
+    class _DelayedCancellationOutlet(FakeOutlet):
+        async def deliver(self, out) -> None:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancellation_swallowed.set()
+                await release_delivery.wait()
+
+    hub = DeliveryHub()
+    hub.register(_DelayedCancellationOutlet("tg"))
+    await hub.dispatch(Text(content="in flight", source=_src("tg")))
+    worker = hub._workers["tg"]
+
+    def fail_drain() -> int:
+        raise RuntimeError("drain failed")
+
+    monkeypatch.setattr(hub, "drain", fail_drain)
+    closing = asyncio.create_task(hub.aclose())
+    await cancellation_swallowed.wait()
+    closing.cancel()
+    await asyncio.sleep(0)
+
+    try:
+        assert not closing.done()
+        release_delivery.set()
+        with pytest.raises(asyncio.CancelledError) as exc_info:
+            await asyncio.wait_for(closing, timeout=0.2)
+    finally:
+        release_delivery.set()
+        if not closing.done():
+            closing.cancel()
+        await asyncio.gather(closing, worker, return_exceptions=True)
+
+    assert closing.cancelled()
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert str(exc_info.value.__cause__) == "drain failed"
+    assert worker.done()
+    assert hub._workers == {}
+
+
+async def test_aclose_rejects_dispatch_already_blocked_on_full_queue(hub, monkeypatch):
+    monkeypatch.setattr(delivery_mod, "_OUTLET_QUEUE_MAXSIZE", 1)
+    outlet = GatedOutlet("slow")
+    hub.register(outlet)
+    await hub.dispatch(Text(content="in flight", source=_src("slow")))
+    await outlet.entered.wait()
+    await hub.dispatch(Text(content="queued", source=_src("slow")))
+    blocked = asyncio.create_task(hub.dispatch(Text(content="blocked", source=_src("slow"))))
+    await asyncio.sleep(0)
+    assert not blocked.done()
+
+    await hub.aclose()
+
+    with pytest.raises(RuntimeError, match="delivery hub is closed"):
+        await blocked
+    queue = hub._queues["slow"]
+    assert queue.qsize() == 0
+    assert queue._unfinished_tasks == 0
+    assert hub._workers == {}
+
+
+async def test_aclose_rejects_close_marker_already_blocked_on_full_queue(hub, monkeypatch):
+    monkeypatch.setattr(delivery_mod, "_OUTLET_QUEUE_MAXSIZE", 1)
+    outlet = GatedStreamingOutlet("tg")
+    hub.register(outlet)
+    conversation_id = "tg:c"
+    await hub.dispatch(StreamDelta(delta="a", source=_src("tg"), conversation_id=conversation_id))
+    await outlet.entered.wait()
+    await hub.dispatch(Text(content="queued", source=_src("tg")))
+    closing = asyncio.create_task(hub.close_stream(conversation_id))
+    await asyncio.sleep(0)
+    assert not closing.done()
+
+    await hub.aclose()
+
+    with pytest.raises(RuntimeError, match="delivery hub is closed"):
+        await closing
+    queue = hub._queues["tg"]
+    assert queue.qsize() == 0
+    assert queue._unfinished_tasks == 0
+    assert conversation_id not in hub._stream_channel
+    assert conversation_id not in hub._open_streams
+    assert hub._workers == {}
+
+
+async def test_cancelled_close_stream_restores_route_for_retry(hub, monkeypatch):
+    monkeypatch.setattr(delivery_mod, "_OUTLET_QUEUE_MAXSIZE", 1)
+    outlet = GatedStreamingOutlet("tg")
+    hub.register(outlet)
+    conversation_id = "tg:c"
+    await hub.dispatch(StreamDelta(delta="a", source=_src("tg"), conversation_id=conversation_id))
+    await outlet.entered.wait()
+    await hub.dispatch(Text(content="queued", source=_src("tg")))
+    closing = asyncio.create_task(hub.close_stream(conversation_id))
+    await asyncio.sleep(0)
+    assert not closing.done()
+
+    closing.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await closing
+    assert hub._stream_channel[conversation_id] == "tg"
+
+    outlet.gate.set()
+    await hub.wait_idle("tg")
+    await hub.close_stream(conversation_id)
+    await hub.wait_idle("tg")
+    assert outlet.chunks == [
+        ("c", conversation_id, "a", False),
+        ("c", conversation_id, "", True),
+    ]
 
 
 async def test_drain_drops_queued_events_and_counts_them(hub):

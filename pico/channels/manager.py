@@ -213,14 +213,21 @@ class ChannelManager:
         """Bound and attempt every channel transport stop."""
         logger.info("Stopping all channels...")
         first_error: BaseException | None = None
+        cancellation: asyncio.CancelledError | None = None
         for name, channel in self.channels.items():
             try:
                 await self._stop_channel(name, channel)
                 logger.info("Stopped {} channel", name)
+            except asyncio.CancelledError as exc:
+                logger.opt(exception=exc).error("Error stopping {}", name)
+                if cancellation is None:
+                    cancellation = exc
             except BaseException as exc:
                 logger.opt(exception=exc).error("Error stopping {}", name)
                 if first_error is None:
                     first_error = exc
+        if cancellation is not None:
+            raise cancellation
         if first_error is not None:
             raise first_error
 

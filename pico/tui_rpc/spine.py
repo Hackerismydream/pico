@@ -40,6 +40,7 @@ from pico.spine import (
 from pico.spine.delivery import Capabilities, DeliveryHub
 from pico.spine.events import TurnEvent
 from pico.spine.runner import Drain, Emit
+from pico.spine.teardown import teardown_spine
 from pico.tui_rpc.errors import RpcError
 from pico.tui_rpc.subscriptions import SubscriptionEmitter
 
@@ -424,7 +425,6 @@ def build_tui(
     )
 
     async def teardown() -> None:
-        await scheduler.shutdown(grace=0.0)
-        await hub.aclose()
+        await teardown_spine(scheduler, hub, grace=0.0)
 
     return scheduler, hub, turn_ids, submission_ids, teardown

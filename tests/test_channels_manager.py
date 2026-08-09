@@ -247,6 +247,35 @@ async def test_stop_all_times_out_one_transport_and_attempts_the_rest(monkeypatc
     assert events == ["blocked", "healthy"]
 
 
+async def test_stop_all_preserves_later_cancellation_over_earlier_failure() -> None:
+    events: list[str] = []
+    second_started = asyncio.Event()
+
+    class _Channel:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        async def stop(self) -> None:
+            events.append(self.name)
+            if self.name == "first":
+                raise RuntimeError("first stop failed")
+            if self.name == "second":
+                second_started.set()
+                await asyncio.Event().wait()
+
+    manager = object.__new__(ChannelManager)
+    manager.channels = {name: _Channel(name) for name in ("first", "second", "third")}
+    stopping = asyncio.create_task(manager.stop_all())
+    await second_started.wait()
+    stopping.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await stopping
+
+    assert stopping.cancelled()
+    assert events == ["first", "second", "third"]
+
+
 async def test_quiesce_intake_seals_every_channel_before_waiting() -> None:
     events: list[str] = []
     intakes = []

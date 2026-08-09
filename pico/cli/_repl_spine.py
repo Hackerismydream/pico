@@ -29,6 +29,7 @@ from pico.spine import (
 )
 from pico.spine.delivery import Capabilities, DeliveryHub, make_hub_sink
 from pico.spine.events import Reasoning
+from pico.spine.teardown import teardown_spine
 
 
 class CliOutlet:
@@ -132,8 +133,7 @@ def build_repl(
     )
 
     async def teardown() -> None:
-        await scheduler.shutdown(grace=0.0)
-        await hub.aclose()
+        await teardown_spine(scheduler, hub, grace=0.0)
 
     return scheduler, hub, teardown
 

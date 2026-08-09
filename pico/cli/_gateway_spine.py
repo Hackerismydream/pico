@@ -19,6 +19,7 @@ from pico.spine import OriginPools, Scheduler
 from pico.spine.delivery import DeliveryHub
 from pico.spine.events import Text, TurnEnded, TurnFailed, TurnStarted
 from pico.spine.message import Source
+from pico.spine.teardown import teardown_spine
 from pico.spine.turn import Origin
 
 if TYPE_CHECKING:
@@ -152,7 +153,6 @@ def build_gateway(
     )
 
     async def teardown() -> None:
-        await scheduler.shutdown(grace=0.0)
-        await hub.aclose()
+        await teardown_spine(scheduler, hub, grace=0.0)
 
     return scheduler, hub, readback_texts, sources, teardown

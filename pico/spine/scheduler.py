@@ -15,6 +15,7 @@ from typing import get_args
 
 from loguru import logger
 
+from pico.spine._barrier import finish_barrier
 from pico.spine.events import RunnerEvent, TurnEnded, TurnEvent, TurnFailed, TurnStarted
 from pico.spine.runner import Emit, TurnOutcome, TurnRunner
 from pico.spine.turn import BusyPolicy, Origin, TurnRequest
@@ -366,6 +367,7 @@ class Scheduler:
         self._lanes: dict[str, Lane] = {}
         self._draining = False
         self._reaper: asyncio.Task | None = None
+        self._shutdown_task: asyncio.Task[None] | None = None
 
     def submit(self, req: TurnRequest) -> TurnHandle:
         if asyncio.get_running_loop() is not self._loop:
@@ -416,13 +418,7 @@ class Scheduler:
             await asyncio.sleep(_SWEEP_INTERVAL)
             self._sweep(time.monotonic())
 
-    async def shutdown(self, grace: float) -> None:
-        """Drain the scheduler: seal it, cancel unstarted work, let running turns
-        finish within grace, then cascade-cancel the stragglers. Every turn's
-        future resolves on one of the four exit paths — shutdown resolves the
-        unfinished ones as cancelled, so result() never hangs.
-        """
-        self._draining = True  # phase 1: seal — submit now fails fast
+    async def _finish_shutdown(self, grace: float) -> None:
         for lane in self._lanes.values():
             lane.drain_pending()  # phase 2: clear queued + mailboxed work
         # Seal + drain run with no await between them, so unstarted work is
@@ -440,6 +436,17 @@ class Scheduler:
         survivors = [fut for fut in running if not fut.done()]
         if survivors:
             await asyncio.wait(survivors)
+
+    async def shutdown(self, grace: float) -> None:
+        """Seal, drain, and cascade before propagating caller cancellation.
+
+        Every turn's future resolves on one of the four exit paths, so result()
+        never hangs. Concurrent callers share the first shutdown's grace window.
+        """
+        if self._shutdown_task is None:
+            self._draining = True  # phase 1: seal — submit now fails fast
+            self._shutdown_task = asyncio.create_task(self._finish_shutdown(grace))
+        await finish_barrier(self._shutdown_task)
 
     def _effective_busy(self, req: TurnRequest) -> BusyPolicy:
         """Resolve the busy policy actually applied. INJECT and INTERRUPT are

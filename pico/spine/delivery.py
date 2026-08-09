@@ -19,6 +19,7 @@ from typing import Protocol, runtime_checkable
 
 from loguru import logger
 
+from pico.spine._barrier import finish_barrier
 from pico.spine.events import (
     Deliverable,
     MediaOut,
@@ -126,6 +127,7 @@ class DeliveryHub:
         # report, so re-dispatching would loop through the broken outlet.
         self._on_delivery_failure = on_delivery_failure
         self._closed = False
+        self._close_task: asyncio.Task[None] | None = None
         self._outlets: dict[str, Outlet] = {}
         self._queues: dict[str, asyncio.Queue[_Routed | _StreamClose]] = {}
         self._workers: dict[str, asyncio.Task[None]] = {}
@@ -141,6 +143,8 @@ class DeliveryHub:
         # hot-swap it.
         if self._closed:
             raise RuntimeError("delivery hub is closed")
+        if outlet.name in self._outlets:
+            raise ValueError(f"outlet {outlet.name!r} is already registered")
         self._outlets[outlet.name] = outlet
 
     async def dispatch(self, out: Deliverable) -> None:
@@ -165,7 +169,19 @@ class DeliveryHub:
             return
         queue = self._queues.get(channel)
         if queue is not None:
-            await queue.put(_StreamClose(conversation_id))
+            try:
+                await self._put(queue, _StreamClose(conversation_id))
+            except BaseException:
+                if not self._closed:
+                    self._stream_channel.setdefault(conversation_id, channel)
+                raise
+
+    async def _put(self, queue: asyncio.Queue[_Routed | _StreamClose], item: _Routed | _StreamClose) -> None:
+        """Commit one item unless close won while a full queue blocked it."""
+        await queue.put(item)
+        if self._closed:
+            self.drain()
+            raise RuntimeError("delivery hub is closed")
 
     async def _enqueue(self, out: Deliverable) -> None:
         if self._closed:
@@ -198,12 +214,12 @@ class DeliveryHub:
             trace_id=getattr(ctx, "trace_id", None),
             parent_span_id=getattr(ctx, "parent_span_id", None),
         )
-        await queue.put(routed)  # full queue blocks only this channel (per-outlet backpressure)
+        await self._put(queue, routed)  # full queue blocks only this channel (per-outlet backpressure)
 
     async def _run_outlet(self, channel: str) -> None:
         queue = self._queues[channel]
         outlet = self._outlets[channel]
-        while True:
+        while not self._closed:
             item = await queue.get()
             try:
                 if isinstance(item, _StreamClose):
@@ -336,13 +352,7 @@ class DeliveryHub:
             return
         await queue.join()
 
-    async def aclose(self) -> None:
-        """Cancel every outlet worker. Abrupt: in-flight delivery (mid-retry) is
-        cancelled, not finished. Finishing the current send within a window is not yet
-        implemented."""
-        if self._closed:
-            return
-        self._closed = True
+    async def _finish_close(self) -> None:
         workers = tuple(self._workers.values())
         for worker in workers:
             worker.cancel()
@@ -353,6 +363,13 @@ class DeliveryHub:
             self.drain()
             self._stream_channel.clear()
             self._open_streams.clear()
+
+    async def aclose(self) -> None:
+        """Seal the hub and finish the shared barrier before propagating cancellation."""
+        if self._close_task is None:
+            self._closed = True
+            self._close_task = asyncio.create_task(self._finish_close())
+        await finish_barrier(self._close_task)
 
 
 def make_hub_sink(hub: DeliveryHub) -> Callable[[TurnEvent], Awaitable[None]]:
