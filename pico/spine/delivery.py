@@ -337,7 +337,6 @@ class DeliveryHub:
                     return semconv.CHANNEL_DROPPED, attempt + 1, type(exc).__name__
                 await asyncio.sleep(delay)
                 delay *= 2
-        return semconv.CHANNEL_DROPPED, self._send_max_retries + 1, None
 
     def drain(self) -> int:
         """Drop every not-yet-delivered (still-queued) event and return the count.
