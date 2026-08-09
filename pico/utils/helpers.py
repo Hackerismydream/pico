@@ -90,56 +90,9 @@ def build_assistant_message(
     return msg
 
 
-def estimate_prompt_tokens(
-    messages: list[dict[str, Any]],
-    tools: list[dict[str, Any]] | None = None,
-) -> int:
-    """Estimate prompt tokens with tiktoken."""
+def _message_token_parts(message: dict[str, Any]) -> list[str]:
     parts: list[str] = []
-    for msg in messages:
-        content = msg.get("content")
-        if isinstance(content, str):
-            parts.append(content)
-        elif isinstance(content, list):
-            for part in content:
-                if isinstance(part, dict) and part.get("type") == "text":
-                    txt = part.get("text", "")
-                    if txt:
-                        parts.append(txt)
-                else:
-                    parts.append(json.dumps(part, ensure_ascii=False))
-        elif content is not None:
-            parts.append(json.dumps(content, ensure_ascii=False))
-
-        for key in ("name", "tool_call_id"):
-            value = msg.get(key)
-            if isinstance(value, str) and value:
-                parts.append(value)
-        if msg.get("tool_calls"):
-            parts.append(json.dumps(msg["tool_calls"], ensure_ascii=False))
-        reasoning = msg.get("reasoning_content")
-        if isinstance(reasoning, str) and reasoning:
-            parts.append(reasoning)
-        if msg.get("thinking_blocks"):
-            parts.append(json.dumps(msg["thinking_blocks"], ensure_ascii=False))
-
-    if tools:
-        parts.append(json.dumps(tools, ensure_ascii=False))
-
-    payload = "\n".join(parts)
-    if not payload:
-        return 0
-    try:
-        enc = tiktoken.get_encoding("cl100k_base")
-        return max(1, len(enc.encode(payload)))
-    except Exception:
-        return max(1, len(payload) // 4)
-
-
-def estimate_message_tokens(message: dict[str, Any]) -> int:
-    """Estimate prompt tokens contributed by one persisted message."""
     content = message.get("content")
-    parts: list[str] = []
     if isinstance(content, str):
         parts.append(content)
     elif isinstance(content, list):
@@ -164,8 +117,34 @@ def estimate_message_tokens(message: dict[str, Any]) -> int:
         parts.append(reasoning)
     if message.get("thinking_blocks"):
         parts.append(json.dumps(message["thinking_blocks"], ensure_ascii=False))
+    return parts
+
+
+def estimate_prompt_tokens(
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None = None,
+) -> int:
+    """Estimate prompt tokens with tiktoken."""
+    parts: list[str] = []
+    for msg in messages:
+        parts.extend(_message_token_parts(msg))
+
+    if tools:
+        parts.append(json.dumps(tools, ensure_ascii=False))
 
     payload = "\n".join(parts)
+    if not payload:
+        return 0
+    try:
+        enc = tiktoken.get_encoding("cl100k_base")
+        return max(1, len(enc.encode(payload)))
+    except Exception:
+        return max(1, len(payload) // 4)
+
+
+def estimate_message_tokens(message: dict[str, Any]) -> int:
+    """Estimate prompt tokens contributed by one persisted message."""
+    payload = "\n".join(_message_token_parts(message))
     if not payload:
         return 1
     try:
