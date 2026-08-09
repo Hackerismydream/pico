@@ -209,7 +209,7 @@ class CuratorSegmentBuilder:
         state: CuratorState,
         turn_id: str,
     ) -> tuple[Segment | None, dict[str, Any]]:
-        registry = self._make_tools(state, turn_id)
+        registry = self._make_tools(state)
         messages = [
             {"role": "system", "content": self._system_prompt()},
             {"role": "user", "content": json.dumps(_curator_input_payload(state, self.archive), ensure_ascii=False)},
@@ -316,7 +316,7 @@ class CuratorSegmentBuilder:
                         )
         return None, {"fallback_reason": "step_exhausted"}
 
-    def _make_tools(self, state: CuratorState, turn_id: str) -> ToolRegistry:
+    def _make_tools(self, state: CuratorState) -> ToolRegistry:
         registry = ToolRegistry()
         tools = [
             CuratorCheckBudgetTool(state, self.assembler),

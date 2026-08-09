@@ -323,15 +323,9 @@ def _make_loop(tmp_path: Path, *, backend=None) -> AgentLoop:
     )
 
 
-class TestAgentLoopEngineDetection:
+class TestAgentLoopSetup:
     def test_registers_skill_read_tool(self, tmp_path: Path) -> None:
         assert _make_loop(tmp_path, backend=None).tools.has("skill_read")
-
-    def test_uses_default_engine_always_true(self, tmp_path: Path) -> None:
-        assert _make_loop(tmp_path, backend=_FakeBackend())._uses_default_engine() is True
-
-    def test_uses_default_engine_true_without_backend(self, tmp_path: Path) -> None:
-        assert _make_loop(tmp_path, backend=None)._uses_default_engine() is True
 
 
 class TestSelectSkillsGating:

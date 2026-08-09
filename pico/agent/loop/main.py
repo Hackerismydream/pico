@@ -578,17 +578,6 @@ class AgentLoop:
             available_history=available_history,
         )
 
-    def _uses_default_engine(self) -> bool:
-        """Whether the active engine owns skill selection via SkillForgeRouter.
-
-        Always ``True`` now — there is a single
-        :class:`ContextAssembler` whose SkillsSegmentBuilder handles
-        selection and populates ``injected_skill_ids`` in the assembled
-        metadata. Kept as a method (rather than inlined) because several
-        callsites still gate on it; it no longer branches on engine name.
-        """
-        return True
-
     async def _select_skills_for_turn(
         self,
         current_message: str,
