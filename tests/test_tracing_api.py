@@ -323,6 +323,19 @@ def test_tool_error_result_marks_status(trace_dir):
     assert sp["status"]["code"] == "ERROR"
 
 
+def test_tool_result_explicit_success_overrides_error_prefix(trace_dir):
+    from pico.agent.tools.base import ToolResult
+    from pico.tracing import semconv
+
+    result = ToolResult("Error: quoted source text", failed=False)
+    with trace.span("tool.call") as s:
+        semconv.tool_call(s, {"name": "read_file", "params": {"path": "x"}}, result, None)
+
+    sp = _spans_written(trace_dir)[0]
+    assert sp["status"] == {"code": "OK", "message": ""}
+    assert sp["attributes"]["tool.error"] is None
+
+
 def test_memory_extract_extractor(trace_dir):
     from pico.tracing import semconv
 

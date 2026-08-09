@@ -706,6 +706,10 @@ def tool_call(span, bound: dict[str, Any], result: Any, exc: BaseException | Non
     name = bound.get("name")
     params = bound.get("params")
     call_id = bound.get("call_id")
+    explicit_failed = getattr(result, "failed", None)
+    result_failed = (
+        explicit_failed if isinstance(explicit_failed, bool) else isinstance(result, str) and result.startswith("Error")
+    )
     if call_id:
         span.set({"tool.call_id": call_id})
     skill_name = params.get("name") if name == "skill_read" and isinstance(params, dict) else None
@@ -737,7 +741,7 @@ def tool_call(span, bound: dict[str, Any], result: Any, exc: BaseException | Non
         err = None
         if exc is not None:
             err = repr(exc)
-        elif isinstance(result, str) and result.startswith("Error"):
+        elif result_failed:
             err = _preview(result, 200)
         span.set(
             {
@@ -750,5 +754,5 @@ def tool_call(span, bound: dict[str, Any], result: Any, exc: BaseException | Non
     span.set({"tool.duration_ms": span.elapsed_ms()})
     span.artifact("tool.input", {"name": name, "params": params})
     span.artifact("tool.output", {"result": result})
-    if exc is None and isinstance(result, str) and result.startswith("Error"):
+    if exc is None and result_failed:
         span.error(_preview(result, 200))

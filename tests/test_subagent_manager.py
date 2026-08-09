@@ -9,6 +9,7 @@ observe the concurrent peak.
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,7 @@ from pico.agent.tools.registry import ToolRegistry
 from pico.agent.tools.spawn import SpawnTool
 from pico.config.schema import AgentDefaults
 from pico.providers.base import LLMResponse, ToolCallRequest
+from pico.tracing import spans as _spans
 
 
 class _StubProvider:
@@ -33,6 +35,22 @@ class _DummyExecutor:
 
     async def __aexit__(self, *exc: object) -> bool:
         return False
+
+
+@pytest.fixture
+def trace_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("PICO_TRACING", "1")
+    monkeypatch.setenv("PICO_TRACING_DIR", str(tmp_path))
+    _spans._store = None
+    yield tmp_path
+    _spans._store = None
+
+
+def _trace_spans(trace_dir: Path) -> list[dict]:
+    log = trace_dir / "logs" / "audit-spans.log"
+    if not log.exists():
+        return []
+    return [json.loads(line) for line in log.read_text().splitlines() if line.strip()]
 
 
 async def _settle(predicate, *, tries: int = 2000) -> None:
@@ -137,7 +155,7 @@ async def test_spawn_rate_limit_refuses_within_window(monkeypatch):
     assert "2 per hour" in r3
 
 
-async def test_spawn_tool_reports_rate_limit_as_failed_without_starting_task(monkeypatch):
+async def test_spawn_tool_reports_rate_limit_as_failed_without_starting_task(monkeypatch, trace_dir):
     _fixed_clock(monkeypatch)
     mgr = _stub_mgr(monkeypatch, max_spawns_per_hour=1)
     spawn_tool = SpawnTool(mgr)
@@ -145,16 +163,22 @@ async def test_spawn_tool_reports_rate_limit_as_failed_without_starting_task(mon
     tools = ToolRegistry()
     tools.register(spawn_tool)
 
-    accepted = await tools.execute("spawn", {"task": "first"})
+    accepted = await tools.execute("spawn", {"task": "first"}, call_id="spawn-accepted")
     assert accepted.failed is False
     await asyncio.gather(*mgr._running_tasks.values(), return_exceptions=True)
     await asyncio.sleep(0)
 
-    refused = await tools.execute("spawn", {"task": "second"})
+    refused = await tools.execute("spawn", {"task": "second"}, call_id="spawn-refused")
 
     assert "Spawn refused" in refused
     assert refused.failed is True
     assert mgr.get_running_count() == 0
+    refused_span = next(
+        span for span in _trace_spans(trace_dir) if span["attributes"].get("tool.call_id") == "spawn-refused"
+    )
+    assert refused_span["status"]["code"] == "ERROR"
+    assert refused_span["status"]["message"] == refused_span["attributes"]["tool.error"]
+    assert refused_span["attributes"]["tool.error"].startswith("Spawn refused:")
 
 
 async def test_spawn_rate_limit_recovers_after_window(monkeypatch):
