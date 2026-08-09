@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -36,10 +36,6 @@ from pico.cli._log_silence import mute_subsystem_logs_unless_debug
 from pico.config.paths import get_cron_dir
 from pico.proactive_engine.schedulers.cron.service import CronService
 from pico.proactive_engine.schedulers.cron.types import CronJob, CronSchedule
-
-if TYPE_CHECKING:
-    pass
-
 
 cron_app = typer.Typer(
     help="Inspect and manage scheduled cron jobs (~/.pico/cron/jobs.json)",
@@ -533,10 +529,11 @@ def cron_run(
 
     console.print(f"[cyan][TEST-FIRE][/cyan] {job.id} ({_format_schedule(job.schedule)})")
 
-    delivered: dict[str, Any] = {"called": False}
+    delivered = False
 
     async def _stub_on_job(j) -> None:
-        delivered["called"] = True
+        nonlocal delivered
+        delivered = True
         console.print("[cyan][TEST-FIRE][/cyan] would-deliver (stubbed):")
         console.print(f"    channel = {j.payload.channel}")
         console.print(f"    to      = {j.payload.to}")
@@ -547,7 +544,7 @@ def cron_run(
     if not ok:
         console.print(f"[red]Failed to run {job.id} (couldn't claim?)[/red]")
         raise typer.Exit(code=1)
-    if not delivered["called"]:
+    if not delivered:
         console.print(
             "[yellow]Job state advanced but on_job stub wasn't invoked "
             "(empty job? race lost to gateway?). Check `cron get "

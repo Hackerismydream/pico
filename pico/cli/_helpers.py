@@ -52,7 +52,7 @@ def warn_about_pending_cli_reminders(cron_service, config: Config) -> None:
         mins = max(0, (j.state.next_run_at_ms - now_ms) // 60_000)
         console.print(f"   - '{j.name}' at {fire} (in {mins} min)")
 
-    if config.cron.forward_channels == []:
+    if not config.cron.forward_channels:
         console.print(
             "[dim]   Tip: cron.forward_channels is empty — these reminders will "
             "be dropped silently when they fire. Run "

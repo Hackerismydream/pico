@@ -52,9 +52,7 @@ def _active_session_state() -> Path:
 
 
 def _bare_id(key: str) -> str:
-    if key.startswith(f"{_CLI_CHANNEL}:"):
-        return key[len(f"{_CLI_CHANNEL}:") :]
-    return key
+    return key.removeprefix(f"{_CLI_CHANNEL}:")
 
 
 def _full_key(bare_or_key: str) -> str:

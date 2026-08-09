@@ -320,7 +320,7 @@ def sandbox_shell(
 
             tty.setraw(fd)
 
-            exit_code = [1]
+            exit_code = 1
             done = asyncio.Event()
             loop = asyncio.get_running_loop()
             stdin_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
@@ -364,6 +364,7 @@ def sandbox_shell(
             _send_resize()
 
             async def _recv_loop():
+                nonlocal exit_code
                 try:
                     while True:
                         msg = await _recv(reader)
@@ -373,7 +374,7 @@ def sandbox_shell(
                             sys.stdout.buffer.write(data)
                             sys.stdout.buffer.flush()
                         elif mtype == "exit":
-                            exit_code[0] = msg.get("code", 0)
+                            exit_code = msg.get("code", 0)
                             break
                         elif mtype == "error":
                             _restore()
@@ -442,7 +443,7 @@ def sandbox_shell(
                 _restore()
                 signal.signal(signal.SIGWINCH, original_sigwinch)
 
-            return exit_code[0]
+            return exit_code
         finally:
             _close(writer)
 
