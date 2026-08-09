@@ -252,7 +252,10 @@ window). A Hermes-faithful `SystemAndTailCacheStrategy` ships alongside as an A/
 
 **UsageSnapshot**:
 The token/cost accounting unit for a single LLM call: input / output / cache-read /
-cache-write / reasoning tokens plus the estimated USD cost.
+cache-write / reasoning tokens plus the estimated USD cost. Cost is ``None`` when
+the model has no known price; zero is reserved for a priced call whose computed
+cost is actually zero. UsageTracker rollups keep their token totals but expose an
+unknown aggregate cost if any included call is unpriced.
 
 **Provider**:
 An LLM vendor adapter (`providers/`: Anthropic, OpenAI, Gemini, …), shared by the

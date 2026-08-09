@@ -46,6 +46,28 @@ async def test_total_includes_all_sessions(tmp_path: Path):
     assert total.estimated_cost_usd == pytest.approx(2.0)
 
 
+async def test_unknown_cost_taints_rollups_without_erasing_tokens(tmp_path: Path):
+    tracker = UsageTracker(telemetry_dir=tmp_path, persist=False)
+    await tracker.after_llm_call({}, _snap(input_tokens=10, estimated_cost_usd=0.5))
+    await tracker.after_llm_call({}, _snap(input_tokens=20, estimated_cost_usd=None))
+
+    session = tracker.snapshot("sess1")
+    assert session.input_tokens == 30
+    assert session.estimated_cost_usd is None
+    assert tracker.per_day[date.today()].estimated_cost_usd is None
+    assert tracker.snapshot().estimated_cost_usd is None
+
+
+async def test_empty_and_known_zero_costs_remain_zero(tmp_path: Path):
+    tracker = UsageTracker(telemetry_dir=tmp_path, persist=False)
+    assert tracker.snapshot().estimated_cost_usd == 0.0
+
+    await tracker.after_llm_call({}, _snap(estimated_cost_usd=0.0))
+
+    assert tracker.snapshot("sess1").estimated_cost_usd == 0.0
+    assert tracker.snapshot().estimated_cost_usd == 0.0
+
+
 async def test_per_day_bucketing(tmp_path: Path):
     tracker = UsageTracker(telemetry_dir=tmp_path, persist=False)
     await tracker.after_llm_call({}, _snap(input_tokens=100))
@@ -64,6 +86,7 @@ async def test_persists_jsonl_to_disk(tmp_path: Path):
     assert row["input_tokens"] == 42
     assert row["output_tokens"] == 7
     assert row["model"] == "anthropic/claude-sonnet-4-5"
+    assert row["estimated_cost_usd"] is None
     assert "ts" in row
 
 

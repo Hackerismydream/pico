@@ -11,7 +11,7 @@ import { createGatewayEventHandler } from '../app/createGatewayEventHandler.js'
 import { resetOverlayState } from '../app/overlayStore.js'
 import { turnController } from '../app/turnController.js'
 import { getTurnState, resetTurnState } from '../app/turnStore.js'
-import { patchUiState, resetUiState } from '../app/uiStore.js'
+import { getUiState, patchUiState, resetUiState } from '../app/uiStore.js'
 import { estimateTokensRough } from '../lib/text.js'
 
 const ref = <T>(current: T) => ({ current })
@@ -58,6 +58,19 @@ describe('createGatewayEventHandler', () => {
     resetTurnState()
     turnController.fullReset()
     patchUiState({ showReasoning: true })
+  })
+
+  it('clears a prior cost when completed usage omits unpriced cost', () => {
+    const appended: Msg[] = []
+    const onEvent = createGatewayEventHandler(buildCtx(appended))
+    patchUiState(state => ({ ...state, usage: { ...state.usage, cost_usd: 0.25 } }))
+
+    onEvent({
+      payload: { text: 'done', usage: { calls: 1, input: 1, output: 1, total: 2 } },
+      type: 'message.complete'
+    } as any)
+
+    expect(getUiState().usage.cost_usd).toBeUndefined()
   })
 
   it('archives incomplete todos into transcript flow at end of turn so they scroll up', () => {

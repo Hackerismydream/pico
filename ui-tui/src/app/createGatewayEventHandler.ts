@@ -10,6 +10,7 @@ import type { GatewayEventHandlerContext } from './interfaces.js'
 import { STARTUP_IMAGE, STARTUP_QUERY } from '../config/env.js'
 import { STREAM_BATCH_MS } from '../config/timing.js'
 import { buildSetupRequiredSections, SETUP_REQUIRED_TITLE } from '../content/setup.js'
+import { mergeUsage } from '../domain/usage.js'
 import { rpcErrorMessage } from '../lib/rpc.js'
 import { formatToolCall, stripAnsi } from '../lib/text.js'
 import { patchOverlayState } from './overlayStore.js'
@@ -485,8 +486,9 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
 
         setStatus('ready')
 
-        if (ev.payload?.usage) {
-          patchUiState(state => ({ ...state, usage: { ...state.usage, ...ev.payload!.usage } }))
+        const usage = ev.payload?.usage
+        if (usage) {
+          patchUiState(state => ({ ...state, usage: mergeUsage(state.usage, usage) }))
         }
 
         if (sid) {

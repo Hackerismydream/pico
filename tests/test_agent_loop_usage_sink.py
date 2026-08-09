@@ -78,8 +78,8 @@ def _make_agent(workspace: Path, provider: LLMProvider, model: str, window: int)
 
 
 @pytest.mark.asyncio
-async def test_usage_sink_carries_context_gauge_and_cost(workspace):
-    """A non-openrouter model fills used/percent against the configured window."""
+async def test_usage_sink_omits_unknown_cost_but_keeps_context_gauge(workspace):
+    """An unpriced model omits cost without losing its context-window usage."""
     provider = UsageProvider("stub", prompt_tokens=6000, completion_tokens=2000)
     agent = _make_agent(workspace, provider, model="stub", window=40000)
     sink: dict = {}
@@ -97,7 +97,59 @@ async def test_usage_sink_carries_context_gauge_and_cost(workspace):
     assert sink["context_max"] == 40000
     assert sink["context_used"] == 8000
     assert sink["context_percent"] == 20
-    assert "cost_usd" in sink
+    assert "cost_usd" not in sink
+
+
+@pytest.mark.asyncio
+async def test_usage_sink_keeps_known_zero_cost(workspace):
+    model = "deepseek/deepseek-v4-flash"
+    provider = UsageProvider(model, prompt_tokens=0, completion_tokens=0)
+    agent = _make_agent(workspace, provider, model=model, window=40000)
+    sink: dict = {}
+
+    await agent._process_message(
+        TurnRequest(
+            origin=Origin.USER,
+            source=Source(channel="test", chat_id="c1", sender_id="user", chat_type=ChatType.DM),
+            text="hi",
+        ),
+        session_key="s1",
+        usage_sink=sink,
+    )
+
+    assert sink["cost_usd"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_usage_sink_clears_known_cost_when_next_model_is_unpriced(workspace):
+    model = "deepseek/deepseek-v4-flash"
+    provider = UsageProvider(model, prompt_tokens=100, completion_tokens=50)
+    agent = _make_agent(workspace, provider, model=model, window=40000)
+    sink: dict = {}
+
+    await agent._process_message(
+        TurnRequest(
+            origin=Origin.USER,
+            source=Source(channel="test", chat_id="priced", sender_id="user", chat_type=ChatType.DM),
+            text="priced",
+        ),
+        session_key="priced",
+        usage_sink=sink,
+    )
+    assert sink["cost_usd"] > 0
+
+    agent.model = "unpriced/model"
+    await agent._process_message(
+        TurnRequest(
+            origin=Origin.USER,
+            source=Source(channel="test", chat_id="unpriced", sender_id="user", chat_type=ChatType.DM),
+            text="unpriced",
+        ),
+        session_key="unpriced",
+        usage_sink=sink,
+    )
+
+    assert "cost_usd" not in sink
 
 
 @pytest.mark.asyncio

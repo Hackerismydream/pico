@@ -902,6 +902,8 @@ class AgentLoop:
           - OpenRouter/LiteLLM: total (already includes cache_read + cache_write)
         We detect by inequality and subtract when needed so downstream code
         (pricing, telemetry) sees a single consistent semantics.
+
+        Unknown model pricing remains ``None``; it is not a free-call estimate.
         """
         from pico.token_wise.base import UsageSnapshot
         from pico.token_wise.pricing import estimate_cost_usd
@@ -918,7 +920,7 @@ class AgentLoop:
         else:
             fresh = prompt_t
 
-        cost = estimate_cost_usd(model, fresh, out_toks, cache_read, cache_write) or 0.0
+        cost = estimate_cost_usd(model, fresh, out_toks, cache_read, cache_write)
         # The llm.call span has already closed here, so the active context is the
         # enclosing turn span: the persisted row joins at turn granularity, while
         # per-call counts stay on the llm.call span itself.
@@ -1220,7 +1222,10 @@ class AgentLoop:
                 usage_sink["prompt_tokens"] = prompt_tokens
                 usage_sink["completion_tokens"] = completion_tokens
                 usage_sink["total_tokens"] = int(response.usage.get("total_tokens", 0) or 0)
-                usage_sink["cost_usd"] = usage_snapshot.estimated_cost_usd
+                if usage_snapshot.estimated_cost_usd is not None:
+                    usage_sink["cost_usd"] = usage_snapshot.estimated_cost_usd
+                else:
+                    usage_sink.pop("cost_usd", None)
                 usage_sink["context_max"] = context_max
                 usage_sink["context_used"] = context_used
                 usage_sink["context_percent"] = round(100 * context_used / context_max) if context_max else 0

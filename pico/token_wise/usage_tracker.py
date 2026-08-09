@@ -7,6 +7,8 @@ Accumulates into three tiers:
 
 Every call is also appended to ``{telemetry_dir}/usage-YYYY-MM-DD.jsonl``
 as a single JSON object per line, enabling post-hoc analysis with ``jq``.
+An aggregate cost is ``None`` if any included call has unknown pricing; token
+counts still accumulate normally.
 
 The tracker is purely a recorder — it never modifies the outgoing request,
 so its ``before_llm_call`` inherits the default no-op pass-through.
@@ -56,7 +58,7 @@ class UsageTracker(TokenStrategy):
 
         self.per_session: dict[str, UsageSnapshot] = {}
         self.per_day: dict[date, UsageSnapshot] = {}
-        self.total: UsageSnapshot = UsageSnapshot(model="__total__")
+        self.total: UsageSnapshot = UsageSnapshot(model="__total__", estimated_cost_usd=0.0)
 
         self._call_count: int = 0
         self._buffer: list[dict[str, Any]] = []
@@ -83,7 +85,11 @@ class UsageTracker(TokenStrategy):
     def snapshot(self, session_key: str | None = None) -> UsageSnapshot:
         """Return a *copy* of the session accumulator, or the lifetime total."""
         if session_key is not None:
-            src = self.per_session.get(session_key) or UsageSnapshot(model="__empty__", session_key=session_key)
+            src = self.per_session.get(session_key) or UsageSnapshot(
+                model="__empty__",
+                estimated_cost_usd=0.0,
+                session_key=session_key,
+            )
         else:
             src = self.total
         return self._copy(src)
@@ -98,14 +104,14 @@ class UsageTracker(TokenStrategy):
         key = u.session_key or "__no_session__"
         session_acc = self.per_session.get(key)
         if session_acc is None:
-            session_acc = UsageSnapshot(model=u.model, session_key=key)
+            session_acc = UsageSnapshot(model=u.model, estimated_cost_usd=0.0, session_key=key)
             self.per_session[key] = session_acc
         self._add_into(session_acc, u)
 
         today = date.today()
         day_acc = self.per_day.get(today)
         if day_acc is None:
-            day_acc = UsageSnapshot(model="__day__")
+            day_acc = UsageSnapshot(model="__day__", estimated_cost_usd=0.0)
             self.per_day[today] = day_acc
         self._add_into(day_acc, u)
 
@@ -118,7 +124,10 @@ class UsageTracker(TokenStrategy):
         acc.cache_read_tokens += add.cache_read_tokens
         acc.cache_write_tokens += add.cache_write_tokens
         acc.reasoning_tokens += add.reasoning_tokens
-        acc.estimated_cost_usd += add.estimated_cost_usd
+        if acc.estimated_cost_usd is None or add.estimated_cost_usd is None:
+            acc.estimated_cost_usd = None
+        else:
+            acc.estimated_cost_usd += add.estimated_cost_usd
 
     @staticmethod
     def _copy(src: UsageSnapshot) -> UsageSnapshot:
