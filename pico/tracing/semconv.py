@@ -347,7 +347,8 @@ def subagent(span, bound: dict[str, Any], result: Any, exc: BaseException | None
     this node under the spawning turn. This node just describes the spawn.
     """
     origin = bound.get("origin") or {}
-    status = getattr(result, "value", None)
+    outcome_status = getattr(result, "status", None)
+    status = getattr(outcome_status, "value", None)
     if isinstance(exc, asyncio.CancelledError):
         status = "cancelled"
     elif exc is not None and not isinstance(status, str):

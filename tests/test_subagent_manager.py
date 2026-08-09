@@ -16,7 +16,7 @@ import pytest
 from pydantic import ValidationError
 
 from pico.agent.subagent import manager as manager_mod
-from pico.agent.subagent.manager import SubagentManager, SubagentStatus
+from pico.agent.subagent.manager import SubagentManager, SubagentOutcome, SubagentStatus
 from pico.agent.tools.registry import ToolRegistry
 from pico.agent.tools.spawn import SpawnTool
 from pico.config.schema import AgentDefaults
@@ -35,6 +35,11 @@ class _DummyExecutor:
 
     async def __aexit__(self, *exc: object) -> bool:
         return False
+
+
+class _FailingExitExecutor(_DummyExecutor):
+    async def __aexit__(self, *exc: object) -> bool:
+        raise RuntimeError("executor cleanup failed")
 
 
 @pytest.fixture
@@ -78,13 +83,15 @@ async def _drive(monkeypatch, *, max_concurrent: int, spawn_n: int) -> int:
     state = {"current": 0, "peak": 0}
     release = asyncio.Event()
 
-    async def _stub_inner(task_id, task, label, origin, executor) -> None:
+    async def _stub_inner(task_id, task, label, origin, executor) -> SubagentOutcome:
         state["current"] += 1
         state["peak"] = max(state["peak"], state["current"])
         await release.wait()
         state["current"] -= 1
+        return SubagentOutcome(SubagentStatus.COMPLETED, "done")
 
     monkeypatch.setattr(mgr, "_run_subagent_inner", _stub_inner)
+    mgr.set_submit(lambda req: None)
 
     for i in range(spawn_n):
         await mgr.spawn(task=f"task-{i}")
@@ -134,10 +141,11 @@ def _stub_mgr(monkeypatch, **kw) -> SubagentManager:
     monkeypatch.setattr(manager_mod, "build_executor", lambda *a, **k: _DummyExecutor())
     mgr = SubagentManager(provider=_StubProvider(), workspace=Path("/tmp"), **kw)
 
-    async def _noop_inner(*a, **k) -> None:  # complete immediately, no VM
-        return None
+    async def _noop_inner(*a, **k) -> SubagentOutcome:  # complete immediately, no VM
+        return SubagentOutcome(SubagentStatus.COMPLETED, "done")
 
     monkeypatch.setattr(mgr, "_run_subagent_inner", _noop_inner)
+    mgr.set_submit(lambda req: None)
     return mgr
 
 
@@ -323,7 +331,7 @@ async def test_iteration_exhaustion_is_announced_as_failure(monkeypatch, tmp_pat
     (background_task,) = list(mgr._running_tasks.values())
     outcome = await background_task
 
-    assert outcome is SubagentStatus.EXHAUSTED
+    assert outcome.status is SubagentStatus.EXHAUSTED
     assert provider.calls == 15
     assert len(submitted) == 1
     assert "completed successfully" not in submitted[0].text
@@ -350,7 +358,7 @@ async def test_completed_subagent_returns_and_traces_typed_status(monkeypatch, t
     (background_task,) = list(mgr._running_tasks.values())
     outcome = await background_task
 
-    assert outcome is SubagentStatus.COMPLETED
+    assert outcome.status is SubagentStatus.COMPLETED
     assert "completed successfully" in submitted[0].text
     run_span = next(span for span in _trace_spans(trace_dir) if span["name"] == "subagent.run")
     assert run_span["attributes"]["subagent.status"] == "completed"
@@ -374,8 +382,53 @@ async def test_failed_subagent_returns_and_traces_typed_status(monkeypatch, tmp_
     (background_task,) = list(mgr._running_tasks.values())
     outcome = await background_task
 
-    assert outcome is SubagentStatus.FAILED
+    assert outcome.status is SubagentStatus.FAILED
     assert "[Subagent 'failed' failed]" in submitted[0].text
+    run_span = next(span for span in _trace_spans(trace_dir) if span["name"] == "subagent.run")
+    assert run_span["attributes"]["subagent.status"] == "failed"
+    assert run_span["status"] == {"code": "ERROR", "message": "failed"}
+
+
+@pytest.mark.parametrize("inner_status", ["completed", "exhausted", "failed"])
+async def test_executor_exit_failure_announces_one_final_failure(monkeypatch, tmp_path, trace_dir, inner_status):
+    class _Provider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def get_default_model(self) -> str:
+            return "stub-model"
+
+        async def chat_with_retry(self, **kwargs) -> LLMResponse:
+            self.calls += 1
+            if inner_status == "completed":
+                return LLMResponse(content="done")
+            if inner_status == "failed":
+                raise RuntimeError("provider unavailable")
+            return LLMResponse(
+                content=None,
+                tool_calls=[
+                    ToolCallRequest(
+                        id=f"call-{self.calls}",
+                        name="missing",
+                        arguments={},
+                    )
+                ],
+                finish_reason="tool_calls",
+            )
+
+    monkeypatch.setattr(manager_mod, "build_executor", lambda *a, **k: _FailingExitExecutor())
+    mgr = SubagentManager(provider=_Provider(), workspace=tmp_path, max_concurrent=1)
+    submitted = []
+    mgr.set_submit(submitted.append)
+
+    await mgr.spawn(task="finish before cleanup", label="cleanup", session_key="cli:test")
+    (background_task,) = list(mgr._running_tasks.values())
+    outcome = await background_task
+
+    assert len(submitted) == 1
+    assert outcome.status is SubagentStatus.FAILED
+    assert "[Subagent 'cleanup' failed]" in submitted[0].text
+    assert "executor cleanup failed" in submitted[0].text
     run_span = next(span for span in _trace_spans(trace_dir) if span["name"] == "subagent.run")
     assert run_span["attributes"]["subagent.status"] == "failed"
     assert run_span["status"] == {"code": "ERROR", "message": "failed"}

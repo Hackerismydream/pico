@@ -5,6 +5,7 @@ import json
 import time
 import uuid
 from collections import deque
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,16 @@ class SubagentStatus(StrEnum):
     @property
     def failed(self) -> bool:
         return self is not SubagentStatus.COMPLETED
+
+
+@dataclass(frozen=True, slots=True)
+class SubagentOutcome:
+    status: SubagentStatus
+    result: str
+
+    @property
+    def failed(self) -> bool:
+        return self.status.failed
 
 
 class SubagentManager:
@@ -76,7 +87,7 @@ class SubagentManager:
         self.restrict_to_workspace = restrict_to_workspace
         self._sandbox_config = sandbox_config
         self._owned_ids = owned_ids
-        self._running_tasks: dict[str, asyncio.Task[SubagentStatus]] = {}
+        self._running_tasks: dict[str, asyncio.Task[SubagentOutcome]] = {}
         self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
         self._gate = asyncio.Semaphore(max_concurrent)
         self._max_spawns_per_hour = max_spawns_per_hour
@@ -123,7 +134,7 @@ class SubagentManager:
         if session_key:
             self._session_tasks.setdefault(session_key, set()).add(task_id)
 
-        def _cleanup(_: asyncio.Task[SubagentStatus]) -> None:
+        def _cleanup(_: asyncio.Task[SubagentOutcome]) -> None:
             self._running_tasks.pop(task_id, None)
             if session_key and (ids := self._session_tasks.get(session_key)):
                 ids.discard(task_id)
@@ -142,7 +153,7 @@ class SubagentManager:
         task: str,
         label: str,
         origin: dict[str, str],
-    ) -> SubagentStatus:
+    ) -> SubagentOutcome:
         """Execute the subagent task and announce the result."""
         logger.info("Subagent [{}] starting task: {}", task_id, label)
 
@@ -152,12 +163,15 @@ class SubagentManager:
             async with self._gate:
                 executor = build_executor(self._sandbox_config, self.workspace, self._owned_ids)
                 async with executor:
-                    return await self._run_subagent_inner(task_id, task, label, origin, executor)
+                    outcome = await self._run_subagent_inner(task_id, task, label, origin, executor)
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            error_msg = f"Error: {str(e)}"
             logger.error("Subagent [{}] failed: {}", task_id, e)
-            await self._announce_result(task_id, label, task, error_msg, origin, SubagentStatus.FAILED)
-            return SubagentStatus.FAILED
+            outcome = SubagentOutcome(SubagentStatus.FAILED, f"Error: {str(e)}")
+
+        await self._announce_result(task_id, label, task, outcome.result, origin, outcome.status)
+        return outcome
 
     async def _run_subagent_inner(
         self,
@@ -166,7 +180,7 @@ class SubagentManager:
         label: str,
         origin: dict[str, str],
         executor: Any,
-    ) -> SubagentStatus:
+    ) -> SubagentOutcome:
         try:
             # Build subagent tools (no message tool, no spawn tool)
             tools = ToolRegistry()
@@ -241,28 +255,17 @@ class SubagentManager:
             else:
                 final_result = f"Iteration budget exhausted after {max_iterations} iterations without a final response."
                 logger.warning("Subagent [{}] exhausted its iteration budget", task_id)
-                await self._announce_result(
-                    task_id,
-                    label,
-                    task,
-                    final_result,
-                    origin,
-                    SubagentStatus.EXHAUSTED,
-                )
-                return SubagentStatus.EXHAUSTED
+                return SubagentOutcome(SubagentStatus.EXHAUSTED, final_result)
 
             if final_result is None:
                 final_result = "Task completed but no final response was generated."
 
             logger.info("Subagent [{}] completed successfully", task_id)
-            await self._announce_result(task_id, label, task, final_result, origin, SubagentStatus.COMPLETED)
-            return SubagentStatus.COMPLETED
+            return SubagentOutcome(SubagentStatus.COMPLETED, final_result)
 
         except Exception as e:
-            error_msg = f"Error: {str(e)}"
             logger.error("Subagent [{}] failed: {}", task_id, e)
-            await self._announce_result(task_id, label, task, error_msg, origin, SubagentStatus.FAILED)
-            return SubagentStatus.FAILED
+            return SubagentOutcome(SubagentStatus.FAILED, f"Error: {str(e)}")
 
     def set_submit(self, submit) -> None:
         self._submit = submit
