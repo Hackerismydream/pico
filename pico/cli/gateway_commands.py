@@ -9,8 +9,11 @@ The bulk of the wiring lives in this command body.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import time
+from collections.abc import Callable
 from datetime import datetime
+from typing import Any
 
 import typer
 from loguru import logger
@@ -94,6 +97,57 @@ async def _health_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWr
         await writer.drain()
     finally:
         writer.close()
+
+
+async def _cleanup_gateway(
+    *,
+    run_error: BaseException | None,
+    health_server: Any | None,
+    cron: Any,
+    question_broker: Any | None,
+    channels: Any,
+    gw_teardown: Callable[[], object] | None,
+    agent: Any,
+    runtime: Any,
+) -> None:
+    """Attempt every cleanup step, then raise the highest-priority failure."""
+    first_error: BaseException | None = None
+    cancellation: asyncio.CancelledError | None = None
+
+    async def attempt(name: str, cleanup: Callable[[], object]) -> None:
+        nonlocal cancellation, first_error
+        try:
+            result = cleanup()
+            if inspect.isawaitable(result):
+                await result
+        except asyncio.CancelledError as exc:
+            logger.opt(exception=exc).error("Gateway cleanup step {} was cancelled", name)
+            if cancellation is None:
+                cancellation = exc
+        except BaseException as exc:
+            logger.opt(exception=exc).error("Gateway cleanup step {} failed", name)
+            if first_error is None:
+                first_error = exc
+
+    if health_server is not None:
+        await attempt("health server", health_server.close)
+    await attempt("cron", cron.stop)
+    if question_broker is not None:
+        await attempt("question broker", question_broker.cancel_all)
+    await attempt("channel intake", channels.quiesce_intake)
+    if gw_teardown is not None:
+        await attempt("spine", gw_teardown)
+    await attempt("channel transports", channels.stop_all)
+    await attempt("agent", agent.stop)
+    await attempt("runtime", runtime.close)
+    # The run failure explains why the gateway exited; cleanup failures
+    # are logged and become terminal only when the run itself succeeded.
+    if run_error is not None:
+        raise run_error
+    if cancellation is not None:
+        raise cancellation
+    if first_error is not None:
+        raise first_error
 
 
 def register(app: typer.Typer) -> None:
@@ -200,6 +254,7 @@ def register(app: typer.Typer) -> None:
             health_server = None
             gw_teardown = None
             question_broker = None
+            run_error: BaseException | None = None
             try:
                 await runtime.start_memory_backend()
                 # Spine assembly for the gateway's host sources (cron submits
@@ -323,22 +378,18 @@ def register(app: typer.Typer) -> None:
                 await asyncio.gather(*coros)
             except KeyboardInterrupt:
                 console.print("\nShutting down...")
-            finally:
-                try:
-                    if health_server is not None:
-                        health_server.close()
-                    # Stop background producers before tearing down the scheduler
-                    # they submit through: a cron timer firing during teardown would
-                    # otherwise submit to an already-shut scheduler.
-                    cron.stop()
-                    if question_broker is not None:
-                        question_broker.cancel_all()  # release any turn blocked on ask_user
-                    if gw_teardown is not None:
-                        await gw_teardown()
-                    agent.stop()
-                    await channels.stop_all()
-                finally:
-                    await runtime.close()
+            except BaseException as exc:
+                run_error = exc
+            await _cleanup_gateway(
+                run_error=run_error,
+                health_server=health_server,
+                cron=cron,
+                question_broker=question_broker,
+                channels=channels,
+                gw_teardown=gw_teardown,
+                agent=agent,
+                runtime=runtime,
+            )
 
         asyncio.run(run())
 

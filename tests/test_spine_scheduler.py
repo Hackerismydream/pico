@@ -582,6 +582,77 @@ async def test_shutdown_cancels_a_running_turn_that_outlasts_grace():
     assert any(isinstance(e, TurnFailed) and e.cancelled for e in events)
 
 
+async def test_shutdown_delays_caller_cancellation_until_cascade_finishes():
+    started = asyncio.Event()
+    cancellation_swallowed = asyncio.Event()
+    release_runner = asyncio.Event()
+
+    class _DelayedCancellationRunner:
+        async def run(self, req, emit, drain) -> TurnOutcome:
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancellation_swallowed.set()
+                await release_runner.wait()
+                raise
+
+    sched = _scheduler(_DelayedCancellationRunner())
+    host = sched.submit(_req())
+    await started.wait()
+    shutting_down = asyncio.create_task(sched.shutdown(grace=0.0))
+    await cancellation_swallowed.wait()
+    shutting_down.cancel()
+    await asyncio.sleep(0)
+
+    try:
+        assert not shutting_down.done()
+        release_runner.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(shutting_down, timeout=0.2)
+    finally:
+        release_runner.set()
+        if not shutting_down.done():
+            shutting_down.cancel()
+        await asyncio.gather(shutting_down, return_exceptions=True)
+
+    assert shutting_down.cancelled()
+    assert await asyncio.wait_for(host.result(), timeout=0.2) is None
+    assert not sched.has_pending_or_running("t:c")
+
+
+async def test_shutdown_preserves_caller_cancellation_over_barrier_failure(monkeypatch):
+    barrier_started = asyncio.Event()
+    release_barrier = asyncio.Event()
+    sched = _scheduler(SuccessRunner())
+
+    async def fail_shutdown(grace: float) -> None:
+        barrier_started.set()
+        await release_barrier.wait()
+        raise RuntimeError("scheduler shutdown failed")
+
+    monkeypatch.setattr(sched, "_finish_shutdown", fail_shutdown)
+    shutting_down = asyncio.create_task(sched.shutdown(grace=0.0))
+    await barrier_started.wait()
+    shutting_down.cancel()
+    await asyncio.sleep(0)
+
+    try:
+        assert not shutting_down.done()
+        release_barrier.set()
+        with pytest.raises(asyncio.CancelledError) as exc_info:
+            await asyncio.wait_for(shutting_down, timeout=0.2)
+    finally:
+        release_barrier.set()
+        if not shutting_down.done():
+            shutting_down.cancel()
+        await asyncio.gather(shutting_down, return_exceptions=True)
+
+    assert shutting_down.cancelled()
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert str(exc_info.value.__cause__) == "scheduler shutdown failed"
+
+
 async def test_reaper_lazy_starts_on_first_submit_and_shutdown_cancels_it():
     sched = _scheduler(SuccessRunner())
     assert sched._reaper is None  # not started before any submit

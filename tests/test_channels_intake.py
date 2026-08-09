@@ -90,6 +90,53 @@ def test_intake_no_submit_wired_drops(monkeypatch):
     asyncio.run(intake.publish(sender_id="u", chat_id="c", content="x"))  # must not raise
 
 
+async def test_sealed_intake_drops_old_handler_publish_after_transport_stop():
+    submit = AsyncMock()
+    intake = Intake("tg", SimpleNamespace(allow_from=["*"]))
+    intake.set_submit(submit)
+    handler_started = asyncio.Event()
+    resume_handler = asyncio.Event()
+
+    async def old_handler() -> None:
+        handler_started.set()
+        await resume_handler.wait()
+        await intake.publish(sender_id="u", chat_id="c", content="late")
+
+    handler = asyncio.create_task(old_handler())
+    await handler_started.wait()
+    intake.seal()
+    resume_handler.set()
+    await handler
+
+    submit.assert_not_awaited()
+
+
+async def test_wait_idle_blocks_until_publish_already_in_submit_finishes():
+    submit_started = asyncio.Event()
+    release_submit = asyncio.Event()
+
+    async def submit(req) -> None:
+        submit_started.set()
+        await release_submit.wait()
+
+    intake = Intake("tg", SimpleNamespace(allow_from=["*"]))
+    intake.set_submit(submit)
+    publish = asyncio.create_task(intake.publish(sender_id="u", chat_id="c", content="in flight"))
+    await submit_started.wait()
+    intake.seal()
+
+    try:
+        drain = asyncio.create_task(intake.wait_idle())
+        await asyncio.sleep(0)
+        assert not drain.done()
+        release_submit.set()
+        await publish
+        await drain
+    finally:
+        release_submit.set()
+        await publish
+
+
 # ── transcribe_audio ──────────────────────────────────────────────────
 
 

@@ -1,7 +1,10 @@
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
+from pico.channels.intake import Intake
+from pico.channels.manager import ChannelManager
 from pico.cli._gateway_spine import build_gateway
 from pico.spine import (
     ChatType,
@@ -15,6 +18,8 @@ from pico.spine import (
     TurnRequest,
     Usage,
 )
+from pico.spine import delivery as delivery_mod
+from pico.spine.delivery import Capabilities, DeliveryHub
 from pico.spine.message import Media
 
 
@@ -320,3 +325,119 @@ async def test_build_gateway_teardown_leaves_no_pending_tasks():
     assert any(not t.done() for t in spawned)  # live spine tasks exist before teardown
     await teardown()
     assert all(t.done() for t in spawned)  # teardown stopped every one
+
+
+async def test_gateway_teardown_closes_delivery_after_scheduler_cancellation():
+    started = asyncio.Event()
+    cancellation_swallowed = asyncio.Event()
+    release_runner = asyncio.Event()
+
+    class _DelayedCancellationAgent(_ReplyAgent):
+        async def run_turn(self, req, emit, drain, *, stream, usage_sink=None, text_sink=None):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancellation_swallowed.set()
+                await release_runner.wait()
+                raise
+
+    scheduler, hub, _readback, _sources, teardown = build_gateway(
+        _DelayedCancellationAgent(),
+        {"telegram": _FakeChannel()},
+    )
+    await hub.dispatch(Text(content="resident worker", source=_src("telegram")))
+    await hub.wait_idle("telegram")
+    worker = hub._workers["telegram"]
+    handle = scheduler.submit(_req(channel="telegram"))
+    await started.wait()
+    tearing_down = asyncio.create_task(teardown())
+    await cancellation_swallowed.wait()
+    tearing_down.cancel()
+    await asyncio.sleep(0)
+
+    try:
+        assert not tearing_down.done()
+        release_runner.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(tearing_down, timeout=0.2)
+        assert await asyncio.wait_for(handle.result(), timeout=0.2) is None
+        assert hub._closed
+        assert worker.done()
+        assert hub._workers == {}
+    finally:
+        release_runner.set()
+        if not tearing_down.done():
+            tearing_down.cancel()
+        await asyncio.gather(tearing_down, return_exceptions=True)
+        await hub.aclose()
+
+
+async def test_gateway_teardown_attempts_delivery_and_prefers_cancellation(monkeypatch):
+    scheduler, hub, _readback, _sources, teardown = build_gateway(_ReplyAgent(), {})
+    original_shutdown = scheduler.shutdown
+    original_aclose = hub.aclose
+    events: list[str] = []
+
+    async def fail_scheduler(*, grace: float) -> None:
+        events.append("scheduler")
+        raise RuntimeError("scheduler failed")
+
+    async def cancel_delivery() -> None:
+        events.append("delivery")
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(scheduler, "shutdown", fail_scheduler)
+    monkeypatch.setattr(hub, "aclose", cancel_delivery)
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await teardown()
+    finally:
+        await original_shutdown(grace=0.0)
+        await original_aclose()
+
+    assert events == ["scheduler", "delivery"]
+
+
+async def test_intake_quiesce_is_bounded_when_delivery_queue_is_full(monkeypatch):
+    monkeypatch.setattr(delivery_mod, "_OUTLET_QUEUE_MAXSIZE", 1)
+    monkeypatch.setattr("pico.channels.manager._INTAKE_DRAIN_TIMEOUT_S", 0.01, raising=False)
+    delivery_started = asyncio.Event()
+
+    class _BlockedOutlet:
+        name = "telegram"
+        capabilities = Capabilities()
+
+        async def deliver(self, out) -> None:
+            delivery_started.set()
+            await asyncio.Event().wait()
+
+    hub = DeliveryHub()
+    hub.register(_BlockedOutlet())
+    intake = Intake("telegram", SimpleNamespace(allow_from=["*"]))
+
+    async def submit(req) -> None:
+        await hub.dispatch(Text(content="late", source=req.source))
+
+    intake.set_submit(submit)
+    manager = object.__new__(ChannelManager)
+    manager.channels = {"telegram": SimpleNamespace(intake=intake)}
+    publish = None
+    try:
+        await hub.dispatch(Text(content="in flight", source=_src("telegram")))
+        await delivery_started.wait()
+        await hub.dispatch(Text(content="queued", source=_src("telegram")))
+        publish = asyncio.create_task(intake.publish("user", "c", "blocked enqueue"))
+        await asyncio.sleep(0)
+        assert not publish.done()
+
+        with pytest.raises(TimeoutError, match="intake drain timed out"):
+            await asyncio.wait_for(manager.quiesce_intake(), timeout=0.2)
+
+        assert publish.cancelled()
+        await intake.wait_idle()
+    finally:
+        if publish is not None and not publish.done():
+            publish.cancel()
+            await asyncio.gather(publish, return_exceptions=True)
+        await hub.aclose()

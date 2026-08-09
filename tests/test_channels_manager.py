@@ -3,6 +3,7 @@
 isolation, allow_from validation, and status accessors. Outbound delivery moved
 to the spine outlets (no longer the manager's job)."""
 
+import asyncio
 from contextlib import contextmanager
 from importlib.metadata import PackageNotFoundError
 from types import SimpleNamespace
@@ -179,6 +180,176 @@ def test_gateway_still_constructs_when_every_channel_fails(monkeypatch):
     assert mgr.enabled_channels == []
     assert mgr.get_status() == {}
     assert mgr.get_channel("broken") is None
+
+
+@pytest.mark.parametrize(
+    "first_error",
+    [RuntimeError("first stop failed"), asyncio.CancelledError()],
+    ids=["exception", "cancelled"],
+)
+async def test_stop_all_attempts_every_channel_and_raises_first_failure(
+    first_error: BaseException,
+) -> None:
+    events: list[str] = []
+    later_error = RuntimeError("later stop failed")
+
+    class _Channel:
+        def __init__(self, name: str, error: BaseException | None = None) -> None:
+            self.name = name
+            self.error = error
+
+        async def stop(self) -> None:
+            events.append(self.name)
+            if self.error is not None:
+                raise self.error
+
+    manager = object.__new__(ChannelManager)
+    manager.channels = {
+        "first": _Channel("first", first_error),
+        "second": _Channel("second", later_error),
+        "last": _Channel("last"),
+    }
+
+    with _logs() as lines:
+        with pytest.raises(BaseException) as exc_info:
+            await manager.stop_all()
+
+    assert exc_info.value is first_error
+    assert events == ["first", "second", "last"]
+    logged = "".join(lines)
+    assert "Error stopping first" in logged
+    assert "Error stopping second" in logged
+
+
+async def test_stop_all_times_out_one_transport_and_attempts_the_rest(monkeypatch) -> None:
+    monkeypatch.setattr("pico.channels.manager._CHANNEL_STOP_TIMEOUT_S", 0.01, raising=False)
+    events: list[str] = []
+
+    class _Channel:
+        def __init__(self, name: str, *, blocks: bool = False) -> None:
+            self.name = name
+            self.blocks = blocks
+
+        async def stop(self) -> None:
+            events.append(self.name)
+            if self.blocks:
+                await asyncio.Event().wait()
+
+    manager = object.__new__(ChannelManager)
+    manager.channels = {
+        "blocked": _Channel("blocked", blocks=True),
+        "healthy": _Channel("healthy"),
+    }
+
+    with pytest.raises(TimeoutError, match="blocked.*timed out"):
+        await asyncio.wait_for(manager.stop_all(), timeout=0.2)
+
+    assert events == ["blocked", "healthy"]
+
+
+async def test_stop_all_preserves_later_cancellation_over_earlier_failure() -> None:
+    events: list[str] = []
+    second_started = asyncio.Event()
+
+    class _Channel:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        async def stop(self) -> None:
+            events.append(self.name)
+            if self.name == "first":
+                raise RuntimeError("first stop failed")
+            if self.name == "second":
+                second_started.set()
+                await asyncio.Event().wait()
+
+    manager = object.__new__(ChannelManager)
+    manager.channels = {name: _Channel(name) for name in ("first", "second", "third")}
+    stopping = asyncio.create_task(manager.stop_all())
+    await second_started.wait()
+    stopping.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await stopping
+
+    assert stopping.cancelled()
+    assert events == ["first", "second", "third"]
+
+
+async def test_quiesce_intake_seals_every_channel_before_waiting() -> None:
+    events: list[str] = []
+    intakes = []
+
+    class _Intake:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.sealed = False
+            intakes.append(self)
+
+        def seal(self) -> None:
+            self.sealed = True
+            events.append(f"seal:{self.name}")
+
+        async def wait_idle(self) -> None:
+            assert all(intake.sealed for intake in intakes)
+            events.append(f"wait:{self.name}")
+
+    manager = object.__new__(ChannelManager)
+    manager.channels = {
+        "first": SimpleNamespace(intake=_Intake("first")),
+        "second": SimpleNamespace(intake=_Intake("second")),
+    }
+
+    await manager.quiesce_intake()
+
+    assert events == ["seal:first", "seal:second", "wait:first", "wait:second"]
+
+
+async def test_quiesce_intake_preserves_caller_cancellation_over_barrier_failure() -> None:
+    wait_started = asyncio.Event()
+    release_wait = asyncio.Event()
+
+    class _FailingIntake:
+        def __init__(self) -> None:
+            self.sealed = False
+            self.cancel_calls = 0
+
+        def seal(self) -> None:
+            self.sealed = True
+
+        async def wait_idle(self) -> None:
+            wait_started.set()
+            await release_wait.wait()
+            raise RuntimeError("wait_idle failed")
+
+        def cancel_inflight(self) -> int:
+            self.cancel_calls += 1
+            return 0
+
+    intake = _FailingIntake()
+    manager = object.__new__(ChannelManager)
+    manager.channels = {"telegram": SimpleNamespace(intake=intake)}
+    quiescing = asyncio.create_task(manager.quiesce_intake())
+    await wait_started.wait()
+    quiescing.cancel()
+    await asyncio.sleep(0)
+
+    try:
+        assert not quiescing.done()
+        release_wait.set()
+        with pytest.raises(asyncio.CancelledError) as exc_info:
+            await asyncio.wait_for(quiescing, timeout=0.2)
+    finally:
+        release_wait.set()
+        if not quiescing.done():
+            quiescing.cancel()
+        await asyncio.gather(quiescing, return_exceptions=True)
+
+    assert quiescing.cancelled()
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert str(exc_info.value.__cause__) == "wait_idle failed"
+    assert intake.sealed
+    assert intake.cancel_calls == 1
 
 
 # ── _missing_dep_hint (install-mode / OS split) ───────────────────────
