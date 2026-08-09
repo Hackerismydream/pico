@@ -7,7 +7,7 @@ Layout under the state dir::
 
     <state_dir>/logs/audit-events.log      # one JSON event record per line
     <state_dir>/logs/audit-spans.log       # one JSON span per line
-    <state_dir>/logs/audit-artifacts/...    # large payloads, SHA1-deduped
+    <state_dir>/logs/audit-artifacts/...    # SHA-1 identified payloads
     <state_dir>/logs/archive/<date>/...     # rotated logs
 """
 
