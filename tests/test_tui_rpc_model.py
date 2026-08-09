@@ -129,6 +129,23 @@ async def test_options_needs_api_base_flag(fake_home: Path) -> None:
     assert _entry(result, "anthropic")["needs_api_base"] is False
 
 
+async def test_options_lists_providers_once(fake_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from pico.tui_rpc.methods import model as model_methods
+
+    _write_config(fake_home, {"agents": {"defaults": {"model": "anthropic/claude-sonnet-4-5"}}})
+    original = model_methods.list_providers
+    call_count = 0
+
+    def counted_list_providers() -> list[dict]:
+        nonlocal call_count
+        call_count += 1
+        return original()
+
+    monkeypatch.setattr(model_methods, "list_providers", counted_list_providers)
+    await model_methods.model_options({})
+    assert call_count == 1
+
+
 # ----------------------------------------------------------------------------
 # model.save_key
 # ----------------------------------------------------------------------------

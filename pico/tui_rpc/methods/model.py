@@ -75,10 +75,17 @@ def _provider_models(slug: str) -> list[str]:
     return configured + [m for m in common_models_for(slug) if m not in seen]
 
 
-def _build_provider_entry(slug: str, *, current_provider: str | None) -> dict[str, Any]:
+def _build_provider_entry(
+    slug: str,
+    *,
+    current_provider: str | None,
+    provider_info: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     spec = find_by_name(slug)
-    providers = {p["name"]: p for p in list_providers()}
-    info = providers.get(slug, {})
+    info = provider_info
+    if info is None:
+        providers = {p["name"]: p for p in list_providers()}
+        info = providers.get(slug, {})
 
     is_oauth = bool(spec and spec.is_oauth)
     configured = bool(info.get("configured"))
@@ -121,7 +128,15 @@ def _current_selection() -> tuple[str, str | None]:
 async def model_options(params: dict) -> dict:
     _parse(ModelOptionsParams, params)
     current_model, current_provider = _current_selection()
-    entries = [_build_provider_entry(p["name"], current_provider=current_provider) for p in list_providers()]
+    providers = list_providers()
+    entries = [
+        _build_provider_entry(
+            provider["name"],
+            current_provider=current_provider,
+            provider_info=provider,
+        )
+        for provider in providers
+    ]
     return {
         "model": current_model,
         "provider": current_provider or "",
