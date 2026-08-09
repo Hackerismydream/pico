@@ -1103,6 +1103,7 @@ class TestSubagentSandboxLifecycle:
     async def test_run_subagent_starts_and_stops_executor(self, mock_provider, tmp_path):
         """_run_subagent starts the executor via async with and stops it on completion."""
         from pico.agent.subagent import SubagentManager
+        from pico.agent.subagent.manager import SubagentOutcome, SubagentStatus
 
         started = []
         stopped = []
@@ -1143,7 +1144,7 @@ class TestSubagentSandboxLifecycle:
             original_inner = manager._run_subagent_inner
 
             async def _fast_inner(task_id, task, label, origin, executor):
-                await manager._announce_result(task_id, label, task, "done", origin, "ok")
+                return SubagentOutcome(SubagentStatus.COMPLETED, "done")
 
             manager._run_subagent_inner = _fast_inner
             await manager._run_subagent(
@@ -1160,6 +1161,7 @@ class TestSubagentSandboxLifecycle:
         (source=originating channel, conversation=originating session) and is
         fire-and-forget — never awaiting result()."""
         from pico.agent.subagent import SubagentManager
+        from pico.agent.subagent.manager import SubagentStatus
         from pico.spine import Origin
 
         captured = {}
@@ -1182,7 +1184,7 @@ class TestSubagentSandboxLifecycle:
             "task",
             "done",
             {"channel": "weixin", "chat_id": "u1", "session_key": "weixin:u1"},
-            "ok",
+            SubagentStatus.COMPLETED,
         )
 
         req = captured["req"]

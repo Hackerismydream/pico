@@ -9,6 +9,7 @@ See ``docs/TRACING_STANDARD_API.md``.
 
 from __future__ import annotations
 
+import asyncio
 from collections import Counter
 from typing import Any
 
@@ -346,14 +347,23 @@ def subagent(span, bound: dict[str, Any], result: Any, exc: BaseException | None
     this node under the spawning turn. This node just describes the spawn.
     """
     origin = bound.get("origin") or {}
-    span.set(
-        {
-            "subagent.task_id": bound.get("task_id"),
-            "subagent.task": _preview(bound.get("task"), 300),
-            "subagent.label": bound.get("label"),
-            "subagent.origin_session": origin.get("session_key") if isinstance(origin, dict) else None,
-        }
-    )
+    outcome_status = getattr(result, "status", None)
+    status = getattr(outcome_status, "value", None)
+    if isinstance(exc, asyncio.CancelledError):
+        status = "cancelled"
+    elif exc is not None and not isinstance(status, str):
+        status = "failed"
+    attributes = {
+        "subagent.task_id": bound.get("task_id"),
+        "subagent.task": _preview(bound.get("task"), 300),
+        "subagent.label": bound.get("label"),
+        "subagent.origin_session": origin.get("session_key") if isinstance(origin, dict) else None,
+    }
+    if isinstance(status, str):
+        attributes["subagent.status"] = status
+    span.set(attributes)
+    if getattr(result, "failed", None) is True:
+        span.error(status if isinstance(status, str) else "failed")
 
 
 def plugin_load(contribution: str):
@@ -706,6 +716,10 @@ def tool_call(span, bound: dict[str, Any], result: Any, exc: BaseException | Non
     name = bound.get("name")
     params = bound.get("params")
     call_id = bound.get("call_id")
+    explicit_failed = getattr(result, "failed", None)
+    result_failed = (
+        explicit_failed if isinstance(explicit_failed, bool) else isinstance(result, str) and result.startswith("Error")
+    )
     if call_id:
         span.set({"tool.call_id": call_id})
     skill_name = params.get("name") if name == "skill_read" and isinstance(params, dict) else None
@@ -737,7 +751,7 @@ def tool_call(span, bound: dict[str, Any], result: Any, exc: BaseException | Non
         err = None
         if exc is not None:
             err = repr(exc)
-        elif isinstance(result, str) and result.startswith("Error"):
+        elif result_failed:
             err = _preview(result, 200)
         span.set(
             {
@@ -750,5 +764,5 @@ def tool_call(span, bound: dict[str, Any], result: Any, exc: BaseException | Non
     span.set({"tool.duration_ms": span.elapsed_ms()})
     span.artifact("tool.input", {"name": name, "params": params})
     span.artifact("tool.output", {"result": result})
-    if exc is None and isinstance(result, str) and result.startswith("Error"):
+    if exc is None and result_failed:
         span.error(_preview(result, 200))

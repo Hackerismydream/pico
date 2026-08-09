@@ -5,11 +5,14 @@ import json
 import time
 import uuid
 from collections import deque
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
 
+from pico.agent.tools.base import ToolResult
 from pico.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from pico.agent.tools.registry import ToolRegistry
 from pico.agent.tools.shell import ExecTool
@@ -24,6 +27,26 @@ from pico.utils.helpers import build_assistant_message
 # One hour: a runaway re-injection loop fires fast and trips the limit quickly,
 # while legitimate spawns spread over time and age out before it bites.
 _SPAWN_WINDOW_SECONDS = 3600
+
+
+class SubagentStatus(StrEnum):
+    COMPLETED = "completed"
+    FAILED = "failed"
+    EXHAUSTED = "exhausted"
+
+    @property
+    def failed(self) -> bool:
+        return self is not SubagentStatus.COMPLETED
+
+
+@dataclass(frozen=True, slots=True)
+class SubagentOutcome:
+    status: SubagentStatus
+    result: str
+
+    @property
+    def failed(self) -> bool:
+        return self.status.failed
 
 
 class SubagentManager:
@@ -64,7 +87,7 @@ class SubagentManager:
         self.restrict_to_workspace = restrict_to_workspace
         self._sandbox_config = sandbox_config
         self._owned_ids = owned_ids
-        self._running_tasks: dict[str, asyncio.Task[None]] = {}
+        self._running_tasks: dict[str, asyncio.Task[SubagentOutcome]] = {}
         self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
         self._gate = asyncio.Semaphore(max_concurrent)
         self._max_spawns_per_hour = max_spawns_per_hour
@@ -94,11 +117,12 @@ class SubagentManager:
                 quota_key,
                 self._max_spawns_per_hour,
             )
-            return (
+            return ToolResult(
                 f"Spawn refused: this session hit its subagent spawn rate limit "
                 f"({self._max_spawns_per_hour} per hour). It recovers automatically "
                 f"as earlier spawns age out — if this is unexpected, the task may "
-                f"be looping; reconsider the approach instead of spawning again."
+                f"be looping; reconsider the approach instead of spawning again.",
+                failed=True,
             )
         window.append(now)
         task_id = str(uuid.uuid4())[:8]
@@ -110,7 +134,7 @@ class SubagentManager:
         if session_key:
             self._session_tasks.setdefault(session_key, set()).add(task_id)
 
-        def _cleanup(_: asyncio.Task) -> None:
+        def _cleanup(_: asyncio.Task[SubagentOutcome]) -> None:
             self._running_tasks.pop(task_id, None)
             if session_key and (ids := self._session_tasks.get(session_key)):
                 ids.discard(task_id)
@@ -129,7 +153,7 @@ class SubagentManager:
         task: str,
         label: str,
         origin: dict[str, str],
-    ) -> None:
+    ) -> SubagentOutcome:
         """Execute the subagent task and announce the result."""
         logger.info("Subagent [{}] starting task: {}", task_id, label)
 
@@ -139,11 +163,15 @@ class SubagentManager:
             async with self._gate:
                 executor = build_executor(self._sandbox_config, self.workspace, self._owned_ids)
                 async with executor:
-                    await self._run_subagent_inner(task_id, task, label, origin, executor)
+                    outcome = await self._run_subagent_inner(task_id, task, label, origin, executor)
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            error_msg = f"Error: {str(e)}"
             logger.error("Subagent [{}] failed: {}", task_id, e)
-            await self._announce_result(task_id, label, task, error_msg, origin, "error")
+            outcome = SubagentOutcome(SubagentStatus.FAILED, f"Error: {str(e)}")
+
+        await self._announce_result(task_id, label, task, outcome.result, origin, outcome.status)
+        return outcome
 
     async def _run_subagent_inner(
         self,
@@ -152,7 +180,7 @@ class SubagentManager:
         label: str,
         origin: dict[str, str],
         executor: Any,
-    ) -> None:
+    ) -> SubagentOutcome:
         try:
             # Build subagent tools (no message tool, no spawn tool)
             tools = ToolRegistry()
@@ -224,17 +252,20 @@ class SubagentManager:
                 else:
                     final_result = response.content
                     break
+            else:
+                final_result = f"Iteration budget exhausted after {max_iterations} iterations without a final response."
+                logger.warning("Subagent [{}] exhausted its iteration budget", task_id)
+                return SubagentOutcome(SubagentStatus.EXHAUSTED, final_result)
 
             if final_result is None:
                 final_result = "Task completed but no final response was generated."
 
             logger.info("Subagent [{}] completed successfully", task_id)
-            await self._announce_result(task_id, label, task, final_result, origin, "ok")
+            return SubagentOutcome(SubagentStatus.COMPLETED, final_result)
 
         except Exception as e:
-            error_msg = f"Error: {str(e)}"
             logger.error("Subagent [{}] failed: {}", task_id, e)
-            await self._announce_result(task_id, label, task, error_msg, origin, "error")
+            return SubagentOutcome(SubagentStatus.FAILED, f"Error: {str(e)}")
 
     def set_submit(self, submit) -> None:
         self._submit = submit
@@ -246,13 +277,17 @@ class SubagentManager:
         task: str,
         result: str,
         origin: dict[str, str],
-        status: str,
+        status: SubagentStatus,
     ) -> None:
         """Announce the subagent result to the main agent via the spine.
 
         This inbound system message triggers a main-agent turn directly.
         """
-        status_text = "completed successfully" if status == "ok" else "failed"
+        status_text = {
+            SubagentStatus.COMPLETED: "completed successfully",
+            SubagentStatus.FAILED: "failed",
+            SubagentStatus.EXHAUSTED: "failed: iteration budget exhausted",
+        }[status]
 
         # The subagent's result is attacker-influenceable (it may have fetched
         # web pages / read files), so fence it as untrusted before it re-enters

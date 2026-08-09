@@ -159,7 +159,8 @@ adds richer rendering.
 | `llm.call` | `model` | `llm.provider`, `llm.model` | `llm.provider_class`, `llm.finish_reason`, `llm.call_id`, `llm.invocation_source`, `llm.usage.{input,output,total,cache_read,cache_write}_tokens`, `llm.usage.cost_total`; artifacts `llm.input` (messages+tools), `llm.output` |
 | `tool.call` | `tool` | `tool.name` | `tool.call_id`, `tool.duration_ms`, `tool.error`; artifacts `tool.input` (params), `tool.output` (result) |
 | `channel.deliver` | `channel` | `channel.name`, `channel.outcome` | `channel.event`, `channel.conversation_id`, `channel.attempts`, `channel.retries`, `channel.error` |
-| `subagent.run` / `subagent.call` | `subagent` | — | `subagent.id`, `subagent.label`, `subagent.task`, `subagent.session_id`, `subagent.parent_trace_id`, `subagent.parent_span_id`, `subagent.trace_id`, `subagent.status` |
+| `subagent.run` | `subagent` | `subagent.status` (`completed` / `failed` / `exhausted` / `cancelled`) | `subagent.task_id`, `subagent.label`, `subagent.task`, `subagent.origin_session` |
+| `subagent.call` (viewer-synthesized) | `subagent` | `subagent.status` (`accepted`) | `subagent.id`, `subagent.label`, `subagent.task`, `subagent.mode`, `subagent.session_key`, `subagent.session_id`, `subagent.run_id`, `subagent.source`, `subagent.tool_call_id` |
 | `skill.read` / `skill.inject` | `skill` | - | `skill.name`, `skill.path`, `skill.read.via_tool` (`read_file`), `skill.inject.{names,count,via}` |
 | `memory.recall` / `.store` / `.feedback` / `.extract` / `.consolidate` / `.profile_refresh` | `memory` | — | `memory.scope`, `memory.hits`, `memory.message_count`, `memory.kind`, `memory.deposit_summary`, `memory.deposit_status`, `memory.surface`, `memory.sections_rewritten`; artifacts per op |
 | `plugin.load` / `tracing.bootstrap` | `plugin` | — | `plugin.name`, `plugin.contribution`, `plugin.id` |
