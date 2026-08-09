@@ -8,7 +8,7 @@ Hard constraints only (violations get reverted / rejected). Soft suggestions and
 
 | # | Section | Gist |
 |---|---|---|
-| 1 | [Code comments](#1-code-comments) | Don't comment unless necessary; comments in English |
+| 1 | [Code comments](#1-code-comments) | Don't comment unless necessary; comments in English (teaching modules: §1.4) |
 | 2 | [Branch naming](#2-branch-naming) | `<type>/<snake_desc>`; confirm base before cutting |
 | 3 | [Commits](#3-commits-conventional-commits) | Conventional Commits, all-English, `Co-authored-by` trailer |
 | 4 | [Dependencies](#4-dependencies-uv-only) | `uv` only — never `pip` / hand-edit lockfile |
@@ -71,6 +71,28 @@ def __init__(self, config: Any, bus: MessageBus):
 # Bind channel name into logger context so every log entry auto-tags channel.
 self.logger = logger.bind(channel=self.name)
 ```
+
+### §1.4 Teaching modules: detailed Chinese comments allowed
+
+Teaching modules are designated for onboarding and campus-recruitment training.
+For these modules only, §1.1 (sparse comments) and §1.2 (English-only) are
+relaxed.
+
+- **Designation** — a module is a teaching module **only if** it appears in
+  the teaching-module allowlist in `docs/plan/teaching-differentiation.md`
+  **and** its module docstring's first line is `教学模块：`. CI checks
+  allowlist–marker consistency, so the exemption cannot be self-declared.
+  All other modules keep §1.1 / §1.2.
+- **Language** — comments and docstrings in teaching modules are written in
+  Simplified Chinese (the trainee audience is Chinese).
+- **Required comment points**:
+  - module docstring: 读者任务、职责、核心概念、数据流、入口类与函数、使用示例
+  - class docstring: 职责、生命周期、与相邻模块的关系
+  - public method: 参数、返回值、异常、边界行为
+  - non-obvious logic: only **why**, not **what** — the §1.1 "what" bans still apply
+  - teaching markers: `# 例：` / `# 为什么这里...`
+- **Terminology** — Chinese terms must match the glossary in `CONTEXT.md`
+  (中英对照); coining a new term requires adding it there in the same change.
 
 ---
 

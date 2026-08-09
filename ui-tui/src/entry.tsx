@@ -3,9 +3,9 @@
 // Modifications Copyright (c) 2026 EverMind.
 // See NOTICES.md and LICENSES/MIT-hermes-agent.txt.
 
-// Hermes original shebang dropped here. We run entry.js via subprocess from
+// Original shebang dropped here. We run entry.js via subprocess from
 // Python (see pico/cli/tui_commands.py), not via a direct ./entry.js call.
-// If Node 22 OOM appears under hermes UI shell, re-add
+// If Node 22 OOM appears under the TUI shell, re-add
 // `#!/usr/bin/env -S node --max-old-space-size=8192 --expose-gc` per the
 // 04-node-version-impact.md fallback (priority #1 — Node 24 does NOT fix OOM).
 

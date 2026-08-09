@@ -135,7 +135,7 @@ export function Branding({ t }: { t?: Theme } = {}) {
   )
 }
 
-// Hermes-era callers (appLayout.tsx) import `Banner`; keep the name working.
+// Legacy callers (appLayout.tsx) import `Banner`; keep the name working.
 export const Banner = Branding
 
 // ── Collapsible helpers ──────────────────────────────────────────────
