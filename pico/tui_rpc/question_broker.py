@@ -135,7 +135,7 @@ class QuestionBroker:
 
     def cancel_all(self) -> None:
         """Fail-safe every pending question to its default (connection EOF)."""
-        for pending in list(self._pending.values()):
+        for pending in self._pending.values():
             if not pending.future.done():
                 pending.future.set_result(pending.default)
 
