@@ -9,6 +9,7 @@ See ``docs/TRACING_STANDARD_API.md``.
 
 from __future__ import annotations
 
+import asyncio
 from collections import Counter
 from typing import Any
 
@@ -346,14 +347,22 @@ def subagent(span, bound: dict[str, Any], result: Any, exc: BaseException | None
     this node under the spawning turn. This node just describes the spawn.
     """
     origin = bound.get("origin") or {}
-    span.set(
-        {
-            "subagent.task_id": bound.get("task_id"),
-            "subagent.task": _preview(bound.get("task"), 300),
-            "subagent.label": bound.get("label"),
-            "subagent.origin_session": origin.get("session_key") if isinstance(origin, dict) else None,
-        }
-    )
+    status = getattr(result, "value", None)
+    if isinstance(exc, asyncio.CancelledError):
+        status = "cancelled"
+    elif exc is not None and not isinstance(status, str):
+        status = "failed"
+    attributes = {
+        "subagent.task_id": bound.get("task_id"),
+        "subagent.task": _preview(bound.get("task"), 300),
+        "subagent.label": bound.get("label"),
+        "subagent.origin_session": origin.get("session_key") if isinstance(origin, dict) else None,
+    }
+    if isinstance(status, str):
+        attributes["subagent.status"] = status
+    span.set(attributes)
+    if getattr(result, "failed", None) is True:
+        span.error(status if isinstance(status, str) else "failed")
 
 
 def plugin_load(contribution: str):

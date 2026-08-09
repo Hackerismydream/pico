@@ -217,7 +217,7 @@ async def test_cancel_by_session_clears_spawn_history(monkeypatch):
     assert "sessA" not in mgr._session_spawn_times
 
 
-async def test_cancel_by_session_cancels_live_task(monkeypatch):
+async def test_cancel_by_session_cancels_live_task(monkeypatch, trace_dir):
     """cancel_by_session cancels a still-running asyncio.Task registered under
     the session (not just the rate-limit bookkeeping)."""
     mgr = _make_manager(max_concurrent=1)
@@ -244,6 +244,9 @@ async def test_cancel_by_session_cancels_live_task(monkeypatch):
     assert live_task.cancelled()
     await _settle(lambda: mgr.get_running_count() == 0)
     assert submitted == []
+    run_span = next(span for span in _trace_spans(trace_dir) if span["name"] == "subagent.run")
+    assert run_span["attributes"]["subagent.status"] == "cancelled"
+    assert run_span["status"] == {"code": "ERROR", "message": "cancelled"}
 
 
 async def test_announce_result_routes_to_tui_session_key(monkeypatch):
@@ -288,7 +291,7 @@ async def test_announce_result_routes_non_tui_origin_unchanged(monkeypatch):
     assert submitted[0].conversation == "feishu:ou_12345"
 
 
-async def test_iteration_exhaustion_is_announced_as_failure(monkeypatch, tmp_path):
+async def test_iteration_exhaustion_is_announced_as_failure(monkeypatch, tmp_path, trace_dir):
     class _ToolOnlyProvider:
         def __init__(self) -> None:
             self.calls = 0
@@ -318,12 +321,64 @@ async def test_iteration_exhaustion_is_announced_as_failure(monkeypatch, tmp_pat
 
     await mgr.spawn(task="keep using tools", label="loop", session_key="cli:test")
     (background_task,) = list(mgr._running_tasks.values())
-    await background_task
+    outcome = await background_task
 
+    assert outcome is SubagentStatus.EXHAUSTED
     assert provider.calls == 15
     assert len(submitted) == 1
     assert "completed successfully" not in submitted[0].text
     assert "exhausted" in submitted[0].text.lower()
+    run_span = next(span for span in _trace_spans(trace_dir) if span["name"] == "subagent.run")
+    assert run_span["attributes"]["subagent.status"] == "exhausted"
+    assert run_span["status"] == {"code": "ERROR", "message": "exhausted"}
+
+
+async def test_completed_subagent_returns_and_traces_typed_status(monkeypatch, tmp_path, trace_dir):
+    class _FinalProvider:
+        def get_default_model(self) -> str:
+            return "stub-model"
+
+        async def chat_with_retry(self, **kwargs) -> LLMResponse:
+            return LLMResponse(content="done")
+
+    monkeypatch.setattr(manager_mod, "build_executor", lambda *a, **k: _DummyExecutor())
+    mgr = SubagentManager(provider=_FinalProvider(), workspace=tmp_path, max_concurrent=1)
+    submitted = []
+    mgr.set_submit(submitted.append)
+
+    await mgr.spawn(task="finish", label="done", session_key="cli:test")
+    (background_task,) = list(mgr._running_tasks.values())
+    outcome = await background_task
+
+    assert outcome is SubagentStatus.COMPLETED
+    assert "completed successfully" in submitted[0].text
+    run_span = next(span for span in _trace_spans(trace_dir) if span["name"] == "subagent.run")
+    assert run_span["attributes"]["subagent.status"] == "completed"
+    assert run_span["status"] == {"code": "OK", "message": ""}
+
+
+async def test_failed_subagent_returns_and_traces_typed_status(monkeypatch, tmp_path, trace_dir):
+    class _FailingProvider:
+        def get_default_model(self) -> str:
+            return "stub-model"
+
+        async def chat_with_retry(self, **kwargs) -> LLMResponse:
+            raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(manager_mod, "build_executor", lambda *a, **k: _DummyExecutor())
+    mgr = SubagentManager(provider=_FailingProvider(), workspace=tmp_path, max_concurrent=1)
+    submitted = []
+    mgr.set_submit(submitted.append)
+
+    await mgr.spawn(task="fail", label="failed", session_key="cli:test")
+    (background_task,) = list(mgr._running_tasks.values())
+    outcome = await background_task
+
+    assert outcome is SubagentStatus.FAILED
+    assert "[Subagent 'failed' failed]" in submitted[0].text
+    run_span = next(span for span in _trace_spans(trace_dir) if span["name"] == "subagent.run")
+    assert run_span["attributes"]["subagent.status"] == "failed"
+    assert run_span["status"] == {"code": "ERROR", "message": "failed"}
 
 
 def test_build_subagent_prompt_does_not_start_skill_watcher(monkeypatch):

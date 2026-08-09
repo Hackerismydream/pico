@@ -33,6 +33,10 @@ class SubagentStatus(StrEnum):
     FAILED = "failed"
     EXHAUSTED = "exhausted"
 
+    @property
+    def failed(self) -> bool:
+        return self is not SubagentStatus.COMPLETED
+
 
 class SubagentManager:
     """Manages background subagent execution."""
@@ -72,7 +76,7 @@ class SubagentManager:
         self.restrict_to_workspace = restrict_to_workspace
         self._sandbox_config = sandbox_config
         self._owned_ids = owned_ids
-        self._running_tasks: dict[str, asyncio.Task[None]] = {}
+        self._running_tasks: dict[str, asyncio.Task[SubagentStatus]] = {}
         self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
         self._gate = asyncio.Semaphore(max_concurrent)
         self._max_spawns_per_hour = max_spawns_per_hour
@@ -119,7 +123,7 @@ class SubagentManager:
         if session_key:
             self._session_tasks.setdefault(session_key, set()).add(task_id)
 
-        def _cleanup(_: asyncio.Task) -> None:
+        def _cleanup(_: asyncio.Task[SubagentStatus]) -> None:
             self._running_tasks.pop(task_id, None)
             if session_key and (ids := self._session_tasks.get(session_key)):
                 ids.discard(task_id)
@@ -138,7 +142,7 @@ class SubagentManager:
         task: str,
         label: str,
         origin: dict[str, str],
-    ) -> None:
+    ) -> SubagentStatus:
         """Execute the subagent task and announce the result."""
         logger.info("Subagent [{}] starting task: {}", task_id, label)
 
@@ -148,11 +152,12 @@ class SubagentManager:
             async with self._gate:
                 executor = build_executor(self._sandbox_config, self.workspace, self._owned_ids)
                 async with executor:
-                    await self._run_subagent_inner(task_id, task, label, origin, executor)
+                    return await self._run_subagent_inner(task_id, task, label, origin, executor)
         except Exception as e:
             error_msg = f"Error: {str(e)}"
             logger.error("Subagent [{}] failed: {}", task_id, e)
             await self._announce_result(task_id, label, task, error_msg, origin, SubagentStatus.FAILED)
+            return SubagentStatus.FAILED
 
     async def _run_subagent_inner(
         self,
@@ -161,7 +166,7 @@ class SubagentManager:
         label: str,
         origin: dict[str, str],
         executor: Any,
-    ) -> None:
+    ) -> SubagentStatus:
         try:
             # Build subagent tools (no message tool, no spawn tool)
             tools = ToolRegistry()
@@ -244,18 +249,20 @@ class SubagentManager:
                     origin,
                     SubagentStatus.EXHAUSTED,
                 )
-                return
+                return SubagentStatus.EXHAUSTED
 
             if final_result is None:
                 final_result = "Task completed but no final response was generated."
 
             logger.info("Subagent [{}] completed successfully", task_id)
             await self._announce_result(task_id, label, task, final_result, origin, SubagentStatus.COMPLETED)
+            return SubagentStatus.COMPLETED
 
         except Exception as e:
             error_msg = f"Error: {str(e)}"
             logger.error("Subagent [{}] failed: {}", task_id, e)
             await self._announce_result(task_id, label, task, error_msg, origin, SubagentStatus.FAILED)
+            return SubagentStatus.FAILED
 
     def set_submit(self, submit) -> None:
         self._submit = submit
