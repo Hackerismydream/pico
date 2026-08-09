@@ -394,6 +394,20 @@ async def test_aclose_cancels_workers(hub):
     assert hub._workers == {}
 
 
+async def test_dispatch_after_aclose_is_rejected_without_restarting_worker(hub):
+    outlet = FakeOutlet("tg")
+    hub.register(outlet)
+    await hub.dispatch(Text(content="before", source=_src("tg")))
+    await hub.wait_idle("tg")
+    await hub.aclose()
+
+    with pytest.raises(RuntimeError, match="delivery hub is closed"):
+        await hub.dispatch(Text(content="after", source=_src("tg")))
+
+    assert hub._workers == {}
+    assert [item.content for item in outlet.received] == ["before"]
+
+
 async def test_drain_drops_queued_events_and_counts_them(hub):
     slow = GatedOutlet("slow")
     hub.register(slow)

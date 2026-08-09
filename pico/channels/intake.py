@@ -40,6 +40,7 @@ class Intake:
         self._submit: Callable[[TurnRequest], Awaitable[None]] | None = None
         self._sealed = False
         self._inflight = 0
+        self._inflight_tasks: set[asyncio.Task[Any]] = set()
         self._idle = asyncio.Event()
         self._idle.set()
 
@@ -65,6 +66,13 @@ class Intake:
     async def wait_idle(self) -> None:
         """Wait until every publish admitted before ``seal`` has returned."""
         await self._idle.wait()
+
+    def cancel_inflight(self) -> int:
+        """Cancel publishes admitted before shutdown and return their count."""
+        tasks = tuple(self._inflight_tasks)
+        for task in tasks:
+            task.cancel()
+        return len(tasks)
 
     async def publish(
         self,
@@ -101,6 +109,9 @@ class Intake:
             return
 
         self._inflight += 1
+        task = asyncio.current_task()
+        if task is not None:
+            self._inflight_tasks.add(task)
         self._idle.clear()
         try:
             meta = metadata or {}
@@ -125,6 +136,8 @@ class Intake:
                 )
             )
         finally:
+            if task is not None:
+                self._inflight_tasks.discard(task)
             self._inflight -= 1
             if self._inflight == 0:
                 self._idle.set()

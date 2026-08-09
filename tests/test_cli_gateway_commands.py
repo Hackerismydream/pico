@@ -323,6 +323,102 @@ async def test_gateway_preserves_run_failure_over_cleanup_failures(
     assert events == _CLEANUP_ORDER
 
 
+async def test_gateway_preserves_run_failure_over_cleanup_cancellation() -> None:
+    from pico.cli.gateway_commands import _cleanup_gateway
+
+    dependencies, events, _errors = _gateway_cleanup_dependencies()
+    run_error = RuntimeError("gateway run failed")
+
+    async def cancelled_quiesce() -> None:
+        events.append("intake_quiesce")
+        raise asyncio.CancelledError
+
+    dependencies["channels"].quiesce_intake = cancelled_quiesce
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await _cleanup_gateway(run_error=run_error, **dependencies)
+
+    assert exc_info.value is run_error
+    assert events == _CLEANUP_ORDER
+
+
+async def test_gateway_cancellation_at_intake_barrier_finishes_barrier_before_spine() -> None:
+    from pico.channels.intake import Intake
+    from pico.channels.manager import ChannelManager
+    from pico.cli.gateway_commands import _cleanup_gateway
+
+    events: list[str] = []
+    barrier_started = asyncio.Event()
+    publish_cancelled = asyncio.Event()
+    release_publish = asyncio.Event()
+    intake = Intake("telegram", SimpleNamespace(allow_from=["*"]))
+
+    async def submit(req) -> None:
+        try:
+            await asyncio.Event().wait()
+        finally:
+            publish_cancelled.set()
+            await release_publish.wait()
+            events.append("publish_finished")
+
+    intake.set_submit(submit)
+    original_wait_idle = intake.wait_idle
+
+    async def observed_wait_idle() -> None:
+        barrier_started.set()
+        await original_wait_idle()
+
+    intake.wait_idle = observed_wait_idle  # type: ignore[method-assign]
+
+    class _Channel:
+        async def stop(self) -> None:
+            events.append("transport_stop")
+
+    channel = _Channel()
+    channel.intake = intake
+    channels = object.__new__(ChannelManager)
+    channels.channels = {"telegram": channel}
+    health_error = RuntimeError("health close failed")
+
+    def close_health() -> None:
+        events.append("health_close")
+        raise health_error
+
+    publish = asyncio.create_task(intake.publish("user", "c", "blocked"))
+    await asyncio.sleep(0)
+    cleanup = asyncio.create_task(
+        _cleanup_gateway(
+            run_error=None,
+            health_server=SimpleNamespace(close=close_health),
+            cron=SimpleNamespace(stop=lambda: events.append("cron_stop")),
+            question_broker=None,
+            channels=channels,
+            gw_teardown=lambda: events.append("spine_teardown"),
+            agent=SimpleNamespace(stop=lambda: events.append("agent_stop")),
+            runtime=SimpleNamespace(close=lambda: events.append("runtime_close")),
+        )
+    )
+    await barrier_started.wait()
+    cleanup.cancel()
+    await publish_cancelled.wait()
+    cleanup.cancel()
+    await asyncio.sleep(0)
+    assert "spine_teardown" not in events
+    release_publish.set()
+
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await cleanup
+    finally:
+        release_publish.set()
+        if not publish.done():
+            publish.cancel()
+        await asyncio.gather(publish, return_exceptions=True)
+
+    assert events.index("publish_finished") < events.index("spine_teardown")
+    assert events[-4:] == ["spine_teardown", "transport_stop", "agent_stop", "runtime_close"]
+
+
 def test_gateway_log_config_defaults() -> None:
     from pico.config.schema import GatewayConfig
 

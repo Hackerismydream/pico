@@ -221,6 +221,32 @@ async def test_stop_all_attempts_every_channel_and_raises_first_failure(
     assert "Error stopping second" in logged
 
 
+async def test_stop_all_times_out_one_transport_and_attempts_the_rest(monkeypatch) -> None:
+    monkeypatch.setattr("pico.channels.manager._CHANNEL_STOP_TIMEOUT_S", 0.01, raising=False)
+    events: list[str] = []
+
+    class _Channel:
+        def __init__(self, name: str, *, blocks: bool = False) -> None:
+            self.name = name
+            self.blocks = blocks
+
+        async def stop(self) -> None:
+            events.append(self.name)
+            if self.blocks:
+                await asyncio.Event().wait()
+
+    manager = object.__new__(ChannelManager)
+    manager.channels = {
+        "blocked": _Channel("blocked", blocks=True),
+        "healthy": _Channel("healthy"),
+    }
+
+    with pytest.raises(TimeoutError, match="blocked.*timed out"):
+        await asyncio.wait_for(manager.stop_all(), timeout=0.2)
+
+    assert events == ["blocked", "healthy"]
+
+
 async def test_quiesce_intake_seals_every_channel_before_waiting() -> None:
     events: list[str] = []
     intakes = []

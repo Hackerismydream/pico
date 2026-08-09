@@ -19,6 +19,28 @@ from pico.channels.contract import Channel
 from pico.config.schema import Config
 from pico.product import DISTRIBUTION_NAME
 
+_INTAKE_DRAIN_TIMEOUT_S = 5.0
+_CHANNEL_STOP_TIMEOUT_S = 5.0
+
+
+def _consume_task_result(task: asyncio.Task[Any]) -> None:
+    if task.cancelled():
+        return
+    task.exception()
+
+
+async def _finish_barrier(task: asyncio.Task[None]) -> asyncio.CancelledError | None:
+    """Finish a safety barrier while retaining repeated caller cancellation."""
+    cancellation: asyncio.CancelledError | None = None
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as exc:
+            if cancellation is None:
+                cancellation = exc
+    await task
+    return cancellation
+
 
 def _missing_dep_hint(modname: str) -> str:
     """How to install a channel's missing SDK, tailored to the install mode.
@@ -135,19 +157,65 @@ class ChannelManager:
         await asyncio.gather(*tasks, return_exceptions=True)
 
     async def quiesce_intake(self) -> None:
-        """Seal every inbound Intake, then wait for admitted publishes."""
+        """Seal every Intake and bound the drain of admitted publishes."""
         intakes = [channel.intake for channel in self.channels.values()]
         for intake in intakes:
             intake.seal()
-        await asyncio.gather(*(intake.wait_idle() for intake in intakes))
+
+        async def wait_idle() -> None:
+            await asyncio.gather(*(intake.wait_idle() for intake in intakes))
+
+        # Caller cancellation must not cancel the barrier waiter: admitted
+        # publishes are cancelled and observed idle before cancellation escapes.
+        drain = asyncio.create_task(wait_idle())
+        try:
+            await asyncio.wait_for(asyncio.shield(drain), timeout=_INTAKE_DRAIN_TIMEOUT_S)
+        except TimeoutError as exc:
+            cancelled = sum(intake.cancel_inflight() for intake in intakes)
+            logger.error(
+                "channel intake drain timed out after {}s; cancelling {} admitted publish(es)",
+                _INTAKE_DRAIN_TIMEOUT_S,
+                cancelled,
+            )
+            delayed_cancellation = await _finish_barrier(drain)
+            if delayed_cancellation is not None:
+                raise delayed_cancellation
+            raise TimeoutError(
+                f"channel intake drain timed out after {_INTAKE_DRAIN_TIMEOUT_S}s; "
+                f"cancelled {cancelled} admitted publish(es)"
+            ) from exc
+        except asyncio.CancelledError:
+            cancelled = sum(intake.cancel_inflight() for intake in intakes)
+            logger.warning(
+                "channel intake drain cancelled; cancelling {} admitted publish(es) before spine teardown",
+                cancelled,
+            )
+            await _finish_barrier(drain)
+            raise
+
+    async def _stop_channel(self, name: str, channel: Channel) -> None:
+        # wait_for can exceed its timeout while waiting for an inner coroutine
+        # that suppresses cancellation; a separate task keeps this deadline hard.
+        task = asyncio.create_task(channel.stop())
+        try:
+            done, _pending = await asyncio.wait({task}, timeout=_CHANNEL_STOP_TIMEOUT_S)
+        except asyncio.CancelledError:
+            task.cancel()
+            task.add_done_callback(_consume_task_result)
+            raise
+        if not done:
+            task.cancel()
+            task.add_done_callback(_consume_task_result)
+            raise TimeoutError(f"channel {name} stop timed out after {_CHANNEL_STOP_TIMEOUT_S}s")
+        await task
 
     async def stop_all(self) -> None:
-        """Stop all channels."""
+        """Bound and attempt every channel transport stop."""
         logger.info("Stopping all channels...")
         first_error: BaseException | None = None
         for name, channel in self.channels.items():
             try:
-                await channel.stop()
+                await self._stop_channel(name, channel)
                 logger.info("Stopped {} channel", name)
             except BaseException as exc:
                 logger.opt(exception=exc).error("Error stopping {}", name)

@@ -112,13 +112,18 @@ async def _cleanup_gateway(
 ) -> None:
     """Attempt every cleanup step, then raise the highest-priority failure."""
     first_error: BaseException | None = None
+    cancellation: asyncio.CancelledError | None = None
 
     async def attempt(name: str, cleanup: Callable[[], object]) -> None:
-        nonlocal first_error
+        nonlocal cancellation, first_error
         try:
             result = cleanup()
             if inspect.isawaitable(result):
                 await result
+        except asyncio.CancelledError as exc:
+            logger.opt(exception=exc).error("Gateway cleanup step {} was cancelled", name)
+            if cancellation is None:
+                cancellation = exc
         except BaseException as exc:
             logger.opt(exception=exc).error("Gateway cleanup step {} failed", name)
             if first_error is None:
@@ -139,6 +144,8 @@ async def _cleanup_gateway(
     # are logged and become terminal only when the run itself succeeded.
     if run_error is not None:
         raise run_error
+    if cancellation is not None:
+        raise cancellation
     if first_error is not None:
         raise first_error
 
