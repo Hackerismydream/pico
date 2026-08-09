@@ -106,15 +106,9 @@ def _restore_epoch(
     if epoch_existed:
         _write_epoch(path, epoch)
     else:
-        try:
-            os.unlink(epoch_path)
-        except FileNotFoundError:
-            pass
+        epoch_path.unlink(missing_ok=True)
     if not known_existed:
-        try:
-            os.unlink(_epoch_known_path(path))
-        except FileNotFoundError:
-            pass
+        _epoch_known_path(path).unlink(missing_ok=True)
     if not epoch_dir_existed:
         try:
             epoch_path.parent.rmdir()
