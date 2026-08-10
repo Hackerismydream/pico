@@ -56,7 +56,7 @@ class SandboxConfig(BaseModel):
     @field_validator("allow_net")
     @classmethod
     def _validate_allow_net(cls, v: bool | list[str]) -> bool | list[str]:
-        if isinstance(v, list) and len(v) == 0:
+        if isinstance(v, list) and not v:
             raise ValueError(
                 "allow_net: [] is ambiguous — an empty allowlist may mean 'allow all' or "
                 "'allow none' depending on the boxlite runtime. "

@@ -88,7 +88,7 @@ class DoctorReport:
             return 1
         if not self.config_loaded:
             return 1
-        if self.paths is None or not self.paths.workspace_writable or not self.paths.state_writable:
+        if not self.paths.workspace_writable or not self.paths.state_writable:
             return 1
         if self.routing is None or self.routing.provider is None:
             return 1

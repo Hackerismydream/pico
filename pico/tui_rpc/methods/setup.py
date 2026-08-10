@@ -69,10 +69,9 @@ def _detect_provider_configured(payload: dict) -> bool:
         return True
 
     providers = payload.get("providers")
-    if isinstance(providers, dict) and any(isinstance(v, dict) and v.get("apiKey") for v in providers.values()):
-        return True
-
-    return False
+    return isinstance(providers, dict) and any(
+        isinstance(value, dict) and value.get("apiKey") for value in providers.values()
+    )
 
 
 async def setup_status(params: dict) -> dict:

@@ -248,7 +248,7 @@ class ToolSearchStrategy(TokenStrategy):
             out = [t for t in tools if t["function"]["name"] not in META_TOOL_NAMES]
             return messages, out, model
         present = {t["function"]["name"] for t in tools}
-        if not META_TOOL_NAMES <= present:
+        if not META_TOOL_NAMES.issubset(present):
             # Meta-tools unavailable (e.g. removed via disabled_tools): expose
             # everything rather than strand the cataloged tools behind a search
             # the model cannot invoke.

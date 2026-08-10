@@ -219,9 +219,7 @@ def _resolve_plugin_config_slice(
     plugin_id = _plugin_id_for_backend(registry, backend_name)
     if plugin_id is not None and plugin_id in slices:
         return slices[plugin_id]
-    if backend_name in slices:
-        return slices[backend_name]
-    return {}
+    return slices.get(backend_name, {})
 
 
 def _plugin_id_for_backend(

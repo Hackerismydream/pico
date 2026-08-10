@@ -275,7 +275,7 @@ class LiteLLMProvider(LLMProvider):
                     normalized_tool_calls.append(tc_clean)
                 clean["tool_calls"] = normalized_tool_calls
 
-            if "tool_call_id" in clean and clean["tool_call_id"]:
+            if clean.get("tool_call_id"):
                 clean["tool_call_id"] = map_id(clean["tool_call_id"])
         return sanitized
 

@@ -673,7 +673,7 @@ def _verify_provider(provider: str, *, skip_test: bool = False) -> tuple[bool, s
 def _load_current_default_model() -> Optional[str]:
     """Read ``agents.defaults.model`` from the on-disk config, if it exists."""
     data = _load_raw_config()
-    return (data or {}).get("agents", {}).get("defaults", {}).get("model") or None
+    return data.get("agents", {}).get("defaults", {}).get("model") or None
 
 
 def _model_routes_to_provider(model: str, spec: Any) -> bool:

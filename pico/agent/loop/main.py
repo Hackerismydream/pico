@@ -455,7 +455,7 @@ class AgentLoop:
         """
         if not self._disabled_tools:
             return
-        for name in list(self._disabled_tools):
+        for name in self._disabled_tools:
             if self.tools.has(name):
                 self.tools.unregister(name)
 
@@ -711,9 +711,7 @@ class AgentLoop:
         Backend failures propagate after the append-only Session save, so the
         Turn cannot be reported as successful when indexing failed.
         """
-        if self.backend is None:
-            return
-        if not messages_slice:
+        if self.backend is None or not messages_slice:
             return
         await self.backend.store(
             session_key,
@@ -913,10 +911,11 @@ class AgentLoop:
         out_toks = int(usage.get("completion_tokens", 0) or 0)
         cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
         cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
+        cached_tokens = cache_read + cache_write
 
         # Normalize to fresh-only.
-        if prompt_t >= cache_read + cache_write and (cache_read + cache_write) > 0:
-            fresh = prompt_t - cache_read - cache_write
+        if cached_tokens and prompt_t >= cached_tokens:
+            fresh = prompt_t - cached_tokens
         else:
             fresh = prompt_t
 

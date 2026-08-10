@@ -137,9 +137,8 @@ class ExecTool(Tool):
             if re.search(pattern, lower):
                 return "Error: Command blocked by safety guard (dangerous pattern detected)"
 
-        if self.allow_patterns:
-            if not any(re.search(p, lower) for p in self.allow_patterns):
-                return "Error: Command blocked by safety guard (not in allowlist)"
+        if self.allow_patterns and not any(re.search(pattern, lower) for pattern in self.allow_patterns):
+            return "Error: Command blocked by safety guard (not in allowlist)"
 
         workspace_error = self._check_workspace_restriction(command, cwd)
         if workspace_error:

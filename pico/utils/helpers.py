@@ -172,7 +172,7 @@ def estimate_prompt_tokens_chain(
 
     estimated = estimate_prompt_tokens(messages, tools)
     if estimated > 0:
-        return int(estimated), "tiktoken"
+        return estimated, "tiktoken"
     return 0, "none"
 
 
@@ -205,8 +205,7 @@ def sync_workspace_templates(workspace: Path, silent: bool = False) -> list[str]
         if not src.is_file() or dest.exists():
             return
         try:
-            raw = src.read_bytes()
-            text = raw.decode("utf-8", errors="replace")
+            text = src.read_bytes().decode("utf-8", errors="replace")
         except OSError:
             return
         dest.parent.mkdir(parents=True, exist_ok=True)

@@ -97,9 +97,12 @@ class ModelRouter:
         if result is None:
             return None, []
         fallbacks = [f.model for f in result.fallbacks]
-        if self._fallback_model and self._fallback_model not in fallbacks:
-            if self._fallback_model != result.primary.model:
-                fallbacks.append(self._fallback_model)
+        if (
+            self._fallback_model
+            and self._fallback_model != result.primary.model
+            and self._fallback_model not in fallbacks
+        ):
+            fallbacks.append(self._fallback_model)
         return result.primary.model, fallbacks
 
     @property

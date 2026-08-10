@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Callable
 from typing import Any
 
 import typer
@@ -41,7 +42,7 @@ console = Console()
 provider_app = typer.Typer(help="Manage providers")
 
 
-_LOGIN_HANDLERS: dict[str, callable] = {}
+_LOGIN_HANDLERS: dict[str, Callable[[], None]] = {}
 
 
 def _register_login(name: str):

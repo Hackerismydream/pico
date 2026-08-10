@@ -228,4 +228,4 @@ class ChannelManager:
     @property
     def enabled_channels(self) -> list[str]:
         """Get list of enabled channel names."""
-        return list(self.channels.keys())
+        return list(self.channels)

@@ -7,12 +7,9 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pico.sandbox.interfaces import ExecResult, SandboxExecutor, SandboxInitError
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -466,10 +463,12 @@ class BoxliteExecutor(SandboxExecutor):
 
         # No await between create_task and extend — asyncio is single-threaded so no
         # context switch can occur here. stop() is therefore guaranteed to see all three tasks.
-        task1 = asyncio.create_task(_stdout_bridge())
-        task2 = asyncio.create_task(_stderr_bridge())
-        task3 = asyncio.create_task(_stdin_bridge())
-        self._process_tasks.extend([task1, task2, task3])
+        tasks = [
+            asyncio.create_task(_stdout_bridge()),
+            asyncio.create_task(_stderr_bridge()),
+            asyncio.create_task(_stdin_bridge()),
+        ]
+        self._process_tasks.extend(tasks)
 
         return read_recv, write_send
 

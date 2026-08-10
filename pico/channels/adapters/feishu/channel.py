@@ -516,7 +516,7 @@ class FeishuChannel(ChannelBase):
         else:
             parts.append(_MSG_TYPE_LABEL.get(msg_type, f"[{msg_type}]"))
 
-        return ("\n".join(parts) if parts else ""), media
+        return "\n".join(parts), media
 
     @staticmethod
     def _ignore_event(_data: Any) -> None:

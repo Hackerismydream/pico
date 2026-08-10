@@ -9,15 +9,11 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import httpx
 from loguru import logger
 
 from pico.routing.types import ClassificationResult, TaskCategory
-
-if TYPE_CHECKING:
-    pass
 
 # ── 23 categories → task IDs ───────────────────────────────────────────────────
 
@@ -81,7 +77,7 @@ async def fetch_embedding(
 def cosine_similarity(a: list[float], b: list[float]) -> float:
     """Cosine similarity — handles dimension mismatches by truncating."""
     length = min(len(a), len(b))
-    dot = sum(a[i] * b[i] for i in range(length))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     norm_a = math.sqrt(sum(x * x for x in a[:length]))
     norm_b = math.sqrt(sum(x * x for x in b[:length]))
     denom = norm_a * norm_b

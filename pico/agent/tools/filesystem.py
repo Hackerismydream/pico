@@ -373,7 +373,7 @@ class ListDirTool(_FsTool):
                         pfx = "📁 " if item.is_dir() else "📄 "
                         items.append(f"{pfx}{item.name}")
 
-            if not items and total == 0:
+            if total == 0:
                 return f"Directory {path} is empty"
 
             result = "\n".join(items)

@@ -16,11 +16,12 @@ def normalize(usage: dict[str, Any] | None, model: str | None) -> dict[str, Any]
     out_toks = int(usage.get("completion_tokens", 0) or 0)
     cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
     cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
+    cached_tokens = cache_read + cache_write
 
     # Normalize prompt tokens to *fresh* (non-cached): Anthropic reports
     # fresh-only, OpenRouter/LiteLLM report total (already including cache).
-    if prompt_t >= cache_read + cache_write and (cache_read + cache_write) > 0:
-        fresh = prompt_t - cache_read - cache_write
+    if cached_tokens and prompt_t >= cached_tokens:
+        fresh = prompt_t - cached_tokens
     else:
         fresh = prompt_t
 

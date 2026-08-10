@@ -43,18 +43,19 @@ class ToolAuditHook(AgentHook):
         offenders = _extract_offending_tool_names(ctx.response, denylist)
         if not offenders:
             return HookDecision()
+        sorted_offenders = sorted(offenders)
 
         logger.warning(
             "EvalEngine tool audit: blocking tool calls %s",
-            sorted(offenders),
+            sorted_offenders,
         )
         return HookDecision(
             short_circuit_result=(
                 "I tried to invoke a tool that's been blocked by policy: "
-                f"{', '.join(sorted(offenders))}. "
+                f"{', '.join(sorted_offenders)}. "
                 "Please rephrase or escalate if you believe this is intended."
             ),
-            notes=[f"tool_denylist_hit names={sorted(offenders)}"],
+            notes=[f"tool_denylist_hit names={sorted_offenders}"],
         )
 
 

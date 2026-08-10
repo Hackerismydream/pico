@@ -93,6 +93,6 @@ def capability_violations(channel: object, caps: Capabilities | None = None) -> 
         implemented = isinstance(channel, proto)
         if declared and not implemented:
             out.append(f"declares {flag} but does not implement {proto.__name__}")
-        if implemented and not declared:
+        elif implemented and not declared:
             out.append(f"implements {proto.__name__} but does not declare {flag}")
     return out

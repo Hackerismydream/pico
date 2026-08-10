@@ -247,7 +247,7 @@ class SandboxDebugServer:
         if vm_ref is None:
             # Auto-select: owned + running
             candidates = [b for b in boxes if b.id in self._owned_ids and b.state.status == "running"]
-            if len(candidates) == 0:
+            if not candidates:
                 await _send(writer, {"type": "error", "message": "No running VMs. Start pico run/gateway first."})
                 return None
             if len(candidates) > 1:
@@ -367,13 +367,11 @@ class SandboxDebugServer:
             # readline() (stray data) is ignored, and an empty result means the
             # client closed its half of the socket — at which point we must stop
             # waiting on the long-running VM process and kill it.
-            while True:
-                try:
-                    line = await reader.readline()
-                except (ConnectionResetError, BrokenPipeError, ValueError):
-                    return
-                if not line:
-                    return
+            try:
+                while await reader.readline():
+                    pass
+            except (ConnectionResetError, BrokenPipeError, ValueError):
+                pass
 
         async def _both_streams():
             await asyncio.gather(_stream_stdout(), _stream_stderr())

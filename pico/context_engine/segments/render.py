@@ -116,7 +116,7 @@ def load_bootstrap_files(workspace: Path, bootstrap_files: list[str] | None = No
             # renders as ``## soul.md``.
             heading = Path(filename).name
             parts.append(f"## {heading}\n\n{content}")
-    return "\n\n".join(parts) if parts else ""
+    return "\n\n".join(parts)
 
 
 def render_recalled_memory(memories: "list[Memory] | None") -> str:

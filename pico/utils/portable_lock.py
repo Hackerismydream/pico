@@ -35,8 +35,7 @@ def file_lock(lock_path: Path, *, blocking: bool = True) -> Iterator[None]:
     if not blocking:
         flags |= portalocker.LOCK_NB
 
-    fh = open(lock_path, "a+")
-    try:
+    with open(lock_path, "a+") as fh:
         try:
             portalocker.lock(fh, flags)
         except portalocker.exceptions.LockException as exc:
@@ -48,8 +47,6 @@ def file_lock(lock_path: Path, *, blocking: bool = True) -> Iterator[None]:
                 portalocker.unlock(fh)
             except Exception:
                 pass
-    finally:
-        fh.close()
 
 
 __all__ = ["file_lock", "LockTimeoutError"]

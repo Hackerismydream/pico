@@ -345,7 +345,7 @@ class Personalizer:
     @staticmethod
     def _format_history(history: list[dict], max_messages: int = 4) -> str:
         """Format recent conversation history into a compact string for prompts."""
-        recent = history[-max_messages:] if len(history) > max_messages else history
+        recent = history[-max_messages:]
         lines = []
         for m in recent:
             role = m.get("role", "unknown").upper()

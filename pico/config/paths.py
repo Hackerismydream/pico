@@ -32,10 +32,10 @@ def resolve_foreground_paths(
     configured = Path(config.workspace_path).expanduser()
     if config.agents.defaults.workspace != DEFAULT_WORKSPACE_SPEC:
         return RuntimePaths(workspace=configured, state=configured)
-    workspace = (cwd or Path.cwd()).expanduser().resolve()
+    resolved_workspace = (cwd or Path.cwd()).expanduser().resolve()
     return RuntimePaths(
-        workspace=workspace,
-        state=get_project_state_dir(workspace),
+        workspace=resolved_workspace,
+        state=get_project_state_dir(resolved_workspace),
     )
 
 

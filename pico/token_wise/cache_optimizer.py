@@ -115,7 +115,6 @@ class CacheOptimizer(TokenStrategy):
         budget = self.max_breakpoints
         new_tools = tools
         new_messages = list(messages)
-        marked_indices: set[int] = set()
 
         # ── bp1: tools (only when tools are present) ──
         if tools and budget > 0:
@@ -127,7 +126,6 @@ class CacheOptimizer(TokenStrategy):
         sys_idx = _last_index(new_messages, role="system")
         if sys_idx is not None and budget > 0:
             new_messages[sys_idx] = _mark_message_tail(new_messages[sys_idx])
-            marked_indices.add(sys_idx)
             budget -= 1
 
         # ── bp3..4 (or bp2..4 when no tools): rolling tail window ──
@@ -135,14 +133,9 @@ class CacheOptimizer(TokenStrategy):
         # N = remaining budget. This is the rolling-window approach that
         # covers both intra-turn tool chains and cross-turn prefix reuse.
         if budget > 0:
-            non_sys = [
-                i
-                for i in range(len(new_messages))
-                if i not in marked_indices and new_messages[i].get("role") != "system"
-            ]
+            non_sys = [i for i in range(len(new_messages)) if new_messages[i].get("role") != "system"]
             for idx in non_sys[-budget:]:
                 new_messages[idx] = _mark_message_tail(new_messages[idx])
-                marked_indices.add(idx)
                 budget -= 1
 
         used = self.max_breakpoints - budget
