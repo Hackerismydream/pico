@@ -120,6 +120,12 @@ repository, so normal startup does not dirty Git or trust repository-controlled
 bootstrap files. An explicit `--workspace` or `--config` path opts into direct
 operation on that location.
 
+Executable Plugins are discovered only from Pico's bundled set,
+operator-managed `~/.pico/plugins/`, and installed `pico.plugins` entry points.
+A repository's `.pico/plugins/` directory is not an automatic startup source;
+project-specific instructions belong in Local Skills or explicit MCP/config
+surfaces rather than checkout-controlled Python imports.
+
 ## Development
 
 ```bash
