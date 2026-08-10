@@ -20,8 +20,8 @@ import logging
 from dataclasses import dataclass
 from enum import IntEnum
 from importlib import metadata
-from importlib.resources import as_file, files
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from typing import Any
 
 from pico.plugin.manifest import PluginManifest
 
@@ -49,7 +49,7 @@ class DiscoveredPlugin:
     source: Source
     location: Path | None
     """Path to the manifest file. ``None`` for entry-points-discovered
-    plugins where the manifest lives inside a wheel's package data."""
+    plugins whose factories resolve through the installed distribution."""
 
 
 class PluginDiscovery:
@@ -146,15 +146,16 @@ class PluginDiscovery:
     # ── Entry-points source ────────────────────────────────────────
 
     def _scan_entry_points(self, group: str) -> list[DiscoveredPlugin]:
-        """Resolve every entry point in ``group`` and read the manifest
-        shipped inside that entry point's package.
+        """Read installed plugin manifests without importing their packages.
 
-        Entry-point value is the bare package name (e.g. a third-party
-        ``pico_mem0``). We use ``importlib.resources`` to locate
-        ``pico-plugin.toml`` inside that package. The package's
-        ``__init__.py`` is imported as part of resource resolution —
-        side-effects there would betray the "manifest-only" promise, so
-        plugin packages are expected to keep ``__init__`` empty / cheap.
+        Entry-point values name the package that ships ``pico-plugin.toml``.
+        The manifest is resolved from the owning distribution's recorded file
+        inventory instead of through ``importlib.resources``. This keeps
+        discovery data-only: package ``__init__`` code and native dependencies
+        are not loaded until the Registry actually resolves a selected factory.
+
+        A distribution that omits its manifest from package metadata is
+        skipped rather than imported as a fallback.
         """
         out: list[DiscoveredPlugin] = []
         try:
@@ -164,27 +165,28 @@ class PluginDiscovery:
             return out
 
         for ep in eps:
-            package_name = ep.value.split(":", 1)[0]
+            package_name = _entry_point_package_name(ep)
             try:
-                resource_root = files(package_name)
-                manifest_resource = resource_root.joinpath(_MANIFEST_FILENAME)
-                with as_file(manifest_resource) as manifest_path:
-                    if not manifest_path.is_file():
-                        logger.warning(
-                            "entry-point %s points at package %s but no %s found; skipping",
-                            ep.name,
-                            package_name,
-                            _MANIFEST_FILENAME,
-                        )
-                        continue
-                    mf = PluginManifest.from_toml_path(manifest_path)
-                    out.append(
-                        DiscoveredPlugin(
-                            manifest=mf,
-                            source=Source.ENTRY_POINTS,
-                            location=None,
-                        ),
+                manifest_path = _entry_point_manifest_path(
+                    ep,
+                    package_name=package_name,
+                )
+                if manifest_path is None:
+                    logger.warning(
+                        "entry-point %s points at package %s but its distribution does not record %s; skipping",
+                        ep.name,
+                        package_name,
+                        _MANIFEST_FILENAME,
                     )
+                    continue
+                mf = PluginManifest.from_toml_path(manifest_path)
+                out.append(
+                    DiscoveredPlugin(
+                        manifest=mf,
+                        source=Source.ENTRY_POINTS,
+                        location=None,
+                    ),
+                )
             except Exception as e:
                 logger.warning(
                     "failed to load manifest for entry-point %s (%s); skipping",
@@ -225,6 +227,43 @@ class PluginDiscovery:
                 )
         # Stable sort by id so caller-side display order is deterministic.
         return sorted(by_id.values(), key=lambda p: p.manifest.id)
+
+
+def _entry_point_package_name(entry_point: Any) -> str:
+    module = getattr(entry_point, "module", None)
+    if isinstance(module, str) and module:
+        return module
+    return str(entry_point.value).split(":", 1)[0]
+
+
+def _entry_point_manifest_path(
+    entry_point: Any,
+    *,
+    package_name: str,
+) -> Path | None:
+    distribution = getattr(entry_point, "dist", None)
+    if distribution is None:
+        return None
+    distribution_files = getattr(distribution, "files", None)
+    if not distribution_files:
+        return None
+
+    target = PurePosixPath(*package_name.split("."), _MANIFEST_FILENAME)
+    match = None
+    for candidate in distribution_files:
+        normalized = PurePosixPath(str(candidate).replace("\\", "/"))
+        if normalized == target:
+            if match is not None:
+                raise ValueError(
+                    f"distribution records {target} more than once",
+                )
+            match = candidate
+    if match is None:
+        return None
+
+    located = distribution.locate_file(match)
+    manifest_path = Path(located)
+    return manifest_path if manifest_path.is_file() else None
 
 
 __all__ = ["DiscoveredPlugin", "PluginDiscovery", "Source"]
