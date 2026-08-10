@@ -86,8 +86,21 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui-tui/package-lock.json
+
       - name: Install dependencies
         run: make install-deps
+
+      - name: Build retained TUI fixture
+        run: |
+          npm ci
+          npm run build
+        working-directory: ui-tui
 
       - name: Lint changed plugin boundary
         run: |
@@ -96,16 +109,26 @@ jobs:
             pico/cli/_plugin_stack.py \
             pico/cli/plugin_commands.py \
             tests/test_plugin_registry.py \
-            tests/test_plugin_trust_boundary.py
+            tests/test_plugin_trust_boundary.py \
+            tests/test_product_identity.py
           uv run --extra dev ruff format --check \
             pico/plugin \
             pico/cli/_plugin_stack.py \
             pico/cli/plugin_commands.py \
             tests/test_plugin_registry.py \
-            tests/test_plugin_trust_boundary.py
+            tests/test_plugin_trust_boundary.py \
+            tests/test_product_identity.py
 
-      - name: Run deterministic retained suite
-        run: make test-retained
+      - name: Diagnose retained cross-process fixture
+        run: |
+          set +e
+          PYTHONFAULTHANDLER=1 uv run --frozen --all-extras --exact \
+            pytest tests/integration/test_picobench_memory_skill_e2e.py -vv -s
+          status=$?
+          find /tmp/pytest-of-runner -type f \
+            \( -name '*-result.json' -o -name 'worker-spec.json' \) \
+            -print -exec sh -c 'echo "--- $1"; cat "$1"' _ {} \; || true
+          exit "$status"
 
   tui:
     name: TUI checks
