@@ -102,9 +102,13 @@ jobs:
           npm run build
         working-directory: ui-tui
 
+      - name: Install native debugger
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdb
+
       - name: Instrument worker GDB diagnostics
         run: |
-          command -v gdb
           python - <<'PY'
           from pathlib import Path
 
