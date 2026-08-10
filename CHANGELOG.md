@@ -14,6 +14,10 @@ All notable Pico changes are documented here.
   Plugin interface.
 - Kept Evolver candidate generation opt-in, evidence-gated, manually activated,
   and rollback-aware.
+- Made Plugin admission manifest-only: factory modules are imported only when a
+  host actually builds the selected contribution.
+- Added the full deterministic retained Python suite to pull-request CI instead
+  of treating the focused smoke suite as Runtime regression coverage.
 
 ### Removed
 
@@ -22,3 +26,6 @@ All notable Pico changes are documented here.
   MiroThinker, and remote Skill marketplace behavior.
 - Removed compatibility namespaces, implicit state migration, and bundled
   Memory implementations outside the installed Plugin contract.
+- Removed automatic discovery of executable Plugins from repository-local
+  `.pico/plugins/`; operator-installed user Plugins and package entry points
+  remain supported.
