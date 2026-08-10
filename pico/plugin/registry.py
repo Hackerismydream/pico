@@ -1,23 +1,19 @@
-"""Plugin registry — turns discovered manifests into callable factories.
+"""Plugin registry — records manifests and resolves factories on demand.
 
-Two responsibilities, split deliberately:
+The registry deliberately splits admission from code execution:
 
-1. **Activation** (:meth:`activate`) — for each discovered plugin
-   admitted by the user's config (``plugins.disabled`` opt-out list +
-   ``enabled_by_default`` flag), resolve each contributed factory
-   reference (``module.path:callable``) into an actual callable and
-   record it in the factory table. This is where plugin Python code is
-   first imported — manifests up to this point have been pure data.
+1. **Activation** (:meth:`activate`) — admit manifests according to config,
+   validate contribution-name conflicts, and record factory references. This
+   phase does not import plugin Python code or widen ``sys.path``.
+2. **Resolution / build** (:meth:`get_memory_backend_factory`,
+   :meth:`get_tool_factory`, :meth:`build_memory_backend`, and
+   :meth:`build_tool`) — import only the factory that the host actually asks
+   to construct and cache the resolved callable.
 
-2. **Lookup** (:meth:`get_memory_backend_factory` etc.) — synchronous
-   lookups for the eventual ``build_memory_backend`` entry point
-   landing in PG-3.
-
-Across-manifest name conflicts (two activated plugins both contributing
-the same memory backend name) raise :class:`PluginConflictError` -
-which the host treats as a startup failure. The discovery layer already
-deduplicated *plugins* by id; the registry adds the second layer of
-deduplication on *contribution names*.
+Across-manifest name conflicts (two activated plugins both contributing the
+same memory backend or Tool name) raise :class:`PluginConflictError`, which the
+host treats as a startup failure. Discovery already deduplicates plugins by id;
+the registry adds the second layer of deduplication on contribution names.
 """
 
 from __future__ import annotations
@@ -37,20 +33,12 @@ from pico.tracing import semconv, trace
 logger = logging.getLogger(__name__)
 
 
-# A memory-backend factory is a callable that consumes a PluginContext
-# and returns a MemoryBackend implementation. MemoryBackend lands in
-# MB-1; until then the return is typed as Any so PG can compile alone.
 MemoryBackendFactory = Callable[[Any], Any]
-
-# A tool factory consumes a PluginContext and returns a single
-# ``pico.agent.tools.base.Tool``. Typed as Any here so the plugin
-# layer stays import-light (no dependency on the agent package).
 ToolFactory = Callable[[Any], Any]
 
 
 class PluginError(Exception):
-    """Base for plugin-system errors. Catchable as a single class so
-    CLI / host startup can render a unified diagnostic banner."""
+    """Base for plugin-system errors."""
 
 
 class PluginConflictError(PluginError):
@@ -58,30 +46,32 @@ class PluginConflictError(PluginError):
 
 
 class PluginFactoryImportError(PluginError):
-    """A manifest pointed at ``module.path:callable`` we couldn't import
-    or resolve."""
+    """A manifest factory reference could not be imported or resolved."""
 
 
 class PluginNotFoundError(PluginError):
-    """The user asked for a backend name no activated plugin contributes."""
+    """The user asked for a contribution no activated plugin provides."""
 
 
 @dataclass(frozen=True)
 class _ActivatedFactory:
-    """Resolved factory + provenance for diagnostics."""
+    """Unresolved factory reference plus provenance for diagnostics."""
 
     plugin_id: str
     name: str
-    factory: MemoryBackendFactory
+    ref: str
+    source: Source
+    location: Path | None
 
 
 class PluginRegistry:
-    """Single registration center for activated contribution factories."""
+    """Single registration center for admitted plugin contributions."""
 
     def __init__(self) -> None:
         self._manifests: dict[str, PluginManifest] = {}
         self._memory_backends: dict[str, _ActivatedFactory] = {}
         self._tools: dict[str, _ActivatedFactory] = {}
+        self._resolved_factories: dict[tuple[str, str], MemoryBackendFactory] = {}
 
     # ── Activation ───────────────────────────────────────────────
 
@@ -91,14 +81,12 @@ class PluginRegistry:
         *,
         disabled: frozenset[str] = frozenset(),
     ) -> None:
-        """Resolve and register every contribution from every admitted plugin.
+        """Admit manifests without importing plugin Python code.
 
-        A plugin is admitted iff:
-
-        - its id is not in ``disabled`` (user opt-out), AND
-        - ``enabled_by_default`` is True OR the host has another reason
-          to include it. PG-2 enforces only the first rule; PG-3 layers
-          on the second when wired to the user config.
+        A plugin is admitted when its id is not disabled and its manifest is
+        enabled by default. Contribution conflicts are rejected using manifest
+        data alone. Factory imports are deferred until the corresponding
+        contribution is actually looked up or built.
         """
         for d in discovered:
             mf = d.manifest
@@ -121,16 +109,10 @@ class PluginRegistry:
         location: Path | None,
     ) -> None:
         if mf.id in self._manifests:
-            # Discovery should have deduped this already; defensive.
             raise PluginConflictError(
                 f"plugin id {mf.id!r} activated twice",
             )
         self._manifests[mf.id] = mf
-
-        # Call-order sensitive: a file-based USER/PROJECT plugin ships its
-        # factory module inside the plugin directory, which nothing puts on
-        # sys.path — make it importable before _resolve_factory runs below.
-        self._ensure_importable(source, location)
 
         for contribution in mf.contributes.memory_backends:
             if contribution.name in self._memory_backends:
@@ -138,11 +120,12 @@ class PluginRegistry:
                 raise PluginConflictError(
                     f"memory_backend {contribution.name!r} contributed by both {prev.plugin_id!r} and {mf.id!r}",
                 )
-            factory = self._resolve_factory(mf.id, contribution.factory)
             self._memory_backends[contribution.name] = _ActivatedFactory(
                 plugin_id=mf.id,
                 name=contribution.name,
-                factory=factory,
+                ref=contribution.factory,
+                source=source,
+                location=location,
             )
             logger.debug(
                 "registered memory_backend %s from %s",
@@ -156,30 +139,26 @@ class PluginRegistry:
                 raise PluginConflictError(
                     f"tool {tool.name!r} contributed by both {prev.plugin_id!r} and {mf.id!r}",
                 )
-            factory = self._resolve_factory(mf.id, tool.factory)
             self._tools[tool.name] = _ActivatedFactory(
                 plugin_id=mf.id,
                 name=tool.name,
-                factory=factory,
+                ref=tool.factory,
+                source=source,
+                location=location,
             )
             logger.debug("registered tool %s from %s", tool.name, mf.id)
 
     @staticmethod
     def _ensure_importable(source: Source, location: Path | None) -> None:
-        """Put a file-based plugin's directory on ``sys.path`` so its
-        factory module imports.
+        """Expose one file-based plugin directory immediately before import.
 
-        Only USER / PROJECT plugins need this: their Python package lives
-        in the plugin directory (``<root>/<id>/``) that nothing else adds
-        to the path. BUNDLED code ships inside the Pico package and
-        ENTRY_POINTS plugins are installed into site-packages, so both
-        already import without help.
-
-        Appended (not prepended) so an installed package of the same name
-        keeps priority, and guarded so repeated activations don't grow the
-        path. This widens the process-wide import surface for the lifetime
-        of the process: every module under that directory becomes
-        importable, not just the referenced factory.
+        USER / PROJECT plugins may ship a Python package next to their
+        manifest. Their directory is appended only when a host actually asks
+        to resolve one of their factories; manifest discovery and activation
+        remain code-free. Appending instead of prepending preserves installed
+        package priority. The process-wide import surface remains widened after
+        resolution, which is why automatic repository-level discovery is not a
+        supported host source.
         """
         if source not in (Source.USER, Source.PROJECT) or location is None:
             return
@@ -189,11 +168,7 @@ class PluginRegistry:
 
     @staticmethod
     def _resolve_factory(plugin_id: str, ref: str) -> MemoryBackendFactory:
-        """Import ``module`` and grab ``callable`` from it.
-
-        Manifest validation already enforced the ``module.path:callable``
-        shape, so this just splits and imports.
-        """
+        """Import ``module`` and return the referenced callable."""
         module_path, attr = ref.split(":", 1)
         try:
             mod = importlib.import_module(module_path)
@@ -213,10 +188,24 @@ class PluginRegistry:
             )
         return obj  # type: ignore[return-value]
 
+    def _get_factory(
+        self,
+        kind: str,
+        entry: _ActivatedFactory,
+    ) -> MemoryBackendFactory:
+        key = (kind, entry.name)
+        cached = self._resolved_factories.get(key)
+        if cached is not None:
+            return cached
+        self._ensure_importable(entry.source, entry.location)
+        factory = self._resolve_factory(entry.plugin_id, entry.ref)
+        self._resolved_factories[key] = factory
+        return factory
+
     # ── Introspection ────────────────────────────────────────────
 
     def activated_ids(self) -> list[str]:
-        """Stable-ordered list of activated plugin ids."""
+        """Stable-ordered list of admitted plugin ids."""
         return sorted(self._manifests)
 
     def memory_backend_names(self) -> list[str]:
@@ -224,37 +213,39 @@ class PluginRegistry:
         return sorted(self._memory_backends)
 
     def get_memory_backend_factory(self, name: str) -> MemoryBackendFactory:
-        """Look up the factory for ``name``. Raises ``PluginNotFoundError``."""
+        """Resolve the backend factory for ``name`` on first use."""
         try:
-            return self._memory_backends[name].factory
+            entry = self._memory_backends[name]
         except KeyError as e:
             raise PluginNotFoundError(
                 f"no memory_backend named {name!r} (registered: {self.memory_backend_names()})",
             ) from e
+        return self._get_factory("memory_backend", entry)
 
     def tool_names(self) -> list[str]:
         """Stable-ordered list of registered plugin-tool names."""
         return sorted(self._tools)
 
     def tool_plugin_id(self, name: str) -> str | None:
-        """Plugin id that contributed tool ``name``, or ``None``."""
+        """Plugin id that contributed tool ``name``, or None."""
         entry = self._tools.get(name)
         return entry.plugin_id if entry is not None else None
 
     def get_tool_factory(self, name: str) -> ToolFactory:
-        """Look up the factory for tool ``name``. Raises ``PluginNotFoundError``."""
+        """Resolve the Tool factory for ``name`` on first use."""
         try:
-            return self._tools[name].factory
+            entry = self._tools[name]
         except KeyError as e:
             raise PluginNotFoundError(
                 f"no tool named {name!r} (registered: {self.tool_names()})",
             ) from e
+        return self._get_factory("tool", entry)
 
     def manifest_for(self, plugin_id: str) -> PluginManifest | None:
-        """Return the manifest of an activated plugin, or None."""
+        """Return the manifest of an admitted plugin, or None."""
         return self._manifests.get(plugin_id)
 
-    # ── Build (PG-3 entry point) ──────────────────────────────────
+    # ── Build ────────────────────────────────────────────────────
 
     @trace.instrument("plugin.load", extract=semconv.plugin_load("memory_backend"))
     def build_memory_backend(
@@ -265,14 +256,8 @@ class PluginRegistry:
         services: "ServiceLocator",
         logger: logging.Logger | None = None,
     ) -> Any:
-        """Resolve the named factory and call it with a fresh ``PluginContext``.
-
-        Construction is synchronous — factories that need async setup
-        return a backend whose ``start()`` will be awaited later by the
-        host. Any exception from the factory propagates so the host
-        sees the real cause rather than a wrapped one.
-        """
-        from pico.plugin.context import PluginContext  # local: cycle-safe
+        """Resolve and invoke the selected memory-backend factory."""
+        from pico.plugin.context import PluginContext
 
         factory = self.get_memory_backend_factory(name)
         ctx = PluginContext(
@@ -291,15 +276,8 @@ class PluginRegistry:
         services: "ServiceLocator",
         logger: logging.Logger | None = None,
     ) -> Any:
-        """Resolve the named tool factory and call it with a fresh
-        ``PluginContext``, returning the constructed ``Tool``.
-
-        Symmetric with :meth:`build_memory_backend`: synchronous
-        construction, exceptions propagate so the host sees the real
-        cause. The host registers the returned tool into the agent's
-        :class:`ToolRegistry`.
-        """
-        from pico.plugin.context import PluginContext  # local: cycle-safe
+        """Resolve and invoke the selected Tool factory."""
+        from pico.plugin.context import PluginContext
 
         factory = self.get_tool_factory(name)
         ctx = PluginContext(
@@ -310,10 +288,6 @@ class PluginRegistry:
         return factory(ctx)
 
 
-# Forward import for the type hint above. Kept at module-bottom so the
-# import cost is paid only when someone reads the class — and to avoid
-# the circular hit at module-load time (registry is imported from
-# __init__ before context is).
 from pico.plugin.context import ServiceLocator  # noqa: E402
 
 __all__ = [
