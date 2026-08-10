@@ -37,6 +37,10 @@ from pico.tracing import semconv, trace
 DeliveryFailureSink = Callable[[Notice], Awaitable[None]]
 
 
+class TerminalDeliveryError(RuntimeError):
+    """A platform rejected delivery in a way that retrying cannot repair."""
+
+
 @dataclass(frozen=True)
 class Capabilities:
     """What a channel can do, declared explicitly (not inferred from methods).
@@ -62,9 +66,9 @@ class SupportsStreaming(Protocol):
 class Outlet(Protocol):
     """A channel's send surface. ``deliver`` either renders the deliverable or, if
     the channel can't express it, eats it with a normal return (logging its own
-    skip). Only a real failure — transport error, bug — raises, which the hub
-    retries. Eating is not failure. Lifecycle (connect/teardown) stays on the
-    channel; an outlet is just the send seam."""
+    skip). A real failure raises: ``TerminalDeliveryError`` drops immediately,
+    while other exceptions are retried. Eating is not failure. Lifecycle
+    (connect/teardown) stays on the channel; an outlet is just the send seam."""
 
     name: str
     capabilities: Capabilities
@@ -107,7 +111,7 @@ class _Routed:
 
 class DeliveryHub:
     """Routes each deliverable into its source channel's bounded queue, where a
-    per-outlet serial worker delivers it (retrying a raising send with backoff).
+    per-outlet serial worker delivers it (retrying transient failures with backoff).
     Holds the outlet registry plus a queue and worker per outlet; no turn state.
 
     Streaming rides the same queue: StreamDelta is sent via send_stream_chunk and
@@ -307,12 +311,20 @@ class DeliveryHub:
             logger.exception("delivery-failure sink raised: channel={!r}", channel)
 
     async def _deliver_with_retry(self, outlet: Outlet, out: Deliverable) -> tuple[str, int, str | None]:
-        """Deliver with backoff; return ``(outcome, attempts, error class)``."""
+        """Deliver with backoff unless the outlet reports a terminal failure."""
         delay = _RETRY_BASE_DELAY
         for attempt in range(self._send_max_retries + 1):
             try:
                 await outlet.deliver(out)
                 return semconv.CHANNEL_DELIVERED, attempt + 1, None
+            except TerminalDeliveryError as exc:
+                logger.error(
+                    "terminal delivery failure: channel={!r} event={} reason={}",
+                    outlet.name,
+                    type(out).__name__,
+                    exc,
+                )
+                return semconv.CHANNEL_DROPPED, attempt + 1, type(exc).__name__
             except Exception as exc:
                 if attempt == self._send_max_retries:
                     logger.error(

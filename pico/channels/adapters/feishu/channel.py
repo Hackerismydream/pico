@@ -23,6 +23,7 @@ from pico.channels.errors import transient_network
 from pico.channels.media import save_media_bytes
 from pico.channels.transcribe import transcribe_audio
 from pico.config.schema import FeishuConfig
+from pico.spine.delivery import TerminalDeliveryError
 
 _MSG_TYPE_LABEL = {"image": "[image]", "audio": "[audio]", "file": "[file]", "sticker": "[sticker]"}
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico", ".tiff", ".tif"}
@@ -180,8 +181,7 @@ class FeishuChannel(ChannelBase):
 
     async def send(self, chat_id: str, content: str, media: list[str] | None = None) -> None:
         if not self._client:
-            logger.warning("Feishu client not initialized")
-            return
+            raise TerminalDeliveryError("Feishu client not initialized")
         receive_id_type = "chat_id" if chat_id.startswith("oc_") else "open_id"
         loop = asyncio.get_running_loop()
         try:
@@ -189,10 +189,12 @@ class FeishuChannel(ChannelBase):
                 await self._send_one_media(loop, receive_id_type, chat_id, path)
             if content and content.strip():
                 await self._send_text(loop, receive_id_type, chat_id, content)
+        except TerminalDeliveryError:
+            raise
         except Exception as e:
             if transient_network(e):
-                raise  # requests-level drop/timeout inside the executor: retryable
-            logger.error("Error sending Feishu message: {}", e)
+                raise
+            raise TerminalDeliveryError(f"Feishu send failed: {e}") from e
 
     async def _send_one_media(self, loop, receive_id_type, chat_id, path) -> None:
         if not os.path.isfile(path):
@@ -225,38 +227,29 @@ class FeishuChannel(ChannelBase):
     async def _post_raw(self, loop, receive_id_type, chat_id, msg_type, content_json: str) -> None:
         await loop.run_in_executor(None, self._send_message_sync, receive_id_type, chat_id, msg_type, content_json)
 
-    def _send_message_sync(self, receive_id_type: str, receive_id: str, msg_type: str, content_json: str) -> bool:
+    def _send_message_sync(self, receive_id_type: str, receive_id: str, msg_type: str, content_json: str) -> None:
         from lark_oapi.api.im.v1 import CreateMessageRequest, CreateMessageRequestBody
 
-        try:
-            request = (
-                CreateMessageRequest.builder()
-                .receive_id_type(receive_id_type)
-                .request_body(
-                    CreateMessageRequestBody.builder()
-                    .receive_id(receive_id)
-                    .msg_type(msg_type)
-                    .content(content_json)
-                    .build()
-                )
+        request = (
+            CreateMessageRequest.builder()
+            .receive_id_type(receive_id_type)
+            .request_body(
+                CreateMessageRequestBody.builder()
+                .receive_id(receive_id)
+                .msg_type(msg_type)
+                .content(content_json)
                 .build()
             )
-            response = self._client.im.v1.message.create(request)
-            if not response.success():
-                logger.error(
-                    "Failed to send Feishu {} message: code={}, msg={}, log_id={}",
-                    msg_type,
-                    response.code,
-                    response.msg,
-                    response.get_log_id(),
-                )
-                return False
-            sent_id = getattr(getattr(response, "data", None), "message_id", None)
-            logger.info("Feishu message sent: msg_type={} message_id={}", msg_type, sent_id)
-            return True
-        except Exception as e:
-            logger.error("Error sending Feishu {} message: {}", msg_type, e)
-            return False
+            .build()
+        )
+        response = self._client.im.v1.message.create(request)
+        if not response.success():
+            raise TerminalDeliveryError(
+                f"Feishu {msg_type} message rejected: code={response.code}, "
+                f"msg={response.msg}, log_id={response.get_log_id()}"
+            )
+        sent_id = getattr(getattr(response, "data", None), "message_id", None)
+        logger.info("Feishu message sent: msg_type={} message_id={}", msg_type, sent_id)
 
     # ── media upload / download (lark SDK, per-adapter) ───────────────
 

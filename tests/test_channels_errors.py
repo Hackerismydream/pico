@@ -1,5 +1,4 @@
-"""Tests for pico.channels.errors — send-error classification feeding the
-manager retry layer (transient → re-raise, permanent → swallow)."""
+"""Tests for the send-error classifiers used by Channel adapters."""
 
 import httpx
 from websockets.exceptions import WebSocketException
