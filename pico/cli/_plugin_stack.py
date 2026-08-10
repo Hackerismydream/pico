@@ -1,20 +1,23 @@
 """CLI assembly helper for the plugin / memory-backend stack.
 
-Two functions that bridge the gap between the runtime config (user-facing
-settings under ``plugins`` / ``memory``) and the runtime objects
-AgentLoop expects (a ready-to-use :class:`MemoryBackend` instance):
+Two functions bridge the gap between user-facing settings under ``plugins`` /
+``memory`` and the runtime objects :class:`AgentLoop` expects:
 
-- :func:`build_plugin_registry` — discover all installed plugins
-  (bundled + user-level + project-level + pip entry points), filter
-  by ``config.plugins.disabled``, return an activated registry.
-- :func:`maybe_build_memory_backend` — resolve ``config.memory.backend``
-  to a concrete :class:`MemoryBackend` instance via the registry, or
-  return ``None`` when no backend is selected / the requested
-  contribution isn't available.
+- :func:`build_plugin_registry` discovers trusted host plugin sources (bundled,
+  operator-managed user plugins, and installed entry points), filters them by
+  ``config.plugins.disabled``, and returns a manifest-activated registry.
+- :func:`maybe_build_memory_backend` resolves ``config.memory.backend`` to a
+  concrete :class:`MemoryBackend` instance, or returns ``None`` only when no
+  backend is selected.
 
-An explicit ``memory.backend`` selection is fail-closed: activation,
-resolution, and construction errors remain visible to the Runtime host.
-Only ``memory.backend = null`` disables Memory.
+Repository-local executable plugins are intentionally not auto-discovered.
+Starting Pico in a checkout must not import Python controlled by that checkout
+before Tool confirmation or Sandbox policy applies. Project-specific behavior
+belongs in Local Skills, MCP configuration, or an operator-installed plugin.
+
+An explicit ``memory.backend`` selection is fail-closed: factory resolution and
+construction errors remain visible to the Runtime host. Only
+``memory.backend = null`` disables Memory.
 
 Lifecycle (``backend.start()`` / ``backend.stop()``) belongs to the concrete
 ``RuntimeAssembly``. These helpers only construct plugin contributions.
@@ -32,7 +35,7 @@ from pico.plugin import (
     ServiceLocator,
     assemble_plugin_registry,
 )
-from pico.product import get_product_home, get_workspace_state_dir
+from pico.product import get_product_home
 
 if TYPE_CHECKING:
     from pico.config.pico import PicoConfig
@@ -42,22 +45,24 @@ logger = logging.getLogger(__name__)
 
 
 def plugin_discovery_sources() -> dict:
-    """Resolve the four discovery-source locations the host scans.
+    """Resolve the trusted discovery sources scanned by Pico hosts.
 
     Shared by :func:`build_plugin_registry` (live boot) and the
     ``pico plugins`` CLI command so both see the same set:
 
-    - bundled — ``pico/plugin/memory/`` inside the package.
-    - user    - ``~/.pico/plugins/``.
-    - project - ``./.pico/plugins/``.
-    - entry_points - the ``pico.plugins`` group.
+    - bundled — ``pico/plugin/memory/`` inside the installed package;
+    - user — ``~/.pico/plugins/`` managed by the operator;
+    - entry points — installed distributions in the ``pico.plugins`` group.
+
+    ``project_dir`` is explicitly ``None``. A repository must not gain an
+    executable startup hook merely by containing ``.pico/plugins``.
     """
     import pico
 
     return {
         "bundled_dir": Path(pico.__path__[0]) / "plugin" / "memory",
         "user_dir": get_product_home() / "plugins",
-        "project_dir": get_workspace_state_dir(Path.cwd()) / "plugins",
+        "project_dir": None,
         "entry_points_group": "pico.plugins",
     }
 
@@ -65,21 +70,16 @@ def plugin_discovery_sources() -> dict:
 def build_plugin_registry(
     config: "PicoConfig",
 ) -> PluginRegistry:
-    """Discover + activate every installed plugin admitted by ``config``.
+    """Discover and admit installed plugins allowed by ``config``.
 
     Reads ``config.plugins.disabled`` and forwards it to
-    :func:`assemble_plugin_registry`. Activation errors propagate so a
-    configured backend cannot silently disappear.
+    :func:`assemble_plugin_registry`. Admission validates manifest conflicts
+    without importing factory modules. Factory failures surface later when a
+    selected backend or admitted Tool is actually constructed.
 
-    Discovery spans four sources (priority bundled > user > project >
-    entry_points):
-
-    - **bundled** — ``pico/plugin/memory/<id>/`` shipped inside the
-      Pico package.
-    - **user** - ``~/.pico/plugins/<id>/`` drop-in directories.
-    - **project** - ``./.pico/plugins/<id>/`` drop-in directories.
-    - **entry_points** - the ``pico.plugins`` group, where
-      third-party pip-installed plugins register their factories.
+    Discovery priority is bundled > user > entry points. Automatic
+    repository-level discovery is deliberately excluded because Pico has no
+    project-plugin trust or consent handshake.
     """
     disabled = frozenset(config.plugins.disabled)
     return assemble_plugin_registry(
@@ -98,17 +98,16 @@ def maybe_build_memory_backend(
 
     Resolution order:
 
-    1. If ``config.memory.backend`` is ``None``, return ``None``
-       immediately — user explicitly disabled the plugin path.
-    2. Look up the backend factory in the (possibly host-supplied)
-       :class:`PluginRegistry`. Missing configured contributions raise.
-    3. Resolve the per-plugin config slice from
-       ``config.plugins.config`` — first by plugin id, then by backend
-       contribution name as a fallback.
+    1. If ``config.memory.backend`` is ``None``, return ``None`` immediately —
+       the user explicitly disabled the plugin path.
+    2. Look up the backend factory in the possibly host-supplied registry.
+       Missing configured contributions raise.
+    3. Resolve the per-plugin config slice from ``config.plugins.config`` —
+       first by plugin id, then by backend contribution name as a fallback.
 
-    The returned backend has **not** been ``await``-started. Runtime Assembly
-    owns its start / stop lifecycle, while each host decides when startup fits
-    its interaction policy.
+    The returned backend has not been ``await``-started. Runtime Assembly owns
+    its start/stop lifecycle, while each host decides when startup fits its
+    interaction policy.
     """
     name = config.memory.backend
     if name is None:
@@ -145,19 +144,17 @@ def build_plugin_tools(
     *,
     registry: PluginRegistry | None = None,
 ) -> list:
-    """Construct every plugin-contributed tool admitted by ``config``.
+    """Construct every plugin-contributed Tool admitted by ``config``.
 
     Mirrors :func:`maybe_build_memory_backend` but for the ``tools``
-    contribution point: walks the activated registry's tool names,
-    resolves each owning plugin's config slice, and builds the tool via
-    :meth:`PluginRegistry.build_tool`. Lenient by design — a single
-    tool's construction failure is logged and skipped so one bad plugin
-    can't keep the agent from booting. A factory may also return ``None``
-    to deliberately decline contribution (e.g. an optional dependency is
-    absent); that's skipped quietly, not treated as a failure. The host
-    registers the returned tools into the agent's :class:`ToolRegistry`.
+    contribution point: walk the registry's Tool names, resolve each owning
+    plugin's config slice, and build the Tool through
+    :meth:`PluginRegistry.build_tool`. A single Tool construction failure is
+    logged and skipped so one operator-installed plugin cannot keep the Agent
+    from booting. A factory may also return ``None`` to decline contribution
+    when an optional dependency is absent; that is skipped quietly.
 
-    Returns an empty list when no plugin contributes a tool.
+    Returns an empty list when no plugin contributes a Tool.
     """
     if registry is None:
         registry = build_plugin_registry(config)
@@ -183,9 +180,6 @@ def build_plugin_tools(
                 e,
             )
             continue
-        # A factory may return None to decline contribution at runtime
-        # (e.g. an optional dependency isn't installed). That's a clean
-        # opt-out, not a failure — skip it without the warning.
         if tool is None:
             logger.debug(
                 "plugin tool %r factory opted out (returned None); skipping it.",
@@ -203,17 +197,8 @@ def _resolve_plugin_config_slice(
 ) -> dict:
     """Pick the right ``config.plugins.config[...]`` entry for a backend.
 
-    Tries two keys, in order:
-
-    1. The **plugin id** that contributes ``backend_name`` (canonical,
-       e.g. ``"codecairn-memory"`` - comes from the manifest's
-       ``[plugin] id`` field).
-    2. The **backend contribution name** itself
-       (e.g. ``"codecairn"`` - friendlier for handwritten config files).
-
-    Returns an empty dict when neither key is present, so the plugin
-    factory receives a deterministic shape and applies its own
-    defaults.
+    Tries the contributing plugin id first and the backend contribution name
+    second. Returns an empty dict when neither key is present.
     """
     slices = config.plugins.config
     plugin_id = _plugin_id_for_backend(registry, backend_name)
@@ -226,12 +211,7 @@ def _plugin_id_for_backend(
     registry: PluginRegistry,
     backend_name: str,
 ) -> str | None:
-    """Reverse-lookup the plugin id that contributes ``backend_name``.
-
-    Returns ``None`` when no activated plugin contributes the named
-    backend — the caller (config resolver) treats that as "fall
-    through to the contribution-name key".
-    """
+    """Reverse-lookup the plugin id that contributes ``backend_name``."""
     for plugin_id in registry.activated_ids():
         mf = registry.manifest_for(plugin_id)
         if mf is None:
@@ -246,4 +226,5 @@ __all__ = [
     "build_plugin_registry",
     "build_plugin_tools",
     "maybe_build_memory_backend",
+    "plugin_discovery_sources",
 ]
