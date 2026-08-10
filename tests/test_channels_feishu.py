@@ -10,6 +10,9 @@ import pytest
 
 from pico.channels.adapters.feishu import cards, content
 from pico.channels.adapters.feishu.channel import FeishuChannel
+from pico.channels.outlet import ChannelOutletAdapter
+from pico.spine import ChatType, Notice, NoticeKind, Source, Text
+from pico.spine.delivery import DeliveryHub, TerminalDeliveryError
 
 
 def _channel(group_policy="open"):
@@ -256,9 +259,9 @@ def test_send_media_uploads_and_posts_file_key():
     assert "file_k1" in request.request_body.content
 
 
-def test_send_reraises_transient_for_manager_retry():
+def test_send_reraises_transient_for_delivery_retry():
     """requests-level network errors from the lark executor propagate so the
-    manager retry can back off; lark business errors stay swallowed."""
+    delivery hub can back off."""
     import pytest
     import requests
 
@@ -269,11 +272,39 @@ def test_send_reraises_transient_for_manager_retry():
         asyncio.run(ch.send("oc_1", "hi"))
 
 
-def test_send_swallows_permanent_error():
+def test_send_wraps_permanent_error_as_terminal_delivery_failure():
     ch = _channel()
     ch._client = object()
     ch._send_text = AsyncMock(side_effect=RuntimeError("lark errcode"))
-    asyncio.run(ch.send("oc_1", "hi"))  # no raise
+    with pytest.raises(TerminalDeliveryError, match="lark errcode"):
+        asyncio.run(ch.send("oc_1", "hi"))
+
+
+async def test_feishu_business_failure_is_reported_as_dropped_delivery():
+    ch = _channel()
+    ch._client = MagicMock()
+    ch._client.im.v1.message.create.return_value = SimpleNamespace(
+        success=lambda: False,
+        code=230001,
+        msg="invalid receive id",
+        get_log_id=lambda: "log_42",
+    )
+    notices: list[Notice] = []
+
+    async def capture(notice: Notice) -> None:
+        notices.append(notice)
+
+    hub = DeliveryHub(on_delivery_failure=capture)
+    hub.register(ChannelOutletAdapter(ch))
+    source = Source(channel="feishu", chat_id="oc_1", sender_id="ou_user", chat_type=ChatType.GROUP)
+    try:
+        await hub.dispatch(Text(content="hello", source=source, conversation_id="feishu:oc_1"))
+        await hub.wait_idle("feishu")
+    finally:
+        await hub.aclose()
+
+    assert [notice.kind for notice in notices] == [NoticeKind.DELIVERY_FAILED]
+    ch._client.im.v1.message.create.assert_called_once()
 
 
 # ── stop contract ──────────────────────────────────────────────────────

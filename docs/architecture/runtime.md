@@ -145,7 +145,9 @@ A user message arriving during the same conversation's active Turn requests
 Channels receive final `Text` and `MediaOut`. They do not receive token-stream,
 reasoning, or Tool events as platform message edits. Each Channel has an
 independent bounded delivery queue so one slow platform does not block others.
-Delivery retries with exponential delays. Exhaustion emits a
+Delivery retries retryable failures with exponential delays. An Outlet reports
+a platform rejection that retrying cannot repair as terminal, so it is dropped
+after its first attempt. Both paths emit a
 `channel.deliver` span and may publish a `DELIVERY_FAILED` notice through an
 injected sink. Hosts do not currently wire that notice sink. The Agent Turn may
 already be complete, so delivery failure is not a transactional Turn failure.
