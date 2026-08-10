@@ -79,7 +79,7 @@ async def test_rejects_non_http_scheme(monkeypatch):
         "http://169.254.169.254/latest/meta-data/",
     ],
 )
-async def test_rejects_private_reader_final_url_before_returning_content(monkeypatch, final_url):
+async def test_rejects_private_jina_reported_final_url_before_returning_content(monkeypatch, final_url):
     _resolve_to(monkeypatch, "93.184.216.34")
     requested_urls: list[str] = []
 
@@ -108,7 +108,7 @@ async def test_rejects_private_reader_final_url_before_returning_content(monkeyp
     assert [httpx.URL(requested).host for requested in requested_urls] == ["r.jina.ai"]
 
 
-async def test_accepts_public_reader_final_url_and_truncates_content(monkeypatch):
+async def test_accepts_public_jina_reported_final_url_and_truncates_content(monkeypatch):
     _resolve_to(monkeypatch, "93.184.216.34")
     requests: list[httpx.Request] = []
     content = "x" * 150
@@ -147,7 +147,7 @@ async def test_accepts_public_reader_final_url_and_truncates_content(monkeypatch
         {"code": 200, "data": {"url": 123, "content": "internal secret"}},
     ],
 )
-async def test_rejects_invalid_reader_final_url_without_returning_content(monkeypatch, reader_payload):
+async def test_rejects_invalid_jina_reported_final_url_without_returning_content(monkeypatch, reader_payload):
     _resolve_to(monkeypatch, "93.184.216.34")
 
     def handler(_request: httpx.Request) -> httpx.Response:

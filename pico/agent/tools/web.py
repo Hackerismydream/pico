@@ -128,6 +128,8 @@ class WebFetchTool(Tool):
 
         try:
             logger.debug("WebFetch: {}", "proxy enabled" if self.proxy else "direct connection")
+            # Reader's current X-Base contract reports the snapshot href in JSON data.url.
+            # Pico validates it only as a content-return gate; Reader has already fetched it.
             headers = {"Accept": "application/json", "X-Base": "final"}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"

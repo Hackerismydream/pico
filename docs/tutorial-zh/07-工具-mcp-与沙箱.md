@@ -185,7 +185,9 @@ def wrap_untrusted(text: str, *, source: str) -> str:
 
 同一个 commit 里做的其他几件事，都是在缩小半径：
 
-**网络：SSRF 防线。** SSRF 指诱导服务端自己去访问内网地址。`web_fetch` 抓取前调 `validate_url_target`（`pico/security/network.py`）：scheme 只认 http/https，对主机名做 DNS 解析，把解析出的每个地址逐一对照 10 段私有网段（127/8、10/8、172.16/12、192.168/16、169.254/16、100.64/10、0.0.0.0/8 加三段 IPv6）。查解析结果、不只查 URL 字面，防的是 DNS rebinding：域名看着是公网，解析出来是 169.254.169.254，云厂商的元数据地址，拿到就是临时凭证。一条诚实注记：`network.py` 里还有个为重定向目标准备的 `validate_resolved_url`，在本基线只有单测在调用；生产的 web_fetch 经 Jina Reader 代理抓取（请求始终发往 `r.jina.ai`），本地不跟随重定向，这个函数备而未用。
+**网络：SSRF 防线。** SSRF 指诱导服务端自己去访问内网地址。`web_fetch` 抓取前调 `validate_url_target`（`pico/security/network.py`）：scheme 只认 http/https，对主机名做 DNS 解析，把解析出的每个地址逐一对照 10 段私有网段（127/8、10/8、172.16/12、192.168/16、169.254/16、100.64/10、0.0.0.0/8 加三段 IPv6）。这一步能挡住「当前解析结果已经指向内网」的请求，例如域名解析到云厂商元数据地址 169.254.169.254。它没有把校验时的 IP 绑定到之后的实际连接，所以不能把这一步说成彻底解决 DNS rebinding。
+
+Jina Reader 抓取时可能跟随重定向。`web_fetch` 因此改用 JSON 响应，并发送 `X-Base: final`；按当前 Reader 合同，`data.url` 此时是抓取快照的 `href`，也就是 Reader 报告的最终 URL。Pico 在读取并回传 `data.content` 之前，用 `validate_resolved_url` 对这个 URL 再走一次同样的失败关闭校验；`data.url` 缺失或类型不对也直接返回失败结果。这是一道「内容回传门」：它能阻止私有最终目标的内容进入 ToolResult 和模型上下文，但做校验时上游 Jina 已经抓取完成。这条路径仍然信任 Reader 的 `X-Base` / `data.url` 合同，也仍有上游合同漂移、上游已访问目标与本地 DNS 校验后再变化的 TOCTOU 边界。
 
 **宿主执行：环境白名单。** DirectExecutor 只透传 42 项白名单环境变量，凭证类明确排除，细节在下一节。
 
@@ -320,7 +322,7 @@ return resolved in _DENY_TRAVERSAL_ROOTS
 
 沙箱单测一个文件 67 个用例（`grep -c "def test" tests/test_sandbox_unit.py`，基线工作树实测），文件头声明：All tests run without boxlite installed and without KVM/Hypervisor access。覆盖点到测试类：输出截断（TestExecResultAsText）、配置校验器全套（TestSandboxConfigValidators，空 allowNet、坏挂载项、相对路径全拒）、执行器工厂五个分支（TestBuildExecutor）、宿主环境不继承（test_host_env_not_inherited，先塞一个假凭证进宿主环境，再证明子进程读不到）、沙箱跳过黑名单但仍强制 workspace（test_sandboxed_skips_deny_list 与 test_sandboxed_workspace_restriction_enforced）、`timeout=0` 透传（test_timeout_zero_passed_through，防 `or` 短路把 0 吃成默认值）、VM 三种启动失败各自触发清理（TestBoxliteStartFailureCleanup 三例）、MCP 沙箱守卫四例（TestConnectMcpSandboxGuard，含「第一个 server 连上后第二个才触雷、异常必须传播」的路径）。顺带更正一个容易顺嘴说错的说法：67 不是全库单文件最高，`test_session_manager.py` 有 101 个，别在面试里给它加「最密集」的头衔。
 
-安全层的测试分四个文件：`test_security_trust.py` 7 例测围栏本身，nonce 每次随机、开头行不含字面关闭串、伪造的 `#0000` 关闭标记连同后面的攻击载荷都留在真关闭串之前（test_forged_close_marker_does_not_escape_fence 逐个断言了位置关系）；`test_security_untrusted_context.py` 7 例测收口点在用，docstring 写明 no mocking of the fencing point，实测覆盖三个收口点（工具结果、召回记忆、subagent 回注）加系统提示条款两处；subagent 内循环那个收口点没有直接测试，这是个可以说出口的缺口。`test_security_network.py` 13 例测 SSRF 判定函数（含目前只有它在调的 `validate_resolved_url`）；`test_security_web_ssrf.py` 3 例把 DNS mock 成解析到 169.254.169.254，并断言 httpx client 根本不会被构造。
+安全层的测试分四个文件：`test_security_trust.py` 7 例测围栏本身，nonce 每次随机、开头行不含字面关闭串、伪造的 `#0000` 关闭标记连同后面的攻击载荷都留在真关闭串之前（test_forged_close_marker_does_not_escape_fence 逐个断言了位置关系）；`test_security_untrusted_context.py` 7 例测收口点在用，docstring 写明 no mocking of the fencing point，实测覆盖三个收口点（工具结果、召回记忆、subagent 回注）加系统提示条款两处；subagent 内循环那个收口点没有直接测试，这是个可以说出口的缺口。`test_security_network.py` 覆盖原始 URL 与最终 URL 的网段、scheme 和解析失败；`test_security_web_ssrf.py` 把外部 HTTP 留在 MockTransport 边界，覆盖初始拒绝、Jina 报告的私有/公网最终 URL、缺失合同、`maxChars`、超时和取消。用例数可以通过 `pytest --collect-only` 在当前 checkout 现查，这里不再固化一个会随参数化用例变化的数字。
 
 渐进披露 30 个用例（`test_tool_search.py`）加 6 个装配用例（`test_agent_loop_tool_search.py`）：中文查询命中（test_index_chinese_query_hits）、跨轮次工具列表稳定（test_strategy_tool_list_stable_across_turns）、元工具缺席时 fail-open（test_strategy_passthrough_when_meta_tools_absent）、describe 确认已死（test_meta_no_longer_includes_describe）、策略注册在最前（前文已列两处测试名）。
 
