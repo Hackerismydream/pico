@@ -1,7 +1,8 @@
-"""PG-2 — PluginRegistry activation + factory resolution + conflict detection."""
+"""PG-2 — PluginRegistry admission, lazy factory resolution, and conflicts."""
 
 from __future__ import annotations
 
+import importlib
 import sys
 import types
 from pathlib import Path
@@ -22,14 +23,14 @@ from pico.plugin import (
     Source,
 )
 
+
 # ---------------------------------------------------------------------------
 # In-memory test plugin modules
 # ---------------------------------------------------------------------------
 
 
 def _install_test_module(name: str, attrs: dict[str, object]) -> None:
-    """Inject a fake module into ``sys.modules`` for factory resolution
-    tests. The module is removed in the per-test cleanup fixture."""
+    """Inject a fake module into ``sys.modules`` for factory tests."""
     mod = types.ModuleType(name)
     for k, v in attrs.items():
         setattr(mod, k, v)
@@ -38,8 +39,7 @@ def _install_test_module(name: str, attrs: dict[str, object]) -> None:
 
 @pytest.fixture(autouse=True)
 def _cleanup_modules():
-    """Remove every test module we inject so cross-test pollution is
-    impossible."""
+    """Remove every test module we inject so cross-test pollution is impossible."""
     snapshot = set(sys.modules)
     yield
     extras = set(sys.modules) - snapshot
@@ -97,6 +97,41 @@ class TestActivation:
         assert reg.memory_backend_names() == ["example"]
         factory = reg.get_memory_backend_factory("example")
         assert factory is fake_factory
+
+    def test_activation_does_not_import_factory_module(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def fake_factory(ctx):
+            return "backend-instance"
+
+        module_name = "_test_plugin_lazy"
+        _install_test_module(module_name, {"make_backend": fake_factory})
+        calls: list[str] = []
+        real_import = importlib.import_module
+
+        def _spy_import(name: str, package: str | None = None):
+            calls.append(name)
+            return real_import(name, package)
+
+        monkeypatch.setattr("pico.plugin.registry.importlib.import_module", _spy_import)
+
+        reg = PluginRegistry()
+        reg.activate(
+            [
+                _make_discovered(
+                    "lazy",
+                    backends=[("example", f"{module_name}:make_backend")],
+                )
+            ]
+        )
+
+        assert calls == []
+        assert reg.get_memory_backend_factory("example") is fake_factory
+        assert calls == [module_name]
+        # The resolved callable is cached; repeated lookup does not import again.
+        assert reg.get_memory_backend_factory("example") is fake_factory
+        assert calls == [module_name]
 
     def test_factory_invoked_with_context(self, tmp_path: Path) -> None:
         captured = {}
@@ -217,47 +252,50 @@ class TestConflicts:
 class TestFactoryResolutionErrors:
     def test_missing_module(self) -> None:
         reg = PluginRegistry()
+        reg.activate(
+            [
+                _make_discovered(
+                    "plug",
+                    backends=[
+                        ("example", "_nonexistent_module_zzz:make_backend"),
+                    ],
+                ),
+            ]
+        )
         with pytest.raises(PluginFactoryImportError, match="importing"):
-            reg.activate(
-                [
-                    _make_discovered(
-                        "plug",
-                        backends=[
-                            ("example", "_nonexistent_module_zzz:make_backend"),
-                        ],
-                    ),
-                ]
-            )
+            reg.get_memory_backend_factory("example")
 
     def test_module_lacks_attribute(self) -> None:
         _install_test_module("_test_plugin_g", {"other_thing": object()})
         reg = PluginRegistry()
+        reg.activate(
+            [
+                _make_discovered(
+                    "plug",
+                    backends=[
+                        ("example", "_test_plugin_g:make_backend"),
+                    ],
+                ),
+            ]
+        )
         with pytest.raises(PluginFactoryImportError, match="attribute"):
-            reg.activate(
-                [
-                    _make_discovered(
-                        "plug",
-                        backends=[
-                            ("example", "_test_plugin_g:make_backend"),
-                        ],
-                    ),
-                ]
-            )
+            reg.get_memory_backend_factory("example")
 
     def test_attribute_not_callable(self) -> None:
         _install_test_module("_test_plugin_h", {"make_backend": 42})
         reg = PluginRegistry()
+        reg.activate(
+            [
+                _make_discovered(
+                    "plug",
+                    backends=[
+                        ("example", "_test_plugin_h:make_backend"),
+                    ],
+                ),
+            ]
+        )
         with pytest.raises(PluginFactoryImportError, match="non-callable"):
-            reg.activate(
-                [
-                    _make_discovered(
-                        "plug",
-                        backends=[
-                            ("example", "_test_plugin_h:make_backend"),
-                        ],
-                    ),
-                ]
-            )
+            reg.get_memory_backend_factory("example")
 
 
 # ---------------------------------------------------------------------------
