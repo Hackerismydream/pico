@@ -108,6 +108,7 @@ jobs:
             pico/plugin \
             pico/cli/_plugin_stack.py \
             pico/cli/plugin_commands.py \
+            tests/test_plugin_discover.py \
             tests/test_plugin_registry.py \
             tests/test_plugin_trust_boundary.py \
             tests/test_product_identity.py
@@ -115,9 +116,55 @@ jobs:
             pico/plugin \
             pico/cli/_plugin_stack.py \
             pico/cli/plugin_commands.py \
+            tests/test_plugin_discover.py \
             tests/test_plugin_registry.py \
             tests/test_plugin_trust_boundary.py \
             tests/test_product_identity.py
+
+      - name: Instrument worker exit diagnostics
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("benchmarks/picobench/packs/memory_skill/e2e.py")
+          text = path.read_text(encoding="utf-8")
+          old_call = "    await _communicate_and_reap(process)\n"
+          new_call = (
+              "    _stdout, _stderr = await _communicate_and_reap(process)\n"
+              "    if _stderr:\n"
+              "        sys.stderr.write(_stderr.decode('utf-8', errors='replace'))\n"
+          )
+          old_communicate = (
+              "async def _communicate_and_reap(\n"
+              "    process: asyncio.subprocess.Process,\n"
+              ") -> None:\n"
+              "    try:\n"
+              "        await process.communicate()\n"
+          )
+          new_communicate = (
+              "async def _communicate_and_reap(\n"
+              "    process: asyncio.subprocess.Process,\n"
+              ") -> tuple[bytes, bytes]:\n"
+              "    try:\n"
+              "        return await process.communicate()\n"
+          )
+          old_exit = (
+              "    if process.returncode != 0:\n"
+              "        result[\"status\"] = \"infrastructure_failure\"\n"
+          )
+          new_exit = (
+              "    if process.returncode != 0:\n"
+              "        result[\"status\"] = \"infrastructure_failure\"\n"
+              "        result[\"error_type\"] = f\"worker_exit_{process.returncode}\"\n"
+          )
+          for old in (old_call, old_communicate, old_exit):
+              if old not in text:
+                  raise SystemExit(f"diagnostic patch target missing: {old!r}")
+          text = text.replace(old_call, new_call, 1)
+          text = text.replace(old_communicate, new_communicate, 1)
+          text = text.replace(old_exit, new_exit, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
 
       - name: Diagnose retained base environment
         run: |
