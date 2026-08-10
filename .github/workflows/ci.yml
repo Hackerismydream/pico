@@ -70,6 +70,43 @@ jobs:
       - name: Focused Python tests
         run: make test-python
 
+  retained-python:
+    name: retained Python suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: make install-deps
+
+      - name: Lint changed plugin boundary
+        run: |
+          uv run --extra dev ruff check \
+            pico/plugin \
+            pico/cli/_plugin_stack.py \
+            pico/cli/plugin_commands.py \
+            tests/test_plugin_registry.py \
+            tests/test_plugin_trust_boundary.py
+          uv run --extra dev ruff format --check \
+            pico/plugin \
+            pico/cli/_plugin_stack.py \
+            pico/cli/plugin_commands.py \
+            tests/test_plugin_registry.py \
+            tests/test_plugin_trust_boundary.py
+
+      - name: Run deterministic retained suite
+        run: make test-retained
+
   tui:
     name: TUI checks
     runs-on: ubuntu-latest
