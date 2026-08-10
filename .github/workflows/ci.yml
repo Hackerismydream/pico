@@ -102,16 +102,35 @@ jobs:
           npm run build
         working-directory: ui-tui
 
-      - name: Instrument worker exit diagnostics
+      - name: Instrument worker GDB diagnostics
         run: |
+          command -v gdb
           python - <<'PY'
           from pathlib import Path
 
           path = Path("benchmarks/picobench/packs/memory_skill/e2e.py")
           text = path.read_text(encoding="utf-8")
+          old_exec = (
+              "    process = await asyncio.create_subprocess_exec(\n"
+              "        sys.executable,\n"
+          )
+          new_exec = (
+              "    process = await asyncio.create_subprocess_exec(\n"
+              "        'gdb',\n"
+              "        '--batch',\n"
+              "        '--return-child-result',\n"
+              "        '-ex',\n"
+              "        'run',\n"
+              "        '-ex',\n"
+              "        'thread apply all bt',\n"
+              "        '--args',\n"
+              "        sys.executable,\n"
+          )
           old_call = "    await _communicate_and_reap(process)\n"
           new_call = (
               "    _stdout, _stderr = await _communicate_and_reap(process)\n"
+              "    if _stdout:\n"
+              "        sys.stderr.write(_stdout.decode('utf-8', errors='replace'))\n"
               "    if _stderr:\n"
               "        sys.stderr.write(_stderr.decode('utf-8', errors='replace'))\n"
           )
@@ -138,16 +157,17 @@ jobs:
               "        result[\"status\"] = \"infrastructure_failure\"\n"
               "        result[\"error_type\"] = f\"worker_exit_{process.returncode}\"\n"
           )
-          for old in (old_call, old_communicate, old_exit):
+          for old in (old_exec, old_call, old_communicate, old_exit):
               if old not in text:
                   raise SystemExit(f"diagnostic patch target missing: {old!r}")
+          text = text.replace(old_exec, new_exec, 1)
           text = text.replace(old_call, new_call, 1)
           text = text.replace(old_communicate, new_communicate, 1)
           text = text.replace(old_exit, new_exit, 1)
           path.write_text(text, encoding="utf-8")
           PY
 
-      - name: Diagnose retained base environment
+      - name: Diagnose worker with GDB
         run: |
           PYTHONFAULTHANDLER=1 uv run --frozen --extra dev --exact \
             pytest tests/integration/test_picobench_memory_skill_e2e.py -vv -s
