@@ -89,20 +89,11 @@ jobs:
       - name: Install dependencies
         run: make install-deps
 
-      - name: Lint changed plugin boundary
+      - name: Show canonical Ruff import fix
         run: |
-          uv run --extra dev ruff check \
-            pico/plugin \
-            pico/cli/_plugin_stack.py \
-            pico/cli/plugin_commands.py \
-            tests/test_plugin_registry.py \
-            tests/test_plugin_trust_boundary.py
-          uv run --extra dev ruff format --check \
-            pico/plugin \
-            pico/cli/_plugin_stack.py \
-            pico/cli/plugin_commands.py \
-            tests/test_plugin_registry.py \
-            tests/test_plugin_trust_boundary.py
+          uv run --extra dev ruff check --fix tests/test_plugin_registry.py
+          git diff -- tests/test_plugin_registry.py
+          exit 1
 
       - name: Run deterministic retained suite
         run: make test-retained
