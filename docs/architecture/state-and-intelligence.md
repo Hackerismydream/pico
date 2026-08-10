@@ -15,15 +15,19 @@ their failure boundaries.
 | Session files | `<workspace-state>/sessions/` | `SessionManager` |
 | Curator state | `<workspace-state>/memory/.curator/` | Context Engine |
 | local Workspace Skills | `<workspace-state>/skills/` | Local Skill catalog |
-| user Plugins | `~/.pico/plugins/` | Plugin discovery |
-| project Plugins | `<process-cwd>/.pico/plugins/` | Plugin discovery; note this uses current working directory, not configured Workspace |
+| user Plugins | `~/.pico/plugins/` | Operator-managed Plugin discovery |
+| installed Plugins | Python entry-point group `pico.plugins` | Package installation |
 | CodeCairn repository Memory | CodeCairn-owned runtime root | Initialized with `codecairn init` |
 | Tracing | `~/.pico/traces/` | `PICO_TRACING_DIR` |
 | Evolution Run | run-spec `work_dir` | Evolver |
 
 Pico does not automatically import external product state. An explicit
 `--workspace` or non-default configured Workspace is direct operation with
-colocated state on that path, not a migration protocol.
+colocated state on that path, not a migration protocol. Repositories are also
+not executable Plugin sources: `<workspace>/.pico/plugins/` is not scanned by
+normal hosts, so entering an untrusted checkout cannot create a pre-Sandbox
+Python startup hook. Project-specific guidance belongs in Local Skills, MCP, or
+explicit operator configuration.
 
 ## Session: transcript authority
 
@@ -190,18 +194,27 @@ operator's old EverOS data.
 
 ## Plugin Registry
 
-Discovery sources and conflict priority:
+Automatic host discovery sources and conflict priority:
 
 | Priority | Source | Location |
 | ---: | --- | --- |
-| 4 | bundled | `pico/plugin/memory/<plugin-id>/` |
-| 3 | user | `~/.pico/plugins/<plugin-id>/` |
-| 2 | project | `<process-cwd>/.pico/plugins/<plugin-id>/` |
+| 3 | bundled | `pico/plugin/memory/<plugin-id>/` |
+| 2 | user | `~/.pico/plugins/<plugin-id>/` |
 | 1 | entry point | Python entry-point group `pico.plugins` |
 
-Directory discovery parses `pico-plugin.toml` without importing backend code.
-Entry-point package resource discovery may import the package, so third-party
-plugin `__init__.py` files must remain cheap and safe.
+Repository-local `.pico/plugins/` directories are not automatic sources.
+`PluginDiscovery(project_dir=...)` remains an explicit low-level mechanism for
+hermetic tests or a future host with a real trust handshake; the standard CLI,
+TUI, and Gateway do not opt into it.
+
+Directory discovery parses `pico-plugin.toml` without importing factory code.
+Registry activation is also manifest-only: it applies disabled/default rules,
+checks duplicate contribution names, and records unresolved factory
+references. A factory module is imported and cached only when a host actually
+builds the selected backend or Tool. This keeps `pico plugins` read-only at the
+contribution boundary. Entry-point package resource discovery may import the
+operator-installed package's `__init__.py`, so third-party packages must keep
+that module cheap and safe.
 
 Activated Plugins may contribute:
 
@@ -335,7 +348,7 @@ for every domain explicitly.
 | normalized post-Turn storage | Session-normalization and Agent Loop pipeline tests |
 | repository-scoped store and recall | installed CodeCairn deterministic integration smoke |
 | Local Skill routing with Memory on/off | SkillForge and Skill-router tests |
-| Plugin discovery and contribution conflicts | Plugin registry tests |
+| Plugin discovery, lazy import, trusted sources, and conflicts | Plugin registry and trust-boundary tests |
 
 These deterministic checks prove package identity, lifecycle, store/recall
 plumbing, and Local Skill independence. The separate paired campaign is now
