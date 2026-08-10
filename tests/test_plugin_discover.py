@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import sys
 import textwrap
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from types import SimpleNamespace
+
+import pytest
 
 from pico.plugin import (
     DiscoveredPlugin,
@@ -80,6 +84,103 @@ class TestSingleSource:
         out = d.discover()
         # Broken one is skipped; valid one returned.
         assert [p.manifest.id for p in out] == ["ok"]
+
+
+# ---------------------------------------------------------------------------
+# Installed entry-point scanning
+# ---------------------------------------------------------------------------
+
+
+class _FakeDistribution:
+    def __init__(self, root: Path, relative_manifest: PurePosixPath) -> None:
+        self._root = root
+        self.files = [relative_manifest]
+
+    def locate_file(self, relative_path) -> Path:
+        return self._root / Path(str(relative_path))
+
+
+class TestEntryPointSource:
+    def test_reads_distribution_manifest_without_importing_package(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        package = tmp_path / "entry_plugin"
+        package.mkdir()
+        marker = tmp_path / "package-imported"
+        (package / "__init__.py").write_text(
+            "from pathlib import Path\n"
+            f"Path({str(marker)!r}).write_text('imported', encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+        (package / "pico-plugin.toml").write_text(
+            textwrap.dedent("""
+                [plugin]
+                id = "entry-plugin"
+                version = "0.1.0"
+                enabled_by_default = true
+
+                [[plugin.contributes.tools]]
+                name = "entry_tool"
+                factory = "entry_plugin:make_tool"
+            """),
+            encoding="utf-8",
+        )
+        relative_manifest = PurePosixPath(
+            "entry_plugin",
+            "pico-plugin.toml",
+        )
+        entry_point = SimpleNamespace(
+            name="entry-plugin",
+            value="entry_plugin",
+            module="entry_plugin",
+            dist=_FakeDistribution(tmp_path, relative_manifest),
+        )
+        monkeypatch.syspath_prepend(str(tmp_path))
+        monkeypatch.setattr(
+            "pico.plugin.discover.metadata.entry_points",
+            lambda *, group: [entry_point],
+        )
+        sys.modules.pop("entry_plugin", None)
+
+        discovered = PluginDiscovery(
+            entry_points_group="pico.plugins",
+        ).discover()
+
+        assert [item.manifest.id for item in discovered] == ["entry-plugin"]
+        assert discovered[0].source is Source.ENTRY_POINTS
+        assert discovered[0].location is None
+        assert "entry_plugin" not in sys.modules
+        assert not marker.exists()
+
+    def test_unrecorded_manifest_is_skipped(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog,
+    ) -> None:
+        entry_point = SimpleNamespace(
+            name="missing-manifest",
+            value="missing_plugin",
+            module="missing_plugin",
+            dist=_FakeDistribution(
+                tmp_path,
+                PurePosixPath("other", "pico-plugin.toml"),
+            ),
+        )
+        monkeypatch.setattr(
+            "pico.plugin.discover.metadata.entry_points",
+            lambda *, group: [entry_point],
+        )
+
+        assert (
+            PluginDiscovery(
+                entry_points_group="pico.plugins",
+            ).discover()
+            == []
+        )
+        assert "does not record pico-plugin.toml" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -168,8 +269,6 @@ class TestSubdirNameMismatch:
 class TestDiscoveredPluginRecord:
     def test_record_is_frozen(self, tmp_path: Path) -> None:
         from dataclasses import FrozenInstanceError
-
-        import pytest
 
         _write_manifest(tmp_path, "x")
         out = PluginDiscovery(bundled_dir=tmp_path).discover()
