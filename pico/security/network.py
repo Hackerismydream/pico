@@ -64,31 +64,5 @@ def validate_url_target(url: str) -> tuple[bool, str]:
 
 
 def validate_resolved_url(url: str) -> tuple[bool, str]:
-    """Validate a URL after redirect resolution. Only checks the IP path, skips strict DNS errors."""
-    try:
-        p = urlparse(url)
-    except Exception:
-        return True, ""
-
-    hostname = p.hostname
-    if not hostname:
-        return True, ""
-
-    try:
-        addr = ipaddress.ip_address(hostname)
-        if _is_private(addr):
-            return False, f"Redirect target is a private address: {addr}"
-    except ValueError:
-        try:
-            infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-        except socket.gaierror:
-            return True, ""
-        for info in infos:
-            try:
-                addr = ipaddress.ip_address(info[4][0])
-            except ValueError:
-                continue
-            if _is_private(addr):
-                return False, f"Redirect target {hostname} resolves to private address {addr}"
-
-    return True, ""
+    """Validate a reported final URL with the same fail-closed policy as the original target."""
+    return validate_url_target(url)
