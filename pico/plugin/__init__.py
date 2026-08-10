@@ -1,22 +1,21 @@
 """Plugin foundation.
 
-PG-1 introduces the manifest schema + plugin context. Registry and
-discovery follow in PG-2/PG-3. The first (and currently only) public
-contribution point is ``memory_backends``; the schema is forward-
-compatible so future contribution types land without breaking existing
-manifests.
+The public contribution points are ``memory_backends`` and ``tools``. The
+system keeps two load-bearing boundaries:
 
-Two principles, both load-bearing:
+1. **Manifests are pure data.** ``PluginManifest.from_toml_path`` reads TOML
+   only. Directory discovery and registry activation validate ids, enablement,
+   and contribution conflicts without importing factory modules. Installed
+   entry-point discovery may import an operator-installed package to locate its
+   manifest.
+2. **Factories are referenced by ``module.path:callable`` strings.** The
+   registry imports and caches a factory only when a host actually asks to
+   resolve or build that contribution. Listing plugins therefore remains a
+   manifest-only operation at the contribution boundary.
 
-1. **Manifests are pure data.** ``PluginManifest.from_toml_path`` only
-   reads the TOML; no plugin code is imported until the registry asks
-   the factory to build a backend. This keeps startup deterministic and
-   audit-friendly.
-
-2. **Factories are referenced by ``module.path:callable`` strings.**
-   The registry imports the module and resolves the callable lazily —
-   manifest parsing never triggers import-time side effects in the
-   plugin's package.
+Pico hosts automatically scan bundled plugins, operator-managed user plugins,
+and installed ``pico.plugins`` entry points. Repository-local executable
+plugins are not an automatic discovery source.
 """
 
 from __future__ import annotations
