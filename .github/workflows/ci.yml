@@ -86,49 +86,13 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Set up Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: ui-tui/package-lock.json
-
       - name: Install Python dependencies
         run: make install-deps
 
-      - name: Build retained TUI fixture
+      - name: Show canonical Ruff format diff
         run: |
-          npm ci
-          npm run build
-        working-directory: ui-tui
-
-      - name: Lint changed Python boundary
-        run: |
-          uv run --extra dev ruff check \
-            pico/plugin \
-            pico/cli/_plugin_stack.py \
-            pico/cli/_runtime_assembly.py \
-            pico/cli/plugin_commands.py \
-            pico/memory_engine/skill_local/watcher.py \
-            tests/test_plugin_discover.py \
-            tests/test_plugin_registry.py \
-            tests/test_plugin_trust_boundary.py \
-            tests/test_product_identity.py \
-            tests/test_skill_watcher_lifecycle.py
-          uv run --extra dev ruff format --check \
-            pico/plugin \
-            pico/cli/_plugin_stack.py \
-            pico/cli/_runtime_assembly.py \
-            pico/cli/plugin_commands.py \
-            pico/memory_engine/skill_local/watcher.py \
-            tests/test_plugin_discover.py \
-            tests/test_plugin_registry.py \
-            tests/test_plugin_trust_boundary.py \
-            tests/test_product_identity.py \
-            tests/test_skill_watcher_lifecycle.py
-
-      - name: Run deterministic retained suite
-        run: make test-retained
+          uv run --extra dev ruff format --diff tests/test_plugin_discover.py
+          exit 1
 
   tui:
     name: TUI checks
