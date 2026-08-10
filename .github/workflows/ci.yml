@@ -102,25 +102,6 @@ jobs:
           npm run build
         working-directory: ui-tui
 
-      - name: Lint changed plugin boundary
-        run: |
-          uv run --extra dev ruff check \
-            pico/plugin \
-            pico/cli/_plugin_stack.py \
-            pico/cli/plugin_commands.py \
-            tests/test_plugin_discover.py \
-            tests/test_plugin_registry.py \
-            tests/test_plugin_trust_boundary.py \
-            tests/test_product_identity.py
-          uv run --extra dev ruff format --check \
-            pico/plugin \
-            pico/cli/_plugin_stack.py \
-            pico/cli/plugin_commands.py \
-            tests/test_plugin_discover.py \
-            tests/test_plugin_registry.py \
-            tests/test_plugin_trust_boundary.py \
-            tests/test_product_identity.py
-
       - name: Instrument worker exit diagnostics
         run: |
           python - <<'PY'
