@@ -49,15 +49,29 @@ class RuntimeAssembly:
     async def close(self) -> None:
         cancellation: BaseException | None = None
         if not self._agent_closed:
+            agent_error: BaseException | None = None
+            try:
+                _stop_agent_skill_watcher(self.agent_loop)
+            except Exception as exc:
+                logger.exception(
+                    "local Skill watcher close failed; continuing shutdown",
+                )
+                agent_error = exc
+            except BaseException as exc:
+                cancellation = exc
+
             try:
                 await self.agent_loop.close_mcp()
-            except Exception:
+            except Exception as exc:
                 logger.exception(
                     "agent runtime close failed; continuing shutdown",
                 )
+                if agent_error is None:
+                    agent_error = exc
             except BaseException as exc:
-                cancellation = exc
-            else:
+                if cancellation is None:
+                    cancellation = exc
+            if agent_error is None and cancellation is None:
                 self._agent_closed = True
 
         backend_error: BaseException | None = None
@@ -78,6 +92,20 @@ class RuntimeAssembly:
             raise cancellation
         if backend_error is not None:
             raise backend_error
+
+
+def _stop_agent_skill_watcher(agent_loop: Any) -> None:
+    """Stop the Local Skill watcher owned by the Agent's ContextBuilder.
+
+    Older test doubles and third-party AgentLoop-compatible objects may expose
+    only ``close_mcp``. Treat the watcher hook as optional for those objects,
+    while the concrete Pico AgentLoop always provides ``context.skills``.
+    """
+    context = getattr(agent_loop, "context", None)
+    skills = getattr(context, "skills", None)
+    stop = getattr(skills, "stop_file_watcher", None)
+    if callable(stop):
+        stop()
 
 
 def assemble_runtime(
