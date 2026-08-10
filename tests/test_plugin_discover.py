@@ -112,8 +112,7 @@ class TestEntryPointSource:
         package.mkdir()
         marker = tmp_path / "package-imported"
         (package / "__init__.py").write_text(
-            "from pathlib import Path\n"
-            f"Path({str(marker)!r}).write_text('imported', encoding='utf-8')\n",
+            f"from pathlib import Path\nPath({str(marker)!r}).write_text('imported', encoding='utf-8')\n",
             encoding="utf-8",
         )
         (package / "pico-plugin.toml").write_text(
