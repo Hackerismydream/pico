@@ -179,7 +179,7 @@ def test_pico_home_scopes_global_runtime_state(tmp_path: Path, monkeypatch) -> N
     assert KNNModelRouter(routing_config)._emb_cache_path("tasks.json").parent == product_home / "knn_embcache"
     sources = plugin_discovery_sources()
     assert sources["user_dir"] == product_home / "plugins"
-    assert sources["project_dir"] == project / ".pico" / "plugins"
+    assert sources["project_dir"] is None
     assert sources["entry_points_group"] == "pico.plugins"
     discovered = PluginDiscovery(
         user_dir=sources["user_dir"],
