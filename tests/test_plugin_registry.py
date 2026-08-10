@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import importlib
 import sys
 import types
+from importlib import import_module
 from pathlib import Path
 
 import pytest
@@ -108,7 +108,7 @@ class TestActivation:
         module_name = "_test_plugin_lazy"
         _install_test_module(module_name, {"make_backend": fake_factory})
         calls: list[str] = []
-        real_import = importlib.import_module
+        real_import = import_module
 
         def _spy_import(name: str, package: str | None = None):
             calls.append(name)
