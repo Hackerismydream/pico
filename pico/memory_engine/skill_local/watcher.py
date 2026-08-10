@@ -9,10 +9,11 @@ in-process writers.
 
 Design notes:
 
-  - **Daemon thread** running ``watchfiles.watch()``. The Rust-backed
-    iterator already debounces events (default 1.6s) so we don't have
-    to throttle on our side. Daemon = process-exit auto-cleanup; the
-    explicit :meth:`stop` path is for tests / clean shutdown.
+  - **Explicit lifecycle.** The watcher runs in a daemon thread so an
+    exceptional process exit is not converted into an indefinite hang, but
+    daemon status is not a cleanup mechanism. Hosts that construct a catalog
+    must call :meth:`stop` before interpreter finalization. ``watchfiles`` owns
+    native watcher state that is unsafe to race with CPython teardown.
   - **Workspace-only** scope. Builtin / external are read-only mirrors
     in this codebase; the builtin layer in particular can carry ~80K
     files and would blow past Linux's default ``fs.inotify.max_user_watches``
@@ -22,9 +23,10 @@ Design notes:
     catches ``ImportError`` defensively (so a stripped / partial install
     degrades to manual-invalidation mode instead of crashing) — it
     logs once and returns ``False`` in that case.
-  - **Best-effort**: never raises out of :meth:`start` / :meth:`stop`;
-    any error inside the watcher thread is logged and the thread exits,
-    leaving the registry in its current (manual-invalidation) mode.
+  - Runtime event handling is best-effort: an exception in the watcher thread
+    is logged and leaves the registry in manual-invalidation mode. Shutdown is
+    different: :meth:`stop` fails explicitly if the thread cannot be joined,
+    rather than dropping the only handle to a live native watcher.
 """
 
 from __future__ import annotations
@@ -56,8 +58,9 @@ class SkillFileWatcher:
 
       - :meth:`start` is idempotent and never raises. Returns ``True``
         iff a new daemon thread is now running.
-      - :meth:`stop` signals the thread to exit and best-effort joins
-        it; safe to call multiple times.
+      - :meth:`stop` signals and joins the thread. It is idempotent, but raises
+        :class:`RuntimeError` if called by the watcher thread itself or if the
+        native watcher does not terminate before the timeout.
     """
 
     def __init__(
@@ -114,15 +117,28 @@ class SkillFileWatcher:
         )
         return True
 
-    def stop(self, timeout: float = 1.0) -> None:
-        """Signal the watcher to exit and best-effort join.
+    def stop(self, timeout: float = 5.0) -> None:
+        """Signal the watcher to exit and require a successful join.
 
-        Safe to call repeatedly; safe to call when never started.
+        Safe to call repeatedly and safe when no watcher was started. A live
+        watcher handle is retained when joining fails so a later Runtime close
+        can retry; the method never reports success while a native watcher is
+        still running.
         """
         self._stop.set()
         thread = self._thread
-        if thread is not None and thread.is_alive():
+        if thread is None:
+            return
+        if thread is threading.current_thread():
+            raise RuntimeError(
+                "SkillFileWatcher.stop() cannot join the watcher thread from itself",
+            )
+        if thread.is_alive():
             thread.join(timeout=timeout)
+        if thread.is_alive():
+            raise RuntimeError(
+                f"SkillFileWatcher did not stop within {timeout:.1f}s",
+            )
         self._thread = None
 
     # ------------------------------------------------------------------
