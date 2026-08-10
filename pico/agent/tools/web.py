@@ -8,7 +8,7 @@ import httpx
 from loguru import logger
 
 from pico.agent.tools.base import Tool, ToolResult
-from pico.security.network import validate_url_target
+from pico.security.network import validate_resolved_url, validate_url_target
 
 
 class WebSearchTool(Tool):
@@ -128,14 +128,55 @@ class WebFetchTool(Tool):
 
         try:
             logger.debug("WebFetch: {}", "proxy enabled" if self.proxy else "direct connection")
-            headers = {"Accept": "text/plain"}
+            # Reader's current X-Base contract reports the snapshot href in JSON data.url.
+            # Pico validates it only as a content-return gate; Reader has already fetched it.
+            headers = {"Accept": "application/json", "X-Base": "final"}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
             async with httpx.AsyncClient(timeout=30.0, proxy=self.proxy) as client:
                 r = await client.get(f"https://r.jina.ai/{url}", headers=headers)
                 r.raise_for_status()
 
-            text = r.text
+            payload = r.json()
+            data = payload.get("data") if isinstance(payload, dict) else None
+            if not isinstance(data, dict):
+                return ToolResult(
+                    json.dumps(
+                        {"error": "Invalid Jina Reader response: missing data object", "url": url},
+                        ensure_ascii=False,
+                    ),
+                    failed=True,
+                )
+
+            final_url = data.get("url")
+            if not isinstance(final_url, str) or not final_url:
+                return ToolResult(
+                    json.dumps(
+                        {"error": "Invalid Jina Reader response: missing final URL", "url": url},
+                        ensure_ascii=False,
+                    ),
+                    failed=True,
+                )
+
+            is_valid, error_msg = validate_resolved_url(final_url)
+            if not is_valid:
+                return ToolResult(
+                    json.dumps(
+                        {"error": f"Final URL validation failed: {error_msg}", "url": url},
+                        ensure_ascii=False,
+                    ),
+                    failed=True,
+                )
+
+            text = data.get("content")
+            if not isinstance(text, str):
+                return ToolResult(
+                    json.dumps(
+                        {"error": "Invalid Jina Reader response: missing content", "url": url},
+                        ensure_ascii=False,
+                    ),
+                    failed=True,
+                )
 
             truncated = len(text) > max_chars
             if truncated:
@@ -144,7 +185,7 @@ class WebFetchTool(Tool):
             return json.dumps(
                 {
                     "url": url,
-                    "finalUrl": url,
+                    "finalUrl": final_url,
                     "status": r.status_code,
                     "extractor": "jina-reader",
                     "extractMode": extractMode,

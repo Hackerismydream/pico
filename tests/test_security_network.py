@@ -129,8 +129,8 @@ def test_resolved_allows_public_ip_literal() -> None:
     assert ok, f"unexpectedly blocked: {err}"
 
 
-def test_resolved_tolerates_dns_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    """validate_resolved_url is more lenient on DNS failure than validate_url_target."""
+def test_resolved_rejects_dns_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A reported final URL must be independently resolvable before content is returned."""
     import socket
 
     def fake_getaddrinfo(*_args, **_kwargs):
@@ -138,5 +138,6 @@ def test_resolved_tolerates_dns_failure(monkeypatch: pytest.MonkeyPatch) -> None
 
     monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
 
-    ok, _ = net.validate_resolved_url("https://nx.example.invalid/")
-    assert ok
+    ok, err = net.validate_resolved_url("https://nx.example.invalid/")
+    assert not ok
+    assert "Cannot resolve" in err
