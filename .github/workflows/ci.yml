@@ -119,16 +119,10 @@ jobs:
             tests/test_plugin_trust_boundary.py \
             tests/test_product_identity.py
 
-      - name: Diagnose retained cross-process fixture
+      - name: Diagnose retained base environment
         run: |
-          set +e
-          PYTHONFAULTHANDLER=1 uv run --frozen --all-extras --exact \
+          PYTHONFAULTHANDLER=1 uv run --frozen --extra dev --exact \
             pytest tests/integration/test_picobench_memory_skill_e2e.py -vv -s
-          status=$?
-          find /tmp/pytest-of-runner -type f \
-            \( -name '*-result.json' -o -name 'worker-spec.json' \) \
-            -print -exec sh -c 'echo "--- $1"; cat "$1"' _ {} \; || true
-          exit "$status"
 
   tui:
     name: TUI checks
