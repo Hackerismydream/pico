@@ -1,22 +1,22 @@
-"""``pico plugins`` — inspect installed memory / context plugins.
+"""``pico plugins`` — inspect installed memory / Tool plugins.
 
-Reads ``PicoConfig.plugins`` + the live :class:`PluginRegistry`
-and prints a table of activated plugins, what each contributes, and
-which memory backend the current config selects.
+Reads ``PicoConfig.plugins`` plus the manifest-activated
+:class:`PluginRegistry` and prints admitted plugins, their contributions, and
+the memory backend selected by current config.
 
 Use cases:
 
-- "Where did this plugin come from?" — the command lists discovery
-  sources (bundled / user / project / entry_points) so the user can see
-  where each plugin was resolved from.
-- "Why isn't my plugin loading?" — disabled / failed-to-activate
-  entries surface here.
-- "Which backend is actually active?" — shows the
-  ``config.memory.backend`` selection resolved against the registry.
+- "Where did this plugin come from?" — list the trusted automatic sources
+  (bundled, operator-managed user directory, or installed entry point).
+- "Why isn't my plugin loading?" — surface disabled or inactive manifests.
+- "Which backend is active?" — resolve ``config.memory.backend`` against the
+  admitted manifest set.
 
-This is a **read-only** command — no plugin code is invoked beyond
-manifest parsing. ``MemoryBackend.start()`` is not awaited, so no
-network / disk I/O happens against the plugin's runtime systems.
+This is a read-only command at the contribution boundary: directory discovery
+and registry activation do not import factory modules, and no backend or Tool is
+built or started. Installed entry-point discovery may import the distribution's
+package ``__init__`` to locate its manifest; those packages are operator-installed
+code rather than checkout-controlled files.
 """
 
 from __future__ import annotations
@@ -52,19 +52,16 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """List installed plugins + the active memory backend."""
-        # Import lazily so ``pico --help`` doesn't pay for plugin
-        # discovery on every invocation.
+        # Import lazily so ``pico --help`` doesn't pay for plugin discovery on
+        # every invocation.
         from pico.cli._plugin_stack import plugin_discovery_sources
-        from pico.plugin import (
-            PluginDiscovery,
-            PluginRegistry,
-        )
+        from pico.plugin import PluginDiscovery, PluginRegistry
 
         ec_config = _load_ec_config(config_path)
 
-        # Discover separately from activation so the table can show
-        # both shadowed (lower-priority) plugins AND disabled ones,
-        # not just the live set. Same four sources the live boot scans.
+        # Discover separately from activation so the table can show disabled
+        # and inactive manifests, not just the admitted set. This uses exactly
+        # the same trusted sources as live Runtime boot.
         discovery = PluginDiscovery(**plugin_discovery_sources())
         discovered = discovery.discover()
 
@@ -77,15 +74,9 @@ def register(app: typer.Typer) -> None:
 
 
 def _load_ec_config(config_path: str | None):
-    """Load PicoConfig with the same fallback the other CLI
-    commands use. Lazy import so module import is cheap."""
+    """Load PicoConfig through the same config-path setup as other commands."""
     from pico.config.pico import load_pico_config
 
-    # ``load_runtime_config`` is the canonical base-config loader; we
-    # need the extension blocks too, so pull via the dedicated
-    # Pico loader. ``load_runtime_config`` is invoked for parity
-    # with other CLI commands (sets ``set_config_path`` so downstream
-    # readers see the same file).
     load_runtime_config(config_path)
     return load_pico_config(
         Path(config_path) if config_path else None,
@@ -106,8 +97,9 @@ def _render_plugin_table(
             "[yellow]No plugins discovered.[/yellow] Reinstall Pico from the "
             "same distribution source, or run [bold]uv sync[/bold] from a "
             "Pico source checkout. Set "
-            "[bold]memory.backend[/bold] to [bold]null[/bold], or drop a "
-            "third-party manifest under [bold]~/.pico/plugins/[/bold].",
+            "[bold]memory.backend[/bold] to [bold]null[/bold], install a "
+            "plugin distribution, or place an operator-managed manifest under "
+            "[bold]~/.pico/plugins/[/bold].",
         )
         return
 
@@ -165,7 +157,7 @@ def _source_label(source) -> str:
 
 
 def _render_backend_selection(ec_config, registry) -> None:
-    """Show which memory backend the current config activates."""
+    """Show which memory backend the current config selects."""
     selected = ec_config.memory.backend
     if selected is None:
         console.print(
@@ -188,14 +180,13 @@ def _render_backend_selection(ec_config, registry) -> None:
         )
         return
 
-    # Find the plugin id that contributes the selected backend
     owner_id = None
     for pid in registry.activated_ids():
         mf = registry.manifest_for(pid)
         if mf is None:
             continue
-        for c in mf.contributes.memory_backends:
-            if c.name == selected:
+        for contribution in mf.contributes.memory_backends:
+            if contribution.name == selected:
                 owner_id = pid
                 break
         if owner_id:
