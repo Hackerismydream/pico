@@ -20,12 +20,14 @@ def _write_manifest(root: Path, plugin_id: str, *, extra: str = "") -> Path:
     """Drop a minimal valid manifest at ``root/<plugin_id>/pico-plugin.toml``."""
     sub = root / plugin_id
     sub.mkdir(parents=True, exist_ok=True)
-    body = textwrap.dedent(f"""
+    body = textwrap.dedent(
+        f"""
         [plugin]
         id = "{plugin_id}"
         version = "0.1.0"
         {extra}
-    """)
+        """
+    )
     path = sub / "pico-plugin.toml"
     path.write_text(body, encoding="utf-8")
     return path
@@ -115,7 +117,8 @@ class TestEntryPointSource:
             encoding="utf-8",
         )
         (package / "pico-plugin.toml").write_text(
-            textwrap.dedent("""
+            textwrap.dedent(
+                """
                 [plugin]
                 id = "entry-plugin"
                 version = "0.1.0"
@@ -124,7 +127,8 @@ class TestEntryPointSource:
                 [[plugin.contributes.tools]]
                 name = "entry_tool"
                 factory = "entry_plugin:make_tool"
-            """),
+                """
+            ),
             encoding="utf-8",
         )
         relative_manifest = PurePosixPath(
@@ -249,11 +253,13 @@ class TestSubdirNameMismatch:
         sub = tmp_path / "wrong-dirname"
         sub.mkdir()
         (sub / "pico-plugin.toml").write_text(
-            textwrap.dedent("""
-            [plugin]
-            id = "correct"
-            version = "0.1"
-        """),
+            textwrap.dedent(
+                """
+                [plugin]
+                id = "correct"
+                version = "0.1"
+                """
+            ),
             encoding="utf-8",
         )
         d = PluginDiscovery(bundled_dir=tmp_path)
