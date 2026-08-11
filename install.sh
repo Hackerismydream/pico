@@ -1,8 +1,8 @@
 #!/bin/sh
 # Pico one-line installer (macOS / Linux).
 #
-#   Remote: curl -fsSL https://raw.githubusercontent.com/Hackerismydream/pico-harness/main/install.sh | sh
-#   Local:  git clone ... && cd pico-harness && ./install.sh
+#   Remote: curl -fsSL https://raw.githubusercontent.com/Hackerismydream/pico/main/install.sh | sh
+#   Local:  git clone ... && cd pico && ./install.sh
 #
 # Goal: a clean machine ends up able to run `pico` from any
 # directory with no manual steps. The script is idempotent -- it detects what
@@ -10,6 +10,7 @@
 #   1. uv            (Python toolchain + package manager)
 #   2. Node.js >= 22 (TUI runtime; installed privately if the system lacks it)
 #   3. pico         (installed as a global uv tool -> ~/.local/bin/pico)
+#   4. myna-memory  (when MYNA_WHEEL_URL or a paired release asset is available)
 #
 # POSIX sh on purpose (runs under dash/ash, not just bash).
 set -eu
@@ -173,9 +174,28 @@ install_pico() {
     # Install all channel adapters by default. If the umbrella extra fails to
     # resolve/build on this platform, fall back to base pico so one broken
     # channel SDK cannot block the whole install.
-    if ! uv tool install --force -e "$script_dir[channels]"; then
+    if [ -n "${MYNA_WHEEL_URL:-}" ]; then
+      with_myna="--with-executables-from"
+      myna_source="$MYNA_WHEEL_URL"
+      info "Installing Myna from $myna_source"
+    else
+      with_myna=""
+      myna_source=""
+    fi
+    if [ -n "$with_myna" ]; then
+      install_result=0
+      uv tool install --force "$with_myna" "$myna_source" -e "$script_dir[channels]" || install_result=$?
+    else
+      install_result=0
+      uv tool install --force -e "$script_dir[channels]" || install_result=$?
+    fi
+    if [ "$install_result" -ne 0 ]; then
       warn "Channel dependencies failed to install; installed base pico only. Some channels stay unavailable (see: pico channels list)."
-      uv tool install --force -e "$script_dir"
+      if [ -n "$with_myna" ]; then
+        uv tool install --force "$with_myna" "$myna_source" -e "$script_dir"
+      else
+        uv tool install --force -e "$script_dir"
+      fi
     fi
   else
     # Remote mode: install the latest published release wheel, which bundles
@@ -184,16 +204,36 @@ install_pico() {
     # so a git install would yield a pico whose `pico` cannot start.
     # Override PICO_WHEEL_URL to pin a specific wheel.
     wheel_url="${PICO_WHEEL_URL:-}"
+    myna_wheel_url="${MYNA_WHEEL_URL:-}"
+    release_json=""
     if [ -z "$wheel_url" ]; then
       info "Resolving the latest Pico release from GitHub..."
-      wheel_url="$(curl -fsSL "https://api.github.com/repos/Hackerismydream/pico-harness/releases/latest" 2>/dev/null \
-        | grep -oE 'https://[^"]*/pico_harness-[^"]*\.whl' | head -n1)"
+      release_json="$(curl -fsSL "https://api.github.com/repos/Hackerismydream/pico/releases/latest" 2>/dev/null || true)"
+      wheel_url="$(printf '%s' "$release_json" | grep -oE 'https://[^"]*/pico_harness-[^"]*\.whl' | head -n1)"
     fi
     [ -n "$wheel_url" ] || die "Could not resolve the latest pico release wheel from GitHub (check network, or set PICO_WHEEL_URL to a wheel URL)."
+    if [ -z "$myna_wheel_url" ] && [ -n "$release_json" ]; then
+      myna_wheel_url="$(printf '%s' "$release_json" | grep -oE 'https://[^"]*/myna_memory-[^"]*\.whl' | head -n1)"
+    fi
     info "  installing $wheel_url"
-    if ! uv tool install --force "pico-harness[channels] @ $wheel_url"; then
+    if [ -n "$myna_wheel_url" ]; then
+      info "  pairing Myna $myna_wheel_url"
+      install_result=0
+      uv tool install --force --with-executables-from "$myna_wheel_url" "pico-harness[channels] @ $wheel_url" || install_result=$?
+    else
+      install_result=0
+      uv tool install --force "pico-harness[channels] @ $wheel_url" || install_result=$?
+    fi
+    if [ "$install_result" -ne 0 ]; then
       warn "Channel dependencies failed to install; installed base pico only. Some channels stay unavailable (see: pico channels list)."
-      uv tool install --force "$wheel_url"
+      if [ -n "$myna_wheel_url" ]; then
+        uv tool install --force --with-executables-from "$myna_wheel_url" "$wheel_url"
+      else
+        uv tool install --force "$wheel_url"
+      fi
+    fi
+    if [ -z "$myna_wheel_url" ]; then
+      warn "No paired myna-memory wheel was published with this Pico release. Install Myna separately, or run pico onboard --skip-memory."
     fi
   fi
   # Ensure ~/.local/bin (uv tool bin dir) is on PATH for future shells.
@@ -210,8 +250,9 @@ main() {
   install_pico
 
   printf '\n'
-  ok "All set! Open a new terminal (or source your shell profile), then run:"
-  printf '\n    \033[1mpico\033[0m            # enter the TUI\n'
+  ok "All set! Open a new terminal (or source your shell profile), enter a Git repository, then run:"
+  printf '\n    \033[1mpico onboard\033[0m    # configure Provider, Memory, and first Turn\n'
+  printf '    \033[1mpico\033[0m            # enter the TUI\n'
   printf '    \033[1mpico run\033[0m -m "hello"\n\n'
   if ! printf '%s' "$PATH" | grep -q "$HOME/.local/bin"; then
     warn "Your current PATH does not include ~/.local/bin yet -- open a new terminal, or run: export PATH=\"\$HOME/.local/bin:\$PATH\""

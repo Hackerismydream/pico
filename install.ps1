@@ -1,7 +1,7 @@
 # Pico one-line installer for native Windows PowerShell.
 #
 # Remote:
-#   irm https://raw.githubusercontent.com/Hackerismydream/pico-harness/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/Hackerismydream/pico/main/install.ps1 | iex
 #
 # Goal: a clean Windows machine ends up able to run `pico`
 # without admin rights. The script is idempotent: it reuses existing tools when
@@ -9,6 +9,7 @@
 #   1. uv            (Python toolchain + package manager)
 #   2. Node.js >= 22 (TUI runtime; installed privately if the system lacks it)
 #   3. pico         (installed as a global uv tool)
+#   4. myna-memory  (when MYNA_WHEEL_URL or a paired release asset is available)
 
 $ErrorActionPreference = "Stop"
 
@@ -191,15 +192,22 @@ function Ensure-Node {
     }
 }
 
-function Resolve-PicoWheel {
-    if ($env:PICO_WHEEL_URL) { return $env:PICO_WHEEL_URL }
+function Resolve-PicoReleaseAssets {
+    if ($env:PICO_WHEEL_URL) {
+        return [pscustomobject]@{ Pico = $env:PICO_WHEEL_URL; Myna = $env:MYNA_WHEEL_URL }
+    }
     Write-Info "Resolving the latest Pico release from GitHub..."
-    $release = Invoke-RestMethod "https://api.github.com/repos/Hackerismydream/pico-harness/releases/latest" -Headers @{ "User-Agent" = "pico-installer" }
-    $asset = $release.assets | Where-Object { $_.browser_download_url -match "/pico_harness-[^/]+\.whl$" } | Select-Object -First 1
-    if (-not $asset) {
+    $release = Invoke-RestMethod "https://api.github.com/repos/Hackerismydream/pico/releases/latest" -Headers @{ "User-Agent" = "pico-installer" }
+    $picoAsset = $release.assets | Where-Object { $_.browser_download_url -match "/pico_harness-[^/]+\.whl$" } | Select-Object -First 1
+    if (-not $picoAsset) {
         Fail "Could not resolve the latest Pico release wheel from GitHub. Set PICO_WHEEL_URL to a wheel URL."
     }
-    return $asset.browser_download_url
+    $mynaUrl = $env:MYNA_WHEEL_URL
+    if (-not $mynaUrl) {
+        $mynaAsset = $release.assets | Where-Object { $_.browser_download_url -match "/myna_memory-[^/]+\.whl$" } | Select-Object -First 1
+        if ($mynaAsset) { $mynaUrl = $mynaAsset.browser_download_url }
+    }
+    return [pscustomobject]@{ Pico = $picoAsset.browser_download_url; Myna = $mynaUrl }
 }
 
 function Install-Pico([string]$UvPath, [string]$NodePath) {
@@ -228,24 +236,37 @@ function Install-Pico([string]$UvPath, [string]$NodePath) {
         # Install all channel adapters by default; fall back to base pico if
         # the umbrella extra fails to build on this platform, so one broken
         # channel SDK cannot block the whole install.
+        $mynaArgs = @()
+        if ($env:MYNA_WHEEL_URL) {
+            Write-Info "Installing Myna from $env:MYNA_WHEEL_URL"
+            $mynaArgs = @("--with-executables-from", $env:MYNA_WHEEL_URL)
+        }
         try {
-            & $UvPath tool install --force -e "$scriptDir[channels]"
+            & $UvPath tool install --force @mynaArgs -e "$scriptDir[channels]"
             if ($LASTEXITCODE -ne 0) { throw "channel extras install failed" }
         } catch {
             Write-Warn "Channel dependencies failed to install; installed base pico only. Some channels stay unavailable (see: pico channels list)."
-            & $UvPath tool install --force -e "$scriptDir"
+            & $UvPath tool install --force @mynaArgs -e "$scriptDir"
             if ($LASTEXITCODE -ne 0) { Fail "Pico install failed." }
         }
     } else {
-        $wheelUrl = Resolve-PicoWheel
-        Write-Info "  installing $wheelUrl"
+        $assets = Resolve-PicoReleaseAssets
+        Write-Info "  installing $($assets.Pico)"
+        $mynaArgs = @()
+        if ($assets.Myna) {
+            Write-Info "  pairing Myna $($assets.Myna)"
+            $mynaArgs = @("--with-executables-from", $assets.Myna)
+        }
         try {
-            & $UvPath tool install --force "pico-harness[channels] @ $wheelUrl"
+            & $UvPath tool install --force @mynaArgs "pico-harness[channels] @ $($assets.Pico)"
             if ($LASTEXITCODE -ne 0) { throw "channel extras install failed" }
         } catch {
             Write-Warn "Channel dependencies failed to install; installed base pico only. Some channels stay unavailable (see: pico channels list)."
-            & $UvPath tool install --force $wheelUrl
+            & $UvPath tool install --force @mynaArgs $assets.Pico
             if ($LASTEXITCODE -ne 0) { Fail "Pico install failed." }
+        }
+        if (-not $assets.Myna) {
+            Write-Warn "No paired myna-memory wheel was published with this Pico release. Install Myna separately, or run pico onboard --skip-memory."
         }
     }
     & $UvPath tool update-shell | Out-Null
@@ -261,8 +282,9 @@ function Main {
     Add-ProcessPath $toolBin
 
     Write-Host ""
-    Write-Ok "All set. Open a new PowerShell window, or continue in this one, then run:"
+    Write-Ok "All set. Open a new PowerShell window, enter a Git repository, then run:"
     Write-Host ""
+    Write-Host "    pico onboard    # configure Provider, Memory, and first Turn"
     Write-Host "    pico            # enter the TUI"
     Write-Host "    pico run -m `"hello`""
     Write-Host ""

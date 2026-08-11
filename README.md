@@ -1,137 +1,144 @@
+<div align="center">
+
 # Pico
 
-Pico is a compact Agent Harness for running reliable, tool-using agents across
-the terminal, background services, scheduled jobs, and messaging channels.
-Every entry point shares one Runtime, so Sessions, Context, Memory, Tools, and
-Tracing stay continuous as work moves between surfaces.
+### One Agent Runtime. Every place you work.
 
-Pico is a general Agent Harness, not a Coding Agent. Its optional Evolver
-creates reviewable candidates and evaluation evidence, but never activates a
-candidate without an explicit human decision.
+Run the same tool-using agent in your terminal, native TUI, background Gateway,
+scheduled jobs, and messaging channels without losing Session, Context, Memory,
+or evidence.
 
-[中文说明](README.zh-CN.md)
+[![CI](https://github.com/Hackerismydream/pico/actions/workflows/ci.yml/badge.svg)](https://github.com/Hackerismydream/pico/actions/workflows/ci.yml)
+![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![License](https://img.shields.io/badge/License-Apache--2.0-0B7285)
+![Status](https://img.shields.io/badge/Status-Alpha-F59E0B)
 
-## Why Pico
+[Quick start](#from-zero-to-a-real-reply) · [Feishu](docs/onboarding/feishu.zh-CN.md) ·
+[Agent install contract](docs/onboarding/agent-install.md) · [中文](README.zh-CN.md)
 
-- **One Runtime:** CLI, native TUI, Gateway, Cron, and Channels submit the same
-  Turn contract through the Spine.
-- **Durable context:** Sessions persist as JSONL, Context is budgeted before
-  each model call, and Myna provides repository-scoped Memory through the
-  public Plugin interface.
-- **Controlled tools:** Filesystem, Shell, Web, MCP, messaging, and Subagent
-  Tools share confirmation, Sandbox, and tracing boundaries.
-- **Evidence before claims:** deterministic checks, live integrations,
-  infrastructure failures, and inconclusive results remain separate.
-- **Human-controlled evolution:** candidates carry manifests, evaluations,
-  verdicts, activation decisions, and rollback evidence.
+</div>
 
-## Quick start
+---
 
-Pico requires Python 3.12, `uv`, and Node.js 22 for the native TUI.
+Pico is a compact Agent Harness, not a chat wrapper and not a Coding Agent.
+Every host submits the same Turn through the same Runtime. Myna plugs into that
+Runtime as repository Memory; optional Evolver runs produce reviewable evidence
+but never activate a candidate without a human decision.
+
+```mermaid
+flowchart LR
+    U["You"] --> H["CLI · TUI · Gateway · Cron · Feishu"]
+    H --> S["Spine"]
+    S --> T["Turn Runner"]
+    T --> A["Agent Loop"]
+    A <--> C["Context"]
+    A <--> M["Myna Memory"]
+    A <--> X["Tools · MCP · Sandbox"]
+    A <--> P["Providers"]
+    T --> E["Session · Tracing · Delivery"]
+```
+
+## From zero to a real reply
+
+Pico requires Python 3.12. The installer also provisions a private Node.js 22
+runtime when the native TUI needs it.
+
+Current Alpha source install:
 
 ```bash
 git clone https://github.com/Hackerismydream/pico.git
 cd pico
-make install build-tui
-uv run pico onboard
-uv run pico
-```
+./install.sh
 
-Memory defaults to Myna, which is installed separately and is not currently
-available from a formal artifact source. Until a compatible `myna-memory`
-distribution is available, run `uv run pico onboard --skip-memory` to keep
-Memory disabled. After installing a compatible distribution, run `myna init`
-explicitly in the target Git repository before starting Pico; Pico never
-initializes or scans repository history silently.
-
-Run one Turn without opening the TUI:
-
-```bash
-uv run pico run -m "Summarize this project"
-```
-
-Diagnose configuration or Provider problems:
-
-```bash
-uv run pico doctor
-```
-
-For an already-built release wheel:
-
-```bash
-uv tool install /path/to/pico_harness-0.1.7-py3-none-any.whl
-pico onboard
 cd /path/to/your-project
-pico
+pico onboard --skip-memory
 ```
 
-The same Myna requirement applies to wheel installs. Use
-`pico onboard --skip-memory` when the separate Myna distribution is not
-installed.
+The wizard now follows the shortest honest path to value:
 
-## Main commands
+```text
+LLM credentials -> Myna ready or explicitly off -> first real Turn
+                -> optional Sandbox -> optional Feishu/channel
+```
+
+When a release publishes compatible `pico_harness` and `myna_memory` wheels,
+`install.sh` and `install.ps1` pair them into the same `uv tool` environment.
+Until that paired artifact exists, install a trusted Myna wheel separately or
+use `--skip-memory`; Pico will not silently pretend Memory is available.
+
+After onboarding:
+
+```bash
+pico                               # native TUI
+pico run -m "Map the main request path in this repository"
+pico doctor --probe                # static checks + one real model reply
+```
+
+See the [first-use guide](docs/onboarding/README.zh-CN.md) for the paired-wheel
+path, non-interactive setup, Myna consent boundary, and exact acceptance checks.
+
+## Why it feels different
+
+| What you need | What Pico owns |
+| --- | --- |
+| One agent across surfaces | CLI, TUI, Gateway, Cron, and Channels share one Turn contract |
+| Context that does not become a prompt dump | budgeted Context assembly before every model call |
+| Repository Memory with provenance | Myna binding, Source Journal, capture, Recall, and fail-closed health |
+| Tools you can actually govern | Filesystem, Shell, Web, MCP, messaging, and Subagents share confirmation and Sandbox boundaries |
+| Debuggable outcomes | Session JSONL, Tracing, usage, delivery status, and evidence Gates stay distinct |
+| Improvement without silent mutation | Evolver candidates require evaluation, explicit activation, and rollback evidence |
+
+## Feishu in one path
+
+Pico uses Feishu's WebSocket long connection, so you do not need a public IP or
+webhook domain.
+
+```bash
+pico channels enable feishu \
+  --app-id "cli_xxxxxxxxxxxxxxxx" \
+  --app-secret "$FEISHU_APP_SECRET"
+
+cd /path/to/your-project
+pico gateway --workspace "$PWD" --verbose
+```
+
+The Feishu app still needs bot capability, message permissions,
+`im.message.receive_v1`, and a published application version. Follow the
+[click-by-click Feishu guide](docs/onboarding/feishu.zh-CN.md) before declaring
+the channel connected. A config write is not a live send/receive result.
+
+## Commands worth remembering
 
 | Goal | Command |
 | --- | --- |
+| Configure and prove first use | `pico onboard` |
 | Open the native TUI | `pico` |
-| Start an interactive Session | `pico run` |
 | Execute one Turn | `pico run -m "..."` |
-| Configure Pico | `pico onboard` |
-| Check local readiness | `pico doctor` |
-| Inspect Runtime status | `pico status` |
-| Manage Providers | `pico provider ...` |
+| Diagnose Runtime and Provider | `pico doctor --probe` |
+| Inspect installed Plugins | `pico plugins` |
 | Manage Feishu, QQ, and WeCom | `pico channels ...` |
-| Run the background Gateway | `pico gateway` |
-| Manage Sessions | `pico sessions ...` |
+| Serve enabled Channels | `pico gateway --workspace /path/to/project` |
 | Manage scheduled work | `pico cron ...` |
-| Browse local Skills | `pico skills ...` |
-| Inspect Plugins | `pico plugins ...` |
-| Open Tracing | `pico tracing` |
-| Run opt-in evolution | `pico evolve check\|run\|status\|finalize` |
-
-## Runtime model
-
-```text
-CLI / TUI / Gateway / Cron / Channel
-                  |
-                Spine
-                  |
-             Turn Runner
-                  |
-             Agent Loop
-        / Context / Memory \
-      Tools             Providers
-                  |
-          Session + Tracing
-                  |
-               Delivery
-```
-
-The Context Engine retrieves and budgets relevant state instead of blindly
-truncating old messages. Local Skills remain available when Memory is disabled.
-Myna owns its repository binding and storage; Pico consumes it through the
-installed Memory Plugin contract.
-
-Feishu is live-gated against the configured Pico bot. QQ and WeCom are Beta and
-have deterministic contract coverage without a current live send/receive
-claim. Evidence applies only to the commit and scenario recorded by its Gate.
+| Inspect Sessions and Tracing | `pico sessions ...` / `pico tracing` |
+| Run human-controlled evolution | `pico evolve check\|run\|status\|finalize` |
 
 ## State and security
 
 | Scope | Default location |
 | --- | --- |
 | Global configuration and Runtime data | `~/.pico` |
-| Foreground project | Current directory |
+| Foreground project | current directory |
 | Foreground project state | `~/.pico/projects/<project-id>` |
-| Gateway Workspace | `~/.pico/workspace` |
-| Myna repository binding | Myna configuration selected by `myna init` |
+| Gateway Workspace | explicit `--workspace`, otherwise `~/.pico/workspace` |
+| Myna repository binding | selected by Myna setup inside the Git common directory |
 
-`PICO_HOME` relocates Pico's global root. Project state stays outside the
-repository, so normal startup does not dirty Git or trust repository-controlled
-bootstrap files. An explicit `--workspace` or `--config` path opts into direct
-operation on that location.
+Normal startup keeps Pico state outside the repository. Myna onboarding shows
+its planned writes before consent and does not import history or install Hooks.
+For a complete operational handoff, read the
+[Myna guide](docs/onboarding/memory.zh-CN.md) and
+[troubleshooting guide](docs/onboarding/troubleshooting.md).
 
-## Development
+## Build and verify
 
 ```bash
 make install
@@ -140,16 +147,15 @@ make ci
 
 Start with the [documentation index](docs/INDEX.md),
 [architecture overview](docs/architecture/README.md), and
-[developer guide](docs/dev.md). Current capability claims and their evidence
-classes are listed in [feature evidence](docs/feature-evidence.md) and
+[developer guide](docs/dev.md). Capability claims and their evidence classes
+live in [feature evidence](docs/feature-evidence.md) and
 [project status](docs/project-status.md).
 
-Pico is pre-1.0. Interfaces may change, and surfaces explicitly marked Beta
-remain subject to tighter validation before release. `make ci` is the fast
-development gate, not the complete release acceptance Gate.
+Pico is pre-1.0. Interfaces can change, and Beta surfaces need stronger Gates
+before release. `make ci` is the fast development Gate, not complete release
+acceptance.
 
 ## License
 
-Pico is distributed under the Apache License 2.0. See [LICENSE](LICENSE),
-[NOTICES.md](NOTICES.md), and [LICENSES/](LICENSES/) for authoritative license
-and third-party attribution information.
+Apache License 2.0. See [LICENSE](LICENSE), [NOTICES.md](NOTICES.md), and
+[LICENSES/](LICENSES/) for authoritative attribution.
