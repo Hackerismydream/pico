@@ -28,6 +28,12 @@ surface have been removed from this checkout. The dated results remain in
 documents, Issues #70 and #79, and their commit-bound external artifacts. They
 are historical evidence only and are never relabeled as Myna evidence.
 
+The current [Myna task-effect v1](picobench-myna-task-effect-v1.md) track is a
+separate installed-candidate experiment. It uses the public Myna
+`MemoryBackend`, crosses a real process and Session boundary, and measures
+verified task parity plus repository rediscovery effort. Its deterministic Agent
+policy is frozen-workload evidence, not general-purpose model uplift.
+
 ## Purpose and boundary
 
 PicoBench owns the repeatable experiment lifecycle:
@@ -145,9 +151,9 @@ The default operator adapters are:
 make picobench-smoke
 make picobench
 make picobench-reproduce
-make picobench-codecairn-task-effect-smoke
-make picobench-codecairn-task-effect-estimate
-make picobench-codecairn-task-effect-ship
+make picobench-myna-task-effect-plan
+make picobench-myna-task-effect-run
+make picobench-myna-task-effect-verify
 ```
 
 `make picobench-smoke` is credential-free and validates the contract,
@@ -160,12 +166,12 @@ entry point. It runs or reuses the independent Runtime, TokenWise, CodeCairn
 Memory, Context, and Tool/MCP evidence tracks, then emits one terminal summary
 and one digest-bound local report directory. It requires explicit paid execution
 consent whenever any paid track is missing.
-`make picobench-codecairn-task-effect-smoke` is the separate credential-free
-v2 task-validity, retrieval, regression, and report-rebuild Gate.
-`make picobench-codecairn-task-effect-estimate` prints the calibration plus
-formal worst-case projection without a Provider call. The Ship target requires
-the exact installed-pair Stage C summary and a separately recorded numeric CNY
-authorization before live calibration or formal evaluation.
+`make picobench-myna-task-effect-plan` freezes the exact installed candidate,
+task matrix, order seed, and evidence contract without running a Trial. The run
+target executes or resumes the credential-free deterministic Agent A/B; the
+verify target reinstalls the same wheels and rebuilds the evidence. No paid
+Provider is involved, although the first local FastEmbed prefetch may download
+its pinned model.
 
 The implementation hides:
 

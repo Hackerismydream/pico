@@ -35,7 +35,9 @@ be used as the current Pico entry point. The current Scorecard campaign runs
 only the still-current Context and Tool/MCP Packs. TokenWise and Runtime remain
 independent evidence tracks and are composed after their own Claim Gates are
 evaluated. No current Memory backend task-effect track is composed into the
-Scorecard.
+Scorecard. The separate installed-candidate Myna task-effect experiment is
+documented in `docs/evaluation/picobench-myna-task-effect-v1.md`; it is not
+silently composed into the multidimensional score.
 
 Run or resume the complete multidimensional workflow with:
 
