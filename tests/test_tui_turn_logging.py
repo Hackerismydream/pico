@@ -80,7 +80,7 @@ def _make_agent(workspace: Path, responses: list[LLMResponse], tool: Tool) -> Ag
         max_iterations=5,
         restrict_to_workspace=True,
     )
-    agent.tools.register(tool)
+    agent.tools.register(tool, replace=True)
     return agent
 
 

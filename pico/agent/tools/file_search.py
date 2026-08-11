@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from pico.agent.tools.execution import ToolCapability, ToolEffect
 from pico.agent.tools.filesystem import _FsTool
 
 # Noise directories skipped by the pure-Python fallback / find. ripgrep handles
@@ -72,6 +73,7 @@ def _denied_traversal_root(base: Path) -> bool:
 class GrepTool(_FsTool):
     """Search file contents by regex, ripgrep-backed with a pure-Python fallback."""
 
+    capability = ToolCapability(effect=ToolEffect.READ, concurrency_safe=True)
     _MAX_CHARS = 30_000
     _DEFAULT_LIMIT = 100
     _RG_TIMEOUT = 30
@@ -212,7 +214,12 @@ class GrepTool(_FsTool):
             out, err = await asyncio.wait_for(proc.communicate(), timeout=self._RG_TIMEOUT)
         except asyncio.TimeoutError:
             proc.kill()
+            await proc.wait()
             return f"Error: grep timed out after {self._RG_TIMEOUT}s"
+        except BaseException:
+            proc.kill()
+            await proc.wait()
+            raise
 
         # rg exits 1 when there are no matches — that is a normal empty result.
         if proc.returncode not in (0, 1):
@@ -350,6 +357,7 @@ class GrepTool(_FsTool):
 class FindTool(_FsTool):
     """Find files by glob pattern, sorted by recency. Pure-Python (pathlib)."""
 
+    capability = ToolCapability(effect=ToolEffect.READ, concurrency_safe=True)
     _DEFAULT_LIMIT = 1000
 
     @property

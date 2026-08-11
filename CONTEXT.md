@@ -96,12 +96,31 @@ An agent capability behind a uniform `Tool` ABC (name, parameter schema, async
 message, ask_user, spawn (Subagent), MCP, and skill read/use.
 _Avoid_: "function" — a Tool is the agent-facing capability, not a Python function.
 
+**Tool Capability** (`agent/tools/execution.py`):
+The declarative execution properties attached to a Tool: effect and concurrency
+safety. An undeclared Tool uses the conservative `unknown` effect and is never
+scheduled concurrently.
+
+**Tool Execution Context** (`agent/tools/execution.py`):
+The immutable call identity and Turn provenance propagated by the Tool Registry:
+call id, Session key, Iteration, Origin, and optional parent call id. Progressive
+`tool_call` dispatch derives a child context and adds resolved target identity to
+the parent Tool Event.
+
+**Tool Invocation** (`agent/tools/execution.py`):
+One Tool name and arguments paired with its Tool Execution Context. The Tool
+Registry accepts Invocations for both single-call and ordered batch execution.
+
 **Tool Registry** (`agent/tools/registry.py`):
 The name→`Tool` table the Agent Loop dispatches into: resolves a tool by name and runs
 its `execute` under a timeout, returning a string-compatible `ToolResult` with an
 explicit failure bit. Error text remains available to the model for recovery; the
 corresponding completed `ToolEvent` sets `failed=True` so Hosts and evidence code do
-not count the execution as a silent success.
+not count the execution as a silent success. Registration rejects an existing name
+unless replacement is explicit. Batch execution runs only consecutive
+read-only, concurrency-safe Invocations in parallel with at most four active calls;
+unknown, write, execute, and external calls are serial barriers, and results retain
+model call order.
 
 **Checkpoint** (`agent/loop/checkpoint.py`):
 A once-per-turn commit of the workspace into a shadow git repo (separate from the

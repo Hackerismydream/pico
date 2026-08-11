@@ -71,6 +71,10 @@ class ToolEvent:
     result_preview: str = ""
     truncated: bool = False
     failed: bool = False
+    target_call_id: str | None = None
+    target_name: str | None = None
+    target_arguments: dict[str, Any] | None = None
+    duration_ms: float | None = None
     source: Source | None = None
     conversation_id: str | None = None
 

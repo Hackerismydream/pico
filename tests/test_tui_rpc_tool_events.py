@@ -81,7 +81,7 @@ def _make_agent(workspace: Path, responses: list[LLMResponse], *tools: Tool) -> 
         restrict_to_workspace=True,
     )
     for t in tools:
-        agent.tools.register(t)
+        agent.tools.register(t, replace=True)
     return agent
 
 

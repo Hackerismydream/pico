@@ -9,6 +9,7 @@ Driven against a real AgentLoop with only the LLM provider + sandbox edges faked
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 
 import pytest
@@ -17,6 +18,8 @@ from pico.agent.hook import AgentHook, AgentHookContext, CompositeHook, HookDeci
 from pico.agent.loop import AgentLoop
 from pico.agent.loop.main import ProviderTurnError
 from pico.agent.tools.base import Tool
+from pico.agent.tools.execution import ToolCapability, ToolEffect
+from pico.config.schema import ToolSearchConfig
 from pico.providers.base import ErrorClassification, LLMProvider, LLMResponse, StreamDelta, ToolCallRequest
 from pico.sandbox import SandboxInitError
 from pico.spine.events import MediaOut as EvMediaOut
@@ -65,6 +68,23 @@ class _FakeTool(Tool):
 class _FailingTool(_FakeTool):
     async def execute(self, **kwargs) -> str:
         return "Error: protected operation failed"
+
+
+class _ConcurrentFakeTool(_FakeTool):
+    capability = ToolCapability(effect=ToolEffect.READ, concurrency_safe=True)
+
+    def __init__(self) -> None:
+        self.active = 0
+        self.peak = 0
+
+    async def execute(self, **kwargs) -> str:
+        self.active += 1
+        self.peak = max(self.peak, self.active)
+        try:
+            await asyncio.sleep(0.02)
+            return "tool-ran"
+        finally:
+            self.active -= 1
 
 
 class _FakeChatProvider:
@@ -291,6 +311,100 @@ async def test_run_marks_failed_tool_completion(tmp_path):
     assert complete.result_preview.startswith("Error:")
     assert outcome.tool_calls == 1
     assert outcome.tool_failures == 1
+
+
+async def test_run_executes_concurrency_safe_tool_calls_in_parallel(tmp_path):
+    provider = _FakeStreamToolProvider(
+        [
+            [
+                StreamDelta(
+                    content=None,
+                    tool_call_delta={
+                        "tool_calls": [
+                            {"index": 0, "id": "t1", "function": {"name": "faketool", "arguments": "{}"}},
+                            {"index": 1, "id": "t2", "function": {"name": "faketool", "arguments": "{}"}},
+                        ]
+                    },
+                )
+            ],
+            [StreamDelta(content="done")],
+        ]
+    )
+    tool = _ConcurrentFakeTool()
+    loop = AgentLoop(provider=provider, workspace=tmp_path)
+    _stub_edges(loop)
+    loop.tools.register(tool)
+    sink = _EmitCollector()
+
+    outcome = await loop.run_turn(_req("hi"), sink, _drain)
+
+    assert tool.peak == 2
+    assert outcome.tool_calls == 2
+    assert outcome.tool_failures == 0
+    complete_ids = [
+        event.tool_call_id
+        for event in sink.events
+        if isinstance(event, EvToolEvent) and event.phase == ToolPhase.COMPLETE
+    ]
+    assert sorted(complete_ids) == ["t1", "t2"]
+
+
+async def test_run_observes_and_parallelizes_progressive_target_tools(tmp_path):
+    provider = _FakeStreamToolProvider(
+        [
+            [
+                StreamDelta(
+                    content=None,
+                    tool_call_delta={
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "outer-1",
+                                "function": {
+                                    "name": "tool_call",
+                                    "arguments": '{"name":"faketool","arguments":{}}',
+                                },
+                            },
+                            {
+                                "index": 1,
+                                "id": "outer-2",
+                                "function": {
+                                    "name": "tool_call",
+                                    "arguments": '{"name":"faketool","arguments":{}}',
+                                },
+                            },
+                        ]
+                    },
+                )
+            ],
+            [StreamDelta(content="done")],
+        ]
+    )
+    tool = _ConcurrentFakeTool()
+    loop = AgentLoop(
+        provider=provider,
+        workspace=tmp_path,
+        tool_search_config=ToolSearchConfig(enabled=True),
+    )
+    _stub_edges(loop)
+    loop.tools.register(tool)
+    sink = _EmitCollector()
+
+    outcome = await loop.run_turn(_req("hi"), sink, _drain)
+
+    assert tool.peak == 2
+    assert outcome.tool_calls == 2
+    events = [event for event in sink.events if isinstance(event, EvToolEvent)]
+    assert {event.name for event in events} == {"tool_call"}
+    assert {event.tool_call_id for event in events} == {
+        "outer-1",
+        "outer-2",
+    }
+    assert {event.target_name for event in events} == {"faketool"}
+    assert {event.target_call_id for event in events} == {
+        "outer-1:faketool",
+        "outer-2:faketool",
+    }
 
 
 async def test_inject_message_merged_before_next_iteration(tmp_path):
