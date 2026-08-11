@@ -8,12 +8,14 @@ import httpx
 from loguru import logger
 
 from pico.agent.tools.base import Tool, ToolResult
+from pico.agent.tools.execution import ToolCapability, ToolEffect
 from pico.security.network import validate_resolved_url, validate_url_target
 
 
 class WebSearchTool(Tool):
     """Search the web using Serper."""
 
+    capability = ToolCapability(effect=ToolEffect.EXTERNAL)
     name = "web_search"
     description = "Search the web. Returns titles, URLs, and snippets."
     parameters = {
@@ -92,6 +94,7 @@ class WebSearchTool(Tool):
 class WebFetchTool(Tool):
     """Fetch and extract content from a URL using Jina Reader."""
 
+    capability = ToolCapability(effect=ToolEffect.EXTERNAL)
     name = "web_fetch"
     description = "Fetch URL and extract readable content via Jina Reader."
     parameters = {

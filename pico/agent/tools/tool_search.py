@@ -29,6 +29,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from pico.agent.tools.base import Tool
+from pico.agent.tools.execution import ToolExecutionContext, ToolInvocation
 from pico.agent.tools.tool_index import ToolIndex
 from pico.token_wise.base import TokenStrategy
 
@@ -115,7 +116,34 @@ class ToolSearchController:
             )
         return hits
 
-    async def call(self, name: str, arguments: dict[str, Any] | None) -> str:
+    def resolve_invocation(
+        self,
+        name: str,
+        arguments: dict[str, Any] | str | None,
+        context: ToolExecutionContext,
+    ) -> ToolInvocation | None:
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                return None
+        if not isinstance(arguments, (dict, type(None))):
+            return None
+        if name in META_TOOL_NAMES or not self._registry.has(name):
+            return None
+        child_call_id = f"{context.call_id}:{name}" if context.call_id else None
+        return ToolInvocation(
+            name=name,
+            arguments=arguments or {},
+            context=context.child(child_call_id),
+        )
+
+    async def call(
+        self,
+        name: str,
+        arguments: dict[str, Any] | None,
+        context: ToolExecutionContext | None = None,
+    ) -> str:
         """Invoke a cataloged tool: forward to the registry (validates args).
 
         Models sometimes emit the nested ``arguments`` as a JSON string rather
@@ -130,7 +158,11 @@ class ToolSearchController:
             return f"Error: '{name}' cannot be invoked via tool_call."
         if not self._registry.has(name):
             return f"Error: tool '{name}' not found. Use tool_search to find it."
-        return await self._registry.execute(name, arguments or {})
+        invocation = self.resolve_invocation(name, arguments, context or ToolExecutionContext())
+        if invocation is None:
+            return "Error: 'arguments' must be a JSON object."
+        execution = await self._registry.execute_invocation(invocation)
+        return execution.result
 
 
 class ToolSearchTool(Tool):
@@ -215,6 +247,25 @@ class ToolCallTool(Tool):
 
     async def execute(self, name: str, arguments: dict[str, Any] | None = None) -> str:
         return await self._ctrl.call(name, arguments)
+
+    async def execute_with_context(
+        self,
+        context: ToolExecutionContext,
+        name: str,
+        arguments: dict[str, Any] | None = None,
+    ) -> str:
+        return await self._ctrl.call(name, arguments, context)
+
+    def resolve_invocation(self, invocation: ToolInvocation) -> ToolInvocation:
+        name = invocation.arguments.get("name")
+        if not isinstance(name, str):
+            return invocation
+        resolved = self._ctrl.resolve_invocation(
+            name,
+            invocation.arguments.get("arguments"),
+            invocation.context,
+        )
+        return resolved or invocation
 
 
 class ToolSearchStrategy(TokenStrategy):

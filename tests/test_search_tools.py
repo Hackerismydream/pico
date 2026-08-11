@@ -6,6 +6,7 @@ pure-Python fallback (forced by patching shutil.which to return None).
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 from pathlib import Path
 
@@ -103,6 +104,43 @@ async def test_grep_outside_allowed_dir(tmp_path: Path):
     tool = GrepTool(workspace=workspace, allowed_dir=workspace)
     out = await tool.execute(pattern="x", path="/etc")
     assert "Error" in out
+
+
+async def test_grep_cancellation_reaps_ripgrep_process(tree: Path, monkeypatch):
+    started = asyncio.Event()
+
+    class _Process:
+        def __init__(self) -> None:
+            self.killed = False
+            self.waited = False
+
+        async def communicate(self):
+            started.set()
+            await asyncio.Event().wait()
+
+        def kill(self) -> None:
+            self.killed = True
+
+        async def wait(self) -> int:
+            self.waited = True
+            return -9
+
+    process = _Process()
+
+    async def _create_process(*args, **kwargs):
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _create_process)
+    tool = GrepTool(workspace=tree, allowed_dir=tree)
+    task = asyncio.create_task(tool._run_rg("rg", "hello", tree, None, "content", False, 0, 100))
+    await started.wait()
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert process.killed is True
+    assert process.waited is True
 
 
 # ── find ────────────────────────────────────────────────────────────────

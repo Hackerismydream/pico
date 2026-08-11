@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from pico.agent.tools.base import Tool
+from pico.agent.tools.execution import ToolCapability, ToolEffect
 
 
 def _resolve_path(path: str, workspace: Path | None = None, allowed_dir: Path | None = None) -> Path:
@@ -40,6 +41,7 @@ class _FsTool(Tool):
 class ReadFileTool(_FsTool):
     """Read file contents with optional line-based pagination."""
 
+    capability = ToolCapability(effect=ToolEffect.READ, concurrency_safe=True)
     _MAX_CHARS = 128_000
     _DEFAULT_LIMIT = 2000
 
@@ -125,6 +127,8 @@ class ReadFileTool(_FsTool):
 class WriteFileTool(_FsTool):
     """Write content to a file."""
 
+    capability = ToolCapability(effect=ToolEffect.WRITE)
+
     @property
     def name(self) -> str:
         return "write_file"
@@ -189,6 +193,8 @@ def _find_match(content: str, old_text: str) -> tuple[str | None, int]:
 
 class EditFileTool(_FsTool):
     """Edit a file by replacing text with fallback matching."""
+
+    capability = ToolCapability(effect=ToolEffect.WRITE)
 
     @property
     def name(self) -> str:
@@ -290,6 +296,7 @@ class EditFileTool(_FsTool):
 class ListDirTool(_FsTool):
     """List directory contents with optional recursion."""
 
+    capability = ToolCapability(effect=ToolEffect.READ, concurrency_safe=True)
     _DEFAULT_MAX = 200
     _IGNORE_DIRS = {
         ".git",

@@ -3,6 +3,8 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
+from pico.agent.tools.execution import ToolCapability, ToolExecutionContext, ToolInvocation
+
 
 class ToolResult(str):
     """String tool output with an explicit execution status."""
@@ -34,6 +36,7 @@ class Tool(ABC):
     # registry does NOT wrap them in a timeout — they manage their own
     # auto-resolution instead of being killed mid-wait.
     blocking_interaction: bool = False
+    capability = ToolCapability()
 
     _TYPE_MAP = {
         "string": str,
@@ -75,6 +78,12 @@ class Tool(ABC):
             text does not follow the registry's ``Error:`` convention.
         """
         pass
+
+    async def execute_with_context(self, context: ToolExecutionContext, **kwargs: Any) -> str:
+        return await self.execute(**kwargs)
+
+    def resolve_invocation(self, invocation: ToolInvocation) -> ToolInvocation:
+        return invocation
 
     def cast_params(self, params: dict[str, Any]) -> dict[str, Any]:
         """Apply safe schema-driven casts before validation."""

@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import time
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -24,6 +23,7 @@ from pico.agent.loop.recovery import (
 from pico.agent.subagent import SubagentManager
 from pico.agent.tools.ask_user import AskUserTool
 from pico.agent.tools.base import ToolResult
+from pico.agent.tools.execution import ToolExecution, ToolExecutionContext, ToolInvocation
 from pico.agent.tools.file_search import FindTool, GrepTool
 from pico.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from pico.agent.tools.message import MessageTool
@@ -509,7 +509,7 @@ class AgentLoop:
         # it deliberately contributes the same name; ``_apply_disabled_tools``
         # still runs afterward and can strip any of them.
         for tool in self.plugin_tools:
-            self.tools.register(tool)
+            self.tools.register(tool, replace=True)
 
         # Progressive tool disclosure. Registered last so the catalog it
         # searches covers every built-in/plugin tool above; MCP tools join
@@ -1108,6 +1108,7 @@ class AgentLoop:
         on_tool_event: Callable[[str, dict], Awaitable[None]] | None = None,
         usage_sink: dict[str, Any] | None = None,
         drain: Drain | None = None,
+        origin: Origin | None = None,
     ) -> tuple[str | None, list[str], list[dict], TurnOutcome]:
         """Run the agent iteration loop.
 
@@ -1269,41 +1270,83 @@ class AgentLoop:
                     thinking_blocks=response.thinking_blocks,
                 )
 
+                invocations: list[ToolInvocation] = []
                 for tool_call in response.tool_calls:
                     tools_used.append(tool_call.name)
                     args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
                     logger.info("Tool call: {}({})", tool_call.name, args_str[:200])
+                    invocations.append(
+                        ToolInvocation(
+                            name=tool_call.name,
+                            arguments=tool_call.arguments,
+                            context=ToolExecutionContext(
+                                call_id=tool_call.id,
+                                session_key=session_key,
+                                iteration=iteration,
+                                origin=origin.value if origin is not None else None,
+                            ),
+                        )
+                    )
+
+                async def _tool_started(invocation: ToolInvocation) -> None:
                     if on_tool_event is not None:
+                        nested = invocation.context.parent_call_id is not None
                         await on_tool_event(
                             "start",
                             {
-                                "tool_call_id": tool_call.id,
-                                "name": tool_call.name,
-                                "arguments": tool_call.arguments,
+                                "tool_call_id": (
+                                    invocation.context.parent_call_id if nested else invocation.context.call_id
+                                ),
+                                "name": "tool_call" if nested else invocation.name,
+                                "arguments": (
+                                    {"name": invocation.name, "arguments": invocation.arguments}
+                                    if nested
+                                    else invocation.arguments
+                                ),
+                                "target_call_id": invocation.context.call_id if nested else None,
+                                "target_name": invocation.name if nested else None,
+                                "target_arguments": invocation.arguments if nested else None,
                             },
                         )
-                    tool_t0 = time.monotonic()
-                    result = await self.tools.execute(tool_call.name, tool_call.arguments, tool_call.id)
-                    duration_ms = int((time.monotonic() - tool_t0) * 1000)
+
+                async def _tool_completed(execution: ToolExecution) -> None:
+                    invocation = execution.invocation
+                    result = execution.result
                     result_str = str(result)
                     preview = result_str.replace("\n", " ")[:200]
                     logger.info(
                         "Tool result: {} duration={}ms result={}",
-                        tool_call.name,
-                        duration_ms,
+                        invocation.name,
+                        int(execution.duration_ms),
                         preview,
                     )
                     if on_tool_event is not None:
+                        nested = invocation.context.parent_call_id is not None
                         await on_tool_event(
                             "complete",
                             {
-                                "tool_call_id": tool_call.id,
-                                "name": tool_call.name,
+                                "tool_call_id": (
+                                    invocation.context.parent_call_id if nested else invocation.context.call_id
+                                ),
+                                "name": "tool_call" if nested else invocation.name,
                                 "result_preview": preview,
                                 "truncated": len(result_str) > 200,
                                 "failed": _is_tool_failure(result),
+                                "target_call_id": invocation.context.call_id if nested else None,
+                                "target_name": invocation.name if nested else None,
+                                "target_arguments": invocation.arguments if nested else None,
+                                "duration_ms": execution.duration_ms,
                             },
                         )
+
+                executions = await self.tools.execute_many(
+                    invocations,
+                    on_start=_tool_started,
+                    on_complete=_tool_completed,
+                )
+
+                for tool_call, execution in zip(response.tool_calls, executions, strict=True):
+                    result = execution.result
                     messages = self.context.add_tool_result(messages, tool_call.id, tool_call.name, result)
                     # #1b Track consecutive same-tool deterministic failures
                     # (transient errors excluded — a retry would clear those).
@@ -1756,6 +1799,7 @@ class AgentLoop:
             on_tool_event=on_tool_event,
             usage_sink=usage_sink,
             drain=drain,
+            origin=origin,
         )
         self._stash_recovery(key, outcome)
         if outcome.status == "error":
@@ -1977,6 +2021,9 @@ class AgentLoop:
                             tool_call_id=info["tool_call_id"],
                             name=info["name"],
                             arguments=info["arguments"],
+                            target_call_id=info.get("target_call_id"),
+                            target_name=info.get("target_name"),
+                            target_arguments=info.get("target_arguments"),
                         )
                     )
             else:
@@ -1991,6 +2038,10 @@ class AgentLoop:
                             result_preview=info["result_preview"],
                             truncated=info["truncated"],
                             failed=info["failed"],
+                            target_call_id=info.get("target_call_id"),
+                            target_name=info.get("target_name"),
+                            target_arguments=info.get("target_arguments"),
+                            duration_ms=info.get("duration_ms"),
                         )
                     )
 

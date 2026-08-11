@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from pico.agent.tools.base import Tool
+from pico.agent.tools.execution import ToolExecutionContext
 from pico.agent.tools.registry import ToolRegistry
 from pico.agent.tools.tool_index import ToolIndex, _schema_text
 from pico.agent.tools.tool_search import (
@@ -45,6 +46,16 @@ class _FakeTool(Tool):
 
     async def execute(self, **kwargs: Any) -> str:
         return f"ran {self._name}"
+
+
+class _ContextTool(_FakeTool):
+    def __init__(self, name: str) -> None:
+        super().__init__(name, "records execution context")
+        self.context: ToolExecutionContext | None = None
+
+    async def execute_with_context(self, context: ToolExecutionContext, **kwargs: Any) -> str:
+        self.context = context
+        return f"ran {self.name}"
 
 
 # ---- ToolIndex ----
@@ -280,6 +291,28 @@ async def test_tool_call_forwards_to_registry() -> None:
     ctrl = _controller(reg)
     out = await ToolCallTool(ctrl).execute(name="create_issue", arguments={})
     assert out == "ran create_issue"
+
+
+@pytest.mark.asyncio
+async def test_tool_call_preserves_parent_call_identity_for_target_execution() -> None:
+    target = _ContextTool("create_issue")
+    reg = ToolRegistry()
+    reg.register(target)
+    ctrl = _controller(reg)
+
+    out = await ToolCallTool(ctrl).execute_with_context(
+        ToolExecutionContext(call_id="outer", session_key="cli:c", iteration=2),
+        name=target.name,
+        arguments={},
+    )
+
+    assert out == "ran create_issue"
+    assert target.context == ToolExecutionContext(
+        call_id="outer:create_issue",
+        session_key="cli:c",
+        iteration=2,
+        parent_call_id="outer",
+    )
 
 
 @pytest.mark.asyncio

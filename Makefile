@@ -1,4 +1,4 @@
-.PHONY: help install install-deps format check lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-reproduce picobench-scorecard-estimate picobench-scorecard-ship picobench-scorecard-score picobench-runtime-scheduler picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify verify-myna-integration verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
+.PHONY: help install install-deps format check lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-reproduce picobench-scorecard-estimate picobench-scorecard-ship picobench-scorecard-score picobench-runtime-scheduler picobench-runtime-tools picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify verify-myna-integration verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
 
 PYTHON ?= python3
 PYTHON_LINT_TARGETS ?= scripts/check_commit_file.py scripts/check_commit_messages.py scripts/check_pr_title.py scripts/check_large_files.py scripts/commit_lint.py tests/test_commit_lint.py tests/test_large_file_check.py
@@ -17,6 +17,7 @@ help:
 	@echo "  test-retained  Run the deterministic Python suite without opt-in tests"
 	@echo "  picobench-smoke Run the credential-free PicoBench gate"
 	@echo "  picobench-runtime-scheduler Run deterministic scheduler A/B experiments"
+	@echo "  picobench-runtime-tools Run the Tool scheduler A/B microbenchmark"
 	@echo "  picobench-runtime-live-plan Freeze the real-Agent scheduler plan and spend ceiling"
 	@echo "  picobench-runtime-live-run Run the approved real-Agent scheduler experiment"
 	@echo "  picobench-runtime-live-verify Rebuild live scheduler metrics from raw Turn records"
@@ -99,6 +100,9 @@ picobench-scorecard-score:
 
 picobench-runtime-scheduler:
 	uv run --frozen --all-extras --exact python -m benchmarks.picobench.packs.runtime.scheduler_experiments
+
+picobench-runtime-tools:
+	uv run --frozen --all-extras --exact python -m benchmarks.picobench.packs.runtime.tool_execution_experiments
 
 picobench-runtime-live-plan:
 	uv run --frozen --all-extras --exact python -m benchmarks.picobench.packs.runtime.live_scheduler_experiment plan
