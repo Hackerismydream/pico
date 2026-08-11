@@ -1,4 +1,4 @@
-"""CLI tests for ``pico onboard`` - the three-step wizard.
+"""CLI tests for ``pico onboard`` - the four-step first-use wizard.
 
 Most tests exercise ``--non-interactive`` so we can drive the wizard
 deterministically without a real TTY. Interactive paths are covered by
@@ -15,7 +15,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
+import types
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -131,6 +134,7 @@ def stub_verify(monkeypatch: pytest.MonkeyPatch):
 def stub_step3(monkeypatch: pytest.MonkeyPatch):
     """Default: the first Runtime Turn succeeds. Tests can override."""
 
+    monkeypatch.setattr(onboard_commands, "_prepare_myna", lambda **_: True)
     monkeypatch.setattr(
         onboard_commands,
         "run_first_turn",
@@ -167,7 +171,7 @@ def test_onboard_help_lists_all_flags() -> None:
 
 
 def test_onboard_non_interactive_minimum_flags(tmp_env: Path, stub_verify, stub_step3) -> None:
-    """Minimum non-interactive invocation runs all three steps and writes config."""
+    """Minimum non-interactive invocation runs all four steps and writes config."""
     r = runner.invoke(
         app,
         [
@@ -192,7 +196,7 @@ def test_onboard_non_interactive_minimum_flags(tmp_env: Path, stub_verify, stub_
 
 
 def test_onboard_non_interactive_skips_optional_steps(tmp_env: Path, stub_verify, stub_step3) -> None:
-    """Non-interactive setup keeps CodeCairn selected and explains initialization."""
+    """Non-interactive setup keeps Myna selected and proves the first Turn."""
     r = runner.invoke(
         app,
         [
@@ -207,11 +211,10 @@ def test_onboard_non_interactive_skips_optional_steps(tmp_env: Path, stub_verify
     )
     assert r.exit_code == 0, r.stdout
     assert "Keeping run location: host" in r.stdout
-    assert "codecairn init" in r.stdout
-    assert "Pico will fail closed" in r.stdout
+    assert "Agent: hi there" in r.stdout
     assert "Setup complete" in r.stdout
     data = json.loads(tmp_env.read_text())
-    assert data["memory"]["backend"] == "codecairn"
+    assert data["memory"]["backend"] == "myna"
 
 
 def test_onboard_skip_channel_default(tmp_env: Path, stub_verify, stub_step3) -> None:
@@ -413,6 +416,7 @@ def test_onboard_test_probe_failure_shows_warning_footer(
     def _boom() -> tuple[str, int | None, float]:
         raise RuntimeError("AuthenticationError: bogus key")
 
+    monkeypatch.setattr(onboard_commands, "_prepare_myna", lambda **_: True)
     monkeypatch.setattr(onboard_commands, "run_first_turn", _boom)
 
     r = runner.invoke(
@@ -457,9 +461,9 @@ def test_onboard_interactive_uses_stubbed_pickers(
     )
     # Optional steps 2-4 are covered separately; no-op them here so the
     # interactive Step 1 path can be asserted without driving every screen.
-    monkeypatch.setattr(onboard_commands, "_step2_sandbox", lambda **_: None)
-    monkeypatch.setattr(onboard_commands, "_step3_channel", lambda **_: None)
-    monkeypatch.setattr(onboard_commands, "_step4_memory", lambda **_: None)
+    monkeypatch.setattr(onboard_commands, "_step3_sandbox", lambda **_: None)
+    monkeypatch.setattr(onboard_commands, "_step4_channel", lambda **_: None)
+    monkeypatch.setattr(onboard_commands, "_step2_memory", lambda **_: None)
 
     r = runner.invoke(app, ["onboard"])
     assert r.exit_code == 0, r.stdout
@@ -481,6 +485,7 @@ def test_step1_writes_via_ops_lib(tmp_env: Path, monkeypatch: pytest.MonkeyPatch
         return {}
 
     monkeypatch.setattr("pico.config.update_providers.set_provider_fields", _spy)
+    monkeypatch.setattr(onboard_commands, "_prepare_myna", lambda **_: True)
     monkeypatch.setattr(onboard_commands, "run_first_turn", lambda: ("hi", 1, 0.1))
 
     r = runner.invoke(
@@ -620,9 +625,9 @@ def test_step1_picker_uses_catalog_when_available(tmp_env: Path, monkeypatch: py
         return _FakeQuestion("claude-haiku-4-5")
 
     monkeypatch.setattr(questionary, "autocomplete", _fake_autocomplete)
-    monkeypatch.setattr(onboard_commands, "_step2_sandbox", lambda **_: None)
-    monkeypatch.setattr(onboard_commands, "_step3_channel", lambda **_: None)
-    monkeypatch.setattr(onboard_commands, "_step4_memory", lambda **_: None)
+    monkeypatch.setattr(onboard_commands, "_step3_sandbox", lambda **_: None)
+    monkeypatch.setattr(onboard_commands, "_step4_channel", lambda **_: None)
+    monkeypatch.setattr(onboard_commands, "_step2_memory", lambda **_: None)
 
     r = runner.invoke(app, ["onboard"])
     assert r.exit_code == 0, r.stdout
@@ -886,7 +891,7 @@ def test_sandbox_backend_persisted_via_ops(tmp_env: Path, monkeypatch: pytest.Mo
             return self._a
 
     monkeypatch.setattr(questionary, "select", lambda *a, **kw: _FQ("none"))
-    onboard_commands._step2_sandbox(skip=False, non_interactive=False)
+    onboard_commands._step3_sandbox(skip=False, non_interactive=False)
     data = json.loads(tmp_env.read_text())
     assert data["tools"]["sandbox"]["backend"] == "none"
 
@@ -908,7 +913,7 @@ def test_sandbox_boxlite_probe_failure_falls_back(tmp_env: Path, monkeypatch: py
     monkeypatch.setattr(onboard_commands, "_probe_boxlite", lambda: (False, "missing"))
     # Failure submenu picks "fall back to host".
     monkeypatch.setattr(onboard_commands, "_failure_choice", lambda options, *, non_interactive: "host")
-    onboard_commands._step2_sandbox(skip=False, non_interactive=False)
+    onboard_commands._step3_sandbox(skip=False, non_interactive=False)
     data = json.loads(tmp_env.read_text())
     assert data["tools"]["sandbox"]["backend"] == "none"
 
@@ -930,7 +935,7 @@ def test_sandbox_keep_current_first_option(tmp_env: Path, monkeypatch: pytest.Mo
         return _FQ()
 
     monkeypatch.setattr(questionary, "select", _select)
-    onboard_commands._step2_sandbox(skip=False, non_interactive=False)
+    onboard_commands._step3_sandbox(skip=False, non_interactive=False)
     assert "keep" in captured["choices"]
     # 'keep' leaves the backend untouched.
     assert json.loads(tmp_env.read_text())["tools"]["sandbox"]["backend"] == "boxlite"
@@ -943,11 +948,12 @@ def test_memory_skip_sets_backend_null(
     tmp_env: Path,
 ) -> None:
     """The explicit skip path selects the only supported Memory-off value."""
-    onboard_commands._step4_memory(
+    onboard_commands._step2_memory(
         skip=True,
         non_interactive=False,
         main_model="openai/gpt-4o-mini",
         warnings=[],
+        skip_test=True,
     )
     data = json.loads(tmp_env.read_text())
     assert data["memory"]["backend"] is None
@@ -956,11 +962,15 @@ def test_memory_skip_sets_backend_null(
     assert load_pico_config().memory.backend is None
 
 
-def test_memory_step_selects_codecairn_without_pico_side_overrides(
+def test_memory_step_selects_myna_without_pico_side_overrides(
     tmp_env: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Onboarding chooses the installed Adapter without writing its configuration."""
-    onboard_commands._step4_memory(
+    onboard_commands._set_memory_backend("myna")
+    monkeypatch.setattr(onboard_commands, "_prepare_myna", lambda **_: True)
+    monkeypatch.setattr(onboard_commands, "run_first_turn", lambda: ("ready", 1, 0.1))
+    onboard_commands._step2_memory(
         skip=False,
         non_interactive=False,
         main_model="openrouter/anthropic/claude-sonnet-4-5",
@@ -968,12 +978,67 @@ def test_memory_step_selects_codecairn_without_pico_side_overrides(
     )
 
     data = json.loads(tmp_env.read_text())
-    assert data["memory"]["backend"] == "codecairn"
-    assert "codecairn" not in data.get("plugins", {}).get("config", {})
-    assert "codecairn-memory" not in data.get("plugins", {}).get("config", {})
+    assert data["memory"]["backend"] == "myna"
+    assert "myna" not in data.get("plugins", {}).get("config", {})
+    assert "myna-memory" not in data.get("plugins", {}).get("config", {})
     from pico.config.pico import load_pico_config
 
-    assert load_pico_config().memory.backend == "codecairn"
+    assert load_pico_config().memory.backend == "myna"
+
+
+def _install_fake_myna_descriptor(monkeypatch: pytest.MonkeyPatch, descriptor: Any) -> None:
+    package = types.ModuleType("myna")
+    package.__path__ = []  # type: ignore[attr-defined]
+    integrations = types.ModuleType("myna.integrations")
+    integrations.__path__ = []  # type: ignore[attr-defined]
+    pico = types.ModuleType("myna.integrations.pico")
+    pico.descriptor = lambda: descriptor  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "myna", package)
+    monkeypatch.setitem(sys.modules, "myna.integrations", integrations)
+    monkeypatch.setitem(sys.modules, "myna.integrations.pico", pico)
+
+
+def test_prepare_myna_applies_consent_bound_repository_setup(
+    tmp_env: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    onboard_commands._bootstrap_empty_config()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "pico.cli._plugin_stack.inspect_memory_backend",
+        lambda config: SimpleNamespace(state="available", error=None),
+    )
+    applied: list[str] = []
+    descriptor = SimpleNamespace(
+        protocol="myna.pico-app-integration.v1",
+        preview_setup=lambda workspace: {
+            "state": "setup_required",
+            "workspace": str(workspace),
+            "repo_key": "example/repository",
+            "creates": [str(tmp_path / ".git" / "myna.toml"), str(tmp_path / "runtime")],
+            "retrieval": {"profile": "fastembed"},
+            "consent_token": "consent-token",
+        },
+        apply_setup=lambda token: applied.append(token) or {"state": "initialized", "repo_key": "example/repository"},
+    )
+    _install_fake_myna_descriptor(monkeypatch, descriptor)
+
+    assert onboard_commands._prepare_myna(non_interactive=True, yes=True) is True
+    assert applied == ["consent-token"]
+    assert json.loads(tmp_env.read_text())["memory"]["backend"] == "myna"
+
+
+def test_prepare_myna_fails_closed_when_plugin_is_missing(tmp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    onboard_commands._bootstrap_empty_config()
+    monkeypatch.setattr(
+        "pico.cli._plugin_stack.inspect_memory_backend",
+        lambda config: SimpleNamespace(state="error", error="plugin unavailable"),
+    )
+
+    with pytest.raises(typer.Exit) as exc_info:
+        onboard_commands._prepare_myna(non_interactive=True, yes=True)
+
+    assert exc_info.value.exit_code == 2
+    assert json.loads(tmp_env.read_text())["memory"]["backend"] == "myna"
 
 
 def test_retained_channels_do_not_use_interactive_login() -> None:
@@ -1100,13 +1165,13 @@ def test_back_navigation_rewinds_one_screen(tmp_env: Path, monkeypatch: pytest.M
     monkeypatch.setattr(onboard_commands, "_handle_existing_config", lambda **_: None)
     monkeypatch.setattr(onboard_commands, "_bootstrap_empty_config", lambda: None)
     monkeypatch.setattr(onboard_commands, "_step1_provider", _s1)
-    monkeypatch.setattr(onboard_commands, "_step2_sandbox", _s2)
-    monkeypatch.setattr(onboard_commands, "_step3_channel", _s3)
-    monkeypatch.setattr(onboard_commands, "_step4_memory", lambda **_: None)
+    monkeypatch.setattr(onboard_commands, "_step3_sandbox", _s3)
+    monkeypatch.setattr(onboard_commands, "_step4_channel", _s3)
+    monkeypatch.setattr(onboard_commands, "_step2_memory", _s2)
 
     onboard_commands.run_wizard(non_interactive=False)
-    # s2 returns BACK once → s1 replays → s2 again → forward.
-    assert calls == ["s1", "s2", "s1", "s2", "s3"]
+    # The Memory screen returns BACK once, so provider setup replays before it.
+    assert calls == ["s1", "s2", "s1", "s2", "s3", "s3"]
 
 
 def test_first_screen_back_does_not_skip_step1(
@@ -1127,9 +1192,9 @@ def test_first_screen_back_does_not_skip_step1(
     monkeypatch.setattr(onboard_commands, "_prompt_api_key", lambda provider, **kw: "sk-back-test")
     monkeypatch.setattr(onboard_commands, "_pick_model", lambda spec, **_: spec.default_model)
     # Optional steps are no-ops here; we only assert Step 1 wasn't skipped.
-    monkeypatch.setattr(onboard_commands, "_step2_sandbox", lambda **_: None)
-    monkeypatch.setattr(onboard_commands, "_step3_channel", lambda **_: None)
-    monkeypatch.setattr(onboard_commands, "_step4_memory", lambda **_: None)
+    monkeypatch.setattr(onboard_commands, "_step3_sandbox", lambda **_: None)
+    monkeypatch.setattr(onboard_commands, "_step4_channel", lambda **_: None)
+    monkeypatch.setattr(onboard_commands, "_step2_memory", lambda **_: None)
 
     onboard_commands.run_wizard(non_interactive=False)
 
@@ -1172,9 +1237,9 @@ def test_switch_provider_returns_to_picker_keeps_steps(
     monkeypatch.setattr(onboard_commands, "_pick_model", lambda spec, **_: spec.default_model)
     # On the failure submenu, choose "switch".
     monkeypatch.setattr(onboard_commands, "_failure_choice", lambda options, *, non_interactive: "switch")
-    monkeypatch.setattr(onboard_commands, "_step2_sandbox", lambda **_: None)
-    monkeypatch.setattr(onboard_commands, "_step3_channel", lambda **_: None)
-    monkeypatch.setattr(onboard_commands, "_step4_memory", lambda **_: None)
+    monkeypatch.setattr(onboard_commands, "_step3_sandbox", lambda **_: None)
+    monkeypatch.setattr(onboard_commands, "_step4_channel", lambda **_: None)
+    monkeypatch.setattr(onboard_commands, "_step2_memory", lambda **_: None)
 
     # Should complete (not raise typer.Exit) — steps 2/3/4 ran.
     onboard_commands.run_wizard(non_interactive=False)
@@ -1240,14 +1305,14 @@ def test_skip_memory_disables_backend_effective(tmp_env: Path, stub_verify, stub
     assert load_pico_config().memory.backend is None
 
 
-def test_fresh_bootstrap_defaults_memory_backend_codecairn(
+def test_fresh_bootstrap_defaults_memory_backend_myna(
     tmp_env: Path, stub_verify, stub_step3, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A fresh config selects the installed CodeCairn contribution."""
+    """A fresh config selects the installed Myna contribution."""
     onboard_commands._bootstrap_empty_config()
     from pico.config.pico import load_pico_config
 
-    assert load_pico_config().memory.backend == "codecairn"
+    assert load_pico_config().memory.backend == "myna"
 
 
 def test_fresh_bootstrap_seeds_extension_blocks(tmp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1257,7 +1322,7 @@ def test_fresh_bootstrap_seeds_extension_blocks(tmp_env: Path, monkeypatch: pyte
     onboard_commands._bootstrap_empty_config()
     data = json.loads(tmp_env.read_text())
 
-    assert data["memory"]["backend"] == "codecairn"
+    assert data["memory"]["backend"] == "myna"
     assert data["memory"]["memoryTopK"] == 5
     assert data["plugins"]["config"] == {}
     assert data["skillForge"]["router"] == {"enabled": True}

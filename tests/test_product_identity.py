@@ -1,3 +1,4 @@
+import ast
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
@@ -33,17 +34,61 @@ def test_public_distribution_cli_and_plugin_identity() -> None:
     assert not (repo_root / "pico" / "config" / "update_everos.py").exists()
 
 
-def test_distribution_pins_the_codecairn_handoff() -> None:
+def test_distribution_has_no_unpublished_or_retired_memory_dependency() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     metadata = tomllib.loads(
         (repo_root / "pyproject.toml").read_text(encoding="utf-8"),
     )
 
-    assert (
-        "codecairn @ git+https://github.com/Hackerismydream/"
-        "CodeCairn.git@a501fe29782e69dd7fc9a9277ba6743b2f2b4bc6" in metadata["project"]["dependencies"]
+    dependencies = metadata["project"]["dependencies"]
+    assert not any("codecairn" in dependency.lower() for dependency in dependencies)
+    assert not any("myna" in dependency.lower() for dependency in dependencies)
+    assert not any("file://" in dependency.lower() for dependency in dependencies)
+
+
+def test_retired_memory_implementation_is_absent_from_executable_surfaces() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    retired = "code" + "cairn"
+
+    benchmark_files = tuple(
+        path
+        for path in (repo_root / "benchmarks").rglob("*")
+        if path.is_file() and path.suffix in {".json", ".md", ".py", ".yaml"}
     )
-    assert "codecairn" not in metadata["tool"]["uv"]["sources"]
+    assert not any(retired in path.as_posix().lower() for path in benchmark_files)
+    assert not any(retired in path.read_text(encoding="utf-8").lower() for path in benchmark_files)
+
+    retired_test_consumers = [path for path in (repo_root / "tests").rglob("test_*.py") if retired in path.name.lower()]
+    assert retired_test_consumers == []
+
+    makefile = (repo_root / "Makefile").read_text(encoding="utf-8")
+    assert "PICO_SCORECARD_MEMORY_" not in makefile
+    assert "--memory-summary" not in makefile
+    assert "--memory-handoff" not in makefile
+
+
+def test_pico_only_imports_myna_through_its_public_plugin_surface() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    violations: list[str] = []
+    for root in (repo_root / "pico", repo_root / "scripts"):
+        for path in root.rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.startswith("myna.") and alias.name != "myna.integrations.pico":
+                            violations.append(f"{path.relative_to(repo_root)}:{node.lineno}:{alias.name}")
+                elif isinstance(node, ast.ImportFrom):
+                    module = node.module or ""
+                    imported = {alias.name for alias in node.names}
+                    public_integration = module == "myna.integrations.pico" and imported <= {
+                        "descriptor",
+                        "open_pico_integration",
+                    }
+                    if module.startswith("myna") and not public_integration:
+                        violations.append(f"{path.relative_to(repo_root)}:{node.lineno}:{module}")
+
+    assert violations == []
 
 
 def test_clean_defaults_use_pico_state(tmp_path: Path, monkeypatch) -> None:

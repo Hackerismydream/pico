@@ -2,8 +2,8 @@
 
 > Current implementation checkpoint: PicoBench Ship-1 and its held-out semantic
 > v2 addendum, the Issue #21 V-LF closure recorded on 2026-07-27, and the
-> Issue #65 Pico-side CodeCairn implementation plus the completed Issue #70
-> joint evidence campaign. Issue #79 task-effect v2 calibration is complete,
+> current Myna public-seam integration, plus historical Issue #65 and Issue #70
+> CodeCairn evidence. Issue #79 task-effect v2 calibration is complete,
 > measurement-invalid, and blocked before its formal matrix. Campaign evidence
 > remains bound to the source commits named below.
 > Package metadata: `pico-harness 0.1.7`, Development Status Alpha.
@@ -21,7 +21,7 @@ coherent Runtime path while deliberately limiting unrelated product breadth:
 
 - CLI, native TUI, Gateway, Channels, Cron, and Subagents submit Turns through
   Spine and the shared Agent Loop.
-- Sessions, token-budgeted Context, repository-scoped CodeCairn Memory, Local
+- Sessions, token-budgeted Context, repository-scoped Myna Memory, Local
   Skills, Plugins, Providers, Tools, Tracing, usage accounting, and delivery
   remain available across those hosts.
 - Feishu, QQ, and WeCom share a deterministic Channel contract. Feishu is
@@ -49,24 +49,21 @@ coherent Runtime path while deliberately limiting unrelated product breadth:
 - The historical held-out semantic v2 addendum completed 260 records: 200
   exercised the former production EverOS retrieval path and 60 are Local-only
   BM25 controls. Those results remain bound to their source commit and are not
-  CodeCairn evidence.
-- Pico now consumes the immutable CodeCairn `v02-002` Adapter handoff, selects
-  `codecairn` in fresh config, preserves Local Skills and the generic Memory
-  Plugin contract, and contains no bundled EverOS Runtime or direct
-  dependency. The final joint campaign completed 32/32 formal Trials and
-  16/16 valid Pairs: CodeCairn passed 16/16 Verifiers versus 0/16 for
-  Memory-off, with Recall@5 of 1.0, zero stale injections, and zero
-  cross-repository leakage. The positive claim remains ineligible because every
-  hard-negative query returned three memories.
+  current Myna evidence.
+- Pico selects the separately installed Myna Plugin in fresh config, preserves
+  Local Skills and the generic Memory Plugin contract, and keeps `null` as the
+  explicit Memory-off setting. Pico carries no Myna source or local-path
+  dependency. The installed composition Gate is technical contract evidence;
+  no Myna task-effect, performance, or production-success claim exists.
 - V-R0 exists as a fail-closed release driver, but no complete V-R0 result has
   passed.
 - Evolver has a public Beta workflow, deterministic V-E0 coverage, and a
   tracked small-real subject harness. A real model has not yet completed that
   small-real run.
 
-The remaining v1 release evidence is therefore narrow but important: one real
-small-real Evolution Run verdict and one clean, commit-bound full V-R0 run
-followed by versioning and release.
+The remaining v1 release boundary includes a real small-real Evolution Run
+verdict, formal availability of the compatible Myna artifact, and one clean,
+commit-bound full V-R0 run followed by versioning and release.
 
 ## Pico Harness v0.1 portfolio milestone
 
@@ -91,12 +88,10 @@ The milestone does **not** mean any of the following:
 - crash recovery or external-side-effect exactly-once behavior exists;
 - PicoBench's main task campaign produced an eligible positive result.
 
-The Pico-side Harness v0.2 implementation has replaced active EverOS product
-coupling with an installed, repository-scoped CodeCairn Memory backend while
-preserving Local Skills. This milestone label does not set package semver. The
-joint installed-continuity and Memory-off versus CodeCairn paired campaign is
-complete and measurement-valid. It exported no eligible resume metrics because
-the hard-negative irrelevant-injection Gate failed.
+The historical Pico-side Harness v0.2 milestone replaced active EverOS product
+coupling with CodeCairn while preserving Local Skills. That former integration
+has now been replaced by the Myna public seam. The historical campaign remains
+bound to its original artifacts and is not evidence about Myna.
 
 ## Product boundary
 
@@ -108,7 +103,7 @@ the hard-negative irrelevant-injection Gate failed.
   Cron, and TUI-RPC.
 - Session create, resume, fork, export, undo, delete, and atomic persistence.
 - One Context Engine with Curator fast, slow, and deterministic fail-safe paths.
-- Installed CodeCairn Memory, Local Skills, SkillForge, and
+- Installed Myna Memory, Local Skills, SkillForge, and
   Plugin-contributed Memory backends and Tools.
 - Feishu, QQ, and WeCom adapters with isolated optional SDK extras.
 - Providers, custom OpenAI-compatible endpoints, Routing, TokenWise, Tracing,
@@ -152,16 +147,17 @@ Counts and live claims below remain bound to the named clean source commit.
 | CLI, TUI, and Gateway Runtime parity | PR #54 consumed a fresh V-P0 wheel: deterministic host Gate 1 passed; live DeepSeek V-LP 1 passed | Implemented; live Provider evidence is current only for PR #54 |
 | Spine scheduling and Turn lifecycle | PR #51 V-TE0; PR #56 retained suite | Implemented and deterministically verified |
 | Session and Context continuity | retained deterministic tests | Implemented; long-term backend state remains a separate durability domain |
-| CodeCairn Memory integration | Issue #65 implementation plus Issue #70 experiment `1c5496edfaa08212635f6218f9aaa55c3e942fcd1e79203a11a6b8c4d9b94623`: installed M2/M4 passed; 32/32 formal Trials and 16/16 valid Pairs | M2, M4, and M5 complete and measurement-valid. CodeCairn passed 16/16 versus 0/16 for Memory-off with Recall@5 1.0, but no positive metric is eligible because irrelevant injection was 3.0 against a 0.05 maximum |
+| Myna Memory integration | installed Pico plus Myna composition verifier with pinned wheels | Public Plugin identity, compatibility, lifecycle, store/recall, fresh-process provenance, abstention, and fail-closed paths are contract-verified; no task-effect, performance, or production-success claim exists |
+| Historical CodeCairn Memory integration | Issue #65 implementation plus Issue #70 experiment `1c5496edfaa08212635f6218f9aaa55c3e942fcd1e79203a11a6b8c4d9b94623` | Historical evidence bound to the recorded Pico and CodeCairn artifacts; not evidence about Myna |
 | Historical EverOS continuity | PR #47 V-O0: 134 deterministic checks plus one required live EverOS check | Historical evidence for PR #47 only; not a current backend claim |
-| Local Skills | retained deterministic tests with CodeCairn selected and Memory off | Implemented independently of Memory; there is no remote marketplace |
+| Local Skills | retained deterministic tests with Myna selected and Memory off | Implemented independently of Memory; there is no remote marketplace |
 | Persistent Cron through Spine | retained Cron tests; V-C0 delivery-resolution contract; required V-LF | Implemented; V-LF records exactly-once real Feishu delivery after Gateway restart |
 | Feishu Channel | PR #50 V-C0/V-S0 contract; required V-LF passed 2026-07-27 | Live-gated for the exact commit and scenario recorded by the V-LF report |
 | QQ and WeCom Channels | PR #50: V-C0 387 tests and V-S0 35 selections | Contract-verified Beta; no live bot claim |
 | Tracing, usage, Turn terminal state, and delivery correlation | PR #51 V-TE0 passed | Deterministic contract evidence, not live evidence |
 | PicoBench Agent task evaluation | experiment `abffb7d2fe6a76f1102741cacd3cff1ed02697be0fb37fe2fa7a910dbeb11b4d` at source commit `e6c790e`: 216/216 terminal Trials, 260/260 deterministic Retrieval Cases, and stable raw-artifact report rebuild | Ship complete but measurement invalid; one Context Pair lacks complete usage evidence, Tool disclosure regressed task pass count, and no main-campaign metric is eligible |
-| PicoBench task-effect v2 | calibration experiment `6fbc169ee80ff29e7b8822e6a26992856706a69eab71853ba3e08338410ed11f` at Pico `d6ef624` and CodeCairn `555248e`: 12/12 terminal task Trials, 10/10 measurable retrieval cases, 0/6 valid Pairs, and report digest `a5e4f79acd756276eb1b714dfc7959ac0e1e84a209df60d7b8f916412e66cde3` | Ship complete but measurement invalid. All task Trials were Provider failures, every Claim Gate is ineligible, and the formal matrix was correctly blocked. No CodeCairn task-effect claim exists |
-| Historical semantic Memory and Skill retrieval | semantic v2 experiment `98bb1e3cca2d1ee45dbebebef7f44db87fbea8ea23d1ea177843df6ba3ca2a1b` at source commit `e6c790e`: 260/260 records, including 200 former production EverOS retrieval records and 60 Local-only BM25 controls, with stable raw-artifact report rebuild | Eligible only for the recorded historical implementation; not CodeCairn evidence |
+| Historical CodeCairn task-effect v2 | calibration experiment `6fbc169ee80ff29e7b8822e6a26992856706a69eab71853ba3e08338410ed11f` at Pico `d6ef624` and CodeCairn `555248e` | Historical campaign and Provider-boundary evidence only. Every Claim Gate was ineligible; no CodeCairn or Myna task-effect claim exists |
+| Historical semantic Memory and Skill retrieval | semantic v2 experiment `98bb1e3cca2d1ee45dbebebef7f44db87fbea8ea23d1ea177843df6ba3ca2a1b` at source commit `e6c790e`: 260/260 records, including 200 former production EverOS retrieval records and 60 Local-only BM25 controls, with stable raw-artifact report rebuild | Eligible only for the recorded historical implementation; not current Myna evidence |
 | Package outside checkout | PR #50 V-P0 passed; PR #54 built and consumed a fresh V-P0 wheel | Implemented; no V-P0 run is recorded for PR #56 |
 | Sandbox | retained deterministic tests; opt-in `real_vm` tests | Direct host execution is default; BoxLite is opt-in and fail-closed when selected but unavailable |
 | Evolver lifecycle, evidence, activation, and rollback | PR #56 V-E0: 319 passed | Implemented as opt-in Beta; fixture evidence is not a benchmark result |
@@ -260,9 +256,8 @@ mechanism that must aggregate those layers on one clean release commit.
 2. **There is no release candidate.** The V-R0 driver exists, but the complete
    Gate has not passed on one clean commit. There is no Pico version bump, tag,
    release artifact set, or enabled publication workflow. Its
-   `memory_continuity` layer still emits the legacy
-   `codecairn_joint_evidence_not_authorized` gap even though Issue #70 has
-   completed the standalone Gate. Issue #24 owns the release closure.
+   `memory_continuity` layer remains inconclusive until the compatible Myna
+   distribution is formally available. Issue #24 owns the release closure.
 
 ### P1: implementation and architecture debt
 
@@ -272,11 +267,8 @@ mechanism that must aggregate those layers on one clean release commit.
   retroactively fail a completed Turn.
 - `DeliveryHub.aclose()` cancels workers and does not guarantee an in-flight
   send is flushed.
-- Session, Curator, CodeCairn, Tracing, Cron, and Evolution Run stores are not
+- Session, Curator, Myna, Tracing, Cron, and Evolution Run stores are not
   one transaction.
-- CodeCairn currently returns three rendered memories for every frozen
-  hard-negative query. A new immutable CodeCairn delivery must add abstention
-  or an injection threshold before another positive-claim campaign.
 - Only `runtime` candidates can pass G5; the other Candidate Labels remain
   fail-closed.
 - The AppWorld example is checkout-loaded. The tracked small-real benchmark
@@ -308,16 +300,15 @@ mechanism that must aggregate those layers on one clean release commit.
 | Foreground Workspace | Current directory |
 | Foreground Workspace State | `~/.pico/projects/<project-id>` |
 | Gateway / configured Workspace | `~/.pico/workspace` |
-| CodeCairn repository binding and state | CodeCairn-owned configuration selected by `codecairn init` |
+| Myna repository binding and state | Myna-owned configuration selected by `myna init` |
 
 Pico does not automatically import external product state. Pointing `--config`
 or `--workspace` at another path is explicit direct use with colocated state at
 that path, not migration.
 
-The CodeCairn operator contract requires an explicit `codecairn init` and keeps
-CodeCairn state under the CodeCairn-owned runtime root. Pico does not
-automatically read, migrate, rewrite, or delete data left by the removed
-EverOS integration.
+The Myna operator contract requires an explicit `myna init` and keeps Myna
+state under the Myna-owned runtime root. Pico does not automatically initialize,
+scan, migrate, rewrite, or delete Myna data or data left by removed integrations.
 
 ## What “v1 complete” means
 

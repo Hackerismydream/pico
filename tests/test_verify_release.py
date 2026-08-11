@@ -84,7 +84,7 @@ def test_selection_defaults_to_every_layer_in_order() -> None:
     assert release.select_layers(None) == release.LAYER_NAMES
 
 
-def test_memory_continuity_stays_blocked_without_codecairn_003(
+def test_memory_continuity_stays_blocked_until_myna_is_released(
     tmp_path: Path,
 ) -> None:
     spec = release._LAYER_BY_NAME["memory_continuity"]
@@ -94,10 +94,11 @@ def test_memory_continuity_stays_blocked_without_codecairn_003(
     assert record["status"] == release.INCONCLUSIVE
     assert record["gaps"] == [
         {
-            "gap": "codecairn_joint_evidence_not_authorized",
+            "gap": "myna_release_unavailable",
             "detail": (
-                "codecairn-003 is blocked; no joint installed continuity Gate "
-                "is authorized, so V-R0 cannot claim a release candidate"
+                "the compatible myna-memory distribution is not available from a "
+                "formal artifact source, so V-R0 cannot reproduce the installed "
+                "composition from publishable dependencies"
             ),
         }
     ]

@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 from pico.cli.tui_commands import _build_tui_agent_loop
+from pico.config.pico import MemoryConfig, PicoConfig
 from pico.tui_rpc.errors import InternalError, RpcError
 
 # ---------------------------------------------------------------------------
@@ -32,6 +33,10 @@ def _patch_agent_loop_to_raise(monkeypatch: pytest.MonkeyPatch, exc: BaseExcepti
             raise exc
 
     monkeypatch.setattr("pico.cli._helpers.make_lazy_provider", lambda config: object())
+    monkeypatch.setattr(
+        "pico.config.pico.load_pico_config",
+        lambda: PicoConfig(memory=MemoryConfig(backend=None)),
+    )
     monkeypatch.setattr("pico.agent.loop.AgentLoop", _Boom)
 
 

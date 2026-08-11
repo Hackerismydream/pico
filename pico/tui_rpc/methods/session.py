@@ -136,7 +136,7 @@ def _memory_status(agent_loop: "AgentLoop | None") -> str:
 
         raw = read_raw_or_raise(get_config_path())
         memory = raw.get("memory")
-        backend = memory.get("backend", "codecairn") if isinstance(memory, dict) else "codecairn"
+        backend = memory.get("backend", "myna") if isinstance(memory, dict) else "myna"
         return "enabled" if backend else "disabled"
     except Exception:
         return "unknown"

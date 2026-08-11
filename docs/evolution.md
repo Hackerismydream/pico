@@ -9,7 +9,7 @@ commit-bound evidence remains authoritative for individual claims.
 Pico owns the visible Agent experience: CLI, native TUI, Gateway, Cron,
 Channels, Sessions, Context, Tools, Tracing, and lifecycle coordination.
 Installed Plugins own optional capabilities behind public interfaces.
-CodeCairn, for example, owns repository-scoped Memory and its storage lifecycle.
+Myna, for example, owns repository-scoped Memory and its storage lifecycle.
 
 The Runtime is general-purpose. Pico does not present itself as a Coding Agent,
 train model weights, or treat candidate generation as autonomous improvement.

@@ -413,11 +413,11 @@ class MemoryConfig(_Base):
     persistence, personalization, and Curator Memory tools.
 
     ``user_id`` is the public Interface identity passed on the user recall
-    track. CodeCairn binds Memory by Workspace repository and does not use it
-    as a repository namespace.
+    track. Myna binds Memory by Workspace repository and does not use it as a
+    repository namespace.
     """
 
-    backend: str | None = "codecairn"
+    backend: str | None = "myna"
     """Activated backend contribution name. ``None`` disables the
     implicit Memory path while preserving Sessions, Curator state, and
     Local Skills."""

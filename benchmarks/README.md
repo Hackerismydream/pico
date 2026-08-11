@@ -36,30 +36,6 @@ semantic v2 addendum exports eligible Memory context-injection and pre-gate
 Skill candidate-retrieval metrics. See [PicoBench](picobench/README.md) for the
 exact experiment, failure, evidence, and cost boundary.
 
-The CodeCairn joint track is a separate experiment identity owned by
-[Issue #70](https://github.com/Hackerismydream/pico-harness/issues/70). It
-first verifies an exact installed Pico/CodeCairn wheel pair with no source
-checkout and no paid call, then compares only
-`memory.backend = null` with `memory.backend = "codecairn"` across frozen
-cross-session tasks. It does not relabel the historical EverOS campaign.
-Use `make verify-codecairn-continuity` for the installed continuity Gate,
-`make picobench-codecairn-smoke` for the credential-free Pack contract, and
-`make picobench-codecairn-ship` only after the post-merge Pair Manifest and
-budget approval are frozen.
-
-The completed formal experiment recorded 32/32 terminal Trials and 16/16
-valid Pairs. CodeCairn passed 16/16 task Verifiers versus 0/16 for Memory-off,
-but no positive metric is eligible because every hard-negative query returned
-three memories. See the [PicoBench result](picobench/README.md#codecairn-joint-campaign-result)
-for the exact claim boundary.
-
-The successor task-effect v2 Pack is independently owned by
-[Issue #77](https://github.com/Hackerismydream/pico-harness/issues/77). Run
-`make picobench-codecairn-task-effect-smoke` to validate its 24-task,
-100-query credential-free Stage A contract. The scripted smoke demonstrates
-solvable task paths, sealed verification, metric semantics, and offline report
-rebuild only; it is not a CodeCairn uplift result and authorizes no live call.
-
 ## Layout
 
 ```

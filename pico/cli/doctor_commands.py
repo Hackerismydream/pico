@@ -58,6 +58,15 @@ class FeaturesInfo:
 
 
 @dataclass
+class MemoryInfo:
+    backend: Optional[str]
+    state: str
+    plugin_id: Optional[str] = None
+    plugin_version: Optional[str] = None
+    error: Optional[str] = None
+
+
+@dataclass
 class GatewayInfo:
     running: bool = False
     pid: Optional[int] = None
@@ -80,6 +89,7 @@ class DoctorReport:
     paths: Optional[PathsInfo] = None
     routing: Optional[RoutingInfo] = None
     features: Optional[FeaturesInfo] = None
+    memory: Optional[MemoryInfo] = None
     gateway: Optional[GatewayInfo] = None
     probe: Optional[ProbeResult] = None
 
@@ -97,6 +107,8 @@ class DoctorReport:
             or not self.features.tui_bundle_available
             or bool(self.features.missing_channel_extras)
         ):
+            return 1
+        if self.memory is None or self.memory.state == "error":
             return 1
         if self.probe is not None and not self.probe.ok:
             return 2
@@ -123,6 +135,18 @@ def _gather_static_checks() -> DoctorReport:
     except Exception:
         return report
     report.config_loaded = True
+
+    from pico.cli._plugin_stack import inspect_memory_backend
+    from pico.config.pico import load_pico_config
+
+    memory = inspect_memory_backend(load_pico_config(config_path))
+    report.memory = MemoryInfo(
+        backend=memory.backend,
+        state=memory.state,
+        plugin_id=memory.plugin_id,
+        plugin_version=memory.plugin_version,
+        error=memory.error,
+    )
 
     runtime_paths = resolve_foreground_paths(config)
     paths.workspace_path = str(runtime_paths.workspace)
@@ -267,6 +291,18 @@ def _render_human_output(report: DoctorReport) -> None:
         tui_label = "[green]available[/green]" if features.tui_bundle_available else "[red]missing[/red]"
         console.print(f"  TUI bundle:  {tui_label}")
 
+    memory = report.memory
+    if memory is not None:
+        console.print("\n[bold]Memory[/bold]")
+        if memory.state == "disabled":
+            console.print("  Backend:     [dim]disabled[/dim]")
+        elif memory.state == "available":
+            owner = f"{memory.plugin_id} {memory.plugin_version}".strip()
+            console.print(f"  Backend:     [green]{memory.backend}[/green] [dim]({owner})[/dim]")
+        else:
+            console.print(f"  Backend:     [red]{memory.backend} unavailable[/red]")
+            console.print(f"  Remedy:      {memory.error}")
+
     gateway = report.gateway
     if gateway is not None:
         console.print("\n[bold]Gateway[/bold]")
@@ -317,6 +353,8 @@ def _render_human_output(report: DoctorReport) -> None:
     elif report.features is not None and report.features.missing_channel_extras:
         names = ", ".join(f"channel-{name}" for name in report.features.missing_channel_extras)
         console.print(f"[red]✗ Enabled Channel dependencies are missing:[/red] {names}")
+    elif report.memory is not None and report.memory.state == "error":
+        console.print(f"[red]✗ Memory backend is unavailable:[/red] {report.memory.error}")
 
 
 def register(app: typer.Typer) -> None:

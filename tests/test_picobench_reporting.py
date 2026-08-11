@@ -7,8 +7,6 @@ from pathlib import Path
 import pytest
 
 from benchmarks.picobench import rebuild_report, run
-from benchmarks.picobench.artifacts import ArtifactStore
-from benchmarks.picobench.canonical import canonical_digest
 from benchmarks.picobench.claims import ClaimRuleResult, evaluate_claim_rules
 from benchmarks.picobench.coverage import assess_pair_coverage
 from benchmarks.picobench.protocol import (
@@ -25,7 +23,6 @@ from benchmarks.picobench.records import (
     VerificationState,
     VerifierResult,
 )
-from benchmarks.picobench.reducer import Reduction
 from benchmarks.picobench.registry import PackRegistry
 from benchmarks.picobench.report import (
     FullReport,
@@ -35,7 +32,6 @@ from benchmarks.picobench.report import (
 from benchmarks.picobench.schema import (
     ClaimRule,
     ExecutionPolicy,
-    ExperimentRef,
     ExperimentSpec,
     PackDefinition,
     PairSpec,
@@ -132,79 +128,6 @@ def test_claim_rules_fail_closed_on_missing_prerequisite_or_measurement() -> Non
 
     assert missing_prerequisite.rules[0].reason == "prerequisite_not_met"
     assert invalid_measurement.positive_claim_eligible is False
-
-
-def test_independent_claim_states_fail_closed_on_invalid_measurement(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    spec_payload = {"claim_rules": []}
-    pack_definitions: list[object] = []
-    experiment_id = canonical_digest(
-        {
-            "spec": spec_payload,
-            "pack_definitions": pack_definitions,
-        }
-    )
-    ref = ExperimentRef(
-        experiment_id=experiment_id,
-        root=tmp_path / experiment_id,
-    )
-    ArtifactStore(ref).freeze_manifest(
-        {
-            "experiment_id": experiment_id,
-            "plan_digest": experiment_id,
-            "spec": spec_payload,
-            "pack_definitions": pack_definitions,
-        }
-    )
-    reduction = Reduction(
-        experiment_id=experiment_id,
-        ship_complete=True,
-        measurement_valid=False,
-        planned_trials=0,
-        terminal_trials=0,
-        planned_retrieval_cases=0,
-        terminal_retrieval_cases=0,
-        selected_status_counts={},
-        first_attempt_status_counts={},
-        all_attempt_status_counts={},
-        retrieval_status_counts={},
-        retrieval_first_attempt_status_counts={},
-        retrieval_all_attempt_status_counts={},
-        pair_summaries=(),
-        metrics={
-            "codecairn_retrieval_v2.claim_eligible": True,
-            "codecairn_task_success_v2.claim_eligible": True,
-            "codecairn_efficiency_v2.claim_eligible": True,
-        },
-        findings=("integrity_gate_failed",),
-    )
-    monkeypatch.setattr(
-        "benchmarks.picobench.report.reduce_experiment",
-        lambda _ref: reduction,
-    )
-
-    report = rebuild_full_report(ref)
-    summary = json.loads(
-        (ref.root / "summary.json").read_text(
-            encoding="utf-8",
-        )
-    )
-    cv_metrics = json.loads(
-        (ref.root / "cv-metrics.json").read_text(
-            encoding="utf-8",
-        )
-    )
-
-    assert report.positive_claim_eligible is False
-    assert report.retrieval_claim_eligible is False
-    assert report.task_success_claim_eligible is False
-    assert report.efficiency_claim_eligible is False
-    assert report.metrics["codecairn_retrieval_v2.claim_eligible"] is False
-    assert summary["retrieval_claim_eligible"] is False
-    assert cv_metrics["retrieval_claim_eligible"] is False
-    assert cv_metrics["eligible_metrics"] == {}
 
 
 def test_cv_metrics_require_every_rule_in_a_capability_group_to_pass() -> None:

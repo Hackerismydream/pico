@@ -34,7 +34,7 @@ flowchart LR
     LOOP --> TOOLS["Tool Registry / MCP / Sandbox"]
     LOOP --> PROVIDER["Provider / Routing / TokenWise"]
     LOOP --> SESSION["Session"]
-    CTX --> MEMORY["CodeCairn Memory"]
+    CTX --> MEMORY["Myna Memory"]
     CTX --> SKILLS["Local Skills"]
     LOOP --> TRACE["Tracing + Usage"]
     LOOP --> SPINE
@@ -44,7 +44,7 @@ flowchart LR
 Hosts own interaction policy and output adapters. Runtime Assembly owns the
 shared Config-derived Agent composition. Spine owns ordering, cancellation, and
 Turn lifecycle. Agent Loop owns one Turn's LLM/Tool work. Session, Curator,
-CodeCairn, Tracing, and Evolver artifacts are separate persistence domains,
+Myna, Tracing, and Evolver artifacts are separate persistence domains,
 not one database transaction.
 
 ## Architectural invariants
@@ -56,7 +56,7 @@ not one database transaction.
 3. **One Context Engine.** `ContextAssembler` owns the prompt pipeline. The old
    `legacy`, `default`, and `curator` engine choice no longer exists; the
    Curator is segment 6.
-4. **Transcript truth stays in Session.** Curator archives and CodeCairn
+4. **Transcript truth stays in Session.** Curator archives and Myna
    indexes help selection and recall but do not replace the append-only Session
    record.
 5. **Memory is explicit and fail-closed.** `memory.backend = null` disables
@@ -164,13 +164,13 @@ not import benchmark code during normal operation.
 | Gateway / configured Workspace | `~/.pico/workspace` unless overridden | Fixed Workspace with colocated state |
 | Session transcript | `<workspace-state>/sessions/<channel>/<chat_id>.jsonl` | Conversation record |
 | Curator state | `<workspace-state>/memory/.curator/` | Context selection archive, manifest, working state |
-| CodeCairn | CodeCairn-owned runtime selected by `codecairn init` | Repository-scoped durable Memory |
+| Myna | Myna-owned runtime selected by `myna init` | Repository-scoped durable Memory |
 | Tracing | `~/.pico/traces/` unless override | Best-effort local observability |
 | Cron | Pico global Cron store | Persistent scheduled jobs and fire state |
 | Evolution Run | Run-spec `work_dir` | Journal, nodes, trials, sealed results, activation bundles |
 
 These domains have their own durability rules. A successful Session save
-followed by a CodeCairn store failure can produce a failed Turn with a durable
+followed by a Myna store failure can produce a failed Turn with a durable
 transcript but no new repository Memory. Documentation and recovery logic must
 not imply cross-domain atomicity.
 
@@ -201,7 +201,7 @@ Not supported:
   that sink. It does not retroactively fail the completed Agent Turn.
 - `DeliveryHub.aclose()` cancels outlet workers and does not guarantee an
   in-flight send is flushed.
-- Session, Curator, CodeCairn, Tracing, and Evolution Run artifacts are not one
+- Session, Curator, Myna, Tracing, and Evolution Run artifacts are not one
   transaction.
 - the direct Sandbox backend executes on the host; workspace and dangerous
   command checks are guardrails, not OS isolation.

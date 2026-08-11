@@ -61,9 +61,7 @@ _REQUIRED_FILES = {
     "pico/tracing/viewer/server.js",
     "pico/tracing/viewer/ui/app.js",
 }
-_CODECAIRN_REQUIREMENT = (
-    "codecairn @ git+https://github.com/hackerismydream/codecairn.git@a501fe29782e69dd7fc9a9277ba6743b2f2b4bc6"
-)
+_RETIRED_MEMORY_DEPENDENCIES = ("codecairn", "everalgo", "everos")
 
 _EXTRA_IMPORTS = {
     "channel-feishu": ("lark_oapi",),
@@ -275,11 +273,13 @@ def _validate_wheel(snapshot: WheelSnapshot, entrypoint: str) -> None:
             f"wheel must advertise exactly the retained Channel extras: {sorted(_RETAINED_CHANNEL_EXTRAS)}"
         )
     requirements = tuple(value.lower() for value in metadata.get_all("Requires-Dist", []))
-    if _CODECAIRN_REQUIREMENT not in requirements:
-        raise VerificationError("wheel does not pin the accepted CodeCairn commit")
-    for package in ("everos", "everalgo"):
+    for package in _RETIRED_MEMORY_DEPENDENCIES:
         if any(re.match(rf"^{package}(?:\W|$)", requirement) for requirement in requirements):
             raise VerificationError(f"wheel depends directly on removed package: {package}")
+    if any(re.match(r"^myna-memory(?:\W|$)", requirement) for requirement in requirements):
+        raise VerificationError("wheel depends on unpublished myna-memory distribution")
+    if any(" @ file:" in requirement or " @ /" in requirement for requirement in requirements):
+        raise VerificationError("wheel contains a local filesystem dependency")
     for package in _REMOVED_CHANNEL_DEPENDENCIES:
         if any(re.match(rf"^{re.escape(package)}(?:\W|$)", requirement) for requirement in requirements):
             raise VerificationError(f"wheel depends on removed Channel package: {package}")

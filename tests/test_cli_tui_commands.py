@@ -144,8 +144,8 @@ def test_tui_build_marks_plugin_error_message_public(
     from pico.tui_rpc.errors import InternalError
 
     message = (
-        "memory.backend='everos' is no longer supported; initialize "
-        "CodeCairn and set memory.backend to 'codecairn', or set it to null"
+        "memory.backend='codecairn' is no longer supported; install and initialize "
+        "Myna, then set memory.backend to 'myna', or set it to null"
     )
 
     def _raise(*args, **kwargs):

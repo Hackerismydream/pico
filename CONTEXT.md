@@ -340,7 +340,7 @@ protected + most relevant + most recent messages, no LLM involved.
 **Historical Continuity Evidence**:
 The removed EverOS V-O0 artifact that separated deterministic Session,
 Context, and Turn checks from real Provider execution. It remains historical
-evidence for its recorded commit, not a current CodeCairn Gate.
+evidence for its recorded commit, not a current Memory Gate.
 
 **Archive**:
 Curator's lossless eviction: messages written verbatim to disk with a reference,
@@ -370,18 +370,18 @@ dependency, dual-track Skill source, feedback routing, onboarding, and
 remains valid only for the commits and experiments that produced it; Pico
 neither reads nor deletes operator data left by that integration.
 
-**CodeCairn Memory Adapter** (Pico Harness v0.2):
-The CodeCairn-owned `pico.plugins` Implementation of Pico's `MemoryBackend`
-Interface. It binds the Pico Workspace to an initialized CodeCairn repository,
+**Myna Memory Adapter**:
+The Myna-owned `pico.plugins` Implementation of Pico's `MemoryBackend`
+Interface. It binds the Pico Workspace to an initialized Myna repository,
 maps user-track recall to repository recall, captures Session-normalized
 after-Turn slices, and returns one compiled Recall Context as a concrete Pico
 `Memory`. The installed Adapter is Pico's current default backend.
-_Avoid_: CodeCairn backend in Pico core - Pico owns the Interface and default
-selection; CodeCairn owns the Adapter.
+_Avoid_: Myna backend in Pico core - Pico owns the Interface and default
+selection; Myna owns the Adapter.
 
 **Pico Source Journal** (Pico Harness v0.2):
-The CodeCairn-owned append-only source that durably records persisted Pico
-after-Turn slices before CodeCairn imports them as Agent Trace. Boundary
+The Myna-owned append-only source that durably records persisted Pico
+after-Turn slices before Myna imports them as Agent Trace. Boundary
 `pico_turn_end` closes an imported slice without asserting task success. The
 Journal supports prefix replay and crash-tail recovery; it is not the mutable
 Pico Session JSONL and does not provide mid-Turn recovery.
@@ -622,8 +622,8 @@ restore the reviewed pre-candidate state.
 **Release Layer**:
 One Gate or audit that `scripts/verify_release.py` runs and records as a unit
 (`LAYERS`): the retained suite, the TUI bundle, V-P0, the host gate, V-LP,
-V-C0/V-S0, V-LF, the explicitly blocked CodeCairn Memory-continuity
-placeholder, V-TE0, V-E0, the dependency audit, the asset gate, and the small
+V-C0/V-S0, V-LF, the installed Memory-composition layer, V-TE0, V-E0, the
+dependency audit, the asset gate, and the small
 real Evolution Run. Each layer carries its commands, deciding exit code, hashed log,
 imported or produced sub-report, and one of the evidence classes `deterministic`,
 `package`, `live`, or `audit`.
@@ -666,8 +666,8 @@ _Avoid_: treating Workspace State as the Agent's tool working directory.
 **Pico State**:
 Persistent data owned by the Pico product. Global configuration and Runtime
 data default to `~/.pico`, and project-local Workspace State to
-`~/.pico/projects/<project-id>`. CodeCairn owns its repository binding and runtime root,
-selected by explicit `codecairn init`. `PICO_HOME` may relocate the global Pico
+`~/.pico/projects/<project-id>`. Myna owns its repository binding and runtime root,
+selected by explicit `myna init`. `PICO_HOME` may relocate the global Pico
 root. Pico does not import external product state implicitly; an explicit
 `--config` or `--workspace` path is direct operation on that location, not a
 migration protocol.
@@ -682,11 +682,11 @@ under `agent_memory/profile/` (soul.md, agent.md) and `user_memory/profile/` (us
 `TOOLS.md` stays at the Workspace State root.
 
 **Onboarding** (`pico onboard` → `run_wizard`):
-The first-run wizard (LLM provider -> sandbox -> channel -> CodeCairn or
+The first-run wizard (LLM provider -> sandbox -> channel -> Myna or
 Memory-off) that also seeds Workspace State via `sync_workspace_templates()` and
 can complete a first Runtime Turn; gated at startup by
-`ensure_configured_or_onboard()`. CodeCairn selection requires the operator to
-run `codecairn init` in the target Git repository.
+`ensure_configured_or_onboard()`. Myna selection requires the operator to run
+`myna init` in the target Git repository.
 
 **Bootstrap Files**:
 The identity files concatenated into every prompt — `soul.md` + `agent.md` + `TOOLS.md` —

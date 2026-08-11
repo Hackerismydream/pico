@@ -38,7 +38,7 @@ wheel the host, live-provider, and Evolution Run layers consume.
 | `v_lp` | V-LP | `make verify-live-provider` | live |
 | `v_c0_s0` | V-C0 / V-S0 | `make verify-channels` | deterministic |
 | `v_lf` | V-LF | `make verify-live-feishu` | live |
-| `memory_continuity` | CodeCairn M2/M4 | currently unwired; `run_memory_continuity` still returns an inconclusive legacy gap | package |
+| `memory_continuity` | Myna installed composition | blocked until the compatible distribution is formally available | package |
 | `v_te0` | V-TE0 | `make verify-turn-evidence` | deterministic |
 | `v_e0` | V-E0 | `make verify-evolver` | deterministic |
 | `deps_audit` | dependency audit | `pip-audit` plus `npm audit` with and without dev dependencies | audit |
@@ -46,14 +46,12 @@ wheel the host, live-provider, and Evolution Run layers consume.
 | `evolution` | small real Evolution Run | `pico evolve check/run/interrupt/run/status/finalize` from the installed wheel | live |
 
 `v_te0` and `v_e0` spend no live model calls and stay deterministic. The
-historical EverOS V-O0 layer was removed with that product integration.
-`memory_continuity` records
-`codecairn_joint_evidence_not_authorized = inconclusive` instead of silently
-dropping the release requirement. Issue #70 has now completed the standalone
-CodeCairn joint Gate, but V-R0 has not yet been wired to execute and bind that
-Gate. The gap name is therefore a stale implementation label, not the current
-authority state. V-R0 cannot pass until the driver and its tests consume the
-completed verifier and current-commit report.
+historical EverOS and CodeCairn layers were removed with those product
+integrations. `memory_continuity` records
+`myna_release_unavailable = inconclusive` instead of silently dropping the
+release requirement. V-R0 cannot pass until the compatible Myna distribution
+is formally available and the driver can reproduce the installed composition
+without a local filesystem dependency.
 
 ## Per-layer record
 
@@ -110,7 +108,7 @@ carries the layer, the gap name, and a detail string.
 | `live_provider_credentials_missing` | `PICO_LIVE_API_KEY` is absent |
 | `feishu_credentials_missing` | Any `PICO_LIVE_FEISHU_*` variable or `PICO_LIVE_API_KEY` is absent |
 | `distribution_handoff_missing` | V-P0 did not hand off a verified wheel |
-| `codecairn_joint_evidence_not_authorized` | Legacy gap currently emitted because V-R0 has not yet been wired to the completed CodeCairn continuity Gate |
+| `myna_release_unavailable` | The compatible Myna distribution cannot yet be resolved from a formal artifact source |
 | `small_real_files_missing` | The small real Evolution Run inputs are absent |
 | `evolution_interrupt_not_observed` | The Evolution Run exited before the interrupt, leaving resume unproven |
 | `dependency_finding_blocking` | A dependency finding the ledger does not waive |
@@ -126,8 +124,8 @@ checkout at all - the V-P0 handoff, the small real Evolution Run files - are
 
 Overall status is `passed` only when the run selected every layer, named no
 gap, and every layer passed. Current `main` cannot reach that state because the
-explicit `memory_continuity` placeholder remains inconclusive even though
-`codecairn-003` is complete; the driver has not yet been wired to the new Gate.
+explicit `memory_continuity` placeholder remains inconclusive until Myna is
+formally available and reproducible from publishable dependencies.
 Otherwise the most severe layer status wins, in
 the order `failed`, `provider_failure`, `infrastructure_failure`,
 `inconclusive`; a run that is not release-eligible and has nothing more severe

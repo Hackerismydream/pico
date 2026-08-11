@@ -98,6 +98,29 @@ class TestActivation:
         factory = reg.get_memory_backend_factory("example")
         assert factory is fake_factory
 
+    def test_failed_factory_import_does_not_leave_partial_activation(self) -> None:
+        def fake_factory(ctx):
+            return ctx
+
+        _install_test_module("_test_plugin_transaction", {"make_backend": fake_factory})
+        reg = PluginRegistry()
+
+        with pytest.raises(PluginFactoryImportError):
+            reg.activate(
+                [
+                    _make_discovered(
+                        "transactional",
+                        backends=[
+                            ("first", "_test_plugin_transaction:make_backend"),
+                            ("second", "_missing_plugin_transaction:make_backend"),
+                        ],
+                    )
+                ]
+            )
+
+        assert reg.activated_ids() == []
+        assert reg.memory_backend_names() == []
+
     def test_factory_invoked_with_context(self, tmp_path: Path) -> None:
         captured = {}
 

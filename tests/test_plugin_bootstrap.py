@@ -153,38 +153,6 @@ class TestEndToEnd:
         )
         assert backend == {"workspace": str(ws), "mode": "embedded"}
 
-    async def test_installed_codecairn_contract(self, tmp_path: Path) -> None:
-        registry = assemble_plugin_registry(
-            entry_points_group="pico.plugins",
-        )
-
-        assert registry.activated_ids() == ["codecairn-memory"]
-        assert registry.memory_backend_names() == ["codecairn"]
-        manifest = registry.manifest_for("codecairn-memory")
-        assert manifest is not None
-        assert manifest.contributes.memory_backends[0].factory == ("codecairn.integrations.pico.backend:make_backend")
-        backend = registry.build_memory_backend(
-            "codecairn",
-            config={},
-            services=ServiceLocator(workspace=tmp_path),
-        )
-        assert type(backend).__module__ == "codecairn.integrations.pico.backend"
-        with pytest.raises(
-            RuntimeError,
-            match=r"codecairn_plugin_config_invalid.*remove Pico-side",
-        ):
-            registry.build_memory_backend(
-                "codecairn",
-                config={"runtime_root": str(tmp_path / "forbidden")},
-                services=ServiceLocator(workspace=tmp_path),
-            )
-
-        with pytest.raises(
-            RuntimeError,
-            match=r"codecairn_not_initialized.*codecairn init",
-        ):
-            await backend.start()
-
     def test_unknown_backend_name(self, tmp_path: Path) -> None:
         registry = assemble_plugin_registry(
             bundled_dir=tmp_path,
@@ -197,7 +165,7 @@ class TestEndToEnd:
                 services=ServiceLocator(workspace=tmp_path),
             )
 
-    def test_missing_selected_codecairn_has_install_remediation(
+    def test_missing_selected_myna_has_install_remediation(
         self,
         tmp_path: Path,
     ) -> None:
@@ -206,7 +174,7 @@ class TestEndToEnd:
 
         with pytest.raises(
             PluginNotFoundError,
-            match=r"reinstall Pico.*uv sync.*memory\.backend.*null",
+            match=r"install the myna-memory distribution.*myna init.*memory\.backend.*null",
         ):
             maybe_build_memory_backend(
                 tmp_path,

@@ -359,7 +359,7 @@ The Gateway sink also:
 | Agent recovery and overflow | `tests/test_agent_loop_context_overflow.py`; `tests/test_agent_loop_tool_loop_break.py` |
 | Installed host parity | `make verify-runtime-hosts` with a V-P0 wheel |
 | Live Provider host path | `make verify-live-provider` with required credentials |
-| Long-term Memory continuity | `make verify-codecairn-continuity`; Issue #70 records the completed installed Gate and paired campaign |
+| Long-term Memory continuity | `make verify-myna-integration` with pinned Pico and Myna wheels; proves the installed public contract only |
 
 See [Developer guide](../dev.md) for exact prerequisites and evidence
 classification.

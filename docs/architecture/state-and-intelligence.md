@@ -17,7 +17,7 @@ their failure boundaries.
 | local Workspace Skills | `<workspace-state>/skills/` | Local Skill catalog |
 | user Plugins | `~/.pico/plugins/` | Plugin discovery |
 | project Plugins | `<process-cwd>/.pico/plugins/` | Plugin discovery; note this uses current working directory, not configured Workspace |
-| CodeCairn repository Memory | CodeCairn-owned runtime root | Initialized with `codecairn init` |
+| Myna repository Memory | Myna-owned runtime root | Initialized with `myna init` |
 | Tracing | `~/.pico/traces/` | `PICO_TRACING_DIR` |
 | Evolution Run | run-spec `work_dir` | Evolver |
 
@@ -72,7 +72,7 @@ The Portable Session Export schema `pico.session.export.v1` contains a
 canonical payload, Markdown view, and SHA-256 digest. Verification does not
 depend on the source Session file remaining present.
 
-Deleting a Session does not imply deletion of Curator archives, CodeCairn
+Deleting a Session does not imply deletion of Curator archives, Myna
 Memory, or traces. Those domains have separate ownership.
 
 ## Unified Context Engine
@@ -160,10 +160,10 @@ The public compatibility Interface accepts exactly one track id:
 - `agent_id`: reserved for third-party backends that still implement an Agent
   track.
 
-The current host calls only the user lane. CodeCairn interprets it as
+The current host calls only the user lane. Myna interprets it as
 repository-scoped recall; the `user_id` does not choose a repository or
 namespace. The Workspace selected by Runtime Assembly determines the
-initialized CodeCairn repository. Local Skills do not use the Memory backend,
+initialized Myna repository. Local Skills do not use the Memory backend,
 and the active host does not dispatch Memory feedback.
 
 The broader `agent_id` and `feedback` methods remain in the public Protocol so
@@ -171,7 +171,7 @@ existing third-party Memory Plugins do not break during this replacement.
 
 ### Enable, disable, and failure
 
-- `memory.backend = "codecairn"` selects the installed CodeCairn contribution
+- `memory.backend = "myna"` selects the installed Myna contribution
   by default.
 - `memory.backend = null` explicitly disables Memory recall, persistence,
   personalization Memory, and Curator Memory Tools.
@@ -183,10 +183,10 @@ existing third-party Memory Plugins do not break during this replacement.
 
 The difference is intentional. A selected persistence backend must not
 silently lose Memory, while an optional Plugin Tool must not prevent the Agent
-from booting. The removed `memory.backend = "everos"` value is not rewritten;
-startup fails with instructions to initialize CodeCairn and select
-`codecairn`, or explicitly select `null`. Pico neither reads nor deletes the
-operator's old EverOS data.
+from booting. The removed `memory.backend = "codecairn"` and
+`memory.backend = "everos"` values are not rewritten; startup fails with
+instructions to install and initialize Myna and select `myna`, or explicitly
+select `null`. Pico neither reads nor deletes data owned by retired backends.
 
 ## Plugin Registry
 
@@ -200,8 +200,9 @@ Discovery sources and conflict priority:
 | 1 | entry point | Python entry-point group `pico.plugins` |
 
 Directory discovery parses `pico-plugin.toml` without importing backend code.
-Entry-point package resource discovery may import the package, so third-party
-plugin `__init__.py` files must remain cheap and safe.
+Entry-point discovery reads the manifest from the owning distribution's file
+inventory before importing its package. Distribution id, version, and Pico
+compatibility must match the manifest before activation begins.
 
 Activated Plugins may contribute:
 
@@ -212,28 +213,30 @@ Duplicate contribution names fail. Bundled Plugins cannot be silently
 shadowed by lower-priority copies. `plugins.disabled` is an explicit denylist.
 There is currently no remote discovery or installation surface.
 
-## Installed CodeCairn adapter
+## Installed Myna adapter
 
-Pico depends on an immutable CodeCairn Git commit. The installed distribution
-publishes entry point `codecairn` in group `pico.plugins`, manifest id
-`codecairn-memory`, and backend contribution `codecairn`. Pico source imports
-only the public `MemoryBackend` carrier and never CodeCairn private modules.
+The separately installed `myna-memory` distribution publishes entry point
+`myna` in group `pico.plugins`, manifest id `myna-memory`, and backend
+contribution `myna`. Pico source consumes only the public Plugin manifest and
+`MemoryBackend` seam and never imports Myna private modules. Until that exact
+distribution is published, source builds intentionally carry no permanent
+Myna dependency.
 
 The operator initializes the target Git repository explicitly:
 
 ```bash
-codecairn init
+myna init
 ```
 
 At startup the adapter resolves the Pico Workspace, validates the repository
 binding and retrieval profile, and fails closed if initialization,
-configuration, provider, journal, or index requirements are invalid. It does
-not consult process cwd for repository identity. Pico exposes no CodeCairn
-runtime-root, repository, profile, or credential override.
+configuration, repository binding, journal, or index requirements are invalid.
+Pico does not initialize, scan, or migrate repository history on the user's
+behalf.
 
 The Adapter returns one compiled, source-attributed Recall Context for the user
 lane. After a Turn, Pico passes the same normalized message slice that Session
-persistence accepted to `store()`. CodeCairn owns its Source Journal, import,
+persistence accepted to `store()`. Myna owns its Source Journal, import,
 index, ranking, packing, durability, and repository identity. Synchronous
 operations run off the host event loop.
 
@@ -305,17 +308,17 @@ with a warning.
 flowchart TD
     SESSION["Session JSONL\ntranscript truth"]
     CURATOR["Curator archive / manifest /\nworking state"]
-    CODECAIRN["CodeCairn repository Memory\njournal + index"]
+    MYNA["Myna repository Memory\njournal + index"]
     TRACE["Tracing JSONL + artifacts\nbest-effort observability"]
 
     SESSION --> CURATOR
-    SESSION --> CODECAIRN
+    SESSION --> MYNA
     SESSION --> TRACE
 ```
 
 Arrows show data flow, not a transaction:
 
-- Session save can succeed before CodeCairn store fails;
+- Session save can succeed before Myna store fails;
 - Curator archive can exist independently of a later Session mutation;
 - tracing may be absent because it is non-interfering;
 - Session deletion does not promise semantic-Memory erasure;
@@ -331,13 +334,12 @@ for every domain explicitly.
 | Session atomicity, corruption, resolution, fork, export | retained Session tests |
 | Context segment order, budget, fast/slow/fail-safe | retained Context and Curator tests |
 | Memory disabled isolation | Agent Loop and Runtime Assembly contract tests |
-| CodeCairn adapter discovery and failure propagation | installed Plugin and backend contract tests |
+| Myna adapter discovery and failure propagation | installed Plugin and backend contract tests |
 | normalized post-Turn storage | Session-normalization and Agent Loop pipeline tests |
-| repository-scoped store and recall | installed CodeCairn deterministic integration smoke |
+| repository-scoped store and recall | installed Myna deterministic integration smoke |
 | Local Skill routing with Memory on/off | SkillForge and Skill-router tests |
 | Plugin discovery and contribution conflicts | Plugin registry tests |
 
 These deterministic checks prove package identity, lifecycle, store/recall
-plumbing, and Local Skill independence. The separate paired campaign is now
-complete and measurement-valid, but its positive claim remains ineligible
-because the treatment returned three memories for every hard-negative query.
+plumbing, and Local Skill independence. They are contract evidence only; no
+Pico task-effect, performance, or production-success claim follows from them.

@@ -15,9 +15,8 @@
 - [Architecture](./docs/architecture/README.md) — package ownership, dependency direction, lifecycle, and cross-module flows
 - [Agent application evaluation](./docs/evaluation/README.md) — PicoBench
   boundary, experiment terms, and claim discipline
-- [CodeCairn Memory backend](./docs/specs/codecairn-memory-backend.md) -
-  current v0.2 Interface, Adapter ownership, durable source capture, and
-  completed joint evidence boundary
+- [Myna Memory backend](./docs/specs/myna-memory-backend.md) - current public
+  Interface, installed Adapter ownership, and durable source capture boundary
 - [Project status](./docs/project-status.md) — implementation and evidence boundary
 - [Roadmap](./docs/roadmap.md) — committed issues and non-committed future candidates
 
@@ -27,12 +26,10 @@
   (`pico/tui_rpc/`); the TUI never imports Runtime internals.
 - **Hosts ↔ Runtime**: CLI, TUI, Gateway, Cron, and Channels submit Turns through
   Spine and share the Turn Runner contract.
-- **Pico to CodeCairn integration**: Pico keeps the `MemoryBackend` Interface and
-  CodeCairn owns the installed Adapter, Pico Source Journal, repository
-  identity, import, and recall Implementation. The Pico Harness v0.2
-  implementation and joint continuity campaign are complete. The latest
-  paired measurement is valid but not eligible for a positive resume claim
-  because CodeCairn did not abstain on hard-negative queries.
+- **Pico to Myna integration**: Pico keeps the `MemoryBackend` Interface and
+  Myna owns the installed Adapter, Pico Source Journal, repository identity,
+  import, and recall Implementation. Installed contract checks do not establish
+  task-effect, performance, or production-success claims.
 - **Glossary ↔ architecture docs**: this map and the two `CONTEXT.md` files own
   canonical terminology. Architecture documents explain relationships and
   lifecycle but do not coin competing synonyms.

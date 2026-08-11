@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import textwrap
-from pathlib import Path
+from importlib import metadata
+from pathlib import Path, PurePosixPath
+from types import SimpleNamespace
+
+import pytest
 
 from pico.plugin import (
     DiscoveredPlugin,
+    PluginCompatibilityError,
     PluginDiscovery,
+    PluginIdentityError,
     Source,
 )
 
@@ -80,6 +86,81 @@ class TestSingleSource:
         out = d.discover()
         # Broken one is skipped; valid one returned.
         assert [p.manifest.id for p in out] == ["ok"]
+
+    def test_incompatible_manifest_fails_closed(self, tmp_path: Path) -> None:
+        _write_manifest(tmp_path, "future", extra='pico = ">=0.2,<0.3"')
+
+        with pytest.raises(PluginCompatibilityError, match=r"requires Pico >=0.2,<0.3.*installed Pico is 0.1.7"):
+            PluginDiscovery(bundled_dir=tmp_path, pico_version="0.1.7").discover()
+
+
+class TestEntryPointIdentity:
+    @staticmethod
+    def _entry_point(tmp_path: Path, *, plugin_id: str = "myna-memory", version: str = "0.1.1rc3"):
+        relative = PurePosixPath("myna/integrations/pico/pico-plugin.toml")
+        manifest = tmp_path / relative
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(
+            textwrap.dedent(f"""
+                [plugin]
+                id = "{plugin_id}"
+                version = "{version}"
+                pico = ">=0.1,<0.2"
+                enabled_by_default = true
+
+                [[plugin.contributes.memory_backends]]
+                name = "myna"
+                factory = "myna.integrations.pico.backend:make_backend"
+            """),
+            encoding="utf-8",
+        )
+        distribution = SimpleNamespace(
+            name="myna-memory",
+            version="0.1.1rc3",
+            files=[relative],
+            locate_file=lambda path: tmp_path / path,
+        )
+        return SimpleNamespace(
+            name="myna",
+            value="myna.integrations.pico",
+            dist=distribution,
+        )
+
+    def test_reads_installed_manifest_without_importing_plugin_package(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        entry_point = self._entry_point(tmp_path)
+        monkeypatch.setattr(metadata, "entry_points", lambda **_: (entry_point,))
+
+        discovered = PluginDiscovery(entry_points_group="pico.plugins", pico_version="0.1.7").discover()
+
+        assert discovered[0].manifest.id == "myna-memory"
+        assert discovered[0].manifest.version == "0.1.1rc3"
+        assert discovered[0].manifest.pico == ">=0.1,<0.2"
+        assert discovered[0].manifest.contributes.memory_backends[0].name == "myna"
+
+    @pytest.mark.parametrize(
+        ("plugin_id", "version", "message"),
+        [
+            ("other-memory", "0.1.1rc3", "distribution 'myna-memory'.*manifest id 'other-memory'"),
+            ("myna-memory", "9.9.9", "distribution version 0.1.1rc3.*manifest version 9.9.9"),
+        ],
+    )
+    def test_distribution_and_manifest_identity_must_match(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        plugin_id: str,
+        version: str,
+        message: str,
+    ) -> None:
+        entry_point = self._entry_point(tmp_path, plugin_id=plugin_id, version=version)
+        monkeypatch.setattr(metadata, "entry_points", lambda **_: (entry_point,))
+
+        with pytest.raises(PluginIdentityError, match=message):
+            PluginDiscovery(entry_points_group="pico.plugins", pico_version="0.1.7").discover()
 
 
 # ---------------------------------------------------------------------------

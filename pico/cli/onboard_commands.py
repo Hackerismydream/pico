@@ -1,15 +1,15 @@
-"""Four-step onboarding wizard: LLM provider → sandbox → channel → memory.
+"""Four-step onboarding wizard: provider → Memory + first Turn → sandbox → channel.
 
 Goal: get a new user from ``pip install`` to a working agent in a few
 minutes, without ever opening ``~/.pico/config.json`` or
-the CodeCairn repository binding.
+the Myna repository binding.
 
-Steps (mirrors ``my_docs/temp/onboard-flow.mermaid``):
+Steps:
   0. Welcome
-  1. LLM provider (required; multi-provider, in-step connectivity + test probe)
-  2. Sandbox / run location (optional, single-select)
-  3. Chat channel (optional, stackable)
-  4. CodeCairn repository memory (selected by default; explicit init required)
+  1. LLM provider (required; multi-provider, credential check + model choice)
+  2. Myna repository Memory (default) and first real Runtime Turn
+  3. Sandbox / run location (optional, single-select)
+  4. Chat channel (optional, stackable)
   5. Done
 
 All writes go through the ``update_providers`` / ``update_channels`` /
@@ -17,11 +17,10 @@ All writes go through the ``update_providers`` / ``update_channels`` /
 knowledge.
 
 Navigation: questionary 2.1.1 has no first-class cross-screen "back", so the
-wizard is a screen state machine and back is expressed as a ``0) back``
-sentinel choice on the screens that support it (Step 1 <-> language pick,
-Step 2 -> Step 1); Steps 3 and 4 are optional and forward-only (re-run
-``onboard`` to change them). Ctrl+C exits at any point, keeping whatever was
-already written.
+wizard is a screen state machine. Step 1 can return to language selection,
+Step 2 returns to Step 1 when the first Turn needs new Provider settings, and
+Step 3 exposes an explicit back choice. Step 4 is forward-only; re-run
+``onboard`` to change it. Ctrl+C exits at any point, keeping durable writes.
 """
 
 from __future__ import annotations
@@ -29,6 +28,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 import typer
@@ -309,7 +309,7 @@ def _bootstrap_empty_config() -> None:
     """Make sure ``~/.pico/config.json`` + workspace dir exist before we patch.
 
     We seed the user-facing extension defaults (memory / plugins / skillForge),
-    including ``memory.backend = "codecairn"``. Step 4 keeps that selection or
+    including ``memory.backend = "myna"``. Step 4 keeps that selection or
     writes ``None`` when the user explicitly disables Memory.
 
     Seeding runs on EVERY onboard, not just a brand-new config: the writer is
@@ -1017,6 +1017,7 @@ def _configure_one_provider(
             non_interactive=non_interactive,
             warnings=warnings,
             skip_test=skip_test,
+            defer_first_turn=True,
         )
         if chosen_model is None:
             # "Switch provider" — re-run the picker (drop the flag so the second
@@ -1124,8 +1125,9 @@ def _resolve_model_with_test(
     non_interactive: bool,
     warnings: list[str],
     skip_test: bool = False,
+    defer_first_turn: bool = False,
 ) -> Optional[str]:
-    """Verify connectivity → pick the default model → send a test probe.
+    """Verify credentials, pick the default model, and optionally send a test Turn.
 
     On a verify or test-message failure, offers a recovery submenu (retry /
     re-pick model / re-enter key / switch / continue). Custom providers are
@@ -1163,7 +1165,7 @@ def _resolve_model_with_test(
         # highest-typo-risk case. Send the real probe (it builds from the stored
         # config, so a wrong base_url / model id fails here, not at first chat).
         _persist_default_model(custom_model)
-        if skip_test:
+        if skip_test or defer_first_turn:
             return custom_model
         while True:
             result = _run_test_probe(spec.name, non_interactive=non_interactive, warnings=warnings, allow_repick=False)
@@ -1184,7 +1186,7 @@ def _resolve_model_with_test(
             non_interactive=non_interactive,
         )
         _persist_default_model(chosen)
-        if skip_test:
+        if skip_test or defer_first_turn:
             return chosen
         result = _run_test_probe(spec.name, non_interactive=non_interactive, warnings=warnings)
         if result == "switch":
@@ -1369,7 +1371,7 @@ def _step1_provider(
 
 
 # ---------------------------------------------------------------------------
-# Step 2 — sandbox / run location
+# Step 3 — sandbox / run location
 # ---------------------------------------------------------------------------
 
 
@@ -1402,9 +1404,9 @@ def _probe_boxlite() -> tuple[bool, str]:
     return True, "ok"
 
 
-def _step2_sandbox(*, skip: bool, non_interactive: bool) -> object:
-    """Step 2 — choose run location (host / boxlite sandbox)."""
-    _step_header(2, _t("Choose where Pico runs code / commands", "选择 Pico 运行代码 / 命令的位置"))
+def _step3_sandbox(*, skip: bool, non_interactive: bool) -> object:
+    """Step 3 — choose run location (host / boxlite sandbox)."""
+    _step_header(3, _t("Choose where Pico runs code / commands", "选择 Pico 运行代码 / 命令的位置"))
 
     if skip or non_interactive:
         console.print(
@@ -1520,7 +1522,7 @@ def _step2_sandbox(*, skip: bool, non_interactive: bool) -> object:
 
 
 # ---------------------------------------------------------------------------
-# Step 3 — chat channel (stackable)
+# Step 4 — chat channel (stackable)
 # ---------------------------------------------------------------------------
 
 
@@ -1892,10 +1894,10 @@ def _manage_existing_channels() -> None:
             )
 
 
-def _step3_channel(*, channel: Optional[str], skip: bool, non_interactive: bool) -> object:
-    """Step 3 — optionally enable chat channel(s)."""
+def _step4_channel(*, channel: Optional[str], skip: bool, non_interactive: bool) -> object:
+    """Step 4 — optionally enable chat channel(s)."""
     _step_header(
-        3,
+        4,
         _t(
             "(Optional) Connect a messaging app so you can chat with Pico there",
             "(可选)接入即时通讯软件,直接在里面和 Pico 聊天",
@@ -1998,7 +2000,7 @@ def _step3_channel(*, channel: Optional[str], skip: bool, non_interactive: bool)
 
 
 # ---------------------------------------------------------------------------
-# Step 4 — long-term repository Memory
+# Step 2 — long-term repository Memory and the first Runtime Turn
 # ---------------------------------------------------------------------------
 
 
@@ -2017,17 +2019,163 @@ def _init_extension_block_defaults() -> None:
 
 
 def _memory_enabled() -> bool:
-    """Return whether the configured Runtime selects CodeCairn Memory."""
+    """Return whether the configured Runtime selects Myna Memory."""
     data = _load_raw_config()
-    return (data.get("memory") or {}).get("backend") == "codecairn"
+    return (data.get("memory") or {}).get("backend") == "myna"
 
 
-def _step4_memory(
-    *, skip: bool, non_interactive: bool, main_model: Optional[str], warnings: list[str], skip_test: bool = False
+def _default_provider_name() -> str:
+    from pico.config.loader import load_config
+
+    return load_config().get_provider_name() or "auto"
+
+
+def _disable_memory_after_setup_problem(message: str, *, non_interactive: bool) -> bool:
+    console.print(_t(f"  [red]✗ Myna is not ready:[/red] {message}", f"  [red]✗ Myna 尚未就绪:[/red] {message}"))
+    if non_interactive:
+        console.print(
+            _t(
+                "  [dim]Install a compatible myna-memory distribution, or re-run with --skip-memory.[/dim]",
+                "  [dim]请安装兼容的 myna-memory distribution,或使用 --skip-memory 重新运行。[/dim]",
+            )
+        )
+        raise typer.Exit(2)
+
+    questionary = _require_questionary()
+    from pico.cli._styles import PICO_STYLE
+
+    action = questionary.select(
+        _t("Memory cannot start. What next?", "记忆无法启动,接下来怎么做?"),
+        choices=[
+            questionary.Choice(_t("Continue without Memory", "关闭记忆并继续"), value="disable"),
+            questionary.Choice(_t("Exit and install/fix Myna", "退出并安装或修复 Myna"), value="exit"),
+        ],
+        style=PICO_STYLE,
+        qmark=_QMARK,
+    ).ask()
+    if action != "disable":
+        raise typer.Exit(2)
+    _set_memory_backend(None)
+    console.print(
+        _t(
+            "  [yellow]○ Memory disabled explicitly; Local Skills still work.[/yellow]",
+            "  [yellow]○ 已明确关闭记忆;本地技能仍可使用。[/yellow]",
+        )
+    )
+    return False
+
+
+def _prepare_myna(*, non_interactive: bool, yes: bool) -> bool:
+    """Validate the installed Myna plugin and apply its consent-bound setup."""
+    _set_memory_backend("myna")
+    from pico.cli._plugin_stack import inspect_memory_backend
+    from pico.config.pico import load_pico_config
+
+    status = inspect_memory_backend(load_pico_config())
+    if status.state != "available":
+        return _disable_memory_after_setup_problem(
+            status.error or "plugin unavailable", non_interactive=non_interactive
+        )
+
+    try:
+        from myna.integrations.pico import descriptor
+
+        integration = descriptor()
+        if getattr(integration, "protocol", None) != "myna.pico-app-integration.v1":
+            raise RuntimeError("unsupported Myna setup protocol")
+        preview = integration.preview_setup(Path.cwd())
+    except Exception as exc:
+        return _disable_memory_after_setup_problem(str(exc), non_interactive=non_interactive)
+
+    if not isinstance(preview, dict):
+        return _disable_memory_after_setup_problem("invalid setup preview", non_interactive=non_interactive)
+    state = preview.get("state")
+    if state == "ready":
+        console.print(
+            _t(
+                f"  [green]✓ Myna ready[/green] [dim]({preview.get('repo_key', 'repository')})[/dim]",
+                f"  [green]✓ Myna 已就绪[/green] [dim]({preview.get('repo_key', '当前仓库')})[/dim]",
+            )
+        )
+        return True
+    if state != "setup_required":
+        return _disable_memory_after_setup_problem("invalid setup preview", non_interactive=non_interactive)
+
+    raw_creates = preview.get("creates") or []
+    creates = (
+        raw_creates if isinstance(raw_creates, list) and all(isinstance(path, str) for path in raw_creates) else []
+    )
+    raw_retrieval = preview.get("retrieval") or {}
+    if not isinstance(raw_retrieval, dict):
+        return _disable_memory_after_setup_problem("invalid setup preview", non_interactive=non_interactive)
+    retrieval = raw_retrieval.get("profile", "unknown")
+    console.print(
+        _t(
+            "  [dim]Myna will bind only this Git repository. It will not import history or install hooks.[/dim]",
+            "  [dim]Myna 只会绑定当前 Git 仓库,不会导入历史或安装 Hook。[/dim]",
+        )
+    )
+    console.print(f"  [dim]Workspace:[/dim] {preview.get('workspace')}")
+    console.print(f"  [dim]Retrieval:[/dim] {retrieval}")
+    for path in creates:
+        console.print(f"  [dim]Create:[/dim] {path}")
+
+    approved = yes
+    if not non_interactive and not yes:
+        questionary = _require_questionary()
+        from pico.cli._styles import PICO_STYLE
+
+        approved = bool(
+            questionary.confirm(
+                _t("Initialize Myna for this repository?", "为当前仓库初始化 Myna?"),
+                default=True,
+                style=PICO_STYLE,
+                qmark=_QMARK,
+            ).ask()
+        )
+    if not approved:
+        if non_interactive:
+            console.print(
+                _t(
+                    "  [red]Myna setup needs --yes, or use --skip-memory.[/red]",
+                    "  [red]Myna 初始化需要 --yes,或使用 --skip-memory。[/red]",
+                )
+            )
+            raise typer.Exit(2)
+        _set_memory_backend(None)
+        console.print(_t("  [dim]Memory disabled.[/dim]", "  [dim]已关闭记忆。[/dim]"))
+        return False
+
+    token = preview.get("consent_token")
+    if not isinstance(token, str) or not token:
+        return _disable_memory_after_setup_problem("setup consent is missing", non_interactive=non_interactive)
+    try:
+        receipt = integration.apply_setup(token)
+    except Exception as exc:
+        return _disable_memory_after_setup_problem(str(exc), non_interactive=non_interactive)
+    if not isinstance(receipt, dict) or receipt.get("state") != "initialized":
+        return _disable_memory_after_setup_problem("initialization did not complete", non_interactive=non_interactive)
+    console.print(
+        _t(
+            f"  [green]✓ Myna initialized[/green] [dim]({receipt.get('repo_key', 'repository')})[/dim]",
+            f"  [green]✓ Myna 初始化完成[/green] [dim]({receipt.get('repo_key', '当前仓库')})[/dim]",
+        )
+    )
+    return True
+
+
+def _step2_memory(
+    *,
+    skip: bool,
+    non_interactive: bool,
+    main_model: Optional[str],
+    warnings: list[str],
+    skip_test: bool = False,
+    yes: bool = False,
 ) -> object:
-    """Select CodeCairn and explain the explicit repository initialization."""
-    del non_interactive, main_model, warnings, skip_test
-    _step_header(4, _t("CodeCairn repository memory", "CodeCairn 仓库记忆"))
+    """Prepare Memory, then prove the configured Runtime with one real Turn."""
+    del main_model
+    _step_header(2, _t("Prepare Memory and meet your agent", "准备记忆并完成首次对话"))
     if skip:
         _set_memory_backend(None)
         console.print(
@@ -2036,21 +2184,21 @@ def _step4_memory(
                 "  [dim]已明确关闭记忆；本地技能仍然可用。[/dim]",
             )
         )
-        return None
-    _set_memory_backend("codecairn")
-    console.print(
-        _t(
-            "  [dim]Pico uses CodeCairn for long-term repository memory. "
-            "From the configured Git workspace, run:[/dim]\n"
-            "  [#fbe23f]codecairn init --prefetch[/#fbe23f]\n"
-            "  [dim]Pico will fail closed until initialization and health checks pass. "
-            "Set memory.backend to null to disable Memory explicitly.[/dim]",
-            "  [dim]Pico 使用 CodeCairn 提供长期仓库记忆。请在已配置的 Git 工作区运行：[/dim]\n"
-            "  [#fbe23f]codecairn init --prefetch[/#fbe23f]\n"
-            "  [dim]初始化和健康检查通过前，Pico 会拒绝启动。"
-            "如需明确关闭记忆，请将 memory.backend 设为 null。[/dim]",
+    else:
+        _prepare_myna(non_interactive=non_interactive, yes=yes)
+
+    if skip_test:
+        console.print(
+            _t(
+                "  [dim]First Turn skipped via --skip-test; run pico doctor --probe later.[/dim]",
+                "  [dim]已通过 --skip-test 跳过首次 Turn;稍后可运行 pico doctor --probe。[/dim]",
+            )
         )
-    )
+        return None
+
+    result = _run_test_probe(_default_provider_name(), non_interactive=non_interactive, warnings=warnings)
+    if result in {"repick", "rekey", "switch"}:
+        return _BACK
     return None
 
 
@@ -2105,7 +2253,7 @@ def _print_next_steps(*, warnings: list[str]) -> None:
         else _t("Sandbox (boxlite)", "沙箱(boxlite)")
     )
     chans = ", ".join(_enabled_channels()) or _t("none", "无")
-    mem = _t("CodeCairn", "CodeCairn") if _memory_enabled() else _t("disabled", "已关闭")
+    mem = _t("Myna", "Myna") if _memory_enabled() else _t("disabled", "已关闭")
     recap = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
     recap.add_column(style="dim", no_wrap=True)
     recap.add_column()
@@ -2228,13 +2376,13 @@ def _run_wizard_body(
             _t(
                 "[bold #fbe23f]✨ Welcome to the Pico setup wizard[/bold #fbe23f]\n\n"
                 "[dim]We'll configure, in order:[/dim]\n"
-                "  [#fbe23f]①[/#fbe23f] LLM      [#fbe23f]②[/#fbe23f] Run location      "
-                "[#fbe23f]③[/#fbe23f] Chat channel      [#fbe23f]④[/#fbe23f] Long-term memory\n\n"
+                "  [#fbe23f]①[/#fbe23f] LLM      [#fbe23f]②[/#fbe23f] Memory + first reply      "
+                "[#fbe23f]③[/#fbe23f] Run location      [#fbe23f]④[/#fbe23f] Chat channel\n\n"
                 "[dim]↑↓ select · Enter confirm · Ctrl+C quit anytime — anything already written is kept.[/dim]",
                 "[bold #fbe23f]✨ 欢迎使用 Pico 配置向导[/bold #fbe23f]\n\n"
                 "[dim]我们将依次配置:[/dim]\n"
-                "  [#fbe23f]①[/#fbe23f] LLM      [#fbe23f]②[/#fbe23f] 运行位置      "
-                "[#fbe23f]③[/#fbe23f] 聊天渠道      [#fbe23f]④[/#fbe23f] 长期记忆\n\n"
+                "  [#fbe23f]①[/#fbe23f] LLM      [#fbe23f]②[/#fbe23f] 记忆 + 首次回复      "
+                "[#fbe23f]③[/#fbe23f] 运行位置      [#fbe23f]④[/#fbe23f] 聊天渠道\n\n"
                 "[dim]↑↓ 选择 · Enter 确认 · 随时 Ctrl+C 退出 — 已写入的配置会保留。[/dim]",
             ),
             border_style="#c8a900",
@@ -2257,15 +2405,16 @@ def _run_wizard_body(
             warnings=warnings,
             skip_test=skip_test,
         ),
-        lambda: _step2_sandbox(skip=skip_sandbox, non_interactive=non_interactive),
-        lambda: _step3_channel(channel=channel, skip=skip_channel, non_interactive=non_interactive),
-        lambda: _step4_memory(
+        lambda: _step2_memory(
             skip=skip_memory,
             non_interactive=non_interactive,
             main_model=_load_current_default_model(),
             warnings=warnings,
             skip_test=skip_test,
+            yes=yes,
         ),
+        lambda: _step3_sandbox(skip=skip_sandbox, non_interactive=non_interactive),
+        lambda: _step4_channel(channel=channel, skip=skip_channel, non_interactive=non_interactive),
     ]
 
     index = 0
@@ -2325,10 +2474,10 @@ def register(app: typer.Typer) -> None:
         api_key: Optional[str] = typer.Option(None, "--api-key", help="API key for the chosen provider"),
         base_url: Optional[str] = typer.Option(None, "--base-url", help="Custom OpenAI-compatible base URL"),
         model: Optional[str] = typer.Option(None, "--model", help="Default model id (e.g. 'openai/gpt-4o-mini')"),
-        channel: Optional[str] = typer.Option(None, "--channel", help="Channel to enable in Step 3"),
-        skip_sandbox: bool = typer.Option(False, "--skip-sandbox", help="Skip Step 2 (run location)"),
-        skip_channel: bool = typer.Option(False, "--skip-channel", help="Skip Step 3 (channel setup)"),
-        skip_memory: bool = typer.Option(False, "--skip-memory", help="Skip Step 4 (long-term memory)"),
+        channel: Optional[str] = typer.Option(None, "--channel", help="Channel to enable in Step 4"),
+        skip_sandbox: bool = typer.Option(False, "--skip-sandbox", help="Skip Step 3 (run location)"),
+        skip_channel: bool = typer.Option(False, "--skip-channel", help="Skip Step 4 (channel setup)"),
+        skip_memory: bool = typer.Option(False, "--skip-memory", help="Disable Memory in Step 2"),
         non_interactive: bool = typer.Option(
             False,
             "--non-interactive",
@@ -2346,7 +2495,7 @@ def register(app: typer.Typer) -> None:
             help="Skip the one-shot test message (avoids a billed call; connectivity is still checked)",
         ),
     ) -> None:
-        """Four-step setup wizard: LLM provider → sandbox → channel → memory."""
+        """Four-step setup: provider → Memory + first Turn → sandbox → channel."""
         run_wizard(
             provider=provider,
             api_key=api_key,

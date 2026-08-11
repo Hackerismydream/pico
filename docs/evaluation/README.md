@@ -21,61 +21,12 @@ The historical
 measured the former production EverOS Memory and Skill retrieval path. It does
 not overwrite the frozen Ship-1 campaign or become CodeCairn evidence.
 
-The CodeCairn joint Memory track is a new, independent PicoBench campaign
-owned by [Issue #70](https://github.com/Hackerismydream/pico-harness/issues/70).
-Its only treatment axis is:
-
-```text
-control:   memory.backend = null
-treatment: memory.backend = codecairn
-```
-
-Before any paid Trial, its credential-free Gate installs exact Pico and
-CodeCairn wheels, proves cross-process store and Context recall through the
-real Runtime path, verifies repository isolation and Memory-off zero backend
-operations, and freezes a digest-bound Pair Manifest. The paid matrix uses
-eight disjoint formal tasks, two variants, and two repetitions. A complete
-negative result may close the evidence campaign but cannot become a positive
-project claim.
-
-The final formal experiment
-`1c5496edfaa08212635f6218f9aaa55c3e942fcd1e79203a11a6b8c4d9b94623`
-completed 32/32 Trials and 16/16 valid Pairs. CodeCairn passed 16/16 task
-Verifiers while Memory-off passed 0/16; Recall@5 was 1.0, with zero stale
-injections, zero cross-repository leakage, and zero Memory-off backend
-operations. The result is ship-complete and measurement-valid, but
-`positive_claim_eligible=false`: every hard-negative query returned three
-rendered memories, producing an irrelevant-injection rate of 3.0 against the
-frozen maximum of 0.05. The empty `cv-metrics.json` is therefore the
-authoritative resume boundary.
-
-The separate
-[PicoBench task-effect v2 contract](picobench-task-effect-v2.md) is owned by
-[Issue #77](https://github.com/Hackerismydream/pico-harness/issues/77), with
-the installed campaign owned by
-[Issue #79](https://github.com/Hackerismydream/pico-harness/issues/79).
-Its credential-free Stage A freezes 24 realistic repository tasks, 100 labeled
-retrieval cases, parent-owned Verifiers, unambiguous v2 metrics, and
-independent retrieval, task-success, and efficiency Claim Gates. The scripted
-96-Trial smoke proves task paths and offline rebuild behavior only. It makes no
-paid call and is not task-effect evidence. The installed adapter consumes exact
-Pico and CodeCairn wheels from a clean Stage C freeze, gives the real Agent only
-repository read, artifact write, and bounded check tools, and records complete
-Provider usage, cost, Memory injection, Tool receipts, and external Verifier
-outcomes. CodeCairn remains an immutable treatment dependency during the
-campaign.
-
-The final task-effect v2 calibration experiment
-`6fbc169ee80ff29e7b8822e6a26992856706a69eab71853ba3e08338410ed11f`
-completed 12/12 task Trials and 10/10 retrieval cases. All task Trials ended
-in Provider failure, leaving 0/6 valid Pairs, while all retrieval cases were
-measurable. The campaign is ship-complete but measurement-invalid, and every
-retrieval, task-success, efficiency, and positive Claim Gate is ineligible.
-The formal 96-Trial matrix did not run. Issue #79 charged 1.29966592 CNY and
-left no open reservation. The report digest is
-`a5e4f79acd756276eb1b714dfc7959ac0e1e84a209df60d7b8f916412e66cde3`.
-These calibration records are Provider-boundary evidence, not CodeCairn
-task-effect evidence.
+The former CodeCairn joint Memory and task-effect v2 tracks are archived.
+Their executable Packs, campaign runners, frozen task inputs, and active test
+surface have been removed from this checkout. The dated results remain in
+[the task-effect v2 record](picobench-task-effect-v2.md), the completed Goal
+documents, Issues #70 and #79, and their commit-bound external artifacts. They
+are historical evidence only and are never relabeled as Myna evidence.
 
 ## Purpose and boundary
 

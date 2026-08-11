@@ -32,9 +32,10 @@ identity. Fallback models are forbidden.
 
 The historical Ship-1 suite retains its EverOS-era Memory identity and must not
 be used as the current Pico entry point. The current Scorecard campaign runs
-only the still-current Context and Tool/MCP Packs. TokenWise, Runtime, and
-CodeCairn remain independent evidence tracks and are composed after their own
-Claim Gates are evaluated.
+only the still-current Context and Tool/MCP Packs. TokenWise and Runtime remain
+independent evidence tracks and are composed after their own Claim Gates are
+evaluated. No current Memory backend task-effect track is composed into the
+Scorecard.
 
 Run or resume the complete multidimensional workflow with:
 
@@ -43,24 +44,12 @@ PICO_BENCH_EXECUTE_PAID=1 make picobench-reproduce
 ```
 
 The command performs a full preflight before any paid call, then runs Runtime,
-TokenWise, CodeCairn Memory, and the Context plus Tool/MCP Scorecard tracks. It
+TokenWise, and the Context plus Tool/MCP Scorecard tracks. It
 composes the multidimensional score, renders a terminal table, and writes
 `report.json`, `REPORT.md`, `score.json`, and stage logs under
 `.pico/evidence/picobench-reproduction/<pico-commit>/`. Repeating the command
 validates and resumes retained stage artifacts instead of rerunning completed
 work.
-
-A fresh Memory run still requires the installed Pico-CodeCairn Pair inputs
-used by `make picobench-codecairn-ship`:
-
-- `PICO_CODECAIRN_PICO_WHEEL`;
-- `PICO_CODECAIRN_WHEEL`;
-- `PICO_CODECAIRN_PAIR_MANIFEST`;
-- `PICO_CODECAIRN_CONTINUITY_SUMMARY`.
-
-These inputs must come from the credential-free continuity Gate. The one-command
-runner fails during preflight when they are missing or do not match the current
-Pico commit; it never skips Memory or prints a complete-looking partial score.
 
 Existing current-commit evidence can be reused without paid execution:
 
@@ -68,8 +57,6 @@ Existing current-commit evidence can be reused without paid execution:
 PICO_SCORECARD_FORMAL_SUMMARY=/absolute/path/to/summary.json \
 PICO_SCORECARD_RUNTIME_EVIDENCE=/absolute/path/to/runtime-evidence.json \
 PICO_SCORECARD_TOKENWISE_REPORT=/absolute/path/to/tokenwise-report.json \
-PICO_SCORECARD_MEMORY_SUMMARY=/absolute/path/to/memory-summary.json \
-PICO_SCORECARD_MEMORY_HANDOFF=/absolute/path/to/memory-handoff.json \
   make picobench-reproduce
 ```
 
@@ -205,68 +192,6 @@ two of three passes. Semantic Memory end-to-end produced zero passes in both
 arms and no verifier gain. These retained failures are product findings, not
 positive resume claims.
 
-## CodeCairn joint campaign result
-
-The independent CodeCairn track bound Pico commit `5318daa` to CodeCairn
-commit `a501fe2` and compared only `memory.backend = null` with
-`memory.backend = codecairn`. Formal experiment
-`1c5496edfaa08212635f6218f9aaa55c3e942fcd1e79203a11a6b8c4d9b94623`
-recorded:
-
-- 32/32 terminal Trials and 16/16 valid Pairs;
-- 16/16 treatment task passes versus 0/16 control task passes;
-- Recall@5 of 1.0, zero stale injections, zero cross-repository leakage, and
-  zero Memory-off CodeCairn operations;
-- treatment P95 latency of 48.090 seconds versus 16.299 seconds for control;
-- 588.188 more main-Agent input tokens and 4,121.750 more total Trial tokens
-  per treatment Trial.
-
-The campaign is ship-complete and measurement-valid. It is not eligible for a
-positive resume claim because every hard-negative query returned three
-memories, producing `irrelevant_injection_rate=3.0` against the frozen maximum
-of 0.05. `cv-metrics.json` correctly exports no eligible metrics. Raw records
-and generated reports remain outside Git; the durable result ledger is
-[Issue #70](https://github.com/Hackerismydream/pico-harness/issues/70#issuecomment-5128723096).
-
-## CodeCairn task-effect v2
-
-The independent task-effect v2 Pack is owned by
-[Issue #77](https://github.com/Hackerismydream/pico-harness/issues/77), while
-[Issue #79](https://github.com/Hackerismydream/pico-harness/issues/79) owns
-the installed campaign. Its credential-free Gate is:
-
-```bash
-make picobench-codecairn-task-effect-smoke
-```
-
-The Gate freezes and validates 24 formal repository tasks across at least four
-fixtures, six or more disjoint calibration tasks, 100 formal retrieval cases,
-the 96-Trial and 48-Pair scripted matrix, sealed parent-owned Verifiers, true
-v2 retrieval metrics, and byte-stable offline report rebuild. Memory-off
-records zero CodeCairn operations.
-
-The scripted runner deliberately records
-`production_evidence_complete=false`. Passing this Gate proves the Pack and
-evidence pipeline are deterministic; it does not measure production CodeCairn
-retrieval or task effect.
-
-The installed campaign freezes exact Pico and CodeCairn wheels in a Stage C
-summary, installs both into an isolated Python 3.12 environment, and executes
-repository tasks through the real Pico Runtime. Only `read_file`, `write_file`,
-and bounded `exec` are available to the Agent. CodeCairn retrieval uses the
-local FastEmbed profile; the configured Provider is used only for Agent turns.
-The proposed worst-case budget is printed without making a Provider call:
-
-```bash
-make picobench-codecairn-task-effect-estimate
-```
-
-`make picobench-codecairn-task-effect-ship` remains blocked until the exact
-Stage C digests, Provider configuration, pricing source, and numeric CNY
-ceiling are authorized on Issue #79. The complete operator and claim boundary
-is in
-[PicoBench task-effect v2](../../docs/evaluation/picobench-task-effect-v2.md).
-
 ## Evidence boundary
 
 Calibration and formal task and query IDs are disjoint. Claim Rules are hashed
@@ -303,7 +228,7 @@ ran held-out natural-language Memory and Skill queries through the former
 production EverOS indexing and retrieval path under an independent cumulative
 `5 CNY` cap. Its 260 formal records comprise 200 historical EverOS retrieval
 records and 60 Local-only BM25 control records. These labels are frozen
-evidence identity and are not a current CodeCairn campaign.
+evidence identity and are not current Memory backend evidence.
 The completed v2 result makes Memory context-injection retrieval and Skill
 candidate retrieval eligible while explicitly withholding final Skill
 injection quality. Its artifacts and CV eligibility remain separate from the

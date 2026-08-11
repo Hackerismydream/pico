@@ -23,14 +23,17 @@ Lifecycle (``backend.start()`` / ``backend.stop()``) belongs to the concrete
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pico.plugin import (
+    DiscoveredPlugin,
+    PluginDiscovery,
+    PluginIdentityError,
     PluginNotFoundError,
     PluginRegistry,
     ServiceLocator,
-    assemble_plugin_registry,
 )
 from pico.product import get_product_home, get_workspace_state_dir
 
@@ -39,6 +42,63 @@ if TYPE_CHECKING:
     from pico.memory_engine import MemoryBackend
 
 logger = logging.getLogger(__name__)
+
+_MYNA_PLUGIN_ID = "myna-memory"
+_MYNA_BACKEND = "myna"
+_MYNA_FACTORY = "myna.integrations.pico.backend:make_backend"
+
+
+@dataclass(frozen=True)
+class MemoryBackendStatus:
+    backend: str | None
+    state: str
+    plugin_id: str | None = None
+    plugin_version: str | None = None
+    error: str | None = None
+
+
+class MynaSetupError(RuntimeError):
+    """Myna cannot start until the workspace has explicit operator setup."""
+
+
+class _MynaBackendGuard:
+    def __init__(self, backend: Any) -> None:
+        self._backend = backend
+
+    async def start(self) -> None:
+        try:
+            await self._backend.start()
+        except Exception as exc:
+            if getattr(exc, "code", None) in {"configuration_invalid", "myna_not_initialized"}:
+                raise MynaSetupError(
+                    "Myna is not initialized or its configuration is invalid; run 'myna init' in the Pico "
+                    "workspace, then run 'myna doctor --live'"
+                ) from exc
+            raise
+
+    async def stop(self) -> None:
+        await self._backend.stop()
+
+    async def recall(
+        self,
+        query: str,
+        *,
+        user_id: str | None = None,
+        agent_id: str | None = None,
+        top_k: int,
+    ) -> list:
+        return await self._backend.recall(
+            query,
+            user_id=user_id,
+            agent_id=agent_id,
+            top_k=top_k,
+        )
+
+    async def store(self, session_id: str, messages: list[dict]) -> None:
+        await self._backend.store(session_id, messages)
+
+    async def feedback(self, signals: dict[str, Any]) -> None:
+        await self._backend.feedback(signals)
 
 
 def plugin_discovery_sources() -> dict:
@@ -82,10 +142,11 @@ def build_plugin_registry(
       third-party pip-installed plugins register their factories.
     """
     disabled = frozenset(config.plugins.disabled)
-    return assemble_plugin_registry(
-        **plugin_discovery_sources(),
-        disabled=disabled,
-    )
+    discovered = PluginDiscovery(**plugin_discovery_sources()).discover()
+    _validate_discovered_myna_identity(discovered, disabled=disabled)
+    registry = PluginRegistry()
+    registry.activate(discovered, disabled=disabled)
+    return registry
 
 
 def maybe_build_memory_backend(
@@ -113,30 +174,94 @@ def maybe_build_memory_backend(
     name = config.memory.backend
     if name is None:
         return None
+    if name in {"codecairn", "everos"}:
+        raise PluginNotFoundError(
+            f"memory.backend={name!r} is no longer supported; install and initialize Myna, then set "
+            "memory.backend to 'myna', or set it to null. Existing memory data is left untouched"
+        )
     if registry is None:
         registry = build_plugin_registry(config)
+    if name == _MYNA_BACKEND:
+        _validate_myna_identity(registry)
     plugin_slice = _resolve_plugin_config_slice(registry, config, name)
     services = ServiceLocator(workspace=workspace)
-    try:
-        return registry.build_memory_backend(
-            name,
-            config=plugin_slice,
-            services=services,
+    backend = registry.build_memory_backend(
+        name,
+        config=plugin_slice,
+        services=services,
+    )
+    return _MynaBackendGuard(backend) if name == _MYNA_BACKEND else backend
+
+
+def inspect_memory_backend(config: "PicoConfig") -> MemoryBackendStatus:
+    """Inspect configured plugin metadata without constructing or starting it."""
+    name = config.memory.backend
+    if name is None:
+        return MemoryBackendStatus(backend=None, state="disabled")
+    if name in {"codecairn", "everos"}:
+        return MemoryBackendStatus(
+            backend=name,
+            state="error",
+            error=(
+                f"memory.backend={name!r} is no longer supported; install and initialize Myna, then set "
+                "memory.backend to 'myna', or set it to null"
+            ),
         )
-    except PluginNotFoundError as exc:
-        if name == "everos":
+    try:
+        registry = build_plugin_registry(config)
+        if name == _MYNA_BACKEND:
+            _validate_myna_identity(registry)
+        plugin_id = _plugin_id_for_backend(registry, name)
+        if plugin_id is None:
             raise PluginNotFoundError(
-                "memory.backend='everos' is no longer supported; initialize "
-                "CodeCairn and set memory.backend to 'codecairn', or set it to "
-                "null. Existing EverOS data is left untouched"
-            ) from exc
-        if name != "codecairn":
-            raise
+                f"no memory_backend named {name!r} (registered: {registry.memory_backend_names()})"
+            )
+        manifest = registry.manifest_for(plugin_id)
+        return MemoryBackendStatus(
+            backend=name,
+            state="available",
+            plugin_id=plugin_id,
+            plugin_version=manifest.version if manifest is not None else None,
+        )
+    except Exception as exc:
+        return MemoryBackendStatus(backend=name, state="error", error=str(exc))
+
+
+def _validate_myna_identity(registry: PluginRegistry) -> None:
+    try:
+        identity = registry.memory_backend_identity(_MYNA_BACKEND)
+    except PluginNotFoundError as exc:
         raise PluginNotFoundError(
-            "configured CodeCairn plugin is unavailable; reinstall Pico from "
-            "the same distribution source, or run 'uv sync' from a Pico source "
-            "checkout. Set memory.backend to null to disable Memory explicitly"
+            "configured Myna plugin is unavailable; install the myna-memory distribution and run "
+            "'myna init' in the Pico workspace, or set memory.backend to null"
         ) from exc
+    if identity != (_MYNA_PLUGIN_ID, _MYNA_FACTORY):
+        raise PluginIdentityError(
+            "Myna plugin manifest identity is invalid; reinstall the official myna-memory distribution "
+            "before starting Pico"
+        )
+
+
+def _validate_discovered_myna_identity(
+    discovered: list[DiscoveredPlugin],
+    *,
+    disabled: frozenset[str],
+) -> None:
+    expected = [(_MYNA_BACKEND, _MYNA_FACTORY)]
+    for plugin in discovered:
+        manifest = plugin.manifest
+        if manifest.id in disabled:
+            continue
+        contributions = [
+            (contribution.name, contribution.factory) for contribution in manifest.contributes.memory_backends
+        ]
+        if manifest.id != _MYNA_PLUGIN_ID and not any(name == _MYNA_BACKEND for name, _ in contributions):
+            continue
+        if manifest.id != _MYNA_PLUGIN_ID or contributions != expected:
+            raise PluginIdentityError(
+                "Myna plugin manifest identity is invalid; reinstall the official myna-memory distribution "
+                "before starting Pico"
+            )
 
 
 def build_plugin_tools(
@@ -206,10 +331,10 @@ def _resolve_plugin_config_slice(
     Tries two keys, in order:
 
     1. The **plugin id** that contributes ``backend_name`` (canonical,
-       e.g. ``"codecairn-memory"`` - comes from the manifest's
+       e.g. ``"myna-memory"`` - comes from the manifest's
        ``[plugin] id`` field).
     2. The **backend contribution name** itself
-       (e.g. ``"codecairn"`` - friendlier for handwritten config files).
+       (e.g. ``"myna"`` - friendlier for handwritten config files).
 
     Returns an empty dict when neither key is present, so the plugin
     factory receives a deterministic shape and applies its own
@@ -245,5 +370,7 @@ def _plugin_id_for_backend(
 __all__ = [
     "build_plugin_registry",
     "build_plugin_tools",
+    "inspect_memory_backend",
+    "MemoryBackendStatus",
     "maybe_build_memory_backend",
 ]

@@ -9,10 +9,9 @@ metadata is `0.1.7`; see [Project status](project-status.md) for the current
 claim boundary.
 
 The separate Pico Harness v0.1 portfolio/engineering milestone is complete.
-The Pico Harness v0.2 CodeCairn implementation and joint evidence campaign are
-complete; this is an engineering/product milestone, not current package
-semver. The paired measurement is valid, but the positive claim is ineligible
-because every hard-negative query returned three irrelevant memories.
+Pico now targets Myna through the public Plugin and `MemoryBackend` seams.
+Records for retired Memory implementations remain under `docs/plan/` as
+historical delivery evidence; they are not part of the current product path.
 
 ## Read this first
 
@@ -41,7 +40,7 @@ the execution contract.
 
 | Question | Authoritative source |
 | --- | --- |
-| What Pico v1 is | [Issue #1](https://github.com/Hackerismydream/pico-harness/issues/1) and the root README |
+| What Pico v1 is | [Issue #1](https://github.com/Hackerismydream/pico/issues/1) and the root README |
 | What a domain term means | [CONTEXT-MAP.md](../CONTEXT-MAP.md), [CONTEXT.md](../CONTEXT.md), or [ui-tui/CONTEXT.md](../ui-tui/CONTEXT.md) |
 | What is implemented now | Code on `main`, package metadata, and current tests |
 | What work is next | Open GitHub issues, summarized in [roadmap.md](roadmap.md) |
@@ -53,20 +52,31 @@ The repository does not treat a proposal, an unchecked issue checklist, a
 fixture-backed pass, a skipped live test, or an infrastructure failure as
 proof that the corresponding product behavior works.
 
+## Install and first use
+
+| Document | Scope |
+| --- | --- |
+| [First-use guide](onboarding/README.zh-CN.md) | Install, four-step onboarding, first real Turn, and acceptance checks |
+| [Feishu setup](onboarding/feishu.zh-CN.md) | Open Platform permissions, long connection, Pico configuration, Gateway, and live test |
+| [Myna setup](onboarding/memory.zh-CN.md) | Installed Plugin, consent-bound repository initialization, health, and explicit Memory-off path |
+| [Troubleshooting](onboarding/troubleshooting.md) | Provider, Myna, Feishu, Gateway, and Workspace failure routing |
+| [Agent installation contract](onboarding/agent-install.md) | Deterministic, secret-safe instructions for an installation agent |
+| [External media manifest](onboarding/media-manifest.md) | Reproducible screenshot and GIF scenes kept outside Git |
+
 ## Architecture and contracts
 
 | Document | Scope |
 | --- | --- |
 | [Architecture overview](architecture/README.md) | System boundary, package map, dependency direction, lifecycle ownership, and architectural constraints |
 | [Runtime and Turn flow](architecture/runtime.md) | CLI, TUI, Gateway, Channel, Cron, and Subagent entry paths through Spine and Agent Loop |
-| [State, Context, Memory, and Skills](architecture/state-and-intelligence.md) | Session persistence, Context segments, Curator, CodeCairn, Local Skills, Plugins, and state roots |
+| [State, Context, Memory, and Skills](architecture/state-and-intelligence.md) | Session persistence, Context segments, Curator, Myna, Local Skills, Plugins, and state roots |
 | [Operations and extension surfaces](architecture/operations.md) | Providers, Routing, TokenWise, Channels, Cron, Sandbox, Tracing, configuration, and packaging |
 | [Evolver architecture](architecture/evolver.md) | Evolution Run lifecycle, benchmark inversion, candidate evidence, activation, rollback, and threat model |
 | [Agent application evaluation](evaluation/README.md) | Implemented checkout-only PicoBench boundary, Runtime relationship, experiment state, and claim discipline |
 | [TokenWise cost experiment](evaluation/tokenwise-cost.md) | Completed DeepSeek two-arm prefix-stability campaign, conservative hit-rate and success-cost metrics, and claim gates |
 | [PicoBench Ship-1 contract](evaluation/picobench-ship-1.md) | Runtime, Context, Memory/Skill, Tool/MCP, and paired-evaluation task protocol |
 | [PicoBench semantic addendum](evaluation/picobench-semantic-addendum.md) | Historical production EverOS semantic retrieval, source fusion, cumulative budget, and separate claim gates |
-| [CodeCairn Memory backend](specs/codecairn-memory-backend.md) | Current v0.2 cross-repository Interface, ownership, lifecycle, Source Journal, failure semantics, and acceptance Gates |
+| [Myna Memory backend](specs/myna-memory-backend.md) | Current public Plugin identity, ownership, lifecycle, failure semantics, and acceptance Gates |
 | [Channel evidence contract](specs/channel-evidence-gates.md) | V-C0, V-S0, adapter maturity, deterministic matrices, and live-evidence boundary |
 | [Turn evidence correlation](specs/turn-evidence-correlation.md) | V-TE0 trace, usage, delivery, terminal-state, and verifier contract |
 | [Release candidate Gate](specs/release-candidate-gate.md) | V-R0 layer ordering, commit binding, result classification, and fail-closed aggregation |
@@ -74,7 +84,7 @@ proof that the corresponding product behavior works.
 | [TUI glossary](../ui-tui/CONTEXT.md) | Canonical React/Ink and TUI-RPC terms |
 | [TUI README](../ui-tui/README.md) | Supported TUI surface and development workflow |
 | [Tracing Standard API](TRACING_STANDARD_API.md) | Current write-side tracing facade and semantic conventions |
-| [Memory and Plugin architecture](memory-plugin-architecture.md) | Current `MemoryBackend`, Plugin Registry, and installed CodeCairn contract |
+| [Memory and Plugin architecture](memory-plugin-architecture.md) | Current `MemoryBackend`, Plugin Registry, and installed Myna contract |
 | [Sandbox usage](sandbox/usage.md) | Actual host-execution default, BoxLite opt-in behavior, and security boundary |
 
 Module-local documentation remains colocated with its implementation:
@@ -95,11 +105,8 @@ Module-local documentation remains colocated with its implementation:
 | [Roadmap and future](roadmap.md) | Remaining Issue #24 evidence, release order, and post-v1 candidates |
 | [Plan directory](plan/README.md) | How GitHub issues, local plan summaries, acceptance Gates, and future ideas relate |
 | [PicoBench Ship-1 analysis](plan/analysis/picobench-ship-1.md) | Historical module alternatives, integration enumeration, dependency graph, and campaign boundary |
-| [CodeCairn Memory replacement analysis](plan/analysis/codecairn-memory-replacement.md) | Replacement analysis, EverOS deletion inventory, cross-repository sequence, rollout, and evidence boundary |
 | [TokenWise evidence expansion analysis](plan/analysis/tokenwise-evidence-expansion.md) | Current CV wording and evidence boundary plus the proposed 320-Trial DeepSeek campaign |
-| [Pico CodeCairn implementation Goal](plan/pico-codecairn-implementation-goal.md) | Delivery record for consuming the installed Adapter and removing active EverOS coupling |
-| [Pico-CodeCairn joint evidence Goal](plan/pico-codecairn-joint-evidence-goal.md) | Completed execution record for installed continuity, isolation, paired evaluation, and claim reconciliation |
-| [Delivery tasks](plan/tasks/README.md) | Completed PicoBench and CodeCairn delivery slices |
+| [Delivery tasks](plan/tasks/README.md) | Historical PicoBench and Memory delivery slices |
 
 GitHub remains the live task tracker. The local roadmap explains the whole
 sequence to readers; it does not duplicate issue acceptance checklists.
@@ -113,7 +120,7 @@ sequence to readers; it does not duplicate issue acceptance checklists.
 | [Releasing](../RELEASING.md) | Release procedure and release evidence |
 | [Tests README](../tests/README.md) | Test layout, marker boundaries, and which commands prove which layer |
 | [Scripts README](../scripts/README.md) | Checkout-only linters, verifiers, live probes, evaluators, and Sandbox utilities |
-| [Historical EverOS E2E plan](everos-memory-e2e-test-plan.md) | Retained pre-CodeCairn extraction, recall, and cross-process continuity contract; not a current Gate |
+| [Historical EverOS E2E plan](everos-memory-e2e-test-plan.md) | Retained legacy extraction, recall, and cross-process continuity contract; not a current Gate |
 | [BoxLite CLI](sandbox/boxlite_cli.md) | Direct VM administration outside the running Agent |
 | [Sandbox debug commands](sandbox/debug_commands.md) | Runtime-owned VM debugging through the Sandbox debug socket |
 | [TUI autotest](../tests/tui/autotest/README.md) | Black-box terminal harness and opt-in subprocess tests |

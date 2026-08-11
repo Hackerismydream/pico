@@ -67,7 +67,7 @@ Recorded evidence:
 - V-C0 and V-S0 remain green;
 - V-LF passed in required mode;
 - the historical EverOS V-O0 result remains bound to its old commit and is not
-  a current CodeCairn continuity claim.
+  current Myna continuity evidence.
 
 A mocked SDK, recorded payload, missing credential, skipped case, Provider
 failure, or infrastructure failure does not satisfy V-LF. The passed report
@@ -97,14 +97,12 @@ Activation remains manual. The run must not modify the live Pico checkout.
 
 ## Stage C: close V-R0 and publish Pico v1
 
-The V-R0 driver landed in PR #52. After removal of the historical EverOS
-continuity layer, it runs thirteen layers in dependency order and rejects
-missing, stale, dirty, skipped, or unbindable evidence. A subset run is
-diagnostic and can never report a passed release. The separately authorized
-CodeCairn joint-continuity Gate is now implemented and has a passed
-commit-bound result. The V-R0 `memory_continuity` function is still hard-coded
-to an inconclusive legacy gap, so Stage C must wire that verifier and bind a
-current-commit result alongside every other release layer.
+The V-R0 driver landed in PR #52. It runs thirteen layers in dependency order
+and rejects missing, stale, dirty, skipped, or unbindable evidence. A subset
+run is diagnostic and can never report a passed release. The
+`memory_continuity` layer remains inconclusive until the compatible Myna
+distribution is formally available and the installed composition can be
+reproduced without a local filesystem dependency.
 
 The final release commit must run:
 
@@ -114,7 +112,7 @@ The final release commit must run:
 - deterministic installed-host parity and V-LP real Provider;
 - V-C0 and V-S0 Channel contracts;
 - V-LF real Feishu;
-- the CodeCairn joint-continuity Gate;
+- the Myna installed-composition Gate;
 - V-TE0 Turn evidence correlation;
 - V-E0 Evolver;
 - dependency audit, provenance, and repository-asset checks;
@@ -298,23 +296,22 @@ adversarial. Future hardening may:
 This should be driven by a stronger threat model, not by renaming heuristic
 guards as a secure sandbox.
 
-## Pico Harness v0.2 implementation and next evidence boundary
+## Historical Memory milestones and current boundary
 
-### F9: replace EverOS with CodeCairn Memory
+### F9: historical EverOS-to-CodeCairn replacement
 
-CodeCairn is Pico's v0.2 long-term Memory backend. The Pico-side implementation
-and joint evidence campaign are complete; this milestone label does not set
-package semver. CodeCairn remains a separate repository whose distribution
-owns the installed Pico Memory Adapter and Pico source importer.
+CodeCairn was Pico's v0.2 Memory milestone. Its executable implementation and
+campaign source have been removed; immutable delivery and evidence records
+remain historical. CodeCairn is no longer the current product backend.
 
 The public result is:
 
 ```text
-memory.backend = codecairn
-memory.backend = null       # Memory-off baseline
+memory.backend = codecairn  # historical configuration, now rejected
+memory.backend = null       # retained Memory-off behavior
 ```
 
-Ownership remains narrow:
+Historical ownership was narrow:
 
 - Pico owns Runtime, Session, Context, Tool/MCP, Local Skills, default
   selection, onboarding, base-distribution compatibility, continuity, and
@@ -338,9 +335,8 @@ CodeCairn Pico importer                                      completed
            -> joint installed continuity and paired evidence completed
 ```
 
-The implementation contract and task slices are:
+The historical task slices are:
 
-- [CodeCairn Memory backend contract](specs/codecairn-memory-backend.md);
 - [delivery analysis](plan/analysis/codecairn-memory-replacement.md);
 - [`codecairn-001` through `codecairn-003`](plan/tasks/README.md).
 
@@ -349,9 +345,26 @@ at CNY 0. Issue #70 completed `codecairn-003`: the installed M2/M4 Gate passed
 and M5 completed 32/32 formal Trials with 16/16 valid Pairs. CodeCairn passed
 16/16 task Verifiers versus 0/16 for Memory-off, but the campaign exported no
 eligible positive metric because every hard-negative query returned three
-memories. The next optional slice is a CodeCairn-owned abstention repair
-followed by a new immutable campaign; it is not required to preserve the valid
-negative Claim Gate result.
+memories. Those results are not relabeled as Myna evidence.
+
+### F10: replace CodeCairn with the Myna public seam
+
+Pico now selects `memory.backend = "myna"` by default and consumes Myna only
+through the installed `pico.plugins` entry point, `pico-plugin.toml`, and the
+generic `MemoryBackend` contract. `memory.backend = null` remains the explicit
+Memory-off setting. Retired backend values fail with an actionable error; no
+alias, fallback, dual read, or automatic migration exists.
+
+Myna owns repository identity, initialization, journal, index, retrieval,
+packing, and `myna://` provenance. Pico owns Agent Harness lifecycle and passes
+the normalized before-Turn recall and after-Turn store calls through the public
+seam. Pico does not initialize or scan repository history without explicit
+operator consent.
+
+The technical installed-composition Gate is implemented, but the compatible
+Myna distribution is not yet available from a formal artifact source. Pico
+therefore carries no local-path or fabricated remote dependency, and V-R0
+continues to fail closed on that single external release blocker.
 
 ## Continuing non-goals
 
@@ -364,7 +377,7 @@ Unless the product contract is explicitly revised, the roadmap does not include:
 - model fine-tuning or weight updates;
 - web, desktop, or mobile applications;
 - enterprise tenants, billing, or hosted administration;
-- merging CodeCairn storage or retrieval internals into Pico core;
+- merging Myna storage or retrieval internals into Pico core;
 - retaining EverOS as a hidden fallback or dual-write target;
 - optimizing for a predetermined line count.
 

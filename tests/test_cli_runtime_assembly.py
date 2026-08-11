@@ -511,7 +511,7 @@ async def test_runtime_assembly_exposes_memory_stop_failure_after_agent_close() 
 
     async def _stop_backend() -> None:
         order.append("backend.stop")
-        raise RuntimeError("codecairn stop failed")
+        raise RuntimeError("myna stop failed")
 
     runtime = RuntimeAssembly(
         agent_loop=SimpleNamespace(close_mcp=AsyncMock(side_effect=_close_agent)),
@@ -519,7 +519,7 @@ async def test_runtime_assembly_exposes_memory_stop_failure_after_agent_close() 
         backend=SimpleNamespace(start=AsyncMock(), stop=AsyncMock(side_effect=_stop_backend)),
     )
 
-    with pytest.raises(RuntimeError, match="codecairn stop failed"):
+    with pytest.raises(RuntimeError, match="myna stop failed"):
         await runtime.close()
 
     assert order == ["agent.close", "backend.stop"]

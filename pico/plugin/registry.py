@@ -73,6 +73,7 @@ class _ActivatedFactory:
     plugin_id: str
     name: str
     factory: MemoryBackendFactory
+    factory_ref: str
 
 
 class PluginRegistry:
@@ -125,12 +126,13 @@ class PluginRegistry:
             raise PluginConflictError(
                 f"plugin id {mf.id!r} activated twice",
             )
-        self._manifests[mf.id] = mf
-
         # Call-order sensitive: a file-based USER/PROJECT plugin ships its
         # factory module inside the plugin directory, which nothing puts on
         # sys.path — make it importable before _resolve_factory runs below.
         self._ensure_importable(source, location)
+
+        pending_memory_backends: dict[str, _ActivatedFactory] = {}
+        pending_tools: dict[str, _ActivatedFactory] = {}
 
         for contribution in mf.contributes.memory_backends:
             if contribution.name in self._memory_backends:
@@ -139,15 +141,11 @@ class PluginRegistry:
                     f"memory_backend {contribution.name!r} contributed by both {prev.plugin_id!r} and {mf.id!r}",
                 )
             factory = self._resolve_factory(mf.id, contribution.factory)
-            self._memory_backends[contribution.name] = _ActivatedFactory(
+            pending_memory_backends[contribution.name] = _ActivatedFactory(
                 plugin_id=mf.id,
                 name=contribution.name,
                 factory=factory,
-            )
-            logger.debug(
-                "registered memory_backend %s from %s",
-                contribution.name,
-                mf.id,
+                factory_ref=contribution.factory,
             )
 
         for tool in mf.contributes.tools:
@@ -157,11 +155,19 @@ class PluginRegistry:
                     f"tool {tool.name!r} contributed by both {prev.plugin_id!r} and {mf.id!r}",
                 )
             factory = self._resolve_factory(mf.id, tool.factory)
-            self._tools[tool.name] = _ActivatedFactory(
+            pending_tools[tool.name] = _ActivatedFactory(
                 plugin_id=mf.id,
                 name=tool.name,
                 factory=factory,
+                factory_ref=tool.factory,
             )
+
+        self._manifests[mf.id] = mf
+        self._memory_backends.update(pending_memory_backends)
+        self._tools.update(pending_tools)
+        for contribution in mf.contributes.memory_backends:
+            logger.debug("registered memory_backend %s from %s", contribution.name, mf.id)
+        for tool in mf.contributes.tools:
             logger.debug("registered tool %s from %s", tool.name, mf.id)
 
     @staticmethod
@@ -231,6 +237,16 @@ class PluginRegistry:
             raise PluginNotFoundError(
                 f"no memory_backend named {name!r} (registered: {self.memory_backend_names()})",
             ) from e
+
+    def memory_backend_identity(self, name: str) -> tuple[str, str]:
+        """Return the owning plugin id and declared factory reference."""
+        try:
+            entry = self._memory_backends[name]
+        except KeyError as e:
+            raise PluginNotFoundError(
+                f"no memory_backend named {name!r} (registered: {self.memory_backend_names()})",
+            ) from e
+        return entry.plugin_id, entry.factory_ref
 
     def tool_names(self) -> list[str]:
         """Stable-ordered list of registered plugin-tool names."""

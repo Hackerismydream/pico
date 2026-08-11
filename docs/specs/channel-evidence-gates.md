@@ -9,8 +9,9 @@ deterministic Channel security and isolation Gate; and V-LF, the required real
 Feishu tracer bullet. It follows the evidence conventions used by
 `scripts/verify_distribution.py` (V-P0): a small driver script, one
 machine-readable report, hashed logs, and a shared result vocabulary. The
-historical EverOS V-O0 script has been removed; its CodeCairn replacement is an
-explicitly blocked `memory_continuity` layer pending separate authority.
+historical EverOS and CodeCairn continuity scripts have been removed. The
+current Myna `memory_continuity` release layer remains inconclusive until the
+compatible distribution is formally available.
 
 ## Evidence vocabulary
 

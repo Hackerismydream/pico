@@ -87,3 +87,18 @@ def test_status_marks_oauth_providers_distinctly(tmp_config: Path) -> None:
     assert r.exit_code == 0
     # OpenAI Codex is a pure-OAuth provider in the registry
     assert "OAuth" in r.stdout
+
+
+def test_status_reports_explicit_memory_off(tmp_config: Path) -> None:
+    from pico.config.loader import save_config
+    from pico.config.schema import Config
+    from pico.config.update import set_memory_backend
+
+    save_config(Config())
+    set_memory_backend(None)
+
+    r = runner.invoke(app, ["status"])
+
+    assert r.exit_code == 0
+    assert "Memory:" in r.stdout
+    assert "disabled" in r.stdout

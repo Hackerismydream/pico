@@ -200,7 +200,7 @@ def test_init_extension_defaults_seeds_safe_subset(cfg_path: Path) -> None:
     data = _read(cfg_path)
 
     assert data["memory"] == {
-        "backend": "codecairn",
+        "backend": "myna",
         "userId": "default",
         "memoryTopK": 5,
     }

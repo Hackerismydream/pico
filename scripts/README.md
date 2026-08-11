@@ -26,6 +26,7 @@ make check-large-files
 | Script | Purpose | Canonical caller |
 | --- | --- | --- |
 | `verify_distribution.py` | isolated TUI/wheel/sdist build, exact wheel manifest, isolated retained-extra installs, installed probes, sdist-to-wheel equivalence | V-P0 in `docs/dev.md` and release workflow |
+| `verify_myna_integration.py` | isolated installed-wheel discovery, compatibility, fail-closed lifecycle, and fresh-process store/recall | `make verify-myna-integration` |
 | `verify_channels.py` | deterministic V-C0 Channel contract and V-S0 security/isolation report | `make verify-channels` |
 | `verify_live_feishu.py` | operator-in-the-loop V-LF tracer bullet with redacted evidence | `make verify-live-feishu` |
 | `verify_turn_evidence.py` | deterministic V-TE0 Turn trace, usage, delivery, and terminal-state correlation | `make verify-turn-evidence` |
@@ -43,7 +44,7 @@ handoff paths to a downstream Gate.
 | `skill_forge_retrieval_eval.py` | self-contained offline retrieval evaluation over `benchmarks/skill_evals/queries.jsonl` |
 | `skill_forge_full_e2e.py` | broader configured SkillForge pipeline probe |
 
-The offline retrieval evaluation does not prove CodeCairn persistence or
+The offline retrieval evaluation does not prove installed Memory persistence or
 Provider behavior.
 
 ## Sandbox administration

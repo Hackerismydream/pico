@@ -15,7 +15,7 @@ Cron, Sandbox, Tracing, package boundaries, and operational failure behavior.
 | QQ | `channel-qq` extra and valid bot credentials |
 | WeCom | `channel-wecom` extra and valid bot credentials |
 | BoxLite Sandbox | `sandbox` extra and supported host |
-| CodeCairn Memory | installed pinned distribution and `codecairn init` in the target Git repository |
+| Myna Memory | installed compatible `myna-memory` distribution and `myna init` in the target Git repository |
 | live Channels | external platform access and redacted evidence storage |
 
 The wheel contains the built TUI JavaScript bundle and local tracing viewer. It
