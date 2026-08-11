@@ -34,6 +34,12 @@ uv run pico onboard
 uv run pico
 ```
 
+Memory 默认选择 Myna。Myna 需要单独安装，当前仍没有可从正式制品源解析的版本。
+在兼容的 `myna-memory` distribution 可用前，请运行
+`uv run pico onboard --skip-memory` 明确关闭 Memory。安装兼容版本后，必须先在
+目标 Git 仓库中显式执行 `myna init` 再启动 Pico；Pico 不会静默初始化或扫描仓库
+历史。
+
 不打开 TUI，直接执行一次 Turn：
 
 ```bash
@@ -54,6 +60,9 @@ pico onboard
 cd /path/to/your-project
 pico
 ```
+
+wheel 安装同样受上述 Myna 前置条件约束。未安装单独的 Myna distribution 时，
+请使用 `pico onboard --skip-memory`。
 
 ## 常用命令
 

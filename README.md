@@ -37,6 +37,13 @@ uv run pico onboard
 uv run pico
 ```
 
+Memory defaults to Myna, which is installed separately and is not currently
+available from a formal artifact source. Until a compatible `myna-memory`
+distribution is available, run `uv run pico onboard --skip-memory` to keep
+Memory disabled. After installing a compatible distribution, run `myna init`
+explicitly in the target Git repository before starting Pico; Pico never
+initializes or scans repository history silently.
+
 Run one Turn without opening the TUI:
 
 ```bash
@@ -57,6 +64,10 @@ pico onboard
 cd /path/to/your-project
 pico
 ```
+
+The same Myna requirement applies to wheel installs. Use
+`pico onboard --skip-memory` when the separate Myna distribution is not
+installed.
 
 ## Main commands
 
