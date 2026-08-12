@@ -25,26 +25,22 @@ import { useScrollbarSnapshot, useViewportSnapshot } from '../lib/viewportStore.
 const FACE_TICK_MS = 2500
 const HEART_COLORS = ['#ff5fa2', '#ff4d6d']
 
-// Keep verb segment width stable so status-bar content to the right doesn't
-// jitter when the ticker rotates between short/long verbs.
-export const VERB_PAD_LEN = VERBS.reduce((max, v) => Math.max(max, v.length), 0) + 1 // + ellipsis
+// 保持动词片段宽度稳定，避免计时器在长短动词间轮换时右侧状态栏内容抖动。
+export const VERB_PAD_LEN = VERBS.reduce((max, v) => Math.max(max, v.length), 0) + 1 // 加省略号
 export const padVerb = (verb: string) => `${verb}…`.padEnd(VERB_PAD_LEN, ' ')
 
-// Compact alternates for the `emoji` and `ascii` indicator styles.
+// `emoji` 和 `ascii` 指示器样式的紧凑替代项。
 const emojiFrames = (brandMark: string) => [`${brandMark} `, '🌀', '🤔', '✨', '🍵', '🔮']
 const ASCII_FRAMES = ['|', '/', '-', '\\']
 
-// Faster tick for spinner-style indicators — they read as motion only
-// at frame rates closer to their authored interval.
+// 转圈式指示器使用更快 tick；只有帧率接近设计间隔时才会呈现为运动。
 const SPINNER_TICK_MS = 100
 
 interface IndicatorRender {
   frame: string
   intervalMs: number
-  // When false, FaceTicker hides the rotating verb and just shows the
-  // glyph + duration.  Lets `unicode` stay minimal while the other
-  // styles keep the verb-rotation flavour users associate with the
-  // running… status.
+  // 为 false 时，FaceTicker 隐藏轮换动词，只显示符号和时长。这样 `unicode` 保持极简，
+  // 其他样式则保留用户与“运行中……”状态关联的动词轮换风格。
   showVerb: boolean
 }
 
@@ -81,18 +77,15 @@ function FaceTicker({ color, startedAt }: { color: string; startedAt?: null | nu
   const [verbTick, setVerbTick] = useState(() => Math.floor(Math.random() * VERBS.length))
   const [now, setNow] = useState(() => Date.now())
 
-  // Pre-compute cadence + verb-visibility for the active style so an
-  // `/indicator` switch re-arms the interval (and skips the verb timer
-  // for verb-less styles like `unicode`) without leaving the previous
-  // timer dangling.
+  // 预计算当前样式的节奏和动词可见性，使 `/indicator` 切换会重新设置间隔，并为 `unicode`
+  // 等无动词样式跳过动词计时器，而不会留下旧计时器悬空。
   const brandMark = ui.theme.brand.icon
   const { intervalMs, showVerb } = renderIndicator(style, 0, brandMark)
 
   useEffect(() => {
     const glyph = setInterval(() => setTick(n => n + 1), intervalMs)
     const clock = setInterval(() => setNow(Date.now()), 1000)
-    // Verb timer is gated on `showVerb` — `unicode` style hides the verb
-    // entirely, so cycling `verbTick` would be an avoidable re-render.
+    // 动词计时器受 `showVerb` 控制；`unicode` 样式完全隐藏动词，轮换 `verbTick` 只会造成可避免的重渲染。
     const verb = showVerb ? setInterval(() => setVerbTick(n => n + 1), FACE_TICK_MS) : null
 
     return () => {
@@ -108,10 +101,8 @@ function FaceTicker({ color, startedAt }: { color: string; startedAt?: null | nu
   const { frame } = renderIndicator(style, tick, brandMark)
   const verb = VERBS[verbTick % VERBS.length] ?? ''
   const verbSegment = showVerb ? ` ${padVerb(verb)}` : ''
-  // Leading space keeps a gap between the frame and the duration when the
-  // verb segment is hidden (e.g. `unicode` spinner style).  When the verb
-  // IS shown, its trailing padding already provides the gap, so the extra
-  // space is harmless.
+  // 动词片段隐藏时（如 `unicode` 转圈样式），前导空格在帧和时长间保留间距。显示动词时，
+  // 其尾部填充已提供间距，额外空格也无害。
   const durationSegment = startedAt ? ` · ${fmtDuration(now - startedAt)}` : ''
 
   return (
@@ -124,8 +115,7 @@ function FaceTicker({ color, startedAt }: { color: string; startedAt?: null | nu
 }
 
 function SpawnHud({ t }: { t: Theme }) {
-  // Tight HUD that only appears when the session is actually fanning out.
-  // Colour escalates to warn/error as depth or concurrency approaches the cap.
+  // 仅在会话真实扇出时显示的紧凑 HUD。深度或并发接近上限时，颜色升级为警告/错误。
   const delegation = useStore($delegationState)
   const subagents = useTurnSelector(state => state.subagents)
 
@@ -141,11 +131,9 @@ function SpawnHud({ t }: { t: Theme }) {
   const depth = Math.max(0, totals.maxDepthFromHere)
   const active = totals.activeCount
 
-  // `max_concurrent_children` is a per-parent cap, not a global one.
-  // `activeCount` sums every running agent across the tree and would
-  // over-warn for multi-orchestrator runs.  The widest level of the tree
-  // is a closer proxy to "most concurrent spawns that could be hitting a
-  // single parent's slot budget".
+  // `max_concurrent_children` 是逐父节点上限，而非全局上限。`activeCount` 汇总全树所有运行中
+  // 智能体，会对多编排器运行过度警告。树的最宽层级更接近“可能同时占用单个父节点槽位预算的
+  // 最大 spawn 数”。
   const widestLevel = widthByDepth(tree).reduce((a, b) => Math.max(a, b), 0)
   const depthRatio = maxDepth ? depth / maxDepth : 0
   const concRatio = maxConc ? widestLevel / maxConc : 0
@@ -164,9 +152,8 @@ function SpawnHud({ t }: { t: Theme }) {
     pieces.push(`d${depthLabel}`)
 
     if (active > 0) {
-      // Label pairs the widest-level count (drives concRatio above) with
-      // the total active count for context.  `W/cap` triggers the warn,
-      // `+N` is everything else currently running across the tree.
+      // 标签把驱动上方 concRatio 的最宽层级计数与总活动数配对，提供上下文。`W/cap` 触发警告，
+      // `+N` 表示全树其他正在运行的内容。
       const extra = Math.max(0, active - widestLevel)
       const widthLabel = maxConc ? `${widestLevel}/${maxConc}` : `${widestLevel}`
       const suffix = extra > 0 ? `+${extra}` : ''

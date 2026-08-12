@@ -14,7 +14,7 @@ def test_safe_name():
 def test_save_strips_traversal(tmp_path, monkeypatch):
     monkeypatch.setattr(media, "get_media_dir", lambda _ch: tmp_path)
     p = media.save_media_bytes("feishu", b"data", "../../etc/passwd")
-    assert p.parent == tmp_path  # did not escape the media dir
+    assert p.parent == tmp_path
     assert p.name.endswith("_passwd")
     assert p.read_bytes() == b"data"
 
@@ -23,7 +23,7 @@ def test_save_no_collision_for_different_content(tmp_path, monkeypatch):
     monkeypatch.setattr(media, "get_media_dir", lambda _ch: tmp_path)
     p1 = media.save_media_bytes("feishu", b"aaa", "report.pdf")
     p2 = media.save_media_bytes("feishu", b"bbb", "report.pdf")
-    assert p1 != p2  # same name, different content -> distinct files
+    assert p1 != p2
     assert p1.read_bytes() == b"aaa"
     assert p2.read_bytes() == b"bbb"
 

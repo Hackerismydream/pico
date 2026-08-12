@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Backend protocol & implementations
+# 后端协议与实现
 # ---------------------------------------------------------------------------
 
 
@@ -63,7 +63,7 @@ class JudgeLLMBackend(ABC):
     a local vLLM endpoint) requires <30 lines.
     """
 
-    name: str  # set by subclass
+    name: str  # 由子类设置
 
     @abstractmethod
     async def call(
@@ -94,7 +94,7 @@ class LitellmBackend(JudgeLLMBackend):
 
     def __init__(
         self,
-        provider: Any,  # pico.providers.base.LLMProvider — lazy-typed
+        provider: Any,  # pico.providers.base.LLMProvider，延迟确定类型
         *,
         model: Optional[str] = None,
         name: str = "litellm",
@@ -110,14 +110,10 @@ class LitellmBackend(JudgeLLMBackend):
         max_tokens: int = 4000,
         temperature: float = 0.0,
     ) -> str:
-        # Route through chat_with_retry (base.LLMProvider) so the judge
-        # inherits the empty-response retry + sync OpenAI fallback that
-        # the agent loop already relies on. Calling provider.chat()
-        # directly surfaced provider empty-content errors at the judge
-        # layer (~3% of calls in an early dry run).
-        # The provider's chat[_with_retry] accepts model=None to fall
-        # back to its configured default; we pass our override only when
-        # explicit.
+        # 经由 base.LLMProvider 的 chat_with_retry 路由，使评判器继承智能体循环已依赖的空响应
+        # 重试和同步 OpenAI 回退。直接调用 provider.chat() 会在评判层暴露提供商空内容错误，
+        # 早期干跑约占 3%。提供商的 chat[_with_retry] 接受 model=None 并回退到配置默认值；
+        # 只有显式指定时才传入覆盖值。
         kwargs: dict[str, Any] = {"max_tokens": max_tokens, "temperature": temperature}
         if self._model:
             kwargs["model"] = self._model
@@ -157,9 +153,8 @@ class OpenRouterBackend(JudgeLLMBackend):
 
     DEFAULT_API_BASE = "https://openrouter.ai/api/v1"
     DEFAULT_API_KEY_ENV = "OPENROUTER_API_KEY"
-    # Retry on empty content / transient HTTP errors. OpenRouterBackend
-    # bypasses the Pico provider stack, so it doesn't get
-    # chat_with_retry for free; we add a minimal internal retry to match.
+    # 对空内容和暂时性 HTTP 错误重试。OpenRouterBackend 绕过 Pico 提供商栈，无法直接获得
+    # chat_with_retry，因此添加最小内部重试以保持一致。
     _RETRY_DELAYS = (1.0, 2.0, 4.0)
 
     def __init__(
@@ -196,7 +191,7 @@ class OpenRouterBackend(JudgeLLMBackend):
         max_tokens: int = 4000,
         temperature: float = 0.0,
     ) -> str:
-        # Lazy import: tests that don't hit OpenRouter don't need httpx
+        # 延迟导入：不访问 OpenRouter 的测试无需 httpx。
         import asyncio  # noqa: PLC0415
 
         import httpx  # noqa: PLC0415
@@ -212,16 +207,14 @@ class OpenRouterBackend(JudgeLLMBackend):
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            # OpenRouter encourages identifying the caller for routing analytics:
+            # OpenRouter 建议标识调用方，以便进行路由分析：
             "HTTP-Referer": "https://github.com/Hackerismydream/pico-harness",
             "X-Title": "Pico Harness Evolver",
         }
 
-        # Retry on empty content / transient HTTP errors. LitellmBackend
-        # gets retry for free via provider.chat_with_retry; OpenRouter
-        # bypasses the provider stack so we add a minimal in-place
-        # retry that mirrors the same empty-detect → backoff → retry
-        # shape. Total attempts = len(_RETRY_DELAYS) + 1 final = 4.
+        # 对空内容和暂时性 HTTP 错误重试。LitellmBackend 通过 provider.chat_with_retry 自动
+        # 获得重试；OpenRouter 绕过提供商栈，因此在此添加同样“检测空值 -> 退避 -> 重试”形态的
+        # 最小原地重试。总尝试次数为 len(_RETRY_DELAYS) 加最后一次，共 4 次。
         last_exc: Exception | None = None
         last_data: dict[str, Any] | None = None
         for attempt, delay in enumerate(self._RETRY_DELAYS, start=1):
@@ -233,13 +226,13 @@ class OpenRouterBackend(JudgeLLMBackend):
                 content = self._extract_content(data)
                 if content and content.strip():
                     return content
-                # Empty content — retry with backoff.
+                # 空内容——退避后重试。
                 last_data = data
             except (httpx.HTTPError, KeyError, IndexError, TypeError) as exc:
                 last_exc = exc
             await asyncio.sleep(delay)
 
-        # Final attempt: don't suppress exceptions.
+            # 最后一次尝试不再抑制异常。
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             resp = await client.post(url, json=payload, headers=headers)
             resp.raise_for_status()
@@ -247,7 +240,7 @@ class OpenRouterBackend(JudgeLLMBackend):
         content = self._extract_content(data)
         if content and content.strip():
             return content
-        # Still empty after all retries — raise so the batch records an error.
+        # 全部重试后仍为空，抛出异常让批处理记录错误。
         if last_exc is not None:
             raise RuntimeError(
                 f"OpenRouterBackend({self.name}): empty content after "
@@ -307,7 +300,7 @@ class MockBackend(JudgeLLMBackend):
 
 
 # ---------------------------------------------------------------------------
-# Config dataclass + facade
+# 配置数据类与门面
 # ---------------------------------------------------------------------------
 
 
@@ -350,8 +343,7 @@ class JudgeLLMConfig:
     patch_trajectory_format: TrajectoryFormat = "full"
     max_tokens: int = 4000
     temperature: float = 0.0
-    # Diagnostic: log every call's input length + backend used.
-    # Off by default to keep stdout quiet in tests.
+    # 诊断：记录每次调用的输入长度和所用后端。默认关闭，使测试标准输出保持安静。
     debug_log: bool = False
 
 
@@ -426,7 +418,7 @@ class JudgeLLM:
         if self._config.mode == "single":
             return await self._call_and_parse(self._patch, patch_messages, trajectory_id)
 
-        # two_step
+        # 两步模式
         l1_messages = build_judge_messages(
             trajectory_id=trajectory_id,
             task_description=task_description,
@@ -503,7 +495,7 @@ class JudgeLLM:
 
 
 # ---------------------------------------------------------------------------
-# Config-driven builder (the integration point with yaml/json)
+# 配置驱动构建器（yaml/json 的集成点）
 # ---------------------------------------------------------------------------
 
 
@@ -596,7 +588,7 @@ def build_judge_llm(spec: dict[str, Any]) -> JudgeLLM:
             raise ValueError("build_judge_llm: mode='two_step' requires 'l1_backend'")
         l1_backend = build_backend(l1_spec)
     else:
-        # single mode: reuse patch_backend in the l1 slot, never called
+        # 单后端模式：在 l1 槽复用 patch_backend，实际不会调用。
         l1_backend = patch_backend
 
     return JudgeLLM(

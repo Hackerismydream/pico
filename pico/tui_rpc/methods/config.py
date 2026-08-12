@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from pico.tui_rpc.methods.session import AgentLoopFactory
 
 
-# Default values returned by config.get when the on-disk config omits the key.
+# 磁盘配置缺少键时，config.get 返回的默认值。
 _DEFAULTS: dict[str, Any] = {
     "agent.thinking_budget": 0,
     "agent.temperature": 1.0,
@@ -55,7 +55,7 @@ _DEFAULTS: dict[str, Any] = {
 
 
 # ---------------------------------------------------------------------------
-# Per-key validators
+# 各配置键的校验器
 # ---------------------------------------------------------------------------
 
 
@@ -63,8 +63,7 @@ _THEME_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _validate_thinking_budget(value: Any) -> int:
-    # Booleans are a subclass of int — reject them explicitly so True doesn't
-    # silently coerce to 1.
+    # 布尔值是 int 的子类，因此需显式拒绝，避免 True 被静默转成 1。
     if isinstance(value, bool) or not isinstance(value, int):
         raise ConfigValidationError(
             "agent.thinking_budget must be a non-negative integer",
@@ -79,7 +78,7 @@ def _validate_thinking_budget(value: Any) -> int:
 
 
 def _validate_temperature(value: Any) -> float:
-    if isinstance(value, bool):  # bool is a subclass of int — reject upfront
+    if isinstance(value, bool):  # bool 是 int 的子类，需提前拒绝
         raise ConfigValidationError(
             "agent.temperature must be a number in [0, 2]",
             data={"field": "agent.temperature", "got": repr(value)},
@@ -127,13 +126,13 @@ _VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "tui.show_token_usage": _validate_show_token_usage,
 }
 
-# Public: the canonical writable-key set; consumers can iterate to enumerate
-# defaults without mutating ``_DEFAULTS`` directly.
+# 公开的标准可写键集合；调用方可通过迭代它枚举默认值，
+# 而无需直接修改 ``_DEFAULTS``。
 CONFIG_WRITABLE_KEYS: tuple[str, ...] = tuple(_VALIDATORS.keys())
 
 
 # ---------------------------------------------------------------------------
-# Persistence helpers
+# 持久化辅助函数
 # ---------------------------------------------------------------------------
 
 
@@ -188,7 +187,7 @@ def _set_nested(payload: dict[str, Any], dotted_key: str, value: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Handlers
+# 处理器
 # ---------------------------------------------------------------------------
 
 
@@ -212,7 +211,7 @@ async def config_get(params: dict) -> dict:
     out: dict[str, Any] = {}
     for key in requested:
         if key not in _VALIDATORS:
-            # Unknown / non-whitelisted key — silently omit per spec.
+            # 按协议静默忽略未知或不在白名单中的键。
             continue
         value = _get_nested(payload, key)
         out[key] = value if value is not None else _DEFAULTS[key]
@@ -292,9 +291,8 @@ def _set_model(
             "config.set model provider must be a string",
             data={"field": "provider", "got": repr(new_provider)},
         )
-    # Bare `/model <name>` carries no provider; derive it from the model so a
-    # previously-forced provider does not silently mis-route the new model.
-    # Gateway/local models (no keyword match) leave the forced provider intact.
+    # 简写 `/model <name>` 不携带提供商，需从模型推导，避免之前强制的提供商
+    # 将新模型静默路由到错误位置。网关或本地模型（无关键词匹配）保留原强制提供商。
     if new_provider is None:
         spec = find_by_model(raw_value)
         if spec is not None:

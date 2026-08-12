@@ -20,7 +20,7 @@ from pico.config.pico import (
 )
 
 # ---------------------------------------------------------------------------
-# Default-construction sanity
+
 # ---------------------------------------------------------------------------
 
 
@@ -72,7 +72,7 @@ class TestDefaults:
 
 
 # ---------------------------------------------------------------------------
-# Camel ↔ snake key acceptance
+
 # ---------------------------------------------------------------------------
 
 
@@ -99,7 +99,7 @@ class TestKeyAliasing:
 
 
 # ---------------------------------------------------------------------------
-# EXTENSION_KEYS includes the new sections
+
 # ---------------------------------------------------------------------------
 
 
@@ -111,16 +111,14 @@ class TestExtensionKeys:
         assert "memory" in EXTENSION_KEYS
 
     def test_skill_router_nested_under_skill_forge(self) -> None:
-        # The router is no longer a top-level extension block — it nests
-        # under skillForge (skillForge.router). Legacy top-level skillRouter
-        # is migrated into skillForge.router by _migrate_config.
+
         assert "skillRouter" not in EXTENSION_KEYS
         assert "skill_router" not in EXTENSION_KEYS
         assert "skillForge" in EXTENSION_KEYS
 
 
 # ---------------------------------------------------------------------------
-# Loader integration — JSON file → PicoConfig roundtrip
+
 # ---------------------------------------------------------------------------
 
 
@@ -142,8 +140,6 @@ class TestLoaderIntegration:
                     "userId": "alice",
                     "memoryTopK": 10,
                 },
-                # Legacy top-level skillRouter is migrated into skillForge.router;
-                # the retired ``mass`` sub-block is dropped during migration.
                 "skillRouter": {
                     "topK": 8,
                     "mass": {"endpoint": "http://mass.internal:9001"},
@@ -161,7 +157,7 @@ class TestLoaderIntegration:
     def test_missing_sections_use_defaults(self, tmp_path: Path) -> None:
         path = _write_config(tmp_path, {})
         cfg = load_pico_config(path)
-        # All three default-construct without raising.
+
         assert cfg.plugins.disabled == []
         assert cfg.memory.backend == "myna"
         assert cfg.skill_forge.router.enabled is True
@@ -179,14 +175,14 @@ class TestLoaderIntegration:
             },
         )
         cfg = load_pico_config(path)
-        # ``None`` is treated as "use default" rather than rejected.
+
         assert isinstance(cfg.plugins, PluginsConfig)
         assert isinstance(cfg.memory, MemoryConfig)
         assert isinstance(cfg.skill_forge.router, SkillForgeRouterConfig)
 
 
 # ---------------------------------------------------------------------------
-# Deprecation surface — skill_forge.mass_library_db
+
 # ---------------------------------------------------------------------------
 
 
@@ -224,14 +220,13 @@ class TestMassLibraryDbDeprecation:
 
 
 # ---------------------------------------------------------------------------
-# Frozen behavior of _Base + extra='forbid'
+
 # ---------------------------------------------------------------------------
 
 
 class TestStrictness:
     def test_unknown_field_in_plugins_rejected(self) -> None:
         with pytest.raises(Exception):
-            # ``extra='forbid'`` — typo catches at startup
             PluginsConfig.model_validate(
                 {
                     "disabled": [],

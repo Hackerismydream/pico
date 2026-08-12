@@ -12,8 +12,7 @@ import { DEFAULT_THEME } from '../theme.js'
 
 describe('Branding', () => {
   it('renders without throwing when invoked with no props', () => {
-    // The chosen layout (full / stacked / compact) depends on terminal width;
-    // all three must render cleanly.
+    // 布局会按终端宽度选择完整、堆叠或紧凑模式，三者都必须正确渲染。
     expect(() => render(<Branding />)).not.toThrow()
   })
 })
@@ -26,8 +25,7 @@ describe('StartupLoader', () => {
   })
 })
 
-// The wordmark itself is width-independent; exercise the pure builders so these
-// don't depend on ink-testing's terminal columns.
+// 字标本身与宽度无关；直接测试纯构建器，避免依赖 ink-testing 的终端列数。
 describe('banner wordmark', () => {
   const ramp = DEFAULT_THEME.yellow
 

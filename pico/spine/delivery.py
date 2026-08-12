@@ -50,8 +50,8 @@ class Capabilities:
     their consumer when one exists.
     """
 
-    interactive_login: bool = False  # QR / scan login; read by CLI `channel login`
-    streaming: bool = False  # SupportsStreaming slot; activated in B
+    interactive_login: bool = False  # QR/扫码登录；由 CLI `channel login` 读取
+    streaming: bool = False  # SupportsStreaming 槽位；在 B 阶段启用
 
 
 @runtime_checkable
@@ -77,8 +77,8 @@ class Outlet(Protocol):
 
 
 _SEND_MAX_RETRIES = 3
-_RETRY_BASE_DELAY = 1.0  # seconds; doubles each retry (1, 2, 4)
-_OUTLET_QUEUE_MAXSIZE = 100  # per-outlet backpressure bound; config knob lands with its consumer
+_RETRY_BASE_DELAY = 1.0  # 秒；每次重试翻倍（1、2、4）
+_OUTLET_QUEUE_MAXSIZE = 100  # 每个 Outlet 的背压上限；配置项与消费者放在一起
 
 
 def _is_terminal_deliverable(out: Deliverable) -> bool:
@@ -126,25 +126,23 @@ class DeliveryHub:
         on_delivery_failure: DeliveryFailureSink | None = None,
     ) -> None:
         self._send_max_retries = send_max_retries
-        # Out-of-band, deliberately not routed through dispatch: the channel that
-        # just exhausted its retries is the one that would have to carry the
-        # report, so re-dispatching would loop through the broken outlet.
+        # 有意采用带外通知，不再经过 dispatch：刚耗尽重试的 channel 正是需要承载
+        # 报告的 channel，重新 dispatch 会再次经过故障 Outlet 并形成循环。
         self._on_delivery_failure = on_delivery_failure
         self._closed = False
         self._close_task: asyncio.Task[None] | None = None
         self._outlets: dict[str, Outlet] = {}
         self._queues: dict[str, asyncio.Queue[_Routed | _StreamClose]] = {}
         self._workers: dict[str, asyncio.Task[None]] = {}
-        # conversation_id -> channel, written on enqueue (sink path), read by
-        # close_stream to route its marker; the open-stream table below is the
-        # worker's (conversation_id -> chat_id, present iff the stream is open).
+        # conversation_id -> channel，在 enqueue（sink 路径）时写入，供
+        # close_stream 路由标记；下方 open-stream 表由 worker 持有，映射
+        # conversation_id -> chat_id，且仅在 stream 已打开时存在。
         self._stream_channel: dict[str, str] = {}
         self._open_streams: dict[str, str] = {}
 
     def register(self, outlet: Outlet) -> None:
-        # Register-once, at startup: a running worker captures its outlet when it
-        # starts, so re-registering a different outlet for a live channel does not
-        # hot-swap it.
+        # 仅在启动时注册一次：运行中的 worker 会在启动时捕获 Outlet，因此为活跃
+        # channel 重新注册其他 Outlet 不会热替换现有实例。
         if self._closed:
             raise RuntimeError("delivery hub is closed")
         if outlet.name in self._outlets:
@@ -199,8 +197,8 @@ class DeliveryHub:
                 self._deliver_span(out, channel, semconv.CHANNEL_NO_OUTLET, attempts=0)
             return
         if isinstance(out, StreamDelta):
-            # Remember the channel this stream rides so a later close_stream (driven
-            # by a sourceless lifecycle event) can route its marker here.
+            # 记住该 stream 所属 channel，使之后由无来源 lifecycle event 驱动的
+            # close_stream 能把标记路由到这里。
             self._stream_channel.setdefault(out.conversation_id, channel)
         queue = self._queues.get(channel)
         if queue is None:
@@ -208,9 +206,8 @@ class DeliveryHub:
             self._queues[channel] = queue
         worker = self._workers.get(channel)
         if worker is None or worker.done():
-            # Restart on done() too, not just absence: the worker is resident
-            # (blocks on get), so a dead one would leave its queue unconsumed and
-            # silently deadlock this channel's senders. Mirrors the lane worker.
+            # 不仅在 worker 缺失时启动，done() 时也要重启。worker 常驻并阻塞在 get；
+            # 已死亡的 worker 会让队列无人消费，静默阻塞该 channel 的发送方。
             self._workers[channel] = asyncio.create_task(self._run_outlet(channel))
         ctx = trace.current()
         routed = _Routed(
@@ -218,7 +215,7 @@ class DeliveryHub:
             trace_id=getattr(ctx, "trace_id", None),
             parent_span_id=getattr(ctx, "parent_span_id", None),
         )
-        await self._put(queue, routed)  # full queue blocks only this channel (per-outlet backpressure)
+        await self._put(queue, routed)  # 队列满时只阻塞当前 channel（每 Outlet 独立背压）
 
     async def _run_outlet(self, channel: str) -> None:
         queue = self._queues[channel]
@@ -233,28 +230,27 @@ class DeliveryHub:
                 else:
                     await self._deliver_routed(outlet, item)
             except Exception:
-                # A rendering bug must not kill the resident worker: its queue
-                # would then sit unconsumed until the next enqueue restarts it,
-                # silently stalling this channel in between.
+                # 渲染错误不得杀死常驻 worker，否则下一次 enqueue 重启它之前
+                # 队列都无人消费，期间该 channel 会静默停滞。
                 logger.exception("outlet worker recovered from a delivery error: channel={!r}", channel)
             finally:
-                # Always mark done — including the eat / retries-exhausted path —
-                # so wait_idle's join() reflects every dequeued item, never hangs.
+                # 无论事件被消费还是重试耗尽，都必须标记 done，使 wait_idle 的
+                # join() 覆盖每个已出队条目，永不悬挂。
                 queue.task_done()
 
     async def _stream_chunk(self, outlet: Outlet, ev: StreamDelta) -> None:
-        # A non-streaming outlet eats the delta (the full text reaches it another
-        # way); only an outlet that both can and declares streaming gets chunks.
+        # 非流式 Outlet 会消费 delta，完整文本会通过其他路径到达；只有既具备能力
+        # 又声明 streaming 的 Outlet 才接收分块。
         if not (isinstance(outlet, SupportsStreaming) and outlet.capabilities.streaming):
             return
         chat_id = ev.source.chat_id
-        self._open_streams.setdefault(ev.conversation_id, chat_id)  # first delta opens the stream
+        self._open_streams.setdefault(ev.conversation_id, chat_id)  # 第一个 delta 打开 stream
         await outlet.send_stream_chunk(chat_id, ev.conversation_id, ev.delta, done=False)
 
     async def _close_stream_chunk(self, outlet: Outlet, conversation_id: str) -> None:
         chat_id = self._open_streams.pop(conversation_id, None)
         if chat_id is None:
-            return  # no open stream (empty turn, or a non-streaming outlet) -> no-op
+            return  # 没有打开的 stream（空 Turn 或非流式 Outlet），无需操作
         if isinstance(outlet, SupportsStreaming) and outlet.capabilities.streaming:
             await outlet.send_stream_chunk(chat_id, conversation_id, "", done=True)
 
@@ -347,7 +343,7 @@ class DeliveryHub:
         for queue in self._queues.values():
             while not queue.empty():
                 queue.get_nowait()
-                queue.task_done()  # keep unfinished count consistent so join() can't hang
+                queue.task_done()  # 保持 unfinished 计数一致，避免 join() 悬挂
                 dropped += 1
         if dropped:
             logger.warning("delivery hub drained {} undelivered events on shutdown", dropped)

@@ -149,7 +149,7 @@ def test_cron_production_imports_have_no_proactive_side_effect_dependencies() ->
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Ephemeral broadcast (cli → forward_channels, more than one target)
+
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -187,7 +187,7 @@ async def test_trigger_ephemeral_broadcasts_to_all_enabled(
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Single-target delivering job rides the hub (no explicit broadcast post)
+
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -254,7 +254,7 @@ async def test_trigger_real_channel_passthrough(
     Guards against the regression where someone wires forward_channels
     into every path; per-job binding for real channels must stay sacred.
     """
-    patch_cron_config(["feishu"])  # would re-route an ephemeral job; should NOT touch telegram
+    patch_cron_config(["feishu"])
     channel_manager = SimpleNamespace(enabled_channels=["telegram", "feishu"])
 
     handler = make_on_cron_job(
@@ -273,7 +273,7 @@ async def test_trigger_real_channel_passthrough(
 
 
 # ─────────────────────────────────────────────────────────────────────
-# No-delivery edge cases (turn still runs for side-effects)
+
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -332,7 +332,7 @@ async def test_trigger_deliver_false_emits_no_outbound(
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Dynamic config binding (cron config set takes effect on next trigger)
+
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -363,22 +363,19 @@ async def test_trigger_dynamic_config_reload(
         session_manager=fake_session_mgr,
     )
 
-    # First fire — telegram only
     await handler(_make_job(channel="cli", name="t1"))
     assert spine.captured[-1].source.channel == "telegram"
 
-    # User runs `cron config set forward_channels feishu` between fires
     state["forward_channels"] = ["feishu"]
 
-    # Second fire — feishu only (NEW config, same handler instance)
     await handler(_make_job(channel="cli", name="t2"))
     assert spine.captured[-1].source.channel == "feishu"
     fake_hub.post.assert_not_awaited()
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Spine outcome: a CRON turn's reply is read back for broadcast and surface
-# delivery. Errors and cancellation propagate directly from the Spine handle.
+
+
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -394,7 +391,7 @@ async def test_spine_path_returns_and_consumes_readback(
 
     class _Handle:
         async def result(self):
-            # The gateway runner stores the reply before result() resolves.
+
             readback_texts["cron:job_t1"] = "reminder done at 17:05"
             return None
 
@@ -533,9 +530,8 @@ async def test_silent_job_on_non_ephemeral_channel_warns(
 
 
 # ─────────────────────────────────────────────────────────────────────
-# REPL assembly: cron wired with submit=build_repl's scheduler.
-# A delivering cli job renders once via the CliOutlet and never broadcasts
-# explicitly — single target rides the hub through the turn reply.
+
+
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -552,8 +548,7 @@ async def test_repl_assembly_cron_renders_once_via_clioutlet_not_broadcast(fake_
 
     rendered: list[str] = []
     scheduler, hub, teardown = build_repl(_CronEchoLoop(), "cli", rendered.append)
-    # cli_shim makes "cli" non-ephemeral -> resolve_cron_delivery passes through
-    # to a single "cli" target -> rides the hub. agent is unused on the spine path.
+
     handler = make_on_cron_job(
         hub,
         submit=scheduler.submit,
@@ -568,13 +563,11 @@ async def test_repl_assembly_cron_renders_once_via_clioutlet_not_broadcast(fake_
     finally:
         await teardown()
 
-    # Rendered exactly once via the CliOutlet (the single-target turn reply);
-    # the broadcast path never fired (single target rides the hub).
     assert rendered == ["cron-reply<cron:job_repl1>"]
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Broadcast delivery edge cases
+
 # ─────────────────────────────────────────────────────────────────────
 
 

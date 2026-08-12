@@ -66,7 +66,7 @@ def _build_agent(args):
     ec_config = load_pico_config()
     provider = make_provider(config)
 
-    # AppWorld is pure API/code: disable every default tool, give only `execute`.
+    # AppWorld 只使用 API 与代码：禁用所有默认工具，仅提供 `execute`。
     disabled = [
         "read_file",
         "write_file",
@@ -98,27 +98,25 @@ def _build_agent(args):
 
 
 async def _run(args) -> dict:
-    # Grading, infra classification, and the result write live in
-    # benchmarks.appworld.evolve.grade (the evolver-immutable scorer);
-    # this file is the editable agent surface and must never grade itself.
+    # 评分、基础设施分类和结果写入位于不可由 Evolver 修改的评分器
+    # benchmarks.appworld.evolve.grade；本文件是可编辑的智能体表面，绝不能自行评分。
     t0 = time.time()
     result: dict = {"task_id": args.task_id, "experiment": args.experiment}
     try:
         init = grade.post(
             args.env_url,
             "/initialize",
-            # unique experiment_name per attempt -> isolated experiments/outputs/<...>/tasks/<task>/
-            # dir, so concurrent K-trials of the same task never collide on model_hashes.json (Errno 22).
+            # 每次尝试使用唯一 experiment_name，得到隔离的 experiments/outputs/<...>/tasks/<task>/
+            # 目录，使同一任务的并发 K 次试验不会在 model_hashes.json 上冲突（Errno 22）。
             {"task_id": args.task_id, "experiment_name": (args.session or args.experiment)},
         )
         prompt = APPWORLD_PROMPT.format(supervisor=init.get("supervisor"), instruction=init.get("instruction"))
         agent, exec_tool = _build_agent(args)
         skey = args.session or args.task_id
         try:
-            # Pico's AgentLoop is spine-driven (no process_direct): drive one headless
-            # turn through run_turn with no-op emit/drain and capture the final reply via
-            # text_sink. AppWorld success is judged by the env oracle (/evaluate), not this
-            # text; it is kept only for transport-error detection and the result record.
+            # Pico 的 AgentLoop 由 Spine 驱动，没有 process_direct。通过 run_turn 运行一个
+            # 无头轮次，emit/drain 为空操作，并用 text_sink 捕获最终回复。AppWorld 成功与否
+            # 由环境预言机 /evaluate 判断，而非该文本；文本仅用于传输错误探测和结果记录。
             from pico.spine import ChatType, Origin, Source, TurnRequest
 
             async def _emit(_event):
@@ -131,10 +129,9 @@ async def _run(args) -> dict:
             req = TurnRequest(
                 origin=Origin.USER,
                 source=Source(channel="cli", chat_id="direct", sender_id="user", chat_type=ChatType.DM),
-                # Pico's SessionManager splits the conversation key on ':' into
-                # <channel>/<chat_id>.jsonl. Prefix a fixed channel so the per-
-                # attempt transcript lands at a clean flat path the evolver reads:
-                # ws/sessions/appworld/<tid>_<exp>_k<k>.jsonl.
+                # Pico 的 SessionManager 按 ':' 将对话键拆为 <channel>/<chat_id>.jsonl。添加固定
+                # 渠道前缀，使每次尝试的记录落到 Evolver 可读取的简洁扁平路径：
+                # ws/sessions/appworld/<tid>_<exp>_k<k>.jsonl。
                 text=prompt,
                 conversation=f"appworld:{skey}",
             )

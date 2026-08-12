@@ -19,7 +19,7 @@ import pytest
 def test_ctrl_c_at_idle_prompt(harness):
     harness.spawn("uv run pico")
     assert harness.wait(r"Pico", timeout=25.0)
-    # No input — direct Ctrl+C from idle state
+
     harness.press("ctrl+c")
     assert harness.expect_exit(0, timeout=10.0), f"TUI did not exit 0 on idle Ctrl+C; final screen=\n{harness.screen()}"
 
@@ -32,13 +32,13 @@ def test_ctrl_c_during_typing(harness):
     harness.spawn("uv run pico")
     assert harness.wait(r"Pico", timeout=25.0)
     harness.type("partial input that will never send")
-    # First Ctrl+C — cancels input
+
     harness.press("ctrl+c")
-    # Brief settle window for input clear
+
     import time as _t
 
     _t.sleep(0.5)
-    # Second Ctrl+C — exits
+
     harness.press("ctrl+c")
     assert harness.expect_exit(0, timeout=10.0), (
         f"TUI did not exit 0 after cancel-then-exit Ctrl+C; final screen=\n{harness.screen()}"

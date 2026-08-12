@@ -25,7 +25,7 @@ Shared helpers used across multiple command modules live in
 import os
 import sys
 
-# Force UTF-8 encoding for Windows console
+# 强制 Windows 控制台使用 UTF-8 编码。
 if sys.platform == "win32":
     if sys.stdout.encoding != "utf-8":
         os.environ["PYTHONIOENCODING"] = "utf-8"
@@ -87,7 +87,7 @@ def main(
 
 
 # ============================================================================
-# Top-level command registrations
+# 顶层命令注册
 # ============================================================================
 
 from pico.cli import (
@@ -112,7 +112,7 @@ tracing_commands.register(app)
 
 
 # ============================================================================
-# Subcommand registrations
+# 子命令注册
 # ============================================================================
 
 from pico.cli.channel_commands import channels_app
@@ -148,9 +148,8 @@ def run() -> None:
     try:
         app()
     except ConfigReadError as exc:
-        # A config-write command (channels/provider/onboard) hit an
-        # unparseable config. The write layer already refused (file untouched);
-        # surface it cleanly here, once, for every command instead of a traceback.
+        # 写配置命令（channels/provider/onboard）遇到无法解析的配置。写入层已拒绝操作
+        # （文件未改动）；在此统一为所有命令清晰展示一次，而不是输出回溯。
         from rich.console import Console
 
         Console(stderr=True).print(f"[red]✗[/red] {exc}")

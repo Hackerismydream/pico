@@ -22,9 +22,7 @@ if TYPE_CHECKING:
     from pico.providers.base import LLMProvider
 
 
-# ── Prompts ───────────────────────────────────────────────────────────────────
-
-# Step 1: request triage — decide whether clarification is needed
+# 第 1 步：请求分流，判断是否需要澄清
 _CLASSIFY_PROMPT = """\
 Classify whether this user request ABSOLUTELY CANNOT be answered without \
 knowing a user preference. Default to needs_clarification=false.
@@ -56,7 +54,7 @@ Return needs_clarification=false if:
 
 When in doubt, return false — make a reasonable assumption rather than asking."""
 
-# Step 2a: pre-action interaction — generate a clarifying question
+# 第 2a 步：行动前交互，生成澄清问题
 _QUESTION_PROMPT = """\
 Generate ONE short clarifying question for this request.
 
@@ -72,7 +70,7 @@ Rules:
 Output the question line only, in this exact format:
 Quick question: [question]? Options: [A] / [B] / [C]"""
 
-# Step 2b: pre-action interaction — extract preferences from the user's answer
+# 第 2b 步：行动前交互，从用户回答中提取偏好
 _EXTRACT_PROMPT = """\
 Extract reusable preference facts from this clarification Q&A.
 
@@ -89,7 +87,7 @@ Rules:
 - 1-3 facts maximum
 - If the answer reveals no reusable preference, return {{"facts": [], "section": "Preferences"}}"""
 
-# Step 4: post-action learning — passively extract signals from a completed interaction
+# 第 4 步：行动后学习，从已完成交互中被动提取信号
 _POST_LEARN_PROMPT = """\
 Analyze this completed interaction for new preference signals.
 
@@ -122,9 +120,6 @@ Legacy format (flat list of strings with a `section` field) is still accepted
 for backwards compatibility — category defaults to "preference" in that case."""
 
 
-# ── Personalizer ──────────────────────────────────────────────────────────────
-
-
 class Personalizer:
     """Implements the 4-step PAHF-inspired personalization flow.
 
@@ -136,8 +131,6 @@ class Personalizer:
         self.memory = memory
         self.provider = provider
         self.model = model
-
-    # ── Step 1: request triage ────────────────────────────────────────────────
 
     @trace.instrument("personalize.classify", kind="memory", extract=semconv.personalize)
     async def classify(self, message: str, history: list[dict] | None = None) -> dict:
@@ -165,8 +158,8 @@ class Personalizer:
             response = await self.provider.chat(
                 messages=[{"role": "user", "content": prompt}],
                 model=self.model,
-                temperature=0.0,  # classification needs deterministic output
-                max_tokens=100,  # JSON is short; cap tokens to save cost
+                temperature=0.0,  # 分类需要确定性输出
+                max_tokens=100,  # JSON 很短，限制令牌数以节省成本
             )
             result = self._parse_json(
                 response.content or "",
@@ -177,8 +170,6 @@ class Personalizer:
         except Exception:
             logger.exception("Personalizer.classify failed, skipping clarification")
             return {"needs_clarification": False, "domain": ""}
-
-    # ── Step 2a: generate a clarifying question ───────────────────────────────
 
     @trace.instrument("personalize.question", kind="memory", extract=semconv.personalize)
     async def generate_question(self, message: str, domain: str) -> str:
@@ -200,7 +191,7 @@ class Personalizer:
             response = await self.provider.chat(
                 messages=[{"role": "user", "content": prompt}],
                 model=self.model,
-                temperature=0.3,  # slight randomness makes the question more natural
+                temperature=0.3,  # 少量随机性让问题更自然
                 max_tokens=120,
             )
             question = (response.content or "").strip()
@@ -209,8 +200,6 @@ class Personalizer:
         except Exception:
             logger.exception("Personalizer.generate_question failed, skipping clarification")
             return ""
-
-    # ── Step 2b: extract preferences and write them to memory ─────────────────
 
     @trace.instrument("personalize.extract", kind="memory", extract=semconv.personalize)
     async def extract_and_store_preference(self, original_message: str, question: str, answer: str) -> bool:
@@ -252,8 +241,6 @@ class Personalizer:
             logger.exception("Personalizer.extract_and_store_preference failed")
             return False
 
-    # ── Step 4: post-action learning ──────────────────────────────────────────
-
     @trace.instrument("personalize.postlearn", kind="memory", extract=semconv.personalize)
     async def post_learn(self, message: str, response_summary: str) -> bool:
         """Passively extract new preference signals from a completed interaction.
@@ -269,7 +256,7 @@ class Personalizer:
 
         prompt = _POST_LEARN_PROMPT.format(
             message=message,
-            response_summary=response_summary[:600],  # keep the prompt from growing too long
+            response_summary=response_summary[:600],  # 避免提示无限增长
             memory=current_memory or "(empty)",
         )
 
@@ -340,8 +327,6 @@ class Personalizer:
             grouped.setdefault(section, []).append(text)
         return grouped
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
-
     @staticmethod
     def _format_history(history: list[dict], max_messages: int = 4) -> str:
         """Format recent conversation history into a compact string for prompts."""
@@ -351,7 +336,6 @@ class Personalizer:
             role = m.get("role", "unknown").upper()
             content = m.get("content", "")
             if isinstance(content, str) and content.strip():
-                # Truncate long messages to keep prompt compact
                 text = content[:200] + "..." if len(content) > 200 else content
                 lines.append(f"{role}: {text}")
         return "\n".join(lines) if lines else "(no prior context)"
@@ -386,9 +370,7 @@ class Personalizer:
         with self.memory.locked():
             current = self.memory.read_long_term()
             if header in current:
-                # Insert under the existing section header, keeping the content after it
                 updated = current.replace(header, f"{header}\n{fact_lines}", 1)
             else:
-                # Create a new section at the end of the file
                 updated = current.rstrip() + f"\n\n{header}\n{fact_lines}\n"
             self.memory.write_long_term(updated)

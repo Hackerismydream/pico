@@ -112,9 +112,8 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
     }, 0)
   }
 
-  // Terminal statuses are never overwritten by late-arriving live events —
-  // otherwise a stale `subagent.start` / `spawn_requested` can clobber a
-  // `failed` or `interrupted` terminal state (Copilot review #14045).
+  // 终止状态不能被迟到的实时事件覆盖，否则陈旧的 `subagent.start` 或
+  // `spawn_requested` 会覆盖 `failed` 或 `interrupted` 终止状态。
   const isTerminalStatus = (s: SubagentProgress['status']) => s === 'completed' || s === 'failed' || s === 'interrupted'
 
   const keepTerminalElseRunning = (s: SubagentProgress['status']) => (isTerminalStatus(s) ? s : 'running')
@@ -217,10 +216,7 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
 
         if (turnController.lastStatusNote !== p.text) {
           turnController.lastStatusNote = p.text
-          turnController.pushActivity(
-            p.text,
-            p.kind === 'error' ? 'error' : p.kind === 'warn' ? 'warn' : 'info'
-          )
+          turnController.pushActivity(p.text, p.kind === 'error' ? 'error' : p.kind === 'warn' ? 'warn' : 'info')
         }
 
         restoreStatusAfter(4000)
@@ -253,12 +249,10 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
         setStatus('gateway startup timeout')
         turnController.pushActivity(`gateway startup timed out${trace} · /logs to inspect`, 'error')
 
-        // Surface the most useful stderr lines inline so users can tell
-        // "wrong python", "missing dep", and "config parse failure"
-        // apart without leaving the TUI.  Filter blank rows BEFORE
-        // taking the last N so trailing empty lines in the buffer
-        // don't crowd out actual content; truncate to match the
-        // 120-char clip used for `gateway.stderr` activity entries.
+        // 在界面内显示最有用的 stderr 行，让用户无需离开 TUI 即可区分 Python
+        // 版本错误、依赖缺失和配置解析失败。取最后 N 行前先过滤空行，避免缓冲区
+        // 尾部空行挤掉实际内容；截断长度与 `gateway.stderr` 活动条目的 120 字符
+        // 限制保持一致。
         const STDERR_LINE_CAP = 120
         const STDERR_LINES_MAX = 8
 
@@ -372,11 +366,8 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
 
         return
       case 'review.summary': {
-        // Self-improvement background review emitted a persistent summary
-        // of what it saved to memory/skills. Surface it as a system line
-        // in the transcript so it never gets lost to a transient status
-        // flash. Python-side already formats it as "💾 Self-improvement
-        // review: …".
+        // 自我改进后台评审会输出已保存到记忆或技能中的持久摘要。将其作为系统消息
+        // 写入对话记录，避免被短暂状态提示淹没；Python 端已完成展示格式化。
         const text = String(ev.payload?.text ?? '').trim()
 
         if (text) {
@@ -387,8 +378,8 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
       }
 
       case 'subagent.spawn_requested':
-        // Child built but not yet running (waiting on ThreadPoolExecutor slot).
-        // Preserve completed state if a later event races in before this one.
+        // 子智能体已创建但尚未运行，正在等待 ThreadPoolExecutor 槽位；若后续事件
+        // 抢先到达，则保留已完成状态。
         turnController.upsertSubagent(ev.payload, c => (isTerminalStatus(c.status) ? {} : { status: 'queued' }))
 
         return
@@ -404,8 +395,8 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
           return
         }
 
-        // Update-only: never resurrect subagents whose spawn_requested/start
-        // we missed or that already flushed via message.complete.
+        // 这里只更新现有项，不能复活漏收 spawn_requested/start 或已通过
+        // message.complete 刷新的子智能体。
         turnController.upsertSubagent(
           ev.payload,
           c => ({

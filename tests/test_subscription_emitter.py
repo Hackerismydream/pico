@@ -35,7 +35,7 @@ def _collect_emitted_events(send_frame_mock: AsyncMock) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# register / unregister
+
 # ---------------------------------------------------------------------------
 
 
@@ -44,7 +44,7 @@ async def test_register_returns_sub_id_and_indexes(
 ) -> None:
     sub_id = await emitter.register("tui:default")
     assert isinstance(sub_id, str)
-    assert len(sub_id) >= 16  # uuid hex
+    assert len(sub_id) >= 16
     assert sub_id in emitter._by_id
     assert any(s.sub_id == sub_id for s in emitter._by_session["tui:default"])
 
@@ -72,7 +72,7 @@ async def test_unregister_twice_second_call_returns_false(
 
 
 # ---------------------------------------------------------------------------
-# emit + coalesce
+
 # ---------------------------------------------------------------------------
 
 
@@ -86,7 +86,7 @@ async def test_emit_delivers_to_single_subscriber(
         "tui:default",
         {"type": "message.start", "payload": {"turn_id": "t1"}},
     )
-    await asyncio.sleep(COALESCE_WINDOW_S * 3)  # let coalesce loop flush
+    await asyncio.sleep(COALESCE_WINDOW_S * 3)
     events = _collect_emitted_events(send_frame)
     assert len(events) == 1
     assert events[0]["type"] == "message.start"
@@ -106,7 +106,7 @@ async def test_16ms_coalesce_merges_consecutive_token_deltas(
     await asyncio.sleep(COALESCE_WINDOW_S * 4)
     events = _collect_emitted_events(send_frame)
     delta_events = [e for e in events if e["type"] == "token.delta"]
-    # All 5 pieces should coalesce into 1 frame (or at most very few).
+
     assert len(delta_events) <= 2, f"expected coalesced ≤2 delta frames; got {len(delta_events)}: {delta_events}"
     merged_text = "".join(e["payload"]["text"] for e in delta_events)
     assert merged_text == "Hello world"
@@ -146,14 +146,14 @@ async def test_mixed_events_preserve_order(
 
     events = _collect_emitted_events(send_frame)
     types = [e["type"] for e in events]
-    # Expected: ["token.delta" (merged "AB"), "tool.start", "token.delta" ("C"), "message.complete"]
+
     assert types == ["token.delta", "tool.start", "token.delta", "message.complete"], f"order not preserved: {types}"
     assert events[0]["payload"]["text"] == "AB"
     assert events[2]["payload"]["text"] == "C"
 
 
 # ---------------------------------------------------------------------------
-# Overflow
+
 # ---------------------------------------------------------------------------
 
 
@@ -164,15 +164,6 @@ async def test_queue_overflow_emits_error_and_closes(
     emitter = SubscriptionEmitter(send_frame=send_frame)
     sub_id = await emitter.register("tui:default")
 
-    # Fill the queue beyond capacity. We use a delta event (size matters less
-    # than count; queue cap is item count).
-    # We do NOT let the coalesce loop drain — to stress the put_nowait path,
-    # we push faster than 16ms window can drain. Simplest: push immediately
-    # without awaiting between emits; the coalesce loop yields after 1 get
-    # then sleeps 16ms — during that 16ms we push QUEUE_CAPACITY+ items.
-    # But after the first await get(), the queue contains 0 items briefly.
-    # To deterministically trigger overflow, push QUEUE_CAPACITY + 100 events
-    # with no awaits in between (the loop has not had a chance to wake).
     for i in range(QUEUE_CAPACITY + 100):
         await emitter.emit(
             "tui:default",
@@ -185,12 +176,11 @@ async def test_queue_overflow_emits_error_and_closes(
     overflow_errors = [e for e in events if e.get("type") == "error" and e.get("payload", {}).get("code") == -32016]
     assert len(overflow_errors) >= 1, f"expected ≥1 overflow error; got events: {[e['type'] for e in events]}"
 
-    # Subscription should be closed
     assert sub_id not in emitter._by_id
 
 
 # ---------------------------------------------------------------------------
-# Multi-subscriber on same session
+
 # ---------------------------------------------------------------------------
 
 
@@ -209,7 +199,6 @@ async def test_multiple_subs_same_session_both_receive(
     )
     await asyncio.sleep(COALESCE_WINDOW_S * 3)
 
-    # Count frames per subscription_id
     sub_a_frames = 0
     sub_b_frames = 0
     for call in send_frame.call_args_list:
@@ -230,17 +219,17 @@ async def test_close_session_closes_all_subscriptions_for_session(
     """close_session('sk') unregisters every sub for that session."""
     sub_a = await emitter.register("tui:default")
     sub_b = await emitter.register("tui:default")
-    sub_c = await emitter.register("tui:other")  # different session
+    sub_c = await emitter.register("tui:other")
 
     await emitter.close_session("tui:default")
 
     assert sub_a not in emitter._by_id
     assert sub_b not in emitter._by_id
-    assert sub_c in emitter._by_id  # other session untouched
+    assert sub_c in emitter._by_id
 
 
 # ---------------------------------------------------------------------------
-# Closed subscription does not receive new events
+
 # ---------------------------------------------------------------------------
 
 

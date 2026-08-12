@@ -6,12 +6,9 @@ export const STARTUP_IMAGE = (process.env.PICO_TUI_IMAGE ?? '').trim()
 export const MOUSE_TRACKING = !truthy(process.env.PICO_TUI_DISABLE_MOUSE)
 export const NO_CONFIRM_DESTRUCTIVE = truthy(process.env.PICO_TUI_NO_CONFIRM)
 
-// Skip AlternateScreen — TUI renders into the primary buffer so the host
-// terminal's native scrollback captures whatever scrolls off the top.
-// Experiment gate: lets us measure native scroll vs our virtualization on
-// the same pipeline.
+// 跳过 AlternateScreen，让 TUI 渲染到主缓冲区，使宿主终端原生回滚区能保留
+// 滚出顶部的内容。该实验开关用于在同一流水线上比较原生滚动与虚拟化滚动。
 export const INLINE_MODE = truthy(process.env.PICO_TUI_INLINE)
 
-// Live FPS counter overlay, fed by ink's onFrame (real render rate, not a
-// synthetic timer).
+// 实时 FPS 计数浮层由 Ink 的 onFrame 提供数据，反映真实渲染速率而非合成计时器。
 export const SHOW_FPS = truthy(process.env.PICO_TUI_FPS)

@@ -35,22 +35,19 @@ from pico.utils.bm25 import BM25Okapi, tokenize
 if TYPE_CHECKING:
     from pico.agent.tools.base import Tool
 
-# Catalog signature: one (name, indexed-text) pair per tool. The indexed text
-# embeds description + parameter schema, so the signature changes whenever any
-# indexed field does — the exact trigger for a rebuild.
+# 目录签名：每个工具对应一个（名称，索引文本）对。索引文本嵌入描述和参数模式，
+# 任何已索引字段变化时签名都会变化，这正是重建的触发条件。
 _Signature = frozenset[tuple[str, str]]
 
-# Cap schema-walk recursion so a pathologically nested MCP schema can't blow the
-# stack or balloon the indexed text; tool schemas are shallow in practice.
+# 限制模式遍历的递归深度，避免病态嵌套的 MCP 模式撑爆栈或使索引文本膨胀；
+# 实际的工具模式层级很浅。
 _MAX_SCHEMA_DEPTH = 6
-# A built index: the names list paired with the BM25 built from it (same
-# ordering). Read-only for searchers, so safe to share across loops.
+# 已构建的索引：名称列表与按相同顺序构建的 BM25 配对。检索方只读，可安全跨循环共享。
 _BuiltIndex = tuple[list[str], BM25Okapi]
 
-# Single process-level slot, guarded by its own lock. The expensive build runs
-# outside the lock; the lock only guards the slot read/write. A rare concurrent
-# double-build on first miss is harmless — the build is pure, so last-writer-
-# wins yields an identical index (same tolerance as ``LocalPool``).
+# 单一进程级槽位由独立锁保护。昂贵的构建在锁外执行，锁只保护槽位读写。
+# 首次未命中时少见的并发重复构建无害：构建是纯操作，最后写入者得到相同索引，
+# 与 ``LocalPool`` 的容忍策略一致。
 _cache_lock = threading.Lock()
 _cached_sig: _Signature = frozenset()
 _cached_index: _BuiltIndex | None = None

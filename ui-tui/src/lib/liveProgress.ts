@@ -27,7 +27,7 @@ const isBarrierMessage = (msg: Msg | undefined) => {
     return true
   }
 
-  // Assistant text, user input, intro/panel rows all terminate the shelf.
+  // 助手文本、用户输入以及介绍或面板行都会终止该搁板区段。
   if (msg.kind === 'intro' || msg.kind === 'panel' || msg.kind === 'diff') {
     return true
   }

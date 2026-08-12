@@ -63,7 +63,7 @@ class UsageTracker(TokenStrategy):
         self._call_count: int = 0
         self._buffer: list[dict[str, Any]] = []
 
-    # ---- TokenStrategy hook ----
+    # ---- TokenStrategy 钩子 ----
 
     async def after_llm_call(self, response: dict[str, Any], usage: UsageSnapshot) -> None:
         """Record one LLM call."""
@@ -80,7 +80,7 @@ class UsageTracker(TokenStrategy):
             if self._call_count % self.flush_every == 0:
                 self._flush()
 
-    # ---- Public introspection ----
+    # ---- 公共内省 ----
 
     def snapshot(self, session_key: str | None = None) -> UsageSnapshot:
         """Return a *copy* of the session accumulator, or the lifetime total."""
@@ -98,7 +98,7 @@ class UsageTracker(TokenStrategy):
         """Flush any remaining buffered rows to disk."""
         self._flush()
 
-    # ---- Internals ----
+    # ---- 内部实现 ----
 
     def _accumulate(self, u: UsageSnapshot) -> None:
         key = u.session_key or "__no_session__"

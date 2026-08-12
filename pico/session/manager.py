@@ -63,20 +63,20 @@ class Session:
     but does NOT modify the messages list or get_history() output.
     """
 
-    key: str  # channel:chat_id
+    key: str  # channel:chat_id 格式的键
     messages: list[dict[str, Any]] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: dict[str, Any] = field(default_factory=dict)
-    last_consolidated: int = 0  # Number of messages already consolidated to files
-    # ── Personalization state ─────────────────────────────────────────────────
-    # Set when the agent asked a clarifying question and is waiting for the answer.
-    # Structure: {"original_message": str, "question": str, "domain": str}
-    # Cleared immediately after the user's answer is processed.
+    last_consolidated: int = 0  # 已归并到文件的消息数量
+    # ── 个性化状态 ───────────────────────────────────────────────────────────
+    # Agent 提出澄清问题并等待回答时设置。
+    # 结构：{"original_message": str, "question": str, "domain": str}
+    # 用户回答处理完毕后立即清除。
     pending_clarification: dict | None = field(default=None)
-    # Messages already on disk; save() appends only past this index.
+    # 已落盘的消息数量；save() 只追加该索引之后的消息。
     _persisted_count: int = field(default=0, repr=False)
-    # Distinguishes a saved empty session from a never-persisted lazy session.
+    # 用于区分已保存的空会话和从未持久化的惰性会话。
     _persisted: bool = field(default=False, repr=False, compare=False)
     _storage_epoch: int = field(default=0, repr=False, compare=False)
     _persisted_snapshot: dict[str, Any] | None = field(default=None, repr=False, compare=False)
@@ -105,7 +105,7 @@ class Session:
         unconsolidated = self.messages[self.last_consolidated :]
         sliced = unconsolidated[-max_messages:]
 
-        # Drop leading non-user messages to avoid orphaned tool_result blocks
+        # 丢弃开头的非用户消息，避免产生孤立的 tool_result 块。
         for i, m in enumerate(sliced):
             if m.get("role") == "user":
                 sliced = sliced[i:]
@@ -581,7 +581,7 @@ class SessionManager:
                 "updated_at": session.updated_at.isoformat(),
                 "metadata": session.metadata,
                 "last_consolidated": session.last_consolidated,
-                # Personalization: persist clarification wait-state across restarts
+                # 个性化状态：跨重启保留澄清问题的等待状态。
                 "pending_clarification": session.pending_clarification,
             },
             ensure_ascii=False,

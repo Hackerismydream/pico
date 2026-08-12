@@ -38,9 +38,8 @@ if TYPE_CHECKING:
     from pico.evolver.orchestrator.nodes.screen import ScreenResult
 
 
-# (node, task_ids) -> fired task set, or None when there is no attribution
-# data for this node (uninstrumented candidate / collection not wired) —
-# None makes Gate-b fail OPEN (skip), an empty set is an honest "never fired".
+# （节点，任务 ID）-> 已触发任务集合；节点无归因数据（候选项未插桩或未接入收集）时为 None。
+# None 让门控 b 开放通过（跳过），空集合则如实表示“从未触发”。
 FiredSourceFn = Callable[[HarnessNode, list[str]], Optional[set]]
 FocusedSourceFn = Callable[[HarnessNode], list[str]]
 
@@ -103,9 +102,8 @@ class DecisionContext:
     train_task_ids: list[str]
     anchor: Optional[AnchorSelection] = None
     focused_task_ids: list[str] = field(default_factory=list)
-    # Stable-pass control tasks carried into the focused eval as a regression
-    # guard (SOP §2 5a, "2-3 all-pass sentinels"): a fix that helps its WHY subset must not
-    # break originally-passing tasks. Empty = no guard.
+    # 作为退化防护带入聚焦评测的稳定通过对照任务（SOP 第 2 节第 5a 项，“2 到 3 个全通过
+    # 哨兵”）：帮助 WHY 子集的修复不得破坏原本通过的任务。空集合表示不防护。
     sentinel_task_ids: list[str] = field(default_factory=list)
     fired_source: Optional[FiredSourceFn] = None
 
@@ -142,7 +140,7 @@ class FrozenColdStartBaseline:
     def for_round(self, round_index, parent, *, eval, train_task_ids, anchor) -> Baseline:
         return Baseline(self._evals, train_mean(self._evals, train_task_ids), self._label)
 
-    def on_promote(self, node, outcome, *, train_task_ids) -> None:  # frozen: never moves
+    def on_promote(self, node, outcome, *, train_task_ids) -> None:  # 冻结基线永不移动
         return None
 
 
@@ -180,9 +178,8 @@ class PerParentFrozenBaseline:
         return baseline
 
     def on_promote(self, node, outcome, *, train_task_ids) -> None:
-        # Mean over the FULL train set (SOP §0 fixed denominator): a confirm that
-        # missed a task must still count it as 0, so this baseline and next
-        # round's candidate arm share the same denominator basis.
+        # 完整训练集均值（SOP 第 0 节固定分母）：确认运行遗漏的任务仍必须按 0 计，使该基线与
+        # 下一轮候选组使用相同分母基础。
         evals = outcome.confirm_evals
         mean = train_mean(evals, train_task_ids)
         self._by_parent[node.node_id] = Baseline(evals, mean, f"{node.node_id}_confirm")
@@ -204,7 +201,7 @@ class SameSessionPairedBaseline:
         evals = eval(parent, train_task_ids, self._k, f"{self._label}_r{round_index}")
         return Baseline(evals, train_mean(evals, train_task_ids), f"{parent.node_id}_{self._label}_r{round_index}")
 
-    def on_promote(self, node, outcome, *, train_task_ids) -> None:  # re-measured each round
+    def on_promote(self, node, outcome, *, train_task_ids) -> None:  # 每轮重新测量
         return None
 
 

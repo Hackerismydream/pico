@@ -19,9 +19,8 @@ if TYPE_CHECKING:
     from pico.tui_rpc.dispatcher import Dispatcher
 
 
-# Module-level latest-known terminal size. ``None`` means "no resize event
-# observed yet"; callers should fall back to ``shutil.get_terminal_size()``
-# or a sensible default (80 cols) in that case.
+# 模块级的最新已知终端尺寸。``None`` 表示尚未观察到 resize 事件；
+# 此时调用方应回退到 ``shutil.get_terminal_size()`` 或合理默认值（80 列）。
 _LATEST_COLS: int | None = None
 _LATEST_ROWS: int | None = None
 
@@ -42,7 +41,7 @@ def get_latest_rows() -> int | None:
 def _coerce_dim(value: Any) -> int | None:
     """Return ``value`` as a positive int, else ``None``."""
     if isinstance(value, bool):
-        # bool is a subclass of int — reject explicitly.
+        # bool 是 int 的子类，需显式拒绝。
         return None
     if isinstance(value, int) and value > 0:
         return value

@@ -49,8 +49,8 @@ from pico.evolver.orchestrator.scoring import (
 from pico.evolver.scheduler.anchor_selection import simple_anchor
 from pico.evolver.tree.node import AppliedPatch, HarnessNode
 
-# per-task trajectory runner for the no-benchmark scorer:
-# (node, task_ids, k) -> [(task_id, trajectory_id, task_description, text), ...]
+# 无基准评分器使用的逐任务轨迹运行器：
+# （节点、任务 ID、k）-> [(任务 ID、轨迹 ID、任务描述、文本), ...]
 ScoringTrajectoryRun = Callable[[HarnessNode, list, int], list]
 
 
@@ -64,7 +64,7 @@ class EndpointConfig:
     temperature: float = 0.0
 
 
-# ---- semantic step adapters -------------------------------------------------
+# ---- 语义步骤适配器 --------------------------------------------------------
 
 
 def make_diagnose_fn(
@@ -126,13 +126,13 @@ def make_verdict_fn(
                 why_keys=why_keys_of() if why_keys_of else None,
             )
             return f"{v.summary} | next: {v.next_target} | ceiling={v.ceiling_signal}"
-        except Exception:  # noqa: BLE001 — verdict is advisory; fall back to facts
+        except Exception:  # noqa: BLE001 — 判定仅供参考，失败时回退到事实
             return summary
 
     return verdict_fn
 
 
-# ---- backend factory (the one bench-neutral EvalBackend) --------------------
+# ---- 后端工厂（唯一与基准无关的 EvalBackend）------------------------------
 
 
 def make_llm_backend(
@@ -178,9 +178,8 @@ def make_llm_backend(
     def eval_fn(node, task_ids, k_, job_name, *, split="train"):
         return _score(node, task_ids, k_)
 
-    # One judge-scored vanilla pass, shared by cold_start AND anchor — scoring
-    # twice would double the judge cost and, worse, derive the screen control
-    # and the anchor thresholds from two different samples.
+    # 由评判器评分的一次原始版本运行，由 cold_start 和 anchor 共用。评分两次不仅会让评判成本
+    # 翻倍，更会使筛选对照和锚点阈值来自两个不同样本。
     _stab: dict[str, TaskStability] = {}
 
     def cold_start() -> dict[str, TaskStability]:
@@ -249,8 +248,7 @@ def make_git_commit_apply_fn(
     from pico.evolver.tree import git_ops
 
     root = Path(repo_root)
-    # A shared registry lets a design step base its sandbox off a promoted
-    # parent's real commit (same dict passed to both apply and design).
+    # 共用注册表使设计步骤能以晋升父节点的真实提交为沙箱基础；同一字典传给 apply 和 design。
     if sha_by_node is None:
         sha_by_node = {}
     sha_by_node.setdefault(root_node_id, base_sha)
@@ -270,7 +268,7 @@ def make_git_commit_apply_fn(
         overlap = sorted(set(files) & set(deletions))
         if overlap:
             raise ValueError(f"candidate paths cannot be both written and deleted: {overlap}")
-        if guard_immutable:  # guard before committing, so no dangling commit on reject
+        if guard_immutable:  # 提交前防护，避免拒绝后留下悬空提交
             assert_patch_allowed(
                 list(files) + list(deletions),
                 repo_root=root,
@@ -290,8 +288,7 @@ def make_git_commit_apply_fn(
                 f"expected={sorted(expected_paths)}, actual={sorted(changed)}"
             )
         sha_by_node[node_id] = child_sha
-        # Anchor the (otherwise unreferenced) candidate commit against git gc,
-        # so a late worktree eval / post-hoc sealed unseal still finds it.
+        # 锚定原本无引用的候选提交，防止被 Git 垃圾回收，使后续工作树评测或事后密封解封仍能找到它。
         git_ops.create_ref(root, f"refs/evolver/{node_id}", child_sha)
         return HarnessNode(
             node_id=node_id,
@@ -339,10 +336,9 @@ def make_zero_hit_preflight(trajectory_source: TrajectorySource):
         texts = corpus_cache.get(parent.node_id)
         if texts is None:
             try:
-                # description + transcript: the same surface read_trajectory
-                # showed the driver, so a predicate authored against it matches.
+                # 描述加转录：与 read_trajectory 向驱动器展示的表面一致，使基于该表面编写的谓词能够匹配。
                 texts = [f"{t[1]}\n{t[2]}" for t in trajectory_source(0, parent)]
-            except Exception:  # noqa: BLE001 — no corpus, no pruning signal
+            except Exception:  # noqa: BLE001 — 没有语料库就没有剪枝信号
                 texts = []
             corpus_cache[parent.node_id] = texts
         if not texts:
@@ -522,12 +518,11 @@ def build_evolution_orchestrator(
         created_at=HarnessNode.utc_now(),
         created_at_iter=0,
     )
-    # shared state across steps
+    # 跨步骤共用状态
     sha_by_node: dict[str, str] = {root_node_id: base_sha}
     cand_by_node: dict[str, Any] = {}
-    # Cross-round per-WHY attempt history, persisted so a crash-resume does not
-    # amnesia the designer (prior-attempt lessons + the editor's WHY decay both
-    # read it); the archive already survives resume, this keeps them symmetric.
+    # 跨轮、逐 WHY 的尝试历史会持久化，避免崩溃恢复后设计器失忆；先前尝试经验和编辑器的
+    # WHY 衰减都会读取它。归档已能跨恢复保留，此举使两者对称。
     history_path = Path(config.work_dir) / "history.json"
     history: dict[str, list[dict]] = {}
     try:
@@ -536,10 +531,8 @@ def build_evolution_orchestrator(
     except (OSError, ValueError):
         history = {}
 
-    # Gate0 BEFORE the (potentially hours-long) vanilla cold start — a dirty env
-    # would bake contaminated trials into the run's permanent baseline — then
-    # materialise the vanilla ledger so taxonomy induction and the baseline seed
-    # have trajectories/scores to read.
+    # 在可能耗时数小时的原始冷启动前执行门控 0；脏环境会把污染试验固化进永久基线。之后
+    # 实体化原始版本账本，使分类归纳和基线种子都有轨迹/分数可读。
     if run_gate0 and backend.precheck is not None:
         backend.precheck()
     backend.cold_start()
@@ -555,8 +548,7 @@ def build_evolution_orchestrator(
             raise KeyError(f"unknown parent commit for {parent.node_id!r} (chain broken)")
         return sha
 
-    # GSME: the per-cell elite bank (persisted under work_dir, reloaded on
-    # resume). Created before the design step so the designer can read it.
+    # GSME：逐单元精英库，持久化在 work_dir 下并在恢复时重载。设计步骤前创建，供设计器读取。
     from pico.evolver.orchestrator.archive import GsmeArchive
 
     archive = GsmeArchive(config.archive_path)
@@ -584,11 +576,9 @@ def build_evolution_orchestrator(
         cand = cand_by_node.get(node.node_id)
         return list(getattr(cand, "focused_task_ids", [])) if cand else []
 
-    # Gate-b attribution, beacon-aware: only a candidate that actually carries
-    # an activation_beacon call gets per-task firing data; for the rest (prompt/
-    # config edits, recombinants of such) return None so the gate fails OPEN
-    # instead of rejecting an uninstrumented-but-honest candidate on an empty
-    # firing set. ``fired_source_of`` is the bench's raw ledger reader.
+    # 门控 b 归因会感知信标：只有实际携带 activation_beacon 调用的候选项才获得逐任务触发数据；
+    # 其他候选项（提示/配置编辑及其重组）返回 None，使门控开放通过，而不是因触发集为空拒绝
+    # 未插桩但诚实的候选项。``fired_source_of`` 是基准的原始账本读取器。
     fired_source = None
     if fired_source_of is not None:
 
@@ -655,9 +645,8 @@ def build_evolution_orchestrator(
         )
 
     def inert_hook(cand, outcome):
-        # A preflight-pruned candidate never got a node, but its death is a
-        # designer lesson (the TRIGGER was unreachable, not the mechanism) —
-        # without this entry the next round can redesign the same dead end.
+        # 预检裁剪的候选项从未得到节点，但其失败仍是设计经验：不可达的是触发器，而非机制。
+        # 若无此记录，下一轮可能再次设计同一条死路。
         why = str(getattr(cand, "why", "") or "")
         if not why:
             return
@@ -690,26 +679,24 @@ def build_evolution_orchestrator(
             entry["rescued"] = flips["n_rescued"]
             entry["regressed"] = flips["n_regressed"]
             entry["regressed_ids"] = list(flips["regressed"])[:3]
-            # Harm replay: attach HOW the first regressed task broke under this
-            # candidate (its own confirm trajectory), so the next attempt's
-            # "narrow it sharply" has the wound, not just the count.
+            # 伤害回放：附上第一个退化任务在该候选项下如何失败（其自身确认轨迹），使下一次
+            # “大幅收窄”时看到真实创口，而不只是计数。
             if harm_excerpt_of and flips["regressed"]:
                 try:
                     harm = harm_excerpt_of(ctx.node.node_id, list(flips["regressed"])[0])
-                except Exception:  # noqa: BLE001 — replay is best-effort context
+                except Exception:  # noqa: BLE001 — 回放上下文仅尽力提供
                     harm = None
                 if harm:
                     entry["harm"] = harm
         history.setdefault(cand.why, []).append(entry)
         _persist_history()
 
-    # Verdict rides its own driver when given (role->model splits, e.g. a cheap
-    # diagnose model + a stronger narrative model), else the shared one.
+    # 若提供独立驱动器，结论使用它（按角色拆分模型，例如廉价诊断模型加更强叙述模型）；
+    # 否则使用共用驱动器。
     if verdict_fn is None and (verdict_call_fn or driver_call_fn) is not None:
         verdict_fn = make_verdict_fn(verdict_call_fn or driver_call_fn, why_keys_of=verdict_why_keys_of)
 
-    # budget.recombinations_per_round=0 disables recombination proposals while
-    # still banking elites for audit and the design prompt.
+    # budget.recombinations_per_round=0 会禁用重组提案，但仍保存精英以供审计和设计提示使用。
     return EvolutionOrchestrator(
         config,
         backend=backend,

@@ -241,7 +241,7 @@ def _render_human_output(report: DoctorReport) -> None:
     console.print(f"\n{__logo__} Pico Doctor\n")
 
     paths = report.paths
-    assert paths is not None  # _gather_static_checks always populates this
+    assert paths is not None  # _gather_static_checks 始终会填充该值
     console.print("[bold]Paths[/bold]")
     if paths.config_exists:
         console.print(f"  Config:    {paths.config_path}  [green]✓[/green]")
@@ -279,7 +279,7 @@ def _render_human_output(report: DoctorReport) -> None:
         console.print("\n[bold]Features[/bold]")
         count = len(features.channels_enabled)
         if count:
-            # Escape the opening bracket so rich renders a literal label, not markup.
+            # 转义左方括号，让 Rich 渲染字面标签而非标记。
             labelled = ", ".join(f"{name} \\[{_channel_maturity(name)}]" for name in features.channels_enabled)
             console.print(f"  Channels:    {count} enabled  ({labelled})")
         else:

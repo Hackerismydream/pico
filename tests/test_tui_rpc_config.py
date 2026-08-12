@@ -38,7 +38,7 @@ def fake_home(monkeypatch, tmp_path) -> Path:
 
 
 # ----------------------------------------------------------------------------
-# config.get
+
 # ----------------------------------------------------------------------------
 
 
@@ -46,7 +46,7 @@ async def test_config_get_no_keys_returns_all_writable(fake_home: Path) -> None:
     result = await config_get({})
     assert "config" in result
     cfg = result["config"]
-    # All 4 whitelisted keys present (defaults), no extras.
+
     assert set(cfg.keys()) == set(CONFIG_WRITABLE_KEYS)
 
 
@@ -57,7 +57,7 @@ async def test_config_get_specific_keys_returns_subset(fake_home: Path) -> None:
 
 async def test_config_get_unknown_keys_silently_omitted(fake_home: Path) -> None:
     result = await config_get({"keys": ["nope.invalid", "tui.theme"]})
-    # Unknown key silently absent — spec §3.6 says no error.
+
     assert "nope.invalid" not in result["config"]
     assert "tui.theme" in result["config"]
 
@@ -70,7 +70,7 @@ async def test_config_get_reads_persisted_values(fake_home: Path) -> None:
 
 
 # ----------------------------------------------------------------------------
-# config.set
+
 # ----------------------------------------------------------------------------
 
 
@@ -91,10 +91,10 @@ async def test_config_set_invalid_theme_raises_validation(fake_home: Path) -> No
 
 
 async def test_config_set_invalid_temperature_raises_validation(fake_home: Path) -> None:
-    # Temperature must be a number in [0, 2]; passing a string fails.
+
     with pytest.raises(ConfigValidationError):
         await config_set({"key": "agent.temperature", "value": "hot"})
-    # Out-of-range numeric also rejected.
+
     with pytest.raises(ConfigValidationError):
         await config_set({"key": "agent.temperature", "value": 99})
 
@@ -108,11 +108,11 @@ async def test_config_set_persists_to_config_json(fake_home: Path) -> None:
 
 
 async def test_config_set_previous_value_returned(fake_home: Path) -> None:
-    # First write — previous is None.
+
     res1 = await config_set({"key": "tui.show_token_usage", "value": True})
     assert res1["applied"] is True
     assert res1["previous"] is None
-    # Second write — previous reflects the first write's value.
+
     res2 = await config_set({"key": "tui.show_token_usage", "value": False})
     assert res2["applied"] is True
     assert res2["previous"] is True
@@ -133,7 +133,7 @@ async def test_config_set_missing_key_param_raises_validation(fake_home: Path) -
 
 
 # ----------------------------------------------------------------------------
-# config.set key="model" — the live-loop switch branch
+
 # ----------------------------------------------------------------------------
 
 
@@ -205,8 +205,7 @@ async def test_config_set_model_uses_atomic_runtime_replacement(fake_home: Path,
 
 
 async def test_config_set_model_bare_derives_provider(fake_home: Path) -> None:
-    # A bare `/model <name>` carries no provider; _set_model must derive it from
-    # the model so a previously-forced provider does not silently mis-route.
+
     result = await config_set(
         {"key": "model", "value": "anthropic/claude-opus-4-8"},
         agent_loop_factory=lambda: None,
@@ -263,7 +262,6 @@ async def test_config_set_model_unconstructable_preserves_previous(fake_home: Pa
             agent_loop_factory=lambda: loop,
         )
 
-    # Loop untouched and on-disk model preserved.
     assert loop.model == "anthropic/claude-sonnet-4-5"
     assert loop.provider == "keep-prov"
     cfg = json.loads((fake_home / ".pico" / "config.json").read_text())
@@ -271,7 +269,7 @@ async def test_config_set_model_unconstructable_preserves_previous(fake_home: Pa
 
 
 # ----------------------------------------------------------------------------
-# Dispatcher wiring
+
 # ----------------------------------------------------------------------------
 
 
@@ -295,7 +293,6 @@ async def test_config_methods_registered_via_helper(fake_home: Path) -> None:
     resp = await d.dispatch({"jsonrpc": "2.0", "id": 2, "method": "config.get", "params": {"keys": ["tui.theme"]}})
     assert resp["result"]["config"]["tui.theme"] == "ok"
 
-    # readonly → JSON-RPC error -32010
     resp = await d.dispatch(
         {
             "jsonrpc": "2.0",
@@ -308,19 +305,18 @@ async def test_config_methods_registered_via_helper(fake_home: Path) -> None:
 
 
 async def test_config_set_refuses_malformed_config_and_preserves_file(fake_home: Path) -> None:
-    # REGRESSION: TUI config.set must not clobber a malformed config down to one
-    # key (same data-loss failure mode as the CLI write path).
+
     cfg = fake_home / ".pico" / "config.json"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     original = '{\n  "tui": {"theme": "dark"},\n  // comment => invalid JSON\n}\n'
     cfg.write_text(original, encoding="utf-8")
     with pytest.raises(ConfigValidationError):
         await config_set({"key": "tui.theme", "value": "dracula"})
-    assert cfg.read_text(encoding="utf-8") == original  # NOT clobbered
+    assert cfg.read_text(encoding="utf-8") == original
 
 
 async def test_config_get_refuses_malformed_config(fake_home: Path) -> None:
-    # The read path also surfaces a broken config (not a silent empty dict).
+
     cfg = fake_home / ".pico" / "config.json"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text('{\n  "tui": {"theme": "dark"},\n  // bad\n}\n', encoding="utf-8")

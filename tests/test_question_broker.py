@@ -104,7 +104,7 @@ async def test_reply_idempotent_late_and_duplicate() -> None:
 
     assert broker.reply(CID, "first") is True
     assert await task == "first"
-    # registry cleaned up — a duplicate / late reply is a no-op
+
     assert broker.reply(CID, "second") is False
 
 
@@ -121,7 +121,7 @@ async def test_timeout_failsafe_to_default() -> None:
 
     result = await broker.await_question(CID, prompt="?", default="fallback", timeout_s=0.05)
     assert result == "fallback"
-    await _wait_for_frame(frames)  # it did emit the request first
+    await _wait_for_frame(frames)
     assert broker.pending_req(CID) is None
 
 
@@ -157,10 +157,9 @@ async def test_overlapping_question_replaces_stale() -> None:
     await _wait_for_frame(frames)
 
     second = asyncio.create_task(broker.await_question(CID, prompt="q2", default="d2"))
-    # The stale first question fail-safes to its own default.
+
     assert await first == "d1"
 
-    # Let the second emit, then resolve it.
     while len(frames) < 2:
         await asyncio.sleep(0.005)
     broker.reply(CID, "q2-answer")

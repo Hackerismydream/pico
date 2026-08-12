@@ -36,12 +36,10 @@ declare module '@hermes/ink' {
     readonly keypress: {
       readonly isPasted?: boolean
       readonly raw?: string
-      // Raw byte sequence from stdin: '\r' for plain enter, '\n' for
-      // ctrl+enter/ctrl+j, '\x1b\r' for alt+enter. textInput uses this
-      // to distinguish ctrl+enter (LF) from plain enter (CR) without
-      // relying on Kitty/modifyOtherKeys protocol push being honored
-      // end-to-end. Always defined upstream; declared optional to match
-      // the rest of this narrowed Pick<>.
+      // stdin 原始字节序列：普通回车为 '\r'，Ctrl+Enter/Ctrl+J 为 '\n'，
+      // Alt+Enter 为 '\x1b\r'。textInput 借此区分 Ctrl+Enter（LF）与普通回车
+      // （CR），不依赖 Kitty/modifyOtherKeys 协议推送是否端到端生效。上游始终
+      // 定义该值；此处声明为可选，以匹配这个收窄后的 Pick<> 中其他字段。
       readonly sequence?: string
     }
     stopImmediatePropagation: () => void

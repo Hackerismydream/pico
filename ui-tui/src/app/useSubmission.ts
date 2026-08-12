@@ -119,7 +119,9 @@ export function resolveQueuedEdit(
   return {
     pasteSnips,
     submitText:
-      entry.text === editedText && entry.submitText !== undefined ? entry.submitText : expandSnips(pasteSnips)(editedText)
+      entry.text === editedText && entry.submitText !== undefined
+        ? entry.submitText
+        : expandSnips(pasteSnips)(editedText)
   }
 }
 
@@ -208,7 +210,11 @@ export function useSubmission(opts: UseSubmissionOptions) {
             text: displayText
           })
           patchUiState({ busy: false, status: 'ready' })
-          sys(typed ? 'chat transport is switching sessions; message queued' : 'chat transport is not ready; message queued')
+          sys(
+            typed
+              ? 'chat transport is switching sessions; message queued'
+              : 'chat transport is not ready; message queued'
+          )
 
           return
         }
@@ -273,8 +279,8 @@ export function useSubmission(opts: UseSubmissionOptions) {
     [send]
   )
 
-  // Queue preserves the in-flight turn. Interrupt cancels it before sending
-  // the new text. Queue-edit fallback keeps the selected item at the front.
+  // 排队会保留进行中的轮次；中断会先取消它，再发送新文本。编辑队列的回退路径
+  // 会将所选项保留在队首。
   const handleBusyInput = useCallback(
     (full: string, opts: { fallbackEntry?: QueuedSubmission; fallbackToFront?: boolean } = {}) => {
       const live = getUiState()
@@ -312,9 +318,7 @@ export function useSubmission(opts: UseSubmissionOptions) {
         chat.cancel(),
         () => (opts.fallbackEntry ? sendQueued(entry) : send(full)),
         error =>
-          fallback(
-            `turn cancel failed: ${error instanceof Error ? error.message : String(error)}; message queued`
-          )
+          fallback(`turn cancel failed: ${error instanceof Error ? error.message : String(error)}; message queued`)
       )
     },
     [chatStreamRef, composerActions, composerState.pasteSnips, send, sendQueued, sys]
@@ -393,8 +397,7 @@ export function useSubmission(opts: UseSubmissionOptions) {
         }
 
         if (getUiState().busy) {
-          // Interrupt reaches the live turn instead of silently returning
-          // the selected item to the queue.
+          // 中断应作用于活动轮次，不能静默地把所选项放回队列。
           if (getUiState().busyInputMode === 'queue') {
             return composerActions.prependQueue({ ...picked, paused: false })
           }
@@ -517,10 +520,9 @@ export interface UseSubmissionOptions {
   submitRef: MutableRefObject<(value: string) => void>
   sys: (text: string) => void
   /**
-   * Typed chat-stream handle. When attached, user submissions route through
-   * `chatStream.send()` → `turn.send` RPC (Phase 4 streaming live). When
-   * absent or detached, submission fails visibly instead of calling an
-   * unregistered fallback method.
+   * 带类型的聊天流句柄。已附加时，用户提交通过 `chatStream.send()` 路由到
+   * `turn.send` RPC。句柄缺失或已分离时，提交会明确失败，而不是调用未注册的
+   * 回退方法。
    */
   chatStreamRef?: MutableRefObject<{
     cancel: () => Promise<void>

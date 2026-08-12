@@ -68,9 +68,8 @@ def _provider_models(slug: str) -> list[str]:
         cfg = {}
     configured = cfg.get("models", [])
     configured = list(configured) if isinstance(configured, list) else []
-    # Priority: the user's configured models first (manual entry via
-    # ``model.add_model`` writes here), then our curated "common" shortlist,
-    # deduped. Keeps the picker useful out of the box without a network call.
+    # 优先放用户配置的模型（通过 ``model.add_model`` 手动录入），再放精选的
+    # 常用模型短列表，并去重。这样无需网络请求，选择器开箱即用。
     seen = set(configured)
     return configured + [m for m in common_models_for(slug) if m not in seen]
 
@@ -121,7 +120,7 @@ def _current_selection() -> tuple[str, str | None]:
 
 
 # ---------------------------------------------------------------------------
-# Handlers
+# 处理器
 # ---------------------------------------------------------------------------
 
 

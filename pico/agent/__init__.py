@@ -9,8 +9,8 @@ if TYPE_CHECKING:
 
 __all__ = ["AgentLoop", "ContextBuilder", "MemoryStore"]
 
-# Lazy re-exports (PEP 562): importing a ``pico.agent`` submodule must not
-# eagerly construct ``AgentLoop`` -> litellm, which dominates CLI cold start.
+# 通过 PEP 562 延迟重新导出：导入 ``pico.agent`` 子模块时不应急切构建 ``AgentLoop``，
+# 否则会进一步导入 litellm，成为 CLI 冷启动的主要开销。
 _LAZY_EXPORTS = {
     "ContextBuilder": "pico.agent.context",
     "AgentLoop": "pico.agent.loop",

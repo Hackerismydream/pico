@@ -24,13 +24,11 @@ def post(env_url: str, path: str, body: dict, timeout: float = 120.0) -> dict:
     return r.json().get("output", {})
 
 
-# When the LLM endpoint drops/times-out/rate-limits, the agent loop catches the
-# provider error and returns it as the final content (finish_reason=="error"),
-# so it never raises up to the HTTP layer and would otherwise be graded as a
-# normal wrong answer. That is infra, not the agent's fault -- detect it and
-# raise so the run is recorded as infra_error and excluded from scoring. The
-# signatures are short one-liners; the length guard avoids flagging a long
-# genuine answer that merely mentions one of these words.
+# 大模型端点断连、超时或限流时，智能体循环会捕获供应商错误并将其作为最终内容
+# 返回（finish_reason=="error"），不会抛到 HTTP 层，因而本会被当作普通错误答案
+# 评分。这属于基础设施故障而非智能体过错，应探测并抛出，使运行记录为
+# infra_error 并排除在评分外。特征都是短单行；长度保护避免把仅提及相关词语的
+# 较长真实答案误判。
 _LLM_TRANSPORT_SIGNS = (
     "error: connection error",
     "sorry, i encountered an error calling the ai model",
@@ -44,9 +42,8 @@ _LLM_TRANSPORT_SIGNS = (
     "502 bad gateway",
     "503 service",
     "bad gateway",
-    # litellm renders provider failures without the spaced/colon forms above
-    # (observed leaking through as INCOMPLETE: "Error calling LLM:
-    # litellm.InternalServerError: OpenAIException - Connection error.")
+    # LiteLLM 渲染供应商失败时可能不使用上方带空格或冒号的形式；曾观察到它以
+    # INCOMPLETE 形式泄漏连接错误。
     "error calling llm",
     "connection error",
     "internalservererror",
@@ -99,8 +96,8 @@ def grade_and_record(result: dict, *, env_url: str, task_id: str, response: str,
         raise RuntimeError("llm_transport_error: empty response and subject endpoint unreachable")
     ev = post(env_url, "/evaluate", {"task_id": task_id, "suppress_errors": True})
     done = post(env_url, "/task_completed", {"task_id": task_id})
-    # Capture the full evaluation oracle (passes/failures) for the evolver's
-    # diagnose step; derive pass_count when the env omits it.
+    # 捕获完整评测预言机（通过与失败）供 Evolver 诊断步骤使用；环境省略
+    # pass_count 时自行派生。
     _passes = ev.get("passes") or []
     _failures = ev.get("failures") or []
     result.update(

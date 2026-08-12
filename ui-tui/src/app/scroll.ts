@@ -23,10 +23,9 @@ function scrollBoundsForDelta(s: ScrollBoxHandle, cur: number, delta: number) {
   const cachedHeight = Math.max(viewport, s.getScrollHeight())
   let max = Math.max(0, cachedHeight - viewport)
 
-  // getScrollHeight() is render-time cached. After the streaming tail is
-  // committed into virtual history, the Yoga height can be fresher than the
-  // cached value; if we clamp only against the cached fake bottom, wheel-down
-  // becomes a no-op and no render is scheduled to reveal the real tail.
+  // getScrollHeight() 在渲染时缓存。流式尾部写入虚拟历史后，Yoga 高度可能比
+  // 缓存更新；若只按缓存中的虚假底部做限制，向下滚轮会变成空操作，也不会安排
+  // 新渲染来显示真实尾部。
   if (delta > 0 && cur + delta >= max - 1) {
     const freshHeight = Math.max(viewport, s.getFreshScrollHeight())
     max = Math.max(0, freshHeight - viewport)

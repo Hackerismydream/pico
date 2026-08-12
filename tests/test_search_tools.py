@@ -26,14 +26,11 @@ def tree(tmp_path: Path) -> Path:
     return tmp_path
 
 
-# ── grep ────────────────────────────────────────────────────────────────
-
-
 async def test_grep_content_finds_match(tree: Path):
     tool = GrepTool(workspace=tree, allowed_dir=tree)
     out = await tool.execute(pattern=r"def hello")
     assert "app.py" in out
-    assert "node_modules" not in out  # ignored dir
+    assert "node_modules" not in out
 
 
 async def test_grep_no_match(tree: Path):
@@ -53,7 +50,7 @@ async def test_grep_files_with_matches(tree: Path):
     tool = GrepTool(workspace=tree, allowed_dir=tree)
     out = await tool.execute(pattern=r"def hello", output_mode="files_with_matches")
     assert "app.py" in out
-    assert ":" not in out.split("\n")[0]  # path only, no line content
+    assert ":" not in out.split("\n")[0]
 
 
 async def test_grep_count(tree: Path):
@@ -92,10 +89,10 @@ async def test_grep_fallback_skips_binary(tree: Path, monkeypatch):
 
 
 async def test_grep_context(tree: Path, monkeypatch):
-    monkeypatch.setattr(shutil, "which", lambda _: None)  # deterministic format
+    monkeypatch.setattr(shutil, "which", lambda _: None)
     tool = GrepTool(workspace=tree, allowed_dir=tree)
     out = await tool.execute(pattern="return 'world'", context=1)
-    assert "def hello" in out  # context line above the match
+    assert "def hello" in out
 
 
 async def test_grep_outside_allowed_dir(tmp_path: Path):
@@ -143,15 +140,12 @@ async def test_grep_cancellation_reaps_ripgrep_process(tree: Path, monkeypatch):
     assert process.waited is True
 
 
-# ── find ────────────────────────────────────────────────────────────────
-
-
 async def test_find_basename_recursive(tree: Path):
     tool = FindTool(workspace=tree, allowed_dir=tree)
     out = await tool.execute(pattern="*.py")
     assert "src/app.py" in out
     assert "src/util.py" in out
-    assert "node_modules" not in out  # ignored
+    assert "node_modules" not in out
 
 
 async def test_find_path_pattern(tree: Path):
@@ -174,7 +168,7 @@ async def test_find_limit(tree: Path):
 
 
 async def test_find_sorted_by_recency(tree: Path):
-    # util.py touched last → should sort first
+
     import os
     import time
 

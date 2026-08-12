@@ -101,9 +101,9 @@ export function detectVSCodeLikeTerminal(env: NodeJS.ProcessEnv = process.env): 
 }
 
 /**
- * Strip JSONC features (// line comments, /* block comments *\/, trailing commas)
- * so the result is valid JSON parseable by JSON.parse().
- * Handles comments inside strings correctly (preserves them).
+ * 去除 JSONC 特性（// 行注释、/* 块注释 *\/ 和尾随逗号）
+ * 使结果成为可由 JSON.parse() 解析的有效 JSON。
+ * 字符串内部的注释形态会被正确识别并保留。
  */
 export function stripJsonComments(content: string): string {
   let result = ''
@@ -113,13 +113,13 @@ export function stripJsonComments(content: string): string {
   while (i < len) {
     const ch = content[i]!
 
-    // String literal — copy as-is, including any comment-like chars inside
+    // 字符串字面量保持原样复制，包括内部形似注释的字符。
     if (ch === '"') {
       let j = i + 1
 
       while (j < len) {
         if (content[j] === '\\') {
-          j += 2 // skip escaped char
+          j += 2 // 跳过转义字符。
         } else if (content[j] === '"') {
           j++
 
@@ -135,7 +135,7 @@ export function stripJsonComments(content: string): string {
       continue
     }
 
-    // Line comment
+    // 行注释。
     if (ch === '/' && content[i + 1] === '/') {
       const eol = content.indexOf('\n', i)
       i = eol === -1 ? len : eol
@@ -143,7 +143,7 @@ export function stripJsonComments(content: string): string {
       continue
     }
 
-    // Block comment
+    // 块注释。
     if (ch === '/' && content[i + 1] === '*') {
       const end = content.indexOf('*/', i + 2)
       i = end === -1 ? len : end + 2
@@ -155,7 +155,7 @@ export function stripJsonComments(content: string): string {
     i++
   }
 
-  // Remove trailing commas before ] or }
+  // 删除 ] 或 } 前的尾随逗号。
   return result.replace(/,(\s*[}\]])/g, '$1')
 }
 
@@ -231,7 +231,7 @@ function whensOverlap(a: string, b: string): boolean {
     return true
   }
 
-  // Empty when = global, overlaps every context.
+  // 空 when 表示全局生效，会与所有上下文重叠。
   if (!a || !b) {
     return true
   }
@@ -243,9 +243,8 @@ function whensOverlap(a: string, b: string): boolean {
     return false
   }
 
-  // This intentionally avoids a full VS Code when-clause parser. If two
-  // same-key bindings share a positive context token and don't explicitly
-  // contradict each other, they can fire together in that context.
+  // 这里刻意不实现完整的 VS Code when 子句解析器。若同键绑定共享一个正向
+  // 上下文 token 且没有显式互斥，就可能在该上下文中同时触发。
   for (const token of left.required) {
     if (right.required.has(token)) {
       return true
@@ -255,11 +254,9 @@ function whensOverlap(a: string, b: string): boolean {
   return false
 }
 
-// VS Code allows multiple bindings on the same key as long as their `when`
-// clauses don't overlap. We flag a conflict when the contexts overlap but
-// the bindings differ — e.g. existing `terminalFocus` cmd+c overlaps with
-// our `terminalFocus && terminalTextSelected`, so the existing binding
-// would shadow ours when text isn't selected.
+// VS Code 允许同一按键存在多个绑定，前提是 `when` 子句不重叠。上下文重叠而
+// 绑定不同即视为冲突；例如已有的 `terminalFocus` cmd+c 与我们的
+// `terminalFocus && terminalTextSelected` 重叠，未选中文本时前者会遮蔽后者。
 function bindingsConflict(existing: Keybinding, target: Keybinding): boolean {
   if (existing.key !== target.key) {
     return false

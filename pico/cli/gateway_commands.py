@@ -140,8 +140,7 @@ async def _cleanup_gateway(
     await attempt("channel transports", channels.stop_all)
     await attempt("agent", agent.stop)
     await attempt("runtime", runtime.close)
-    # The run failure explains why the gateway exited; cleanup failures
-    # are logged and become terminal only when the run itself succeeded.
+    # 运行失败说明网关为何退出；清理失败会记录日志，且只有运行本身成功时才成为最终错误。
     if run_error is not None:
         raise run_error
     if cancellation is not None:
@@ -167,10 +166,8 @@ def register(app: typer.Typer) -> None:
         from pico.config.pico import load_pico_config
         from pico.proactive_engine.schedulers.cron.service import CronService
 
-        # load_runtime_config must run FIRST: it calls set_config_path() so
-        # that subsequent load_pico_config() reads from --config, not the
-        # default ~/.pico/config.json. Otherwise skill_forge from --config is
-        # silently ignored.
+        # load_runtime_config 必须最先运行：它调用 set_config_path()，使后续 load_pico_config()
+        # 从 --config 而非默认 ~/.pico/config.json 读取。否则 --config 中的 skill_forge 会被静默忽略。
         config = load_runtime_config(config, workspace)
         paths = resolve_service_paths(config)
 
@@ -187,7 +184,7 @@ def register(app: typer.Typer) -> None:
 
         from pico.cli._gateway_lock import GatewayAlreadyRunningError, acquire
 
-        # Held for the whole process; closing/GC of this handle releases the lock.
+        # 整个进程期间持有；关闭该句柄或垃圾回收时释放锁。
         try:
             _lock_handle = acquire(now=time.time())
         except GatewayAlreadyRunningError as exc:
@@ -208,23 +205,19 @@ def register(app: typer.Typer) -> None:
         sync_workspace_templates(paths.state)
         provider = make_provider(config)
 
-        # Create cron service first (callback set after agent creation).
+        # 先创建 cron 服务，智能体创建后再设置回调。
         #
-        # Restrict to channels gateway has adapters for. This prevents the
-        # gateway from racing REPL and stealing cli-origin reminders that REPL
-        # can deliver but gateway can't (REPL stdout is owned by the REPL
-        # process, gateway has no cli channel). Without this, you'd see
-        # "Unknown channel: cli" warnings + lost REPL reminders when both
-        # processes are running.
+        # 限制为网关拥有适配器的渠道，防止网关与 REPL 竞速并抢走来源为 CLI 的提醒；REPL 能
+        # 投递这些提醒，而网关不能（REPL 标准输出归 REPL 进程所有，网关没有 CLI 渠道）。
+        # 若不限制，两者同时运行时会出现 "Unknown channel: cli" 警告并丢失 REPL 提醒。
         cron_store_path = get_cron_dir() / "jobs.json"
         gateway_channels = _build_gateway_channels(config)
         cron = CronService(cron_store_path, allowed_channels=gateway_channels)
 
-        # Create model router (and, for the knn backend, wrap the provider).
+        # 创建模型路由器；使用 knn 后端时还要包装提供商。
         router, provider = build_model_routing(config, provider)
 
-        # Construct Channels before the Runtime so a broken adapter is disabled
-        # (never fatal) before plugin-owned resources are claimed.
+        # 在运行时之前构造渠道，使损坏的适配器在插件资源被领取前禁用，且永不成为致命错误。
         channels = ChannelManager(config)
 
         runtime = assemble_runtime(
@@ -257,11 +250,9 @@ def register(app: typer.Typer) -> None:
             run_error: BaseException | None = None
             try:
                 await runtime.start_memory_backend()
-                # Spine assembly for the gateway's host sources (cron submits
-                # through it, replies route to channels via a per-channel outlet).
-                # Built here, inside the running loop, not in the sync command
-                # prologue: Scheduler pins its home loop at construction (submit
-                # must come from that loop), and the prologue has no loop yet.
+                # 为网关主机来源装配 Spine：cron 通过它提交，回复经逐渠道出口路由到渠道。必须在此处
+                # 正在运行的事件循环内构建，而非同步命令序言；Scheduler 构造时会固定所属循环，
+                # submit 必须来自该循环，而序言尚无事件循环。
                 from pico.cli._gateway_spine import build_gateway
 
                 gw_scheduler, gw_hub, gw_readback_texts, gw_sources, gw_teardown = build_gateway(
@@ -280,16 +271,13 @@ def register(app: typer.Typer) -> None:
                     default_channel="cli",
                 )
 
-                # Subagent result re-injection submits a SUBAGENT-origin turn.
+                # 子智能体结果回注会提交来源为 SUBAGENT 的轮次。
                 agent.subagents.set_submit(gw_scheduler.submit)
 
-                # ask_user round-trip on the channel side: the QuestionBroker
-                # renders the agent's clarify.request as an outbound Text to the
-                # conversation's channel; the inbound gate (below) routes the
-                # user's next message back via reply(). The question fires mid-turn,
-                # so the live turn's real inbound Source is still in gw_sources
-                # (keyed by conversation id) — reuse it so a topic / thread address
-                # is exact, rather than reconstructing it from the conversation id.
+                # 渠道侧的 ask_user 往返：QuestionBroker 把智能体的 clarify.request 渲染为发往会话渠道的
+                # 出站 Text；下方入站门通过 reply() 路由用户下一条消息。问题在轮次中途发出，因此当前
+                # 轮次的真实入站 Source 仍在以会话 ID 为键的 gw_sources 中；复用它可精确保留话题/
+                # 线程地址，而无需从会话 ID 重建。
                 from pico.spine import Text as _Text
                 from pico.tui_rpc.question_broker import QuestionBroker
 
@@ -313,12 +301,9 @@ def register(app: typer.Typer) -> None:
                 if (ask_tool := agent.tools.get("ask_user")) is not None and hasattr(ask_tool, "set_broker"):
                     ask_tool.set_broker(question_broker)
 
-                # Channel inbound runs through the spine: a permitted
-                # message is submitted as a USER turn. /stop and /restart are
-                # control commands (the bus drainer's job) — intercepted here, not
-                # submitted as turns (else the agent would reply to the text). cid
-                # matches the lane key (conversation or channel:chat_id), the same
-                # session key the bus path's _handle_stop used.
+                # 渠道入站通过 spine：获准消息提交为 USER 轮次。/stop 和 /restart 是控制命令
+                # （总线排空器的职责），在此拦截而不提交为轮次，否则智能体会回复命令文本。cid 与
+                # 通道键（conversation 或 channel:chat_id）一致，也是总线路径 _handle_stop 使用的会话键。
                 from dataclasses import replace
 
                 from pico.spine import Text
@@ -344,17 +329,15 @@ def register(app: typer.Typer) -> None:
 
                         asyncio.create_task(_do_restart())
                     elif question_broker.pending_req(cid) is not None:
-                        # This conversation is blocked on an ask_user question —
-                        # route the answer to the broker (resolving the awaiting
-                        # tool) instead of starting or injecting a turn.
+                        # 当前会话阻塞在 ask_user 问题上；把答案路由到代理器以解决等待中的工具，
+                        # 而不是启动或注入新轮次。
                         question_broker.reply(cid, req.text)
                     elif gw_scheduler.has_inflight(cid):
-                        # A turn is already running this conversation — submit as
-                        # BusyPolicy.INJECT so the loop merges this message at its
-                        # next iteration instead of queuing a fresh turn.
+                        # 当前会话已有轮次在运行；以 BusyPolicy.INJECT 提交，使循环在下一次迭代合并该消息，
+                        # 而不是排队新轮次。
                         gw_scheduler.submit(replace(req, busy=BusyPolicy.INJECT))
                     else:
-                        gw_scheduler.submit(req)  # fire-and-forget (no readback)
+                        gw_scheduler.submit(req)  # 发出后不等待，也不读回
 
                 for _ch in channels.channels.values():
                     _ch.intake.set_submit(_inbound_dispatch)

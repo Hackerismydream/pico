@@ -75,14 +75,14 @@ def spec_path(tmp_path: Path, repo) -> Path:
 def fake_bench(monkeypatch):
     """Install a fake bench and return its control/observation flags."""
     flags = {
-        "cold_interrupt_after": None,  # write N trial files, then KeyboardInterrupt
-        "kb_on_round": None,  # raise inside design of this round
+        "cold_interrupt_after": None,
+        "kb_on_round": None,
         "cold_writes": 0,
         "design_calls": 0,
         "unseal_calls": 0,
-        "no_unseal": False,  # build the bundle without a sealed test
-        "unseal_fail_times": 0,  # make the next N unseal calls raise
-        "precheck_error": None,  # make the Gate0 precheck raise this message
+        "no_unseal": False,
+        "unseal_fail_times": 0,
+        "precheck_error": None,
         "precheck_calls": 0,
     }
 
@@ -199,7 +199,7 @@ class TestFullPipeline:
         work = tmp_path / "work"
         assert len(list((work / "runs" / "vanilla").glob("*.json"))) == 3
         journal = (work / "journal" / "rounds.jsonl").read_text().splitlines()
-        assert len(journal) == 2  # max_rounds=2, all candidates pruned
+        assert len(journal) == 2
         report = json.loads((work / "retention.json").read_text())
         assert report == {"best_round": 2, "retention": 0.5}
         meta = RunMeta.load(work)
@@ -223,15 +223,15 @@ class TestInterruptResume:
         fake_bench["cold_interrupt_after"] = 2
         assert runner_mod.cmd_run(str(spec_path)) == 130
         van = tmp_path / "work" / "runs" / "vanilla"
-        assert len(list(van.glob("*.json"))) == 2  # partial work kept
+        assert len(list(van.glob("*.json"))) == 2
 
         fake_bench["cold_interrupt_after"] = None
         assert runner_mod.cmd_run(str(spec_path)) == 0
-        # Resume filled only the missing trial (2 before + 1 after = 3 writes).
+
         assert fake_bench["cold_writes"] == 3
 
     def test_round_interrupt_then_resume_replays_journal(self, spec_path, fake_bench, tmp_path):
-        fake_bench["kb_on_round"] = 2  # round 1 completes, round 2 dies mid-design
+        fake_bench["kb_on_round"] = 2
         assert runner_mod.cmd_run(str(spec_path)) == 130
         journal = tmp_path / "work" / "journal" / "rounds.jsonl"
         assert len(journal.read_text().splitlines()) == 1
@@ -240,8 +240,7 @@ class TestInterruptResume:
 
         calls_before = fake_bench["design_calls"]
         assert runner_mod.cmd_run(str(spec_path)) == 0
-        # Round 1 is replayed from the journal, not re-designed: only the
-        # re-run of round 2 costs a design call.
+
         assert fake_bench["design_calls"] == calls_before + 1
         assert len(journal.read_text().splitlines()) == 2
 
@@ -252,7 +251,7 @@ class TestInterruptResume:
         assert runner_mod.cmd_status(str(spec_path)) == 0
         out = capsys.readouterr().out
         assert "1 completed round" in out
-        assert "sealed" in out  # the reminder, not the numbers
+        assert "sealed" in out
         assert "retention" not in out
 
 
@@ -293,7 +292,7 @@ class TestFinalize:
         fake_bench["kb_on_round"] = 2
         runner_mod.cmd_run(str(spec_path))
 
-        assert runner_mod.cmd_finalize(str(spec_path), yes=False) == 2  # needs --yes
+        assert runner_mod.cmd_finalize(str(spec_path), yes=False) == 2
         assert fake_bench["unseal_calls"] == 0
 
         assert runner_mod.cmd_finalize(str(spec_path), yes=True) == 0
@@ -308,7 +307,7 @@ class TestFinalize:
 
     def test_finalize_before_any_round_refuses(self, spec_path, fake_bench):
         fake_bench["cold_interrupt_after"] = 1
-        runner_mod.cmd_run(str(spec_path))  # dies in cold start
+        runner_mod.cmd_run(str(spec_path))
         assert runner_mod.cmd_finalize(str(spec_path), yes=True) == 2
 
 

@@ -31,7 +31,7 @@ def test_run_help_works() -> None:
     r = runner.invoke(app, ["run", "--help"])
     assert r.exit_code == 0
     assert "Interact with the agent" in r.stdout
-    # core options surfaced
+
     assert "--message" in r.stdout
     assert "--session" in r.stdout
     assert "--workspace" in r.stdout
@@ -49,11 +49,10 @@ def test_run_without_api_key_exits_cleanly(tmp_config: Path) -> None:
     from pico.config.loader import save_config
     from pico.config.schema import Config
 
-    save_config(Config())  # default config, no keys
+    save_config(Config())
 
     r = runner.invoke(app, ["run", "-m", "hello"])
-    # Reject any crash-class exception: those signal a refactor regression,
-    # not user error. typer.Exit(...) is fine (intentional non-zero exit).
+
     if r.exception is not None:
         assert not isinstance(r.exception, (NameError, AttributeError, ImportError)), (
             f"Crash-class exception leaked through: {r.exception!r}"
@@ -62,7 +61,7 @@ def test_run_without_api_key_exits_cleanly(tmp_config: Path) -> None:
 
 
 # ============================================================================
-# Session binding flags (task 3.3)
+
 # ============================================================================
 
 
@@ -124,15 +123,10 @@ def _invoke_agent_capturing_session(
         async def close_mcp(self) -> None:
             pass
 
-    # The -m path hard-exits via os._exit(0) (torch segfault guard); make it a
-    # catchable SystemExit so the CliRunner sees a clean exit instead of the
-    # whole pytest process dying.
     monkeypatch.setattr(_os, "_exit", lambda code: (_ for _ in ()).throw(SystemExit(code)))
     monkeypatch.setattr("pico.cli.agent_commands.make_provider", lambda _: object())
     monkeypatch.setattr("pico.agent.loop.AgentLoop", _StubAgentLoop)
-    # This test exercises session keying, not memory: don't boot the real
-    # selected backend / plugin tools inside the CliRunner (the
-    # selected backend runtime is heavy and not under test here).
+
     monkeypatch.setattr(
         "pico.cli._plugin_stack.maybe_build_memory_backend",
         lambda *a, **k: None,
@@ -446,7 +440,7 @@ def test_agent_continue_without_prior_session_starts_fresh(
 
 
 # ============================================================================
-# Pure helper functions (no REPL state needed)
+
 # ============================================================================
 
 
@@ -458,9 +452,9 @@ def test_agent_continue_without_prior_session_starts_fresh(
         ("/exit", True),
         ("/quit", True),
         (":q", True),
-        ("EXIT", True),  # case-insensitive
+        ("EXIT", True),
         ("Quit", True),
-        (" exit", False),  # leading whitespace not stripped
+        (" exit", False),
         ("hello", False),
         ("", False),
         ("exit later", False),
@@ -486,7 +480,7 @@ def test_print_agent_response_with_markdown(capsys: pytest.CaptureFixture) -> No
 
     _print_agent_response("# hi", render_markdown=True)
     out = capsys.readouterr().out
-    # rich's Markdown renderer typically prints the heading text
+
     assert "hi" in out
 
 
@@ -500,7 +494,7 @@ def test_print_agent_response_plain(capsys: pytest.CaptureFixture) -> None:
 
 
 # ============================================================================
-# run -m single-shot mode (mocked)
+
 # ============================================================================
 
 
@@ -511,7 +505,6 @@ def test_agent_message_mode_mocked_provider(tmp_config: Path, monkeypatch: pytes
     from pico.config.loader import save_config
     from pico.config.schema import Config
 
-    # Save a config with the openrouter key so the gateway-validation passes.
     cfg = Config()
     cfg.providers.openrouter.api_key = "stub-test-key"
     save_config(cfg)
@@ -521,9 +514,6 @@ def test_agent_message_mode_mocked_provider(tmp_config: Path, monkeypatch: pytes
         lambda _: (_ for _ in ()).throw(RuntimeError("mock-no-provider")),
     )
 
-    # We can't drive the full agent loop without a real provider; we only
-    # assert that the CLI exits cleanly (no uncaught traceback) when the
-    # provider build raises a controlled error.
     r = runner.invoke(app, ["run", "-m", "hello"])
     if r.exception is not None:
         assert not isinstance(r.exception, (NameError, AttributeError, ImportError)), (
@@ -532,10 +522,10 @@ def test_agent_message_mode_mocked_provider(tmp_config: Path, monkeypatch: pytes
 
 
 # ---------------------------------------------------------------------------
-# REPL local slash commands (pico.cli._repl_slash)
+
 #
-# These run in-process and must NOT reach the LLM. The handler returns True
-# when it consumed the input and False when the caller should forward it on.
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -616,7 +606,6 @@ def test_cron_config_write_is_shell_only(isolated_runtime: Path) -> None:
 def test_cron_list_runs_against_empty_store(isolated_runtime: Path) -> None:
     from pico.cli._repl_slash import handle_repl_slash
 
-    # Delegates to cron_list; succeeds (no exception) on an empty store.
     assert handle_repl_slash("/cron list", console=_RecordingConsole()) is True
 
 
@@ -643,8 +632,8 @@ def test_cron_delete_requires_inline_yes(isolated_runtime: Path) -> None:
     svc, job = _make_cron_job()
     con = _RecordingConsole()
     assert handle_repl_slash(f"/cron delete {job.id}", console=con) is True
-    assert "-y" in con.text  # asks for confirmation flag
-    assert len(svc.list_jobs(include_disabled=True)) == 1  # not deleted
+    assert "-y" in con.text
+    assert len(svc.list_jobs(include_disabled=True)) == 1
 
 
 def test_cron_delete_with_yes_removes_job(isolated_runtime: Path) -> None:
@@ -654,7 +643,6 @@ def test_cron_delete_with_yes_removes_job(isolated_runtime: Path) -> None:
 
     svc, job = _make_cron_job()
     assert handle_repl_slash(f"/cron delete {job.id} -y", console=_RecordingConsole()) is True
-    # Fresh instance: svc's cache only reloads on st_mtime change, which
-    # has 1s granularity — the delete's rewrite can be invisible to it.
+
     fresh = CronService(get_cron_dir() / "jobs.json", allowed_channels=None)
     assert fresh.list_jobs(include_disabled=True) == []

@@ -31,29 +31,28 @@ from loguru import logger
 
 from pico.call_efficiency import model_catalog_cache
 
-# Rate pair: (prompt_cost_per_token, completion_cost_per_token) in USD.
-# Keep this table small — it is a fallback for brand-new models that
-# LiteLLM hasn't indexed yet. Check LiteLLM first before adding here.
+# 费率对：(prompt_cost_per_token, completion_cost_per_token)，单位为美元。
+# 保持此表精简：它只为 LiteLLM 尚未收录的新模型提供回退。
+# 添加条目前应先检查 LiteLLM。
 _FALLBACK_PRICING: dict[str, tuple[float, float]] = {
-    # OpenRouter model pages (snapshot 2026-03)
-    "z-ai/glm-4.5-air": (0.13e-6, 0.85e-6),  # $0.13/$0.85 per 1M
+    # OpenRouter 模型页面快照（2026-03）。
+    "z-ai/glm-4.5-air": (0.13e-6, 0.85e-6),  # 每百万令牌 $0.13/$0.85
 }
 
-# Snapshot from DeepSeek's 2026-08-06 Models & Pricing page. These direct
-# Provider rates take precedence over LiteLLM because cache-hit prices are not
-# represented by LiteLLM's ordinary prompt/completion pair.
+# DeepSeek 2026-08-06“模型与定价”页面的快照。这些 Provider 直连费率
+# 优先于 LiteLLM，因为普通的 prompt/completion 费率对无法表达缓存命中价格。
 _DEEPSEEK_V4_PRICING: dict[str, tuple[float, float, float]] = {
-    # (cache-miss input, cache-hit input, output), USD per token
+    # 依次为未命中缓存输入、命中缓存输入、输出，单位为美元/令牌。
     "deepseek-v4-flash": (0.14e-6, 0.0028e-6, 0.28e-6),
     "deepseek-v4-pro": (0.435e-6, 0.003625e-6, 0.87e-6),
 }
 
-# Track which unknown models we've already warned about so we log once each.
+# 记录已警告过的未知模型，确保每个模型只输出一次日志。
 _WARNED_UNKNOWN: set[str] = set()
 
-# Live OpenRouter price table, fetched lazily and cached in-process for 1h.
-# Maps both the full id (``deepseek/deepseek-v4-pro``) and the bare alias
-# (``deepseek-v4-pro``) to OpenRouter's per-token ``pricing`` dict.
+# 实时 OpenRouter 价格表，惰性获取并在进程内缓存 1 小时。
+# 同时映射完整 id（``deepseek/deepseek-v4-pro``）和不带命名空间的别名。
+# （``deepseek-v4-pro``）映射到 OpenRouter 的逐令牌 ``pricing`` 字典。
 _OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 _OPENROUTER_CACHE_TTL = 3600
 _OPENROUTER_CACHE: dict[str, dict] = {}
@@ -84,8 +83,8 @@ def _try_litellm_rates(
     if not model.startswith("openrouter/"):
         candidates.insert(0, f"openrouter/{model}")
 
-    # litellm.cost_per_token expects *at least* 1 non-zero token to compute.
-    # We pass synthetic tokens to recover the per-token rate.
+    # litellm.cost_per_token 至少需要 1 个非零 token 才能计算。
+    # 这里传入合成 token 来反推出单 token 费率。
     probe_in = input_tokens if input_tokens else 1
     probe_out = output_tokens if output_tokens else 1
 
@@ -99,7 +98,7 @@ def _try_litellm_rates(
         if prompt_cost is None or completion_cost is None:
             continue
         if prompt_cost == 0 and completion_cost == 0:
-            # LiteLLM returns (0, 0) when the model is unknown — treat as miss.
+            # LiteLLM 对未知模型返回 (0, 0)，应按未命中处理。
             continue
         return prompt_cost / probe_in, completion_cost / probe_out
 
@@ -119,8 +118,8 @@ def _fetch_openrouter_models() -> dict[str, dict]:
     if _OPENROUTER_CACHE and (now - _OPENROUTER_CACHE_TIME) < _OPENROUTER_CACHE_TTL:
         return _OPENROUTER_CACHE
 
-    # Disk tier: warm-start (or pick up a sibling process's fresher fetch)
-    # from a fresh on-disk cache without touching the network.
+    # 磁盘层：从仍然新鲜的磁盘缓存热启动（也可复用同级进程刚获取的数据），
+    # 无需访问网络。
     disk = model_catalog_cache.load()
     if disk is not None and (now - disk[1]) < _OPENROUTER_CACHE_TTL:
         _OPENROUTER_CACHE, _OPENROUTER_CACHE_TIME = disk

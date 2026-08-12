@@ -16,7 +16,7 @@ from pico.config.pico import MemoryConfig, PicoConfig
 from pico.tui_rpc.errors import InternalError, RpcError
 
 # ---------------------------------------------------------------------------
-# _build_tui_agent_loop — narrow exception → InternalError(-32603)
+
 # ---------------------------------------------------------------------------
 
 
@@ -104,7 +104,7 @@ def test_uncaught_exception_in_build_raises_internal_error_with_uncaught_reason(
 
 
 # ---------------------------------------------------------------------------
-# RpcError export sanity check
+
 # ---------------------------------------------------------------------------
 
 

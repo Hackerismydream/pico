@@ -35,8 +35,7 @@ function InlineLoader({ label, t }: { label: string; t: Theme }) {
 const STARTUP_MESSAGES = ['starting pico…', 'building agent loop…', 'loading tools & skills…']
 const STARTUP_LABEL_MS = 900
 
-// Placeholder shown in the intro row while the backend builds the agent loop,
-// before the session.info handshake populates SessionPanel.
+// 后端构建智能体循环期间、session.info 握手填充 SessionPanel 前，在介绍行显示的占位符。
 export function StartupLoader({ t }: { t: Theme }) {
   const [step, setStep] = useState(0)
 
@@ -59,8 +58,7 @@ export function ArtLines({ lines }: { lines: [string, string][] }) {
   return (
     <>
       {lines.map(([c, text], i) => (
-        // `truncate` so wide banner art clips at the box edge instead of
-        // wrapping each row into an unreadable scatter on narrow terminals.
+        // 使用 `truncate`，使宽横幅图案在 Box 边缘裁剪，而不是在窄终端中把每行换成难以阅读的散块。
         <Text color={c} key={i} wrap="truncate">
           {text}
         </Text>
@@ -69,8 +67,7 @@ export function ArtLines({ lines }: { lines: [string, string][] }) {
   )
 }
 
-// Like ArtLines but each row is an array of `[color, segment]` pairs rendered
-// inline — used for horizontally-graded art (the pico hero).
+// 与 ArtLines 类似，但每行是行内渲染的 `[颜色, 片段]` 对数组，用于横向渐变图案（Pico 主视觉）。
 export function ArtRows({ rows }: { rows: [string, string][][] }) {
   return (
     <>
@@ -96,22 +93,19 @@ const PROVIDER_LABELS: Record<string, string> = {
   mistral: 'Mistral'
 }
 
-// formatProvider — Resolve a user-facing provider label.
+// formatProvider——解析面向用户的提供商标签。
 //
-// Why the slug-to-model fallback: user config may set `provider="auto"`
-// (LiteLLM auto-routing dispatch mode), which isn't a real provider name.
-// In that case parse the model prefix (e.g. "openrouter/qwen/..." →
-// "openrouter") to find the real provider.
+// 使用模型短名称回退的原因：用户配置可能设置 `provider="auto"`，即 LiteLLM 自动路由分发模式，
+// 它不是真实提供商名称。此时解析模型前缀，例如 "openrouter/qwen/..." → "openrouter"，
+// 以找出真实提供商。
 //
-// Why the LUT: capitalize-only would yield "Openai" / "Openrouter" — visually
-// wrong. PROVIDER_LABELS keeps canonical casing for known providers; unknown
-// providers fall back to plain capitalize.
+// 使用查找表的原因：单纯首字母大写会得到视觉错误的 "Openai" / "Openrouter"。
+// PROVIDER_LABELS 为已知提供商保留规范大小写，未知提供商回退到普通首字母大写。
 export function formatProvider(slug?: string, modelId?: string): string {
   let effective = slug ?? ''
   if (!effective || effective === 'auto') {
-    // Only treat the model as carrying provider info when it has a `/` prefix
-    // (e.g. "openrouter/qwen/qwen3.6-plus"). A bare "sonnet" is a model name,
-    // not a provider — fall through to '—'.
+    // 仅当模型带 `/` 前缀（如 "openrouter/qwen/qwen3.6-plus"）时才视为携带提供商信息。
+    // 裸 "sonnet" 是模型名而非提供商，应回退到 '—'。
     const id = modelId ?? ''
     effective = id.includes('/') ? (id.split('/')[0] ?? '') : ''
   }
@@ -135,10 +129,10 @@ export function Branding({ t }: { t?: Theme } = {}) {
   )
 }
 
-// Legacy callers (appLayout.tsx) import `Banner`; keep the name working.
+// 旧调用方 appLayout.tsx 导入 `Banner`，保留该名称可用。
 export const Banner = Branding
 
-// ── Collapsible helpers ──────────────────────────────────────────────
+// ── 可折叠辅助组件 ───────────────────────────────────────────────────
 
 function CollapseToggle({
   count,
@@ -167,14 +161,13 @@ function CollapseToggle({
   )
 }
 
-// ── SessionPanel ─────────────────────────────────────────────────────
+// ── 会话面板 ─────────────────────────────────────────────────────────
 
 const SKILLS_MAX = 8
 const TOOLSETS_MAX = 8
 export function SessionPanel({ info, maxCols, sid, t }: SessionPanelProps) {
-  // Width the panel actually has. The full terminal width overshoots whenever
-  // the panel is embedded in a narrower container (e.g. the demo gallery's
-  // sidebar), so callers can pass `maxCols`; otherwise assume the terminal.
+  // 面板实际宽度。嵌入更窄容器（如演示画廊侧栏）时，完整终端宽度会超出，因此调用方可传入
+  // `maxCols`；否则假定为终端宽度。
   const stdoutCols = useStdout().stdout?.columns ?? 100
   const cols = maxCols ?? stdoutCols
   const w = Math.max(20, cols - 6)
@@ -183,7 +176,7 @@ export function SessionPanel({ info, maxCols, sid, t }: SessionPanelProps) {
 
   const footerMeta = `${info.model.split('/').pop()} · ${formatProvider(info.provider, info.model)}${sid ? ` · ${sid}` : ''}`
 
-  // ── Local collapse state for each section ──
+  // ── 各区段的本地折叠状态 ──
   const [toolsOpen, setToolsOpen] = useState(false)
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [systemOpen, setSystemOpen] = useState(false)
@@ -207,7 +200,7 @@ export function SessionPanel({ info, maxCols, sid, t }: SessionPanelProps) {
     return line
   }
 
-  // ── Collapsible skills section ──
+  // ── 可折叠技能区段 ──
   const skillEntries = Object.entries(info.skills).sort()
   const skillsTotal = flat(info.skills).length
   const skillsCatCount = skillEntries.length
@@ -233,7 +226,7 @@ export function SessionPanel({ info, maxCols, sid, t }: SessionPanelProps) {
     )
   }
 
-  // ── Collapsible tools section ──
+  // ── 可折叠工具区段 ──
   const toolEntries = Object.entries(info.tools).sort()
   const toolsTotal = flat(info.tools).length
 
@@ -254,7 +247,7 @@ export function SessionPanel({ info, maxCols, sid, t }: SessionPanelProps) {
     )
   }
 
-  // ── Collapsible MCP section ──
+  // ── 可折叠 MCP 区段 ──
   const mcpBody = () => (
     <>
       {(info.mcp_servers ?? []).map(s => (
@@ -274,7 +267,7 @@ export function SessionPanel({ info, maxCols, sid, t }: SessionPanelProps) {
     </>
   )
 
-  // ── System prompt body ──
+  // ── 系统提示正文 ──
   const sysPromptLen = (info.system_prompt ?? '').length
 
   const systemBody = () => {
@@ -408,8 +401,7 @@ interface PanelProps {
 
 interface SessionPanelProps {
   info: SessionInfo
-  // Container width to lay out against; defaults to the full terminal. Pass it
-  // when embedding the panel in a narrower region (e.g. the demo gallery).
+  // 布局所依据的容器宽度，默认为完整终端。将面板嵌入更窄区域（如演示画廊）时传入。
   maxCols?: number
   sid?: string | null
   t: Theme

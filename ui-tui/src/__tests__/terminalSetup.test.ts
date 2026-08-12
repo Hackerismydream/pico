@@ -61,18 +61,15 @@ describe('terminalSetup helpers', () => {
   it('handles unterminated block comments gracefully', () => {
     const input = '[{"key":"a"} /* never closed'
     const stripped = stripJsonComments(input)
-    // The unterminated comment is consumed to end-of-file; the remainder is parseable
+    // 未终止注释会一直消费到文件末尾，其余内容仍可解析。
     expect(stripped).toBe('[{"key":"a"} ')
   })
 })
 
-// The configureTerminalKeybindings impl in src/lib/terminalSetup.ts has an
-// intentional SSH-environment guard ("must be run on the local machine,
-// not inside an SSH session"). These 9 tests assume a non-SSH host and
-// expect the alternate error paths. Skip them when the dev box is
-// SSH-accessed so the suite is green on remote dev machines + CI runners
-// that proxy through SSH; they still execute on local checkouts and on
-// CI runners with no SSH_* env exposure.
+// src/lib/terminalSetup.ts 中 configureTerminalKeybindings 的实现刻意加入 SSH
+// 环境保护，要求在本机而非 SSH 会话中运行。以下测试假设宿主机不是 SSH 环境，
+// 并验证其他错误路径。通过 SSH 访问开发机时跳过它们，使远程开发机和经 SSH
+// 代理的 CI 运行器保持通过；本地检出以及未暴露 SSH_* 环境变量的 CI 仍会执行。
 const _ssh = Boolean(process.env.SSH_CONNECTION) || Boolean(process.env.SSH_TTY) || Boolean(process.env.SSH_CLIENT)
 
 describe.skipIf(_ssh)('configureTerminalKeybindings', () => {
@@ -91,7 +88,7 @@ describe.skipIf(_ssh)('configureTerminalKeybindings', () => {
     expect(result.success).toBe(true)
     expect(result.requiresRestart).toBe(true)
     expect(writeFile).toHaveBeenCalledTimes(1)
-    expect(copyFile).not.toHaveBeenCalled() // no existing file to back up
+    expect(copyFile).not.toHaveBeenCalled() // 没有现有文件可备份。
     const written = writeFile.mock.calls[0]?.[1] as string
     expect(written).toContain('cmd+c')
     expect(written).toContain('terminalTextSelected')
@@ -147,13 +144,12 @@ describe.skipIf(_ssh)('configureTerminalKeybindings', () => {
     expect(result.success).toBe(false)
     expect(result.message).toContain('cmd+z')
     expect(writeFile).not.toHaveBeenCalled()
-    expect(copyFile).not.toHaveBeenCalled() // no backup when not writing
+    expect(copyFile).not.toHaveBeenCalled() // 未写入时不创建备份。
   })
 
   it('flags a global (when-less) binding on the same key as a conflict', async () => {
-    // A user's keybindings.json `cmd+c` with no `when` clause is global —
-    // it overlaps any context, including our terminal scope. We must NOT
-    // silently add a terminal-scoped cmd+c that would shadow it.
+    // 用户 keybindings.json 中没有 `when` 子句的 `cmd+c` 是全局绑定，会与包括
+    // 终端范围在内的任意上下文重叠。不能静默添加会遮蔽它的终端范围 cmd+c。
     const mkdir = vi.fn().mockResolvedValue(undefined)
 
     const readFile = vi.fn().mockResolvedValue(
@@ -180,11 +176,9 @@ describe.skipIf(_ssh)('configureTerminalKeybindings', () => {
   })
 
   it('flags an overlapping terminal-context binding as a conflict', async () => {
-    // Existing `cmd+c` scoped to plain `terminalFocus` overlaps with our
-    // `terminalFocus && terminalTextSelected` — both fire when the
-    // terminal is focused with text selected, so the existing binding
-    // would shadow ours. Treat as a conflict even though the strings
-    // aren't identical.
+    // 已有、仅限 `terminalFocus` 的 `cmd+c` 与我们的
+    // `terminalFocus && terminalTextSelected` 重叠；终端聚焦且选中文本时两者都会
+    // 触发，已有绑定会遮蔽我们的绑定。即使字符串不同也应视为冲突。
     const mkdir = vi.fn().mockResolvedValue(undefined)
 
     const readFile = vi.fn().mockResolvedValue(
@@ -212,9 +206,8 @@ describe.skipIf(_ssh)('configureTerminalKeybindings', () => {
   })
 
   it('does not flag a negated terminalTextSelected binding as a conflict', async () => {
-    // A binding scoped to "terminal focused but no selected text" is
-    // logically disjoint from our copy-forwarding binding, which requires
-    // terminalTextSelected.
+    // “终端聚焦但未选中文本”范围的绑定与要求 terminalTextSelected 的复制转发
+    // 绑定在逻辑上互斥。
     const mkdir = vi.fn().mockResolvedValue(undefined)
 
     const readFile = vi.fn().mockResolvedValue(
@@ -242,9 +235,8 @@ describe.skipIf(_ssh)('configureTerminalKeybindings', () => {
   })
 
   it('does not flag a disjoint-when binding on the same key as a conflict', async () => {
-    // VS Code allows multiple bindings for the same key when their `when`
-    // clauses don't overlap. A user's pre-existing cmd+c binding scoped to
-    // editor focus should NOT block our terminal-scoped cmd+c binding.
+    // VS Code 允许同键绑定在 `when` 子句不重叠时并存。用户已有、仅限编辑器聚焦
+    // 的 cmd+c 不应阻止我们添加终端范围的 cmd+c。
     const mkdir = vi.fn().mockResolvedValue(undefined)
 
     const readFile = vi.fn().mockResolvedValue(
@@ -284,7 +276,7 @@ describe.skipIf(_ssh)('configureTerminalKeybindings', () => {
 
     expect(result.success).toBe(true)
     expect(writeFile).toHaveBeenCalledTimes(1)
-    expect(copyFile).toHaveBeenCalledTimes(1) // backup created before writing
+    expect(copyFile).toHaveBeenCalledTimes(1) // 写入前创建备份。
   })
 
   it('reports error when keybindings.json is not readable (EACCES)', async () => {

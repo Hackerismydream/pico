@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Read-only topology snapshot
+# 只读拓扑快照
 # ---------------------------------------------------------------------------
 
 
@@ -75,11 +75,11 @@ class TreeView:
     """
 
     nodes: dict[str, HarnessNode]
-    children_of: dict[str, list[str]]  # parent_id → child node_ids
+    children_of: dict[str, list[str]]  # 父节点 ID 映射到子节点 ID 列表
     root_id: Optional[str]
     orphans: list[str] = field(default_factory=list)
 
-    # ---- traversal helpers ---------------------------------------------------
+    # ---- 遍历辅助方法 -------------------------------------------------------
 
     def descendants(self, node_id: str) -> list[str]:
         """Return all node ids in the subtree rooted at ``node_id``
@@ -103,7 +103,7 @@ class TreeView:
             out.append(cur.parent_id)
             cur = self.nodes.get(cur.parent_id)
             if cur is None:
-                # parent_id points at an unknown node (dangling)
+                # parent_id 指向未知节点（悬空）。
                 break
         return out
 
@@ -112,7 +112,7 @@ class TreeView:
 
 
 # ---------------------------------------------------------------------------
-# Store
+# 存储
 # ---------------------------------------------------------------------------
 
 
@@ -150,7 +150,7 @@ class EvolverTreeStore:
         self.nodes_dir = Path(nodes_dir).resolve()
         self.nodes_dir.mkdir(parents=True, exist_ok=True)
 
-    # ---- single-node IO ----------------------------------------------------
+    # ---- 单节点输入输出 ----------------------------------------------------
 
     def _node_path(self, node_id: str) -> Path:
         return self.nodes_dir / f"{node_id}{self.NODE_FILE_SUFFIX}"
@@ -177,7 +177,7 @@ class EvolverTreeStore:
     def has_node(self, node_id: str) -> bool:
         return self._node_path(node_id).exists()
 
-    # ---- multi-node IO -----------------------------------------------------
+    # ---- 多节点输入输出 ----------------------------------------------------
 
     def load_all_nodes(self) -> list[HarnessNode]:
         """Load every node JSON in ``nodes_dir``. Sorted by file name
@@ -188,7 +188,7 @@ class EvolverTreeStore:
         for jpath in sorted(self.nodes_dir.glob(f"*{self.NODE_FILE_SUFFIX}")):
             try:
                 out.append(HarnessNode.load(jpath))
-            except Exception as exc:  # pragma: no cover - defensive
+            except Exception as exc:  # pragma: no cover - 防御性分支
                 logger.warning("Skipping unloadable node file %s: %s", jpath, exc)
         return out
 
@@ -222,7 +222,7 @@ class EvolverTreeStore:
         root_id: Optional[str] = None
         if root_candidates:
             root_id = root_candidates[0]
-            # Any additional roots are reported as orphans-by-policy
+            # 其他根节点按策略报告为孤儿节点。
             if len(root_candidates) > 1:
                 logger.warning(
                     "Multiple root nodes detected; keeping %s, treating %s as orphans",
@@ -231,7 +231,7 @@ class EvolverTreeStore:
                 )
                 orphans.extend(root_candidates[1:])
 
-        # Sort each children list for determinism
+        # 对每个子节点列表排序，确保确定性。
         for k in children_of:
             children_of[k].sort()
 
@@ -242,8 +242,8 @@ class EvolverTreeStore:
             orphans=sorted(orphans),
         )
 
-    # ---- atomic child creation (C2.4, in next step) ------------------------
-    # See create_child_node below for the apply-patch+commit+save atomic op.
+    # ---- 原子创建子节点（C2.4，下一步）-----------------------------------
+    # 应用补丁、提交和保存的原子操作见下方 create_child_node。
 
     def create_child_node(
         self,
@@ -292,10 +292,10 @@ class EvolverTreeStore:
         :raises GitOpError: git command failed (typically because
             the patch didn't apply cleanly to the parent's tree)
         """
-        # Step 0: load parent (raises FileNotFoundError if missing)
+        # 步骤 0：加载父节点，缺失时抛出 FileNotFoundError。
         parent = self.load_node(parent_node_id)
 
-        # Step 0.5: gate against immutable kernel modification
+        # 步骤 0.5：阻止修改不可变内核。
         if guard_immutable:
             target_files = [c.target_file for c in patch.components]
             assert_patch_allowed(
@@ -304,7 +304,7 @@ class EvolverTreeStore:
                 treeish=parent.git_commit_sha,
             )
 
-        # Step 1: construct the child commit (does NOT touch working tree)
+        # 步骤 1：构造子提交，不触碰工作树。
         child_sha = git_ops.apply_patch_as_commit(
             repo_root=self.repo_root,
             parent_sha=parent.git_commit_sha,
@@ -327,10 +327,9 @@ class EvolverTreeStore:
                 f"expected={sorted(expected_paths)}, actual={sorted(actual_paths)}"
             )
 
-        # Step 2: assemble the HarnessNode metadata
+        # 步骤 2：装配 HarnessNode 元数据。
         node_id = f"v{iter_index}-{child_sha[:8]}"
-        # In the rare case the short-SHA collides with an existing
-        # node id (~1 in 4 billion), retry with a longer suffix.
+        # 极少数情况下短 SHA 与已有节点 ID 冲突（约四十亿分之一），使用更长后缀重试。
         if self.has_node(node_id):
             node_id = f"v{iter_index}-{child_sha[:12]}"
 
@@ -347,10 +346,10 @@ class EvolverTreeStore:
             patch=patch,
         )
 
-        # Step 3: persist JSON (atomic via HarnessNode.save → temp+rename)
+        # 步骤 3：持久化 JSON，通过 HarnessNode.save 的临时文件加重命名保证原子性。
         self.save_node(child)
 
-        # Step 4 (optional): create a branch ref for human navigation
+        # 步骤 4（可选）：创建分支引用供人工浏览。
         if create_branch_ref:
             ref_name = f"evolver/{node_id}"
             if not git_ops.branch_exists(self.repo_root, ref_name):

@@ -68,7 +68,6 @@ class _MessageToolProvider:
                     ],
                 },
             )
-        # second call: no content, no tool -> the loop finishes
 
     def get_default_model(self) -> str:
         return "fake/model"
@@ -99,9 +98,6 @@ def _req(session_key: str = "tui:default") -> TurnRequest:
     )
 
 
-# --- AC-1: message tool reply reaches the UI as token.delta (via the real spine) ---
-
-
 async def test_ac1_message_tool_content_routes_to_token_delta_event(workspace) -> None:
     from pico.tui_rpc.spine import build_tui
 
@@ -121,23 +117,17 @@ async def test_ac1_message_tool_content_routes_to_token_delta_event(workspace) -
     assert "hi from tool" in "".join(e["payload"]["text"] for e in deltas)
 
 
-# --- AC-2: the per-turn callback swap is task-local — the lane runs each turn
-# in its own task, so a turn's swap cannot leak to another turn ---
-
-
 async def test_ac2_callback_isolated_per_turn(workspace) -> None:
     loop = _make_agent(workspace)
     message_tool = loop.tools.get("message")
     assert isinstance(message_tool, MessageTool)
-    original = message_tool._cur().send_callback  # this task's baseline
+    original = message_tool._cur().send_callback
 
     async def _noop_emit(_event) -> None:
         return None
 
-    # Mimic the lane: run the turn in its own task. run_turn swaps the
-    # message-tool callback turn-locally; it must not leak back to this task.
     await asyncio.create_task(loop.run_turn(_req(), _noop_emit, lambda: [], stream=True))
-    assert message_tool._cur().send_callback is original  # no cross-task leak
+    assert message_tool._cur().send_callback is original
 
 
 async def test_ac2_callback_isolated_even_on_error(workspace) -> None:
@@ -159,10 +149,7 @@ async def test_ac2_callback_isolated_even_on_error(workspace) -> None:
 
     with pytest.raises(RuntimeError):
         await asyncio.create_task(loop.run_turn(_req(), _noop_emit, lambda: [], stream=True))
-    assert message_tool._cur().send_callback is original  # no leak even on error
-
-
-# --- AC-4: synthetic tool.complete[message] before message.complete (via spine) ---
+    assert message_tool._cur().send_callback is original
 
 
 async def test_ac4_synthetic_tool_complete_before_message_complete(workspace) -> None:
@@ -186,7 +173,7 @@ async def test_ac4_synthetic_tool_complete_before_message_complete(workspace) ->
     assert payload["tool_call_id"] == "msg-t-ac4"
     assert payload["result_preview"] == "(message sent via tool)"
     assert payload["truncated"] is False
-    # Fix B (runner) fires before the sink's message.complete.
+
     assert types.index("tool.complete") < types.index("message.complete")
 
 
@@ -212,9 +199,6 @@ async def test_ac4_no_synthetic_tool_complete_when_message_tool_unused(workspace
         await teardown()
 
     assert [e for e in emitter.events() if e["type"] == "tool.complete"] == []
-
-
-# --- AC-3: AgentLoop logs final_content on the silent-return path (unchanged) ---
 
 
 def _make_inbound(content: str = "test prompt") -> TurnRequest:
@@ -269,7 +253,7 @@ async def test_ac3_no_log_when_final_content_empty(workspace, monkeypatch) -> No
 
     async def fake_run_agent_loop(*args, **kwargs):
         message_tool._turn.set(replace(message_tool._cur(), sent=True))
-        return ("", [], [], TurnOutcome())  # empty final_content
+        return ("", [], [], TurnOutcome())
 
     monkeypatch.setattr(agent, "_run_agent_loop", fake_run_agent_loop)
 

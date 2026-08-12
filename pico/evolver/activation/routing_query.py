@@ -43,8 +43,7 @@ def dry_query(task_text: str, *, library_root: Path | None = None) -> list[str]:
     """
     from pico.config.pico import LocalDirConfig, SkillForgeConfig
 
-    # Pico split the old unified SkillService into a discovery catalog
-    # (always-skills + registry/pool) and a retrieval router over sources.
+    # Pico 将旧统一 SkillService 拆成发现目录（常驻技能加注册表/池）和跨来源检索路由器。
     from pico.memory_engine.skill_forge.catalog import LocalSkillCatalog
     from pico.memory_engine.skill_forge.local_source import LocalSkillSource
     from pico.memory_engine.skill_forge.router import SkillForgeRouter

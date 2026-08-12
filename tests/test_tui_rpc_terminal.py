@@ -42,7 +42,7 @@ async def test_terminal_resize_partial_payload_only_records_provided_dims() -> N
     assert get_latest_rows() is None
 
     await terminal_resize({"rows": 24})
-    # cols persists across calls.
+
     assert get_latest_cols() == 80
     assert get_latest_rows() == 24
 
@@ -50,13 +50,12 @@ async def test_terminal_resize_partial_payload_only_records_provided_dims() -> N
 async def test_terminal_resize_rejects_non_positive_and_bool() -> None:
     """Bogus dims are silently dropped — the handler must never raise on
     surprising payloads from a SIGWINCH burst."""
-    # Booleans are subclass of int but should be ignored.
+
     result = await terminal_resize({"cols": True, "rows": False})
     assert result == {"ok": True}
     assert get_latest_cols() is None
     assert get_latest_rows() is None
 
-    # Zero / negative dims are also rejected.
     await terminal_resize({"cols": 0, "rows": -1})
     assert get_latest_cols() is None
     assert get_latest_rows() is None

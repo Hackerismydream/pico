@@ -11,8 +11,6 @@ import pytest
 
 from pico.providers.base import ErrorClassification, LLMProvider
 
-# --- fakes mimicking provider exception shapes (no SDK import needed) -------- #
-
 
 class _StatusError(Exception):
     def __init__(self, msg: str, status_code: int):
@@ -30,9 +28,6 @@ class ContextWindowExceededError(Exception):
 
 def _c(exc=None, content=None) -> ErrorClassification:
     return LLMProvider.classify_error(exc, content)
-
-
-# --- by HTTP status code ---------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -54,24 +49,18 @@ def test_classify_by_status_code(status, category, retry, fb, comp):
     assert (c.retryable, c.should_fallback, c.should_compress) == (retry, fb, comp)
 
 
-# --- by exception class name ------------------------------------------------ #
-
-
 def test_classify_by_class_name_rate_limit():
     c = _c(RateLimitError("slow down"))
     assert c.category == "rate_limit" and c.retryable and c.should_fallback
 
 
 def test_classify_context_window_by_class_name_compresses_not_fallback():
-    # A bare 400 would look like invalid_request; the class name disambiguates.
+
     c = _c(ContextWindowExceededError("400"))
     assert c.category == "context_overflow"
     assert c.should_compress is True
     assert c.should_fallback is False
     assert c.retryable is False
-
-
-# --- walks the __cause__ chain for the status code -------------------------- #
 
 
 def test_classify_follows_cause_chain():
@@ -84,9 +73,6 @@ def test_classify_follows_cause_chain():
     except Exception as outer:
         c = _c(outer)
     assert c.category == "rate_limit" and c.should_fallback
-
-
-# --- degraded string path (provider already swallowed the exception) -------- #
 
 
 @pytest.mark.parametrize(
@@ -110,9 +96,6 @@ def test_classify_by_string(text, category):
 def test_unknown_is_conservative():
     c = _c(content="???")
     assert not c.retryable and not c.should_fallback and not c.should_compress
-
-
-# --- jitter ----------------------------------------------------------------- #
 
 
 def test_jitter_within_ten_percent():

@@ -22,12 +22,12 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List
 
-# Add project root to path so we can import the Pico runtime
-# Path: benchmarks/pinchbench/direct/benchmark.py
+# 将项目根目录加入路径，以便导入 Pico 运行时。
+# 路径：benchmarks/pinchbench/direct/benchmark.py
 SCRIPT_DIR = Path(__file__).parent
-BENCHMARK_ROOT = SCRIPT_DIR.parent  # pinchbench/
-BENCHMARKS_ROOT = BENCHMARK_ROOT.parent  # benchmarks/
-PROJECT_ROOT = BENCHMARKS_ROOT.parent  # project root
+BENCHMARK_ROOT = SCRIPT_DIR.parent  # pinchbench/ 目录。
+BENCHMARKS_ROOT = BENCHMARK_ROOT.parent  # benchmarks/ 目录。
+PROJECT_ROOT = BENCHMARKS_ROOT.parent  # 项目根目录。
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(SCRIPT_DIR))
 
@@ -41,7 +41,7 @@ from pico_executor import (  # noqa: E402
 )
 from task_loader import Task, load_all_tasks  # noqa: E402
 
-# Configure logging
+# 配置日志。
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -145,7 +145,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load tasks
+    # 加载任务。
     all_tasks = load_all_tasks(tasks_dir)
     tasks_to_run = _select_tasks(all_tasks, args.suite)
 
@@ -175,7 +175,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
     logger.info("  Runs per task: %d", args.runs)
     logger.info("=" * 70)
 
-    # Print task summary
+    # 输出任务摘要。
     for t in tasks_to_run:
         logger.info("  [%s] %s (%s, %s, %ds)", t.task_id, t.name, t.category, t.grading_type, t.timeout_seconds)
 
@@ -207,7 +207,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
             )
             logger.info("=" * 70)
 
-            # Execute
+            # 执行。
             workspace = run_root / run_id / f"{task.task_id}_run{run_idx + 1}"
             execution_error = None
             try:
@@ -238,7 +238,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
                     "models_used": [],
                 }
 
-            # Log cost / usage per task
+            # 记录各任务成本与用量。
             usage = result.get("usage", {})
             cost_usd = result.get("cost_usd")
             models_used = result.get("models_used", [])
@@ -252,10 +252,10 @@ async def run_benchmark(args: argparse.Namespace) -> None:
             if cost_usd is not None:
                 logger.info("  Cost    $%.6f USD", cost_usd)
             if models_used:
-                unique_models = list(dict.fromkeys(models_used))  # deduplicated, ordered
+                unique_models = list(dict.fromkeys(models_used))  # 去重且保持顺序。
                 logger.info("  Model(s) used: %s", ", ".join(unique_models))
 
-            # Grade
+            # 评分。
             try:
                 grade = grade_task(
                     task=task,
@@ -281,7 +281,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
             task_grades.append(grade)
             results.append(result)
 
-            # Log score
+            # 记录分数。
             pct = grade.score / grade.max_score * 100 if grade.max_score > 0 else 0
             emoji = "PASS" if grade.score >= grade.max_score else "PARTIAL" if grade.score > 0 else "FAIL"
             logger.info(
@@ -299,7 +299,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
                 for k, v in grade.breakdown.items():
                     logger.info("    %s: %.2f", k, v)
 
-        # Aggregate runs
+        # 聚合各次运行。
         task_scores = [g.score for g in task_grades]
         grades_by_task[task.task_id] = {
             "runs": [g.to_dict() for g in task_grades],
@@ -309,7 +309,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
             "max": max(task_scores),
         }
 
-    # Summary
+    # 摘要。
     logger.info("")
     logger.info("=" * 70)
     logger.info("  BENCHMARK RESULTS SUMMARY")
@@ -332,7 +332,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
     total_time = sum(r.get("execution_time", 0) for r in results)
     logger.info("  Total execution time: %.1fs", total_time)
 
-    # Cost summary
+    # 成本摘要。
     total_prompt = sum(r.get("usage", {}).get("prompt_tokens", 0) for r in results)
     total_completion = sum(r.get("usage", {}).get("completion_tokens", 0) for r in results)
     total_tokens = sum(r.get("usage", {}).get("total_tokens", 0) for r in results)
@@ -349,7 +349,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
     else:
         logger.info("  Cost estimate unavailable (model not in LiteLLM pricing DB)")
 
-    # Per-task cost breakdown
+    # 各任务成本明细。
     if any(r.get("cost_usd") is not None for r in results):
         logger.info("-" * 70)
         logger.info("  PER-TASK COST BREAKDOWN")
@@ -370,7 +370,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
 
     logger.info("=" * 70)
 
-    # Save results
+    # 保存结果。
     aggregate = {
         "model": args.model,
         "routing_profile": routing_profile,

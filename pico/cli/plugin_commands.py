@@ -52,8 +52,7 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """List installed plugins + the active memory backend."""
-        # Import lazily so ``pico --help`` doesn't pay for plugin
-        # discovery on every invocation.
+        # 延迟导入，避免每次调用 ``pico --help`` 都承担插件发现成本。
         from pico.cli._plugin_stack import plugin_discovery_sources
         from pico.plugin import (
             PluginDiscovery,
@@ -62,9 +61,8 @@ def register(app: typer.Typer) -> None:
 
         ec_config = _load_ec_config(config_path)
 
-        # Discover separately from activation so the table can show
-        # both shadowed (lower-priority) plugins AND disabled ones,
-        # not just the live set. Same four sources the live boot scans.
+        # 将发现与激活分开，使表格不仅显示活跃集合，也能显示被遮蔽（低优先级）和已禁用插件。
+        # 扫描来源与实际启动时的四个来源相同。
         discovery = PluginDiscovery(**plugin_discovery_sources())
         discovered = discovery.discover()
 
@@ -81,11 +79,9 @@ def _load_ec_config(config_path: str | None):
     commands use. Lazy import so module import is cheap."""
     from pico.config.pico import load_pico_config
 
-    # ``load_runtime_config`` is the canonical base-config loader; we
-    # need the extension blocks too, so pull via the dedicated
-    # Pico loader. ``load_runtime_config`` is invoked for parity
-    # with other CLI commands (sets ``set_config_path`` so downstream
-    # readers see the same file).
+    # ``load_runtime_config`` 是规范的基础配置加载器；这里还需要扩展块，因此再通过专用 Pico
+    # 加载器读取。调用 ``load_runtime_config`` 是为了与其他 CLI 命令一致：它会设置
+    # ``set_config_path``，让下游读取方看到同一文件。
     load_runtime_config(config_path)
     return load_pico_config(
         Path(config_path) if config_path else None,
@@ -188,7 +184,7 @@ def _render_backend_selection(ec_config, registry) -> None:
         )
         return
 
-    # Find the plugin id that contributes the selected backend
+    # 找出提供所选后端的插件 ID。
     owner_id = None
     for pid in registry.activated_ids():
         mf = registry.manifest_for(pid)

@@ -57,12 +57,12 @@ class EvalAdapter:
         if verdict is JudgeVerdict.unknown:
             return
         timestamp = self._now_fn().strftime("%Y-%m-%d %H:%M")
-        # Keep the goal short so the HISTORY.md tail stays grep-friendly.
+        # 保持目标简短，便于 grep 检索 HISTORY.md 尾部。
         truncated_goal = (user_goal or "").strip().splitlines()[0][:160]
         entry = f'[{timestamp}] eval verdict={verdict.value} session={session_key} goal="{truncated_goal}"'
         try:
             self._memory.append_history(entry)
-        except Exception as exc:  # noqa: BLE001 — adapter must not crash AgentLoop
+        except Exception as exc:  # noqa: BLE001 — adapter 不得导致 AgentLoop 崩溃
             logger.debug(
                 "EvalAdapter.append_history failed (%s): %s",
                 type(exc).__name__,

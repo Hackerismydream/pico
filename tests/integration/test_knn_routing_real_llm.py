@@ -54,8 +54,6 @@ def _require_runtime() -> None:
         pytest.skip(f"embedding endpoint {EMBED_URL} unreachable")
 
 
-# Two clusters: simple tasks both models solve (cheap far cheaper) and hard
-# tasks only the strong model solves. Illustrative rewards/costs.
 _TASKS = [
     ("simple: answer a short factual question", {CHEAP: 0.95, STRONG: 0.97}, {CHEAP: 0.0002, STRONG: 0.006}),
     ("simple: a one-word fact or basic arithmetic", {CHEAP: 0.95, STRONG: 0.97}, {CHEAP: 0.0002, STRONG: 0.006}),
@@ -73,8 +71,7 @@ _TASKS = [
 
 
 def _build_memory(path: Path) -> None:
-    # Text-based memory (the shipped format): the router embeds each entry's
-    # text at load, so this exercises the load-time embedding path end-to-end.
+
     mem = [{"task_name": t[0], "text": t[0], "rewards": t[1], "costs": t[2]} for t in _TASKS]
     path.write_text(json.dumps(mem))
 
@@ -104,7 +101,6 @@ async def test_knn_routing_end_to_end(tmp_path):
             ModelEndpoint(model=CHEAP, api_base=OR_BASE, api_key=key),
             ModelEndpoint(model=STRONG, api_base=OR_BASE, api_key=key),
         ],
-        # Tiny hand-built memory: relax the production safety gates.
         min_similarity=0.0,
         min_similar_neighbors=1,
         min_memory_size=1,
@@ -115,13 +111,9 @@ async def test_knn_routing_end_to_end(tmp_path):
     simple = "What is the capital of Japan? Answer in one word."
     hard = "Write a Python function using matrix exponentiation to compute the nth Fibonacci number in O(log n)."
 
-    # Cost-aware routing with the cheap model as the agent default: the simple
-    # task stays on the default (returns None), the hard task switches to strong.
     assert (await router.select_model_chain(simple)) == (None, [])
     assert (await router.select_model_chain(hard))[0] == STRONG
 
-    # Full Pico turn: routing fires inside _process_message and the routed
-    # model returns a real answer (sandbox / MCP bring-up stubbed out).
     loop = AgentLoop(
         provider=provider,
         workspace=tmp_path,

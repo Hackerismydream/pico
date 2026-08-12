@@ -58,9 +58,6 @@ class _ContextTool(_FakeTool):
         return f"ran {self.name}"
 
 
-# ---- ToolIndex ----
-
-
 def test_index_ranks_name_match_first() -> None:
     idx = ToolIndex()
     tools = [
@@ -89,17 +86,16 @@ def test_index_rebuilds_on_name_or_description_change() -> None:
     idx = ToolIndex()
     idx.ensure([_FakeTool("a", "alpha")])
     first = idx._bm25
-    idx.ensure([_FakeTool("a", "alpha")])  # identical catalog
+    idx.ensure([_FakeTool("a", "alpha")])
     assert idx._bm25 is first, "should not rebuild when (name, description) is unchanged"
-    idx.ensure([_FakeTool("a", "alpha changed")])  # description changed
+    idx.ensure([_FakeTool("a", "alpha changed")])
     assert idx._bm25 is not first, "should rebuild when a description changes"
-    idx.ensure([_FakeTool("a", "alpha changed"), _FakeTool("b", "beta")])  # name set grew
+    idx.ensure([_FakeTool("a", "alpha changed"), _FakeTool("b", "beta")])
     assert idx._bm25 is not first, "should rebuild when the name set changes"
 
 
 def test_index_matches_parameter_schema_keywords() -> None:
-    # A discriminating keyword living only in the parameter schema (not the
-    # one-line description) should still make the tool findable.
+
     idx = ToolIndex()
     tools = [
         _FakeTool(
@@ -150,11 +146,11 @@ def test_schema_text_extracts_names_descriptions_enums_and_nesting() -> None:
 def test_schema_text_handles_non_dict_and_empty() -> None:
     assert _schema_text(None) == ""
     assert _schema_text([1, 2]) == ""  # type: ignore[arg-type]
-    assert _schema_text({"type": "object"}) == ""  # no properties/desc/enum
+    assert _schema_text({"type": "object"}) == ""
 
 
 def test_schema_text_respects_depth_cap() -> None:
-    # Build nesting deeper than the cap; the deepest description must be dropped.
+
     node: dict[str, Any] = {"type": "string", "description": "TOODEEP"}
     for _ in range(10):
         node = {"type": "object", "properties": {"n": node}}
@@ -166,10 +162,10 @@ def test_index_rebuilds_on_parameters_change() -> None:
     idx = ToolIndex()
     idx.ensure([_FakeTool("t", "desc", parameters=base)])
     first = idx._bm25
-    idx.ensure([_FakeTool("t", "desc", parameters=dict(base))])  # same schema content
+    idx.ensure([_FakeTool("t", "desc", parameters=dict(base))])
     assert idx._bm25 is first, "should not rebuild when parameters are unchanged"
     changed = {"type": "object", "properties": {"a": {"type": "string", "description": "beta"}}}
-    idx.ensure([_FakeTool("t", "desc", parameters=changed)])  # param description changed
+    idx.ensure([_FakeTool("t", "desc", parameters=changed)])
     assert idx._bm25 is not first, "should rebuild when a parameter description changes"
 
 
@@ -180,9 +176,6 @@ def test_index_reused_across_instances_for_same_catalog() -> None:
     second = ToolIndex()
     second.ensure([_FakeTool("x", "xray"), _FakeTool("y", "yankee")])
     assert second._bm25 is first._bm25, "same catalog should reuse the cached BM25"
-
-
-# ---- ToolSearchController ----
 
 
 def _controller(registry: ToolRegistry) -> ToolSearchController:
@@ -224,9 +217,7 @@ def test_default_search_result_limit_is_ten() -> None:
 
 
 def test_default_always_visible_covers_core_and_interaction_primitives() -> None:
-    # File/search/exec primitives plus the interaction/orchestration primitives
-    # (message / ask_user / spawn) the agent must reach on any turn. Guards
-    # against silently dropping one (which would strand it behind tool_search).
+
     assert set(DEFAULT_ALWAYS_VISIBLE) >= {
         "read_file",
         "write_file",
@@ -256,9 +247,6 @@ def test_meta_tools_not_self_searchable() -> None:
     ctrl.refresh()
     names = [h["name"] for h in ctrl.search("tool search describe call")]
     assert not (META_TOOL_NAMES & set(names))
-
-
-# ---- meta-tools execute ----
 
 
 @pytest.mark.asyncio
@@ -327,7 +315,7 @@ async def test_tool_call_parses_stringified_arguments() -> None:
     reg = ToolRegistry()
     reg.register(_FakeTool("create_issue", "open a github issue"))
     ctrl = _controller(reg)
-    # Model emitted the nested arguments as a JSON string instead of an object.
+
     out = await ctrl.call("create_issue", '{"x": 1}')
     assert out == "ran create_issue"
 
@@ -336,9 +324,6 @@ async def test_tool_call_parses_stringified_arguments() -> None:
 async def test_tool_call_rejects_unparseable_arguments() -> None:
     ctrl = _controller(ToolRegistry())
     assert "must be a JSON object" in await ctrl.call("anything", "not json {")
-
-
-# ---- ToolSearchStrategy ----
 
 
 def _registry_with_n(n: int) -> tuple[ToolRegistry, ToolSearchController]:
@@ -379,8 +364,7 @@ async def test_strategy_large_catalog_compacts_to_visible() -> None:
 
 @pytest.mark.asyncio
 async def test_strategy_keeps_interaction_primitives_visible_above_threshold() -> None:
-    # ask_user / spawn are in DEFAULT_ALWAYS_VISIBLE, so above the threshold they
-    # keep their schema while ordinary cataloged tools are withheld.
+
     reg, ctrl = _registry_with_n(40)
     reg.register(_FakeTool("ask_user", "ask the user a clarifying question"))
     reg.register(_FakeTool("spawn", "spawn a subagent to handle a subtask"))
@@ -393,8 +377,7 @@ async def test_strategy_keeps_interaction_primitives_visible_above_threshold() -
 
 @pytest.mark.asyncio
 async def test_strategy_tool_list_stable_across_turns() -> None:
-    # Core guarantee: the compacted tool list never changes turn-to-turn, so the
-    # prompt cache stays valid (tools sit ahead of system+messages in the prefix).
+
     reg, ctrl = _registry_with_n(40)
     strat = ToolSearchStrategy(ctrl, compaction_threshold=25)
     first = {t["function"]["name"] for t in (await strat.before_llm_call([], reg.get_definitions(), "m"))[1]}
@@ -413,8 +396,7 @@ async def test_strategy_none_tools_passthrough() -> None:
 
 @pytest.mark.asyncio
 async def test_strategy_passthrough_when_meta_tools_absent() -> None:
-    # Above threshold but meta-tools missing (e.g. removed via disabled_tools):
-    # expose everything rather than strand cataloged tools.
+
     reg, ctrl = _registry_with_n(40)
     reg.unregister("tool_search")
     reg.unregister(TOOL_CALL_NAME)

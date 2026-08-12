@@ -71,7 +71,7 @@ async def test_hanging_tool_times_out_at_default_ceiling():
 
 @pytest.mark.asyncio
 async def test_per_tool_timeout_seconds_overrides_default():
-    # default would allow it, but the tool's own tighter ceiling fires first
+
     reg = _registry(_SleepTool(5.0, timeout_seconds=0.05), default_timeout=100.0)
     result = await reg.execute("sleeper", {})
     assert "timed out after 0s" in result
@@ -103,7 +103,7 @@ async def test_success_text_that_mentions_error_stays_successful():
 
 @pytest.mark.asyncio
 async def test_blocking_interaction_tool_is_not_wrapped():
-    # Sleeps well past the ceiling, but blocking tools are never timer-killed.
+
     reg = _registry(_SleepTool(0.2, blocking=True), default_timeout=0.05)
     assert await reg.execute("sleeper", {}) == "done"
 
@@ -121,12 +121,12 @@ async def test_cancelled_error_propagates_not_swallowed():
 
 @pytest.mark.asyncio
 async def test_long_running_tools_keep_generous_ceilings():
-    # Guard against regressing the overrides on the genuinely-slow tools.
+
     from pico.agent.tools.shell import ExecTool
     from pico.agent.tools.spawn import SpawnTool
 
     assert ExecTool.timeout_seconds >= 600
     assert SpawnTool.timeout_seconds >= 600
-    # Default-class tools inherit None -> registry default applies.
+
     assert Tool.timeout_seconds is None
     assert Tool.blocking_interaction is False

@@ -16,9 +16,8 @@ export function slashCompletions(input: string, commands: SlashCommand[]): Compl
     return []
   }
 
-  // Once the user types past the command name (a space → arguments), there is
-  // nothing left to complete — close the palette instead of lingering over
-  // `/cmd arg`.
+  // 用户越过命令名开始输入参数（空格后）时已无内容可补全，应关闭面板而不是继续
+  // 悬浮在 `/cmd arg` 上方。
   if (/\s/.test(input.slice(1))) {
     return []
   }

@@ -40,11 +40,8 @@ class SkillForgeRouter:
         over_fetch_factor: int = 2,
         dedup_by: str = "name",
     ) -> None:
-        # The list is captured by reference; callers should pass an
-        # already-frozen tuple if they want to forbid mutation. We
-        # deliberately don't freeze for them — host wires sources at
-        # boot, never mutates, and verbose immutable wrappers add
-        # nothing.
+        # 列表按引用捕获；如需禁止修改，调用方应传入已冻结的元组。此处刻意不代为冻结：
+        # 宿主在启动时连接数据源，之后不再修改，冗长的不可变包装没有收益。
         self._sources = sources
         self._over_fetch_factor = max(1, over_fetch_factor)
         self._dedup_by = dedup_by
@@ -85,9 +82,8 @@ class SkillForgeRouter:
         try:
             return await source.search(query, history, k), None
         except Exception as e:
-            # ``exception()`` writes the traceback; warning-level so a
-            # transient blip doesn't spam ``error`` logs but still
-            # shows up in normal aggregations.
+            # ``exception()`` 会写入堆栈追踪；使用警告级别，让短暂抖动不会淹没 ``error`` 日志，
+            # 同时仍能进入常规聚合。
             logger.warning(
                 "skill source %r failed; treating as empty: %s",
                 source.name,

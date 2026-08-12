@@ -8,7 +8,7 @@ Hard constraints only (violations get reverted / rejected). Soft suggestions and
 
 | # | Section | Gist |
 |---|---|---|
-| 1 | [Code comments](#1-code-comments) | Don't comment unless necessary; comments in English (teaching modules: §1.4) |
+| 1 | [Code comments](#1-code-comments) | Don't comment unless necessary; use the language clearest to readers |
 | 2 | [Branch naming](#2-branch-naming) | `<type>/<snake_desc>`; confirm base before cutting |
 | 3 | [Commits](#3-commits-conventional-commits) | Conventional Commits, all-English, `Co-authored-by` trailer |
 | 4 | [Dependencies](#4-dependencies-uv-only) | `uv` only — never `pip` / hand-edit lockfile |
@@ -33,13 +33,17 @@ Hard constraints only (violations get reverted / rejected). Soft suggestions and
   - reference a PR / Issue / locally-visible-only doc path (`# Refs: ...` — invisible to others);
   - describe transient task context (`# For the X bug` — stale once the task is done).
 
-### §1.2 When a comment is required, write it in English
+### §1.2 Comment language follows the audience
 
-- Repo source comments **must not be in another language** — keep comment language consistent across the repo.
+- Repository source comments may use any language. Choose the language that is
+  clearest to the module's intended readers and keep neighboring comments
+  consistent.
+- Do not translate machine-readable directives, tool markers, protocol values,
+  command examples, or third-party attribution merely for language consistency.
 
 ### §1.3 Examples
 
-❌ Non-English review comment copied straight into source:
+❌ Review annotation copied straight into source:
 
 ```python
 self.logger = logger.bind(channel=self.name)   # ← new
@@ -65,7 +69,7 @@ def __init__(self, config: Any, bus: MessageBus):
     self.logger = logger.bind(channel=self.name)
 ```
 
-✅ Rare case that genuinely needs a *why*, in English:
+✅ Rare case that genuinely needs a *why*:
 
 ```python
 # Bind channel name into logger context so every log entry auto-tags channel.
@@ -75,8 +79,7 @@ self.logger = logger.bind(channel=self.name)
 ### §1.4 Teaching modules: detailed Chinese comments allowed
 
 Teaching modules are designated for onboarding and campus-recruitment training.
-For these modules only, §1.1 (sparse comments) and §1.2 (English-only) are
-relaxed.
+For these modules only, §1.1 (sparse comments) is relaxed.
 
 - **Designation** — a module is a teaching module **only if** it appears in
   the teaching-module allowlist in `docs/plan/teaching-differentiation.md`
@@ -159,7 +162,8 @@ relaxed.
 
 **scope** — a top-level subpackage of `pico/` (for example, `cli`, `channels`, or `memory_engine`). Spanning multiple scopes → omit the scope, or use `(*)`.
 
-**subject** — lowercase start; ≤ 72 chars; no trailing period; English.
+**subject** — ≤ 72 chars; no trailing period; English. Sentence case and
+lowercase starts are both accepted.
 
 **footer** (optional):
 - `BREAKING CHANGE: <desc>` — triggers a MAJOR bump once public;
@@ -171,7 +175,7 @@ No other languages anywhere in the message — not just the subject; body and fo
 
 | Part | Rule |
 |---|---|
-| subject | English, lowercase start, ≤ 72 chars, no period |
+| subject | English, ≤ 72 chars, no period; uppercase or lowercase start |
 | body | **All English**; when citing a non-English plan / discussion, **translate** it, don't paste |
 | punctuation | **ASCII-only** — not just no full-width punctuation (`：`,`，`,`。`,`「」`,`""` …) but also no em-dash `—`, curly quotes, or ellipsis `…` (all non-ASCII, all rejected by CI); no `§`-numbering, no non-English path names; the latin part of a §N.M anchor is fine |
 | trailer | `Co-authored-by: ...` is ASCII by format |
@@ -188,15 +192,15 @@ No other languages anywhere in the message — not just the subject; body and fo
 ✅ Good:
 
 ```
-feat(cli): rename cron show/remove to get/delete
-fix(channels): default allow_from to ['*'] instead of deny-all
-refactor(cli): replace --cron-expr with --cron and --every-seconds with --every
+feat(cli): Rename cron show/remove to get/delete
+fix(channels): Default allow_from to ['*'] instead of deny-all
+refactor(cli): Replace --cron-expr with --cron and --every-seconds with --every
 ```
 
 ❌ Bad:
 - `更新代码` (non-English + no type/scope);
 - `update` (no type/scope);
-- `feat: Cron 命令重命名为 get 和 delete.` (uppercase + period + non-English + no scope).
+- `feat: Cron 命令重命名为 get 和 delete.` (period + non-English).
 
 ### §3.3 Trailer rules (commit message + PR description)
 

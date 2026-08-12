@@ -35,7 +35,7 @@ from pico.evolver.activation.ledger import (
     mark_beacons_enabled,
 )
 
-# Dev-box defaults, overridable per machine without a code edit.
+# 开发机默认值，可按机器覆盖而无需修改代码。
 APPWORLD_ROOT = os.environ.get("APPWORLD_ROOT", os.path.expanduser("~/workspace/appworld-run"))
 APPWORLD_BIN = os.environ.get("APPWORLD_BIN", os.path.join(APPWORLD_ROOT, "appworld-venv/bin/appworld"))
 APPWORLD_PY = os.environ.get("APPWORLD_PY", os.path.join(APPWORLD_ROOT, "appworld-venv/bin/python"))
@@ -76,10 +76,9 @@ def _wait_up(port: int, timeout: float = 60.0) -> bool:
 
 def _run_one(task_id: str, k: int, port: int, args, out_dir: str) -> dict:
     out = os.path.join(out_dir, f"{task_id}_k{k}.json")
-    # Trial-level resume: a parseable result file is the proof this trial ran;
-    # skip it so re-invocation only fills the gaps. A half-written file (crash
-    # mid-dump) fails to parse and is re-run. Infra-marked results are kept:
-    # their retry belongs to the infra-rerun ladder's separate out-dirs.
+    # 试验级恢复：可解析的结果文件证明该试验已运行，应跳过，使重新调用只补齐缺项。
+    # 崩溃导致的半写文件无法解析，会重新运行。保留标记为基础设施失败的结果；其
+    # 重试由基础设施重跑阶梯写入独立输出目录。
     try:
         with open(out) as f:
             return json.load(f)
@@ -103,13 +102,12 @@ def _run_one(task_id: str, k: int, port: int, args, out_dir: str) -> dict:
         args.experiment,
         "--session",
         f"{task_id}_{args.experiment}_k{k}",
-    ]  # per-attempt: retain all K trajectories
+    ]  # 按尝试保留全部 K 条轨迹。
     if args.model:
         cmd += ["--model", args.model]
     env = dict(os.environ)
-    # Per-attempt beacon workspace (Gate-b): each agent_cli subprocess writes
-    # its activation beacons under its own dir, pre-split by task. Beacon-less
-    # code never writes anything, so this is behavior-neutral for vanilla.
+    # 每次尝试使用独立信标工作区（Gate-b）：各 agent_cli 子进程按任务预拆分，
+    # 将激活信标写入自身目录。没有信标的代码不会写入，因此对原版行为中立。
     beacon_ws = beacon_workspace(out_dir, task_id, k)
     try:
         beacon_ws.mkdir(parents=True, exist_ok=True)
@@ -125,15 +123,14 @@ def _run_one(task_id: str, k: int, port: int, args, out_dir: str) -> dict:
     try:
         with open(logf, "w") as lf:
             subprocess.run(cmd, stderr=lf, stdout=lf, timeout=args.task_timeout, env=env)
-    except Exception as e:  # timeout / spawn failure: agent_cli never wrote --out
+    except Exception as e:  # 超时或生成失败时，agent_cli 未写入 --out。
         run_err = f"runner: {type(e).__name__}: {e}"
     try:
         return json.load(open(out))
     except Exception as e:
-        # The trial MUST leave a result file: scoring counts attempts from
-        # files, and the infra-rerun ladder only reruns tasks whose eval shows
-        # infra trials. An unwritten timeout would otherwise be invisible
-        # (task scored over fewer attempts, never re-run).
+        # 试验必须留下结果文件：评分按文件统计尝试次数，基础设施重跑阶梯只重跑
+        # 评测显示存在基础设施失败的任务。否则未写入的超时不可见，任务会按较少
+        # 尝试评分且永不重跑。
         rec = {
             "task_id": task_id,
             "success": False,
@@ -196,8 +193,7 @@ def main(argv=None) -> int:
             if not ok:
                 failed_ports.append(pt)
         if failed_ports:
-            # A dead server would burn 1/N of every task as infra errors;
-            # refusing to score is the only honest option.
+            # 服务端失效会让每个任务的 1/N 尝试都成为基础设施错误；拒绝评分才诚实。
             print(
                 f"[batch] aborting: env servers failed to start on ports "
                 f"{failed_ports} (see envserver-*.log in {args.out_dir})",
@@ -205,7 +201,7 @@ def main(argv=None) -> int:
             )
             return 3
 
-        # work queue of (task_id, k); worker per port
+        # 工作队列元素为 (task_id, k)，每个端口一个工作器。
         work: "queue.Queue" = queue.Queue()
         for t in tasks:
             for k in range(args.k):
@@ -243,15 +239,15 @@ def main(argv=None) -> int:
     finally:
         _shutdown_servers()
 
-    # ---- summarize ----
+    # ---- 汇总 ----
     def mode(r: dict) -> str:
         if r.get("success"):
             return "PASS"
         if r.get("infra_error"):
             return "INFRA"
         if r.get("task_completed"):
-            return "LEGIT_FAIL"  # tried + completed but wrong
-        return "INCOMPLETE"  # stopped early / empty response
+            return "LEGIT_FAIL"  # 已尝试并完成，但答案错误。
+        return "INCOMPLETE"  # 提前停止或响应为空。
 
     from collections import Counter
 

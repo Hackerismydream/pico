@@ -2,14 +2,13 @@
 // Copyright (c) 2026 EverMind.
 // See NOTICES.md.
 //
-// Defense-in-depth tests for createChatStream. The server-side root
-// cause (per-turn cancel tearing down the session subscription) is fixed in
-// Python; these guard the client so a turn that produces NO terminal event can
-// never wedge the UI again:
-//   1. watchdog — a turn with no server event within the window clears
-//      busy/turnId and surfaces an error (time-driven recovery).
-//   2. forceReset — local hard reset used by the Ctrl+C escape hatch
-//      (keypress-driven recovery), no server round-trip required.
+// createChatStream 的纵深防御测试。Python 端已修复服务端根因，即按轮次取消时
+// 错误拆除会话订阅；这些测试保护客户端，确保没有产生终止事件的轮次不再卡死
+// 界面：
+//   1. watchdog：窗口内没有服务端事件时清除 busy/turnId 并显示错误，由时间驱动
+//      恢复；
+//   2. forceReset：Ctrl+C 逃生路径使用的本地强制重置，由按键驱动恢复且无需
+//      服务端往返。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -113,13 +112,13 @@ describe('createChatStream — wedge defenses', () => {
     })
     await stream.attach()
 
-    // Mirror the submit handler marking the UI busy. The accepted RPC result
-    // proves that the server owns the Turn even if execution is queued.
+    // 模拟提交处理器将界面标记为忙碌。即使执行仍在排队，RPC 接受结果也证明
+    // 服务端已接管该轮次。
     patchUiState({ busy: true })
     await stream.send('hello')
     expect(stream.isTurnActive()).toBe(true)
 
-    // No events arrive. The ack watchdog must not reclaim a server-owned Turn.
+    // 没有事件到达时，确认看门狗也不能回收服务端已接管的轮次。
     vi.advanceTimersByTime(5000)
 
     expect(stream.isTurnActive()).toBe(true)
@@ -151,7 +150,7 @@ describe('createChatStream — wedge defenses', () => {
       }
     })
 
-    // Long after the window: a completed turn must not trip the watchdog.
+    // 即使远超窗口，已完成轮次也不能触发看门狗。
     vi.advanceTimersByTime(60000)
     expect(sysCalls.some(m => /no response/i.test(m))).toBe(false)
     expect(getUiState().busy).toBe(false)
@@ -216,25 +215,22 @@ describe('createChatStream — wedge defenses', () => {
     await stream.attach()
     await stream.send('long task')
     fake.__pushEvent({ type: 'message.start', payload: { turn_id: 'turn-1' } })
-    // Mirror the first Ctrl+C arming the escape hatch (set by useInputHandlers).
+    // 模拟首次 Ctrl+C 启用由 useInputHandlers 设置的逃生路径。
     patchUiState({ busy: true, escapeArmed: true })
 
     stream.forceReset()
 
-    // The hint must revert: a second Ctrl+C should not stay armed once the
-    // turn has been reset.
+    // 提示必须恢复；轮次重置后不能继续保持第二次 Ctrl+C 的启用状态。
     expect(getUiState().escapeArmed).toBe(false)
     expect(getUiState().busy).toBe(false)
   })
 
   it('does not false-positive when message.start arrives in the same packet as the turn.send accept (arming race)', async () => {
     vi.useFakeTimers()
-    // Reproduce the false positive: under a first-submit render stall the
-    // server's accept and its pre-LLM message.start land in one network packet.
-    // The subscription callback fires synchronously inside turn.send — BEFORE
-    // its accept resolves — so the watchdog must already be armed by then, and
-    // must not re-arm afterwards. The model is then silent past the window
-    // (slow first token); a healthy turn must not be declared dead.
+    // 复现误报：首次提交渲染卡顿时，服务端接受响应与大模型前的 message.start
+    // 落在同一网络包内。订阅回调会在 turn.send 内同步触发，早于接受响应完成，
+    // 因此此时看门狗必须已启用，之后也不能再次启用。随后模型沉默超过窗口
+    // （首 token 较慢），但健康轮次不能被判定为失效。
     let handler: ((event: TurnEvent) => void) | null = null
     const fake: ChatStreamRpcClient = {
       async rpc<R, P>(method: string, params: P): Promise<R> {
@@ -276,8 +272,8 @@ describe('createChatStream — wedge defenses', () => {
 
   it('recovers the input when turn.send hangs and never returns (hung RPC)', async () => {
     vi.useFakeTimers()
-    // turn.send never resolves: the ack watchdog is armed before the await, so
-    // a hung RPC still recovers the input instead of freezing the UI.
+    // turn.send 永不完成时，确认看门狗已在 await 前启用，因此挂起的 RPC 仍会
+    // 恢复输入，而不是冻结界面。
     const fake: ChatStreamRpcClient = {
       async rpc<R, P>(method: string, _params: P): Promise<R> {
         if (method === 'turn.send') {
@@ -312,7 +308,7 @@ describe('createChatStream — wedge defenses', () => {
       async rpc<R, P>(method: string, _params: P): Promise<R> {
         if (method === 'turn.send') {
           if (resumeSend === null) {
-            // First send hangs until detach; never resolves on its own.
+            // 首次发送会一直挂起到 detach，自身永不完成。
             return new Promise<R>(() => {})
           }
           return { turn_id: 'turn-2', accepted: true } as unknown as R
@@ -331,8 +327,8 @@ describe('createChatStream — wedge defenses', () => {
     resumeSend = () => {}
     await stream.attach()
 
-    // The hung send left sendInFlight true; detach must have cleared it, else
-    // this throws 'turn already in progress'.
+    // 挂起发送使 sendInFlight 保持 true；detach 必须清除它，否则这里会抛出
+    // 'turn already in progress'。
     await expect(stream.send('second')).resolves.toMatchObject({ accepted: true })
   })
 
@@ -603,8 +599,8 @@ describe('createChatStream — wedge defenses', () => {
     await stream.send('slow first token')
 
     fake.__pushEvent({ type: 'message.start', payload: { turn_id: 'turn-1' } })
-    // Pre-LLM ack received; the model now produces no delta for far longer than
-    // the window. The watchdog must NOT re-arm into an LLM-TTFT judge.
+    // 已收到大模型前确认，随后模型远超窗口仍未产生增量。看门狗不能重新启用并
+    // 变成大模型首 token 延迟判定器。
     vi.advanceTimersByTime(60000)
 
     expect(sysCalls.some(m => /no response/i.test(m))).toBe(false)
@@ -1224,16 +1220,16 @@ describe('createChatStream — cancel preserves streamed content', () => {
     fake.__pushEvent({ type: 'message.start', payload: { turn_id: 'turn-1' } })
     fake.__pushEvent({ type: 'token.delta', payload: { text: 'A streamed reply' } })
 
-    // First Ctrl+C escape hatch preserves the partial.
+    // 首次 Ctrl+C 逃生路径保留部分输出。
     stream.forceReset()
-    // The server's cancel error then arrives (turnId was not cleared on cancel),
-    // re-entering finalize on now-empty state.
+    // 随后服务端取消错误到达；取消时未清除 turnId，因此会在当前空状态上再次
+    // 进入 finalize。
     fake.__pushEvent({
       type: 'error',
       payload: { code: -32000, message: 'cancelled', reason: 'cancelled_by_client' }
     })
 
-    // Content preserved exactly once; no spurious second interrupted sys note.
+    // 内容只保留一次，不能额外生成第二条虚假的中断系统提示。
     expect(appended.filter(m => m.role === 'assistant')).toHaveLength(1)
     expect(sysCalls.filter(m => m === 'interrupted')).toHaveLength(0)
   })
@@ -1253,7 +1249,7 @@ describe('createChatStream — cancel preserves streamed content', () => {
     await stream.send('question')
 
     fake.__pushEvent({ type: 'message.start', payload: { turn_id: 'turn-1' } })
-    // No token.delta: the turn is cancelled before any content streamed.
+    // 没有 token.delta，轮次在任何内容流出前就被取消。
     stream.forceReset()
 
     expect(appended.some(m => m.role === 'assistant')).toBe(false)

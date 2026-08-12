@@ -15,7 +15,7 @@ from loguru import logger
 
 from pico.routing.types import ClassificationResult, TaskCategory
 
-# ── 23 categories → task IDs ───────────────────────────────────────────────────
+# ── 23 个类别映射到任务 ID ─────────────────────────────────────────────
 
 TASK_CATEGORIES: dict[TaskCategory, str] = {
     "sanity": "task_00_sanity",
@@ -47,7 +47,7 @@ _TASK_TO_CATEGORY: dict[str, TaskCategory] = {v: k for k, v in TASK_CATEGORIES.i
 
 _EMBEDDING_DATA_PATH = Path(__file__).parent / "embedding_data.json"
 
-# ── Embedding API ──────────────────────────────────────────────────────────────
+# ── 嵌入 API ───────────────────────────────────────────────────────────
 
 OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -84,7 +84,7 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / denom if denom > 0 else 0.0
 
 
-# ── Pre-computed embeddings ────────────────────────────────────────────────────
+# ── 预计算嵌入 ─────────────────────────────────────────────────────────
 
 
 def _load_embedding_data() -> list[dict] | None:
@@ -99,7 +99,7 @@ def _load_embedding_data() -> list[dict] | None:
         return None
 
 
-# ── Classifier ─────────────────────────────────────────────────────────────────
+# ── 分类器 ─────────────────────────────────────────────────────────────
 
 
 class PromptClassifier:
@@ -107,7 +107,7 @@ class PromptClassifier:
 
     def __init__(self, api_key: str):
         self._api_key = api_key
-        self._tasks: list[dict] | None = None  # lazy-loaded
+        self._tasks: list[dict] | None = None  # 惰性加载
 
     def _get_tasks(self) -> list[dict] | None:
         if self._tasks is None:

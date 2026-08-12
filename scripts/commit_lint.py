@@ -84,10 +84,6 @@ def _check_message(message: str, *, subject_limit: int) -> LintResult:
     if len(subject) > subject_limit:
         errors.append(f"subject must be {subject_limit} characters or fewer")
 
-    first_alpha = next((ch for ch in subject if ch.isalpha()), "")
-    if first_alpha and not first_alpha.islower():
-        errors.append("subject must start lowercase")
-
     if subject.endswith((".", "!", "?")):
         errors.append("subject must not end with punctuation")
 

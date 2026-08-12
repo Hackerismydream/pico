@@ -42,7 +42,7 @@ class FakeStreamingAgent:
     content flows run_turn → StreamDelta → hub → token.delta; message.start is
     turn.send's, message.complete is the sink's."""
 
-    tools: dict = {}  # mirrors AgentLoop.tools (the TUI runner reads .get('message'))
+    tools: dict = {}
 
     async def run_turn(
         self,
@@ -54,7 +54,7 @@ class FakeStreamingAgent:
         usage_sink=None,
     ) -> TurnOutcome:
         if req.text == "hang":
-            await asyncio.Event().wait()  # never set — cancelled by turn.cancel
+            await asyncio.Event().wait()
         await emit(StreamDelta(delta="second-turn-token"))
         return TurnOutcome(usage=Usage(0, 0, 0), explicit_reply=True)
 
@@ -76,8 +76,7 @@ async def _wire_paired_socket() -> tuple[socket.socket, socket.socket, Path]:
     await loop.sock_connect(client, str(spath))
     conn, _ = await loop.sock_accept(server_sock)
     conn.setblocking(False)
-    # The RpcServer dups + owns ``conn``'s fd; keep listening + conn handles
-    # alive for the duration via the returned tuple, close them in teardown.
+
     server_sock_keep = server_sock
     return client, conn, tmp, server_sock_keep  # type: ignore[return-value]
 
@@ -162,17 +161,14 @@ async def test_turn2_streams_after_turn1_cancel_over_real_rpc() -> None:
         serve_task = asyncio.create_task(server.serve_forever())
         await server.started.wait()
 
-        # Subscribe once per session (mirrors useMainApp's subscribe-per-session).
         await _send(client, "turn.subscribe", {"session_key": SESSION_KEY}, 1)
         await asyncio.sleep(0.05)
 
-        # Turn 1 — starts streaming, user hits Ctrl+C mid-stream.
         await _send(client, "turn.send", {"session_key": SESSION_KEY, "content": "hang"}, 2)
         await asyncio.sleep(0.08)
         await _send(client, "turn.cancel", {"session_key": SESSION_KEY}, 3)
         await asyncio.sleep(0.08)
 
-        # Turn 2 — must run and stream to completion on the SAME subscription.
         await _send(client, "turn.send", {"session_key": SESSION_KEY, "content": "second"}, 4)
 
         events = await _drain_events(client, duration=0.6)

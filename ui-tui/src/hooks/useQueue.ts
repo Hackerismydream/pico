@@ -7,8 +7,8 @@ import { useCallback, useRef, useState } from 'react'
 
 import type { QueuedSubmission } from '../app/interfaces.js'
 
-// Mutates `arr` in place; returned reference is the same input array, kept
-// so callers can chain. Use `Array.prototype.toSpliced` if you need a copy.
+// 原地修改 `arr`，返回值仍是同一个输入数组以支持链式调用；需要副本时请使用
+// `Array.prototype.toSpliced`。
 export function removeAtInPlace<T>(arr: T[], i: number): T[] {
   if (i < 0 || i >= arr.length) {
     return arr

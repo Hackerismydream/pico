@@ -11,10 +11,9 @@ from pydantic import ValidationError
 from pico.config.schema import Config
 from pico.product import get_product_home
 
-# Single source of truth for Pico extension block keys.
-# Both _migrate_config (pop before base Config validates) and
-# load_pico_config (extract into overrides) reference this.
-# Add new extension blocks here — one place, no duplication.
+# Pico 扩展配置块键名的唯一事实来源。
+# _migrate_config（在基础 Config 校验前 pop）和 load_pico_config
+# （提取到 overrides）都引用这里。新增扩展块只需改这一处，避免重复。
 EXTENSION_KEYS = (
     "context",
     "callEfficiency",
@@ -23,17 +22,17 @@ EXTENSION_KEYS = (
     "skillForge",
     "token_wise",
     "skill_forge",
-    # CFG-1 additions: each key is listed in both camelCase (preferred
-    # by config files) and snake_case (preferred by Python).
+    # CFG-1 新增项：每个键同时列出配置文件偏好的 camelCase 和 Python
+    # 偏好的 snake_case。
     "plugins",
     "memory",
-    # Bug2 / runtime-discipline 5th pillar — checkpoint policy etc.
+    # Bug2 / runtime-discipline 第五支柱：checkpoint 策略等。
     "runtime",
-    # In-tree observability tracing (pico.tracing).
+    # 仓库内可观测性 tracing（pico.tracing）。
     "tracing",
 )
 
-# Global variable to store current config path (for multi-instance support)
+# 保存当前配置路径的全局变量，用于多实例支持。
 _current_config_path: Path | None = None
 
 _REMOVED_CHANNELS = frozenset(
@@ -142,7 +141,7 @@ def read_raw_or_raise(path: Path) -> dict[str, Any]:
     try:
         text = path.read_text(encoding="utf-8")
         if not text.strip():
-            return {}  # empty file: no data to lose, safe to create fresh (like absent)
+            return {}  # 空文件没有数据可丢失，可像文件不存在一样安全重建
         data = json.loads(text)
         if not isinstance(data, dict):
             return {}
@@ -174,10 +173,9 @@ def load_config(config_path: Path | None = None) -> Config:
                 data = json.load(f)
             data = _migrate_config(data)
         except json.JSONDecodeError as e:
-            # Boot on defaults for a malformed file (a transient mid-write race
-            # shouldn't brick callers) but warn LOUDLY -- a persistent syntax
-            # error would else revert every setting with no visible cause.
-            # Raising instead needs atomic save_config first (separate change).
+            # 配置文件损坏时用默认值启动，避免写入中途的短暂竞争让调用方瘫痪；
+            # 但必须明确警告，否则持续的语法错误会无声重置所有设置。
+            # 若要改为抛错，必须先让 save_config 支持原子写入（另行修改）。
             msg = (
                 f"config at {path} is not valid JSON ({e}) -- IGNORING it and running on "
                 "DEFAULTS. Fix the file (JSON allows no comments or trailing commas) and restart."
@@ -188,10 +186,8 @@ def load_config(config_path: Path | None = None) -> Config:
             try:
                 config = Config.model_validate(data)
             except ValidationError as e:
-                # Schema mismatch is a user/programmer error — surface
-                # loudly rather than masking with defaults. Silently
-                # using defaults makes "feature X did nothing" debug
-                # take 24h instead of 24s.
+                # schema 不匹配属于用户或程序错误，应明确暴露而不是用默认值掩盖。
+                # 静默使用默认值会让“功能 X 为什么没生效”的排查从 24 秒拖到 24 小时。
                 raise ValueError(
                     f"Config at {path} fails schema validation:\n{e}",
                 ) from e
@@ -233,14 +229,13 @@ def _migrate_config(data: dict, *, pop_extension_keys: bool = True) -> dict:
 
     _reject_unsupported_config(data)
 
-    # Move tools.exec.restrictToWorkspace → tools.restrictToWorkspace
+    # 将 tools.exec.restrictToWorkspace 迁移到 tools.restrictToWorkspace。
     tools = data.get("tools", {})
     exec_cfg = tools.get("exec", {})
     if "restrictToWorkspace" in exec_cfg and "restrictToWorkspace" not in tools:
         tools["restrictToWorkspace"] = exec_cfg.pop("restrictToWorkspace")
-    # Drop retired remembered-Skill extraction fields. This migration never
-    # changes ``memory.backend``; an explicit legacy backend selection must
-    # reach plugin resolution and fail with operator remediation.
+    # 删除已退役的 remembered-Skill 提取字段。该迁移绝不修改 ``memory.backend``；
+    # 显式选择旧后端时必须继续进入插件解析，并以包含运维修复指引的错误失败。
     agents = data.get("agents", {})
     defaults = agents.get("defaults") if isinstance(agents, dict) else None
     if isinstance(defaults, dict):
@@ -254,12 +249,12 @@ def _migrate_config(data: dict, *, pop_extension_keys: bool = True) -> dict:
             if memory.pop(legacy_key, None) is not None:
                 _log.info("Migrated: dropped memory.%s (retired)", legacy_key)
 
-    # skills_dir → local_dirs migration now handled by
-    # SkillForgeConfig._migrate_skills_dir model_validator (R5).
+    # skills_dir → local_dirs 迁移现由
+    # SkillForgeConfig._migrate_skills_dir model_validator（R5）处理。
 
-    # Nest the legacy top-level ``skillRouter`` / ``skill_router`` block
-    # into ``skillForge.router`` — the router is now a SkillForge sub-block,
-    # not a sibling top-level key. Explicit ``skillForge.router`` wins.
+    # 把旧版顶层 ``skillRouter`` / ``skill_router`` 块嵌套进
+    # ``skillForge.router``。router 现在属于 SkillForge 子块，不再是并列的
+    # 顶层键；显式 ``skillForge.router`` 优先。
     router_block = data.pop("skillRouter", None)
     if router_block is None:
         router_block = data.pop("skill_router", None)
@@ -317,7 +312,7 @@ def _migrate_config(data: dict, *, pop_extension_keys: bool = True) -> dict:
                 if router.pop(legacy_key, None) is not None:
                     _log.info("Migrated: dropped %s.router.%s (retired)", sf_key, legacy_key)
 
-    # ── Pop extension keys before base Config validates ──────────────
+    # ── 基础 Config 校验前弹出扩展键 ────────────────────────────
     if pop_extension_keys:
         for ek in EXTENSION_KEYS:
             data.pop(ek, None)

@@ -308,9 +308,8 @@ def build_plugin_tools(
                 e,
             )
             continue
-        # A factory may return None to decline contribution at runtime
-        # (e.g. an optional dependency isn't installed). That's a clean
-        # opt-out, not a failure — skip it without the warning.
+            # 工厂可返回 None，在运行时拒绝提供能力（例如未安装可选依赖）。这是正常退出，
+            # 不是失败；直接跳过且不警告。
         if tool is None:
             logger.debug(
                 "plugin tool %r factory opted out (returned None); skipping it.",

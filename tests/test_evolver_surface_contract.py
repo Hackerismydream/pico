@@ -56,5 +56,5 @@ def test_shipped_example_requires_sealed_external_output() -> None:
     example = (REPO_ROOT / "docs/examples/evolve_appworld.yaml").read_text()
 
     assert "\n  test_task_file:" in example
-    assert "writable and outside repo_root" in example
-    assert "manual review" in example
+    assert "可写且位于 repo_root 外" in example
+    assert "人工评审" in example

@@ -26,8 +26,7 @@ async def test_concurrent_turns_do_not_clobber_message_routing():
     async def turn(channel: str, chat_id: str, cb, content: str) -> None:
         tool.set_context(channel, chat_id)
         tool.set_send_callback(cb)
-        # Both turns finish setting their context before either sends, so a
-        # shared-instance implementation would route both to the last setter.
+
         await barrier.wait()
         await tool.execute(content=content)
 
@@ -38,5 +37,5 @@ async def test_concurrent_turns_do_not_clobber_message_routing():
 
     assert sink_a == ["to-A"]
     assert sink_b == ["to-B"]
-    # The test's own task never set a context/callback, so it sees the default.
+
     assert tool.sent_in_turn is False

@@ -24,7 +24,7 @@ from pico.plugin import (
 )
 
 # ---------------------------------------------------------------------------
-# Test-module injection (mirrors test_plugin_registry.py)
+
 # ---------------------------------------------------------------------------
 
 
@@ -59,7 +59,7 @@ def _discovered_with_tools(
 
 
 # ---------------------------------------------------------------------------
-# Manifest
+
 # ---------------------------------------------------------------------------
 
 
@@ -99,7 +99,7 @@ class TestManifestTools:
             )
 
     def test_backend_and_tool_may_share_name(self) -> None:
-        # Uniqueness is per-kind; a backend and a tool named the same is fine.
+
         from pico.plugin import MemoryBackendContribution
 
         mf = PluginManifest(
@@ -114,7 +114,7 @@ class TestManifestTools:
 
 
 # ---------------------------------------------------------------------------
-# Registry
+
 # ---------------------------------------------------------------------------
 
 
@@ -171,7 +171,7 @@ class TestRegistryTools:
 
 
 # ---------------------------------------------------------------------------
-# CLI stack — build_plugin_tools
+
 # ---------------------------------------------------------------------------
 
 
@@ -213,14 +213,12 @@ class TestBuildPluginTools:
         _install_test_module("_tp_tools_e", {"make_tool": boom})
         reg = PluginRegistry()
         reg.activate([_discovered_with_tools("p", [("t", "_tp_tools_e:make_tool")])])
-        # One bad tool doesn't crash the build — it's logged + skipped.
+
         assert build_plugin_tools(tmp_path, self._config(), registry=reg) == []
 
     def test_none_factory_is_skipped(self, tmp_path: Path) -> None:
         from pico.cli._plugin_stack import build_plugin_tools
 
-        # A factory may return None to decline contribution (e.g. an
-        # optional dependency is absent) — skipped without error.
         def opt_out(ctx):
             return None
 
@@ -231,7 +229,7 @@ class TestBuildPluginTools:
 
 
 # ---------------------------------------------------------------------------
-# render.build_user_content — attachment surfacing
+
 # ---------------------------------------------------------------------------
 
 

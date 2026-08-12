@@ -24,9 +24,8 @@ from pico.utils.helpers import detect_image_mime
 if TYPE_CHECKING:
     from pico.memory_engine.backend import Memory
 
-# L4 pillar layout — agent identity/behavior live under agent_memory;
-# user.md is omitted here because the MemorySegmentBuilder already injects
-# it into the ``# Memory`` block (avoids loading the same file twice).
+# L4 支柱布局：Agent 身份和行为位于 agent_memory 下；此处省略 user.md，
+# 因为 MemorySegmentBuilder 已将其注入 ``# Memory`` 块，避免重复加载。
 BOOTSTRAP_FILES = [
     "agent_memory/profile/soul.md",
     "agent_memory/profile/agent.md",
@@ -112,8 +111,8 @@ def load_bootstrap_files(workspace: Path, bootstrap_files: list[str] | None = No
         file_path = workspace / filename
         if file_path.exists():
             content = file_path.read_text(encoding="utf-8")
-            # Basename for the heading so ``agent_memory/profile/soul.md``
-            # renders as ``## soul.md``.
+            # 标题只使用文件名，因此 ``agent_memory/profile/soul.md``
+            # 会渲染为 ``## soul.md``。
             heading = Path(filename).name
             parts.append(f"## {heading}\n\n{content}")
     return "\n\n".join(parts)

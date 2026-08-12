@@ -66,9 +66,8 @@ const TranscriptPane = memo(function TranscriptPane({
 }: Pick<AppLayoutProps, 'actions' | 'composer' | 'progress' | 'transcript'>) {
   const ui = useStore($uiState)
 
-  // LiveTodoPanel rides as a child of the latest user-message row so it
-  // visually belongs to the prompt and follows it during scroll. -1 when
-  // empty → row.index === -1 is always false → no render.
+  // LiveTodoPanel 作为最新用户消息行的子节点，使其在视觉上属于提示词并随滚动
+  // 移动。为空时取 -1，此时 row.index === -1 恒为假，因此不会渲染。
   const lastUserIdx = useMemo(() => {
     const items = transcript.historyItems
 
@@ -178,8 +177,8 @@ const ComposerPane = memo(function ComposerPane({
     inputMouseRef.current?.startAtBeginning()
   }
 
-  // Drag origin matches the input box's top-left, so localRow / localCol
-  // map directly into TextInput coords (after backing out the prompt cell).
+  // 拖动原点与输入框左上角一致，因此扣除提示词单元格后，localRow/localCol
+  // 可直接映射为 TextInput 坐标。
   const dragFromPromptRow = (e: GutterMouseEvent) => {
     if (e.button !== 0) {
       return
@@ -189,9 +188,8 @@ const ComposerPane = memo(function ComposerPane({
     inputMouseRef.current?.dragAt(e.localRow ?? 0, (e.localCol ?? 0) - promptWidth)
   }
 
-  // Spacer rows live on a different vertical origin; only the column is
-  // parent-aligned with the input. Force row=0 so vertical drags can't
-  // jump the cursor to the wrong wrapped line.
+  // 间隔行使用不同的垂直原点，只有列与父级输入框对齐。强制 row=0，避免垂直
+  // 拖动将光标跳到错误的换行位置。
   const dragFromSpacer = (e: GutterMouseEvent) => {
     if (e.button !== 0) {
       return
@@ -240,12 +238,11 @@ const ComposerPane = memo(function ComposerPane({
 
       <StatusRulePane at="top" composer={composer} status={status} />
 
-      {/* When a blocking overlay opens the input rows unmount, collapsing this
-          box to height 0. At statusBar='bottom' the StatusRule sibling then
-          shares its computed top, tripping the renderer's height-0 skip
-          (render-node-to-output siblingSharesY) which drops the box AND its
-          absolute FloatingOverlays child — popups vanish. Reserve a 1-row
-          floor in that layout so the anchor box always renders. */}
+      {/* 阻塞浮层打开时输入行会卸载，使此容器高度收缩为 0。statusBar='bottom'
+          时，StatusRule 兄弟节点会共享计算后的顶部位置，触发渲染器的零高度跳过
+          逻辑（render-node-to-output siblingSharesY），导致容器及其绝对定位的
+          FloatingOverlays 子节点一起被丢弃，弹窗随之消失。因此该布局至少保留
+          一行高度，确保锚点容器始终渲染。 */}
       <Box
         flexDirection="column"
         marginTop={ui.statusBar === 'top' ? 0 : 1}
@@ -444,9 +441,8 @@ export const AppLayout = memo(function AppLayout({
   const overlay = useStore($overlayState)
   const ui = useStore($uiState)
 
-  // Inline mode skips AlternateScreen so the host terminal's native
-  // scrollback captures rows scrolled off the top; composer + progress
-  // stay anchored via normal flex-column flow.
+  // 行内模式跳过 AlternateScreen，使宿主终端原生回滚区能保留滚出顶部的行；
+  // 编辑框和进度条通过普通纵向弹性布局保持锚定。
   const Shell = INLINE_MODE ? Fragment : AlternateScreen
   const shellProps = INLINE_MODE ? {} : { mouseTracking }
 

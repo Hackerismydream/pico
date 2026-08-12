@@ -21,8 +21,7 @@ def _write(path: Path, body: dict) -> None:
 def test_missing_file_uses_defaults(tmp_path: Path) -> None:
     """No file → default Config — loader must not raise."""
     cfg = load_config(tmp_path / "does_not_exist.json")
-    # AgentDefaults no longer carries the everos field;
-    # check a stable default instead.
+
     assert cfg.agents.defaults.max_tool_iterations == 40
 
 
@@ -117,9 +116,7 @@ def test_schema_validation_error_raises(tmp_path: Path) -> None:
     """A user / programmer config error must NOT silently fall back to
     defaults — that masks misconfig as "feature X did nothing"."""
     p = tmp_path / "config.json"
-    # ``max_tool_iterations`` is an int — pass a string to force a
-    # pydantic ValidationError, which is a ValueError subclass we
-    # explicitly re-raise rather than swallow.
+
     _write(
         p,
         {
@@ -222,9 +219,9 @@ def test_load_config_malformed_warns_loudly_and_uses_defaults(tmp_path: Path, ca
 
     p = tmp_path / "bad.json"
     p.write_text("{  // comment\n}", encoding="utf-8")
-    cfg = load_config(p)  # must NOT raise (boot resilience)
+    cfg = load_config(p)
     assert isinstance(cfg, Config)
-    assert "IGNORING" in capsys.readouterr().err  # loud stderr warning, not silent
+    assert "IGNORING" in capsys.readouterr().err
 
 
 def test_read_raw_or_raise_empty_file_is_empty_dict(tmp_path: Path) -> None:
@@ -232,7 +229,7 @@ def test_read_raw_or_raise_empty_file_is_empty_dict(tmp_path: Path) -> None:
 
     p = tmp_path / "empty.json"
     p.write_text("   \n", encoding="utf-8")
-    assert read_raw_or_raise(p) == {}  # empty = no data to lose, not malformed
+    assert read_raw_or_raise(p) == {}
 
 
 def test_read_raw_or_raise_json_null_is_empty_dict(tmp_path: Path) -> None:
@@ -240,14 +237,11 @@ def test_read_raw_or_raise_json_null_is_empty_dict(tmp_path: Path) -> None:
 
     p = tmp_path / "null.json"
     p.write_text("null", encoding="utf-8")
-    assert read_raw_or_raise(p) == {}  # valid JSON but not an object -> {} (no AttributeError)
+    assert read_raw_or_raise(p) == {}
 
 
 def test_config_read_error_is_not_runtimeerror() -> None:
-    # Intentional: the CLI write commands wrap ops in `except RuntimeError`
-    # (OAuth-refusal etc.); ConfigReadError must NOT be a RuntimeError so a parse
-    # error bypasses those and reaches the single run() handler. Do not "fix"
-    # this to RuntimeError.
+
     from pico.config.loader import ConfigReadError
 
     assert not issubclass(ConfigReadError, RuntimeError)

@@ -42,15 +42,14 @@ def test_filter_keeps_unrelated_log_records():
 def test_no_bedrock_provider_in_registry():
     assert "bedrock" not in {spec.name for spec in PROVIDERS}
     assert find_by_name("bedrock") is None
-    # A bedrock-prefixed model without provider keywords resolves to no spec —
-    # nothing in the registry claims to route Bedrock traffic.
+
     assert find_by_model("bedrock/amazon.titan-text-express-v1") is None
 
 
 def test_only_bedrock_touchpoint_is_the_helpers_key_gate_bypass():
     source = Path(helpers_mod.__file__).read_text(encoding="utf-8")
-    # The sole bedrock reference: the key-gate bypass in make_provider.
+
     assert source.count("bedrock") == 1
     assert 'model.startswith("bedrock/")' in source
-    # No Bedrock Converse backend has been wired in.
+
     assert "converse" not in source

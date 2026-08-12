@@ -302,7 +302,7 @@ export function releaseClipboardImage(path: string): void {
   try {
     rmSync(dir, { force: true, recursive: true })
   } catch {
-    // Cleanup must not change the TUI process exit status.
+    // 清理操作不能改变 TUI 进程的退出状态。
   }
 }
 
@@ -425,7 +425,7 @@ export function cleanupStaleClipboardImages(
     try {
       rmSync(join(root, entry.name), { force: true, recursive: true })
     } catch {
-      // Cleanup must not change the TUI process startup status.
+      // 清理操作不能改变 TUI 进程的启动状态。
     }
   }
 }
@@ -458,9 +458,9 @@ function readClipboardCommands(
 }
 
 /**
- * Read plain text from the system clipboard.
+ * 从系统剪贴板读取纯文本。
  *
- * Uses native platform tools in fallback order:
+ * 按以下回退顺序使用平台原生工具：
  * - macOS: pbpaste
  * - Windows: PowerShell Get-Clipboard -Raw
  * - WSL: powershell.exe Get-Clipboard -Raw
@@ -485,7 +485,7 @@ export async function readClipboardText(
         return result.stdout
       }
     } catch {
-      // Fall through to the next clipboard backend.
+      // 回退到下一个剪贴板后端。
     }
   }
 
@@ -524,18 +524,18 @@ function writeClipboardCommands(
 }
 
 /**
- * Write plain text to the system clipboard.
+ * 向系统剪贴板写入纯文本。
  *
- * Tries native platform tools in fallback order:
+ * 按以下回退顺序尝试平台原生工具：
  * - macOS: pbcopy
  * - Windows: PowerShell Set-Clipboard
  * - WSL: powershell.exe Set-Clipboard
  * - Linux Wayland: wl-copy --type text/plain
  * - Linux X11: xclip -selection clipboard -in
- * - Linux X11 alt: xsel --clipboard --input
+ * - Linux X11 备用方案：xsel --clipboard --input
  *
- * Returns true if at least one backend succeeded, false otherwise
- * (callers should fall back to OSC52 on false).
+ * 至少一个后端成功时返回 true，否则返回 false；返回 false 时调用方应回退到
+ * OSC52。
  */
 export async function writeClipboardText(
   text: string,
@@ -559,7 +559,7 @@ export async function writeClipboardText(
         return true
       }
     } catch {
-      // Fall through to the next clipboard backend.
+      // 回退到下一个剪贴板后端。
     }
   }
 

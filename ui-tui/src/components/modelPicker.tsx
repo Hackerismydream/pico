@@ -38,10 +38,9 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
   const [modelNameInput, setModelNameInput] = useState('')
 
   const { stdout } = useStdout()
-  // Pin the picker to a stable width so the FloatBox parent (which shrinks-
-  // to-fit with alignSelf="flex-start") doesn't resize as long provider /
-  // model names scroll into view, and so `wrap="truncate-end"` on each row
-  // has an actual constraint to truncate against.
+  // 将选择器宽度固定，避免采用 alignSelf="flex-start" 自适应收缩的 FloatBox
+  // 父容器在较长的供应商或模型名称滚入视野时改变宽度，同时为各行的
+  // `wrap="truncate-end"` 提供实际可用的截断约束。
   const width = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, (stdout?.columns ?? 80) - 6))
 
   useEffect(() => {
@@ -107,7 +106,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
   useOverlayKeys({ onBack: back, onClose: onCancel })
 
   useInput((ch, key) => {
-    // Key entry stage handles its own input (api_key + optional api_base)
+    // 密钥输入阶段自行处理输入（api_key 以及可选的 api_base）。
     if (stage === 'key') {
       if (keySaving) {
         return
@@ -116,7 +115,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
       const showBase = provider?.auth_type === 'api_key'
       const focusBase = showBase && keyField === 'api_base'
 
-      // Tab moves between the two fields when api_base is shown.
+      // 显示 api_base 时，Tab 用于在两个字段之间切换。
       if (key.tab && showBase) {
         setKeyField(f => (f === 'api_key' ? 'api_base' : 'api_key'))
 
@@ -124,8 +123,8 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
       }
 
       if (key.return) {
-        // Enter on api_key advances to api_base instead of submitting, so the
-        // user can fill both fields with single-key navigation.
+        // 在 api_key 字段按回车会移至 api_base 而非提交，使用户仅靠单键导航
+        // 即可填写两个字段。
         if (showBase && keyField === 'api_key') {
           setKeyField('api_base')
 
@@ -165,7 +164,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
               return
             }
 
-            // Update the provider in our list with fresh data
+            // 用最新数据更新列表中的供应商。
             setProviders(prev => prev.map(p => (p.slug === r.provider!.slug ? r.provider! : p)))
             setKeyInput('')
             setBaseInput('')
@@ -192,7 +191,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
         return
       }
 
-      // ctrl+u clears the focused field
+      // Ctrl+U 清空当前聚焦的字段。
       if (ch === '\u0015') {
         if (focusBase) {
           setBaseInput('')
@@ -214,7 +213,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
       return
     }
 
-    // Add-model-name sub-input
+    // 添加模型名称的子输入框。
     if (stage === 'addModel') {
       if (keySaving) {
         return
@@ -272,7 +271,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
       return
     }
 
-    // Disconnect confirmation stage
+    // 断开连接确认阶段。
     if (stage === 'disconnect') {
       if (ch.toLowerCase() === 'y' || key.return) {
         if (!provider) {
@@ -290,7 +289,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
             const r = asRpcResult<{ disconnected?: boolean }>(raw)
 
             if (r?.disconnected) {
-              // Mark provider as unauthenticated in local state
+              // 在本地状态中将供应商标记为未认证。
               setProviders(prev =>
                 prev.map(p =>
                   p.slug === provider.slug
@@ -349,8 +348,8 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
         }
 
         if (provider.authenticated === false) {
-          // api_key providers prompt for key inline, even when key_env is null
-          // (custom / azure use a generic key + required api_base).
+          // api_key 类型的供应商会在界面内提示输入密钥，即使 key_env 为 null；
+          // custom 和 azure 使用通用密钥，并要求填写 api_base。
           if (provider.auth_type === 'api_key') {
             setStage('key')
             setKeyInput('')
@@ -359,7 +358,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
             setKeyError('')
           }
 
-          // OAuth / other auth types: no-op (warning tells them to run pico model)
+          // OAuth 或其他认证类型无需处理，警告信息会提示用户运行 pico model。
           return
         }
 
@@ -384,7 +383,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
       return
     }
 
-    // Model stage: add a model name to the provider's list.
+    // 模型阶段：向供应商列表添加模型名称。
     if (ch.toLowerCase() === 'a' && stage === 'model' && provider && !keySaving) {
       setStage('addModel')
       setModelNameInput('')
@@ -393,7 +392,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
       return
     }
 
-    // Model stage: delete the highlighted model name from the provider's list.
+    // 模型阶段：从供应商列表删除高亮的模型名称。
     if ((ch.toLowerCase() === 'd' || ch.toLowerCase() === 'x') && stage === 'model' && !keySaving) {
       const model = models[modelIdx]
 
@@ -426,7 +425,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
       return
     }
 
-    // Disconnect: only in provider stage, only for authenticated providers
+    // 仅在供应商阶段且供应商已认证时允许断开连接。
     if (ch.toLowerCase() === 'd' && stage === 'provider' && provider?.authenticated !== false) {
       setStage('disconnect')
 
@@ -456,7 +455,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
     )
   }
 
-  // ── Key entry stage ──────────────────────────────────────────────────
+  // ── 密钥输入阶段 ──────────────────────────────────────────────────
   if (stage === 'key' && provider) {
     const showBase = provider.auth_type === 'api_key'
     const focusBase = showBase && keyField === 'api_base'
@@ -530,7 +529,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
     )
   }
 
-  // ── Add model name stage ─────────────────────────────────────────────
+  // ── 添加模型名称阶段 ─────────────────────────────────────────────
   if (stage === 'addModel' && provider) {
     return (
       <Box flexDirection="column" width={width}>
@@ -575,7 +574,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
     )
   }
 
-  // ── Disconnect confirmation stage ─────────────────────────────────────
+  // ── 断开连接确认阶段 ─────────────────────────────────────
   if (stage === 'disconnect' && provider) {
     return (
       <Box flexDirection="column" width={width}>
@@ -610,7 +609,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
     )
   }
 
-  // ── Provider selection stage ─────────────────────────────────────────
+  // ── 供应商选择阶段 ─────────────────────────────────────────
   if (stage === 'provider') {
     const rows = providers.map((p, i) => {
       const authMark = p.authenticated === false ? '○' : p.is_current ? '*' : '●'
@@ -677,7 +676,7 @@ export function ModelPicker({ gw, onCancel, onSelect, sessionId, t }: ModelPicke
     )
   }
 
-  // ── Model selection stage ────────────────────────────────────────────
+  // ── 模型选择阶段 ────────────────────────────────────────────
   const { items, offset } = windowItems(models, modelIdx, VISIBLE)
 
   return (

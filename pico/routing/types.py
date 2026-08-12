@@ -5,28 +5,28 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-# ── Benchmark data ─────────────────────────────────────────────────────────────
+# ── 基准数据 ───────────────────────────────────────────────────────────
 
 
 @dataclass
 class ModelTaskScore:
     task_id: str
-    score: float  # 0-100 percentage
+    score: float  # 0 到 100 的百分比
     max_score: float
 
 
 @dataclass
 class ModelBenchmark:
-    model: str  # PinchBench model ID  e.g. "anthropic/claude-sonnet-4"
+    model: str  # PinchBench 模型 ID，例如 "anthropic/claude-sonnet-4"
     provider: str
     overall_score: float
-    speed: float | None  # avg execution time in seconds (PinchBench records this)
-    cost: float  # total USD cost for running the full 23-task benchmark
+    speed: float | None  # 平均执行时间（秒），由 PinchBench 记录
+    cost: float  # 完整运行 23 项基准任务的总成本（美元）
     task_scores: list[ModelTaskScore]
     submission_id: str
 
 
-# ── Routing profiles ───────────────────────────────────────────────────────────
+# ── 路由配置档 ─────────────────────────────────────────────────────────
 
 RoutingProfileName = Literal["best", "balanced", "eco"]
 
@@ -37,7 +37,7 @@ class RoutingProfile:
     cost_weight: float
 
 
-# ── Classification ─────────────────────────────────────────────────────────────
+# ── 分类 ───────────────────────────────────────────────────────────────
 
 TaskCategory = Literal[
     "sanity",
@@ -72,7 +72,7 @@ class ClassificationResult:
     similarity: float
 
 
-# ── Selection ──────────────────────────────────────────────────────────────────
+# ── 选择 ───────────────────────────────────────────────────────────────
 
 
 @dataclass

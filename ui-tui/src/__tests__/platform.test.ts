@@ -34,13 +34,9 @@ describe('platform shortcuts', () => {
   it('recognizes remote Command+C without treating local Alt+C as copy', async () => {
     const platform = await importPlatform('linux')
 
-    expect(
-      platform.isCopyShortcut(
-        { ctrl: false, meta: false, super: true },
-        'c',
-        { SSH_CONNECTION: '1 2 3 4' }
-      )
-    ).toBe(true)
+    expect(platform.isCopyShortcut({ ctrl: false, meta: false, super: true }, 'c', { SSH_CONNECTION: '1 2 3 4' })).toBe(
+      true
+    )
     expect(platform.isCopyShortcut({ ctrl: false, meta: true }, 'c', {})).toBe(false)
   })
 

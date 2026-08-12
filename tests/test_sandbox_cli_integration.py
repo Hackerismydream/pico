@@ -25,9 +25,6 @@ from pico.sandbox.debug_server import SandboxDebugServer
 runner = CliRunner()
 
 
-# ── fixtures & helpers ─────────────────────────────────────────────────────────
-
-
 @pytest.fixture
 def sock_dir():
     d = tempfile.mkdtemp(prefix="ec_cli_int_", dir="/tmp")
@@ -131,9 +128,6 @@ def _mock_runtime(boxes=(), box=None, execution=None):
     return rt
 
 
-# ── list / ls ──────────────────────────────────────────────────────────────────
-
-
 class TestListIntegration:
     async def test_running_vm_appears_in_table(self, server):
         path, _ = server
@@ -152,8 +146,8 @@ class TestListIntegration:
             cls.return_value = rt
             result = await _invoke(["list"], path)
         assert result.exit_code == 0
-        assert "*" in result.output  # owned marker for b1
-        assert "-" in result.output  # unowned marker for b2
+        assert "*" in result.output
+        assert "-" in result.output
 
     async def test_empty_list_message(self, server):
         path, _ = server
@@ -198,9 +192,6 @@ class TestListIntegration:
         assert "1024" in result.output
 
 
-# ── exec ───────────────────────────────────────────────────────────────────────
-
-
 class TestExecIntegration:
     async def test_stdout_appears_in_output(self, server):
         path, _ = server
@@ -225,7 +216,7 @@ class TestExecIntegration:
 
     async def test_vm_ref_forwarded_to_server(self, server):
         path, _ = server
-        # Server owns b2, not b1 — provide b2 as the owned/running VM
+
         _, srv = server
         srv._owned_ids.add("b2")
         mock_box = MagicMock()
@@ -254,9 +245,6 @@ class TestExecIntegration:
             result = await _invoke(["exec", "--vm", "nope", "ls"], path)
         assert result.exit_code == 1
         assert "no vm found" in result.output.lower()
-
-
-# ── shell ──────────────────────────────────────────────────────────────────────
 
 
 class TestShellIntegration:

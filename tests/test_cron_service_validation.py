@@ -32,7 +32,7 @@ def test_past_at_is_rejected(svc: CronService) -> None:
     past_ms = int(time.time() * 1000) - 60_000
     with pytest.raises(ValueError, match="at time is in the past"):
         _add(svc, CronSchedule(kind="at", at_ms=past_ms))
-    assert svc.list_jobs() == []  # not stored as a dormant job
+    assert svc.list_jobs() == []
 
 
 def test_non_positive_every_is_rejected(svc: CronService) -> None:
@@ -50,9 +50,7 @@ def test_invalid_cron_expr_is_rejected(svc: CronService) -> None:
 
 
 def test_runnable_schedules_still_created(tmp_path: Path) -> None:
-    # A fresh service per kind avoids the cross-job dedup layers (which would
-    # otherwise collapse three soon-firing jobs) — here we only assert each
-    # runnable schedule is stored with a next run.
+
     future_ms = int(time.time() * 1000) + 60_000
     for schedule in (
         CronSchedule(kind="at", at_ms=future_ms),
@@ -61,7 +59,7 @@ def test_runnable_schedules_still_created(tmp_path: Path) -> None:
     ):
         svc = CronService(tmp_path / f"{schedule.kind}.json")
         job = _add(svc, schedule)
-        assert job.state.next_run_at_ms is not None  # runnable
+        assert job.state.next_run_at_ms is not None
         assert len(svc.list_jobs()) == 1
 
 

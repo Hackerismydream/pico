@@ -799,7 +799,7 @@ def test_legacy_global_sessions_shim_removed(tmp_path: Path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# New public API: delete / peek / flush
+
 # ---------------------------------------------------------------------------
 
 
@@ -1231,7 +1231,7 @@ def test_exists_false_for_lazy_or_unknown_session(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Extended list_sessions: channel filter + message_count
+
 # ---------------------------------------------------------------------------
 
 
@@ -1380,9 +1380,6 @@ def test_undo_then_save_truncates_file_on_disk(tmp_path):
     reloaded = fresh.get_or_create("tui:undome")
     assert [m["content"] for m in reloaded.messages] == ["q1", "a1"]
     assert reloaded.key == "tui:undome"
-
-
-# ── fork (session fork/branch) ──────────────────────────────────────────────
 
 
 def _seed(mgr: SessionManager, key: str, *turns: tuple[str, str]) -> Session:
@@ -1557,9 +1554,6 @@ def test_fork_explicit_title_overrides(tmp_path: Path):
     child = mgr.fork("cli:src12", title="Custom")
 
     assert child.metadata["title"] == "Custom"
-
-
-# ── resolve_key (shared cross-channel resolution core) ─────────────────
 
 
 def test_resolve_key_full_key_passthrough(tmp_path: Path):

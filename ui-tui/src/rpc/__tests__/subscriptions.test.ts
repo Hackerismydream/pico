@@ -1,4 +1,4 @@
-// Pico TUI RPC — subscription registry + end-to-end push-event routing.
+// Pico TUI RPC 订阅注册表与端到端推送事件路由测试。
 
 import type { Server, Socket } from 'node:net'
 
@@ -13,7 +13,7 @@ import type { TurnEvent, TurnSubscribeResult } from '../generated.js'
 import { RpcClient } from '../client.js'
 import { SubscriptionRegistry } from '../subscriptions.js'
 
-// ---- Unit tests on SubscriptionRegistry (no socket) -----------------------
+// ---- SubscriptionRegistry 单元测试（无套接字）-----------------------------
 
 describe('SubscriptionRegistry', () => {
   it('routes events to the registered handler', () => {
@@ -62,7 +62,7 @@ describe('SubscriptionRegistry', () => {
   })
 })
 
-// ---- End-to-end: client.subscribe routes server push events ---------------
+// ---- 端到端：client.subscribe 路由服务端推送事件 ---------------------------
 
 interface MockServer {
   socketPath: string
@@ -92,7 +92,7 @@ function startMock(): Promise<MockServer> {
             try {
               handler(JSON.parse(line))
             } catch {
-              /* swallow */
+              /* 吞掉异常。 */
             }
           }
           nl = readBuf.indexOf('\n')
@@ -171,14 +171,13 @@ describe('RpcClient.subscribe', () => {
         }
       })
     }
-    // Allow drain
+    // 允许排空。
     await new Promise(r => setTimeout(r, 50))
     expect(received).toHaveLength(100)
     expect(received[0]).toEqual({ type: 'token.delta', payload: { text: 'chunk-0' } })
     expect(received[99]).toEqual({ type: 'token.delta', payload: { text: 'chunk-99' } })
 
-    // TurnEvent narrowing sanity (compile-time): if the type is broken, this
-    // block would fail to typecheck.
+    // TurnEvent 收窄基线检查在编译期生效；类型损坏时此代码块无法通过类型检查。
     const last = received[99]
     if (last.type === 'token.delta') {
       expect(typeof last.payload.text).toBe('string')

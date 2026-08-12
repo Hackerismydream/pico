@@ -106,7 +106,7 @@ def test_gateway_without_api_key_exits_with_error(tmp_config: Path) -> None:
     from pico.config.loader import save_config
     from pico.config.schema import Config
 
-    save_config(Config())  # default config, no keys
+    save_config(Config())
 
     r = runner.invoke(app, ["gateway"])
     if r.exception is not None:
@@ -451,8 +451,7 @@ def test_gateway_log_config_overrides_parse() -> None:
 
 
 def test_gateway_channels_excludes_tui_when_no_im_enabled() -> None:
-    # The gateway does not claim ephemeral "tui" cron jobs — those fire in the
-    # TUI process, so a TUI-set reminder is never forwarded to an IM channel.
+
     from unittest.mock import MagicMock
 
     from pico.cli.gateway_commands import _build_gateway_channels
@@ -462,7 +461,7 @@ def test_gateway_channels_excludes_tui_when_no_im_enabled() -> None:
         ch = MagicMock()
         ch.enabled = False
         setattr(cfg.channels, name, ch)
-    assert _build_gateway_channels(cfg) == set()  # no IM enabled, and no "tui"
+    assert _build_gateway_channels(cfg) == set()
 
 
 def test_gateway_channels_excludes_tui_alongside_enabled_im() -> None:
@@ -501,7 +500,7 @@ def test_stop_dispatch_cancels_both_scheduler_and_subagents() -> None:
 
 
 # ---------------------------------------------------------------------------
-# build_model_routing — routing backend selection
+
 # ---------------------------------------------------------------------------
 
 from types import SimpleNamespace

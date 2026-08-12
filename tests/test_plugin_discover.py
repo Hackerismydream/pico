@@ -34,7 +34,7 @@ def _write_manifest(root: Path, plugin_id: str, *, extra: str = "") -> Path:
 
 
 # ---------------------------------------------------------------------------
-# File-based scanning
+
 # ---------------------------------------------------------------------------
 
 
@@ -84,7 +84,7 @@ class TestSingleSource:
         _write_manifest(tmp_path, "ok")
         d = PluginDiscovery(bundled_dir=tmp_path)
         out = d.discover()
-        # Broken one is skipped; valid one returned.
+
         assert [p.manifest.id for p in out] == ["ok"]
 
     def test_incompatible_manifest_fails_closed(self, tmp_path: Path) -> None:
@@ -164,7 +164,7 @@ class TestEntryPointIdentity:
 
 
 # ---------------------------------------------------------------------------
-# Cross-source conflict resolution
+
 # ---------------------------------------------------------------------------
 
 
@@ -177,7 +177,7 @@ class TestConflictResolution:
         d = PluginDiscovery(bundled_dir=bundled, user_dir=user)
         out = d.discover()
         assert len(out) == 1
-        # Bundled wins per the "builtin shadow rule".
+
         assert out[0].source == Source.BUNDLED
 
     def test_user_shadows_project(self, tmp_path: Path) -> None:
@@ -194,12 +194,11 @@ class TestConflictResolution:
         bundled = tmp_path / "bundled"
         user = tmp_path / "user"
         project = tmp_path / "project"
-        # Same id across three sources — bundled must win.
+
         _write_manifest(bundled, "x")
         _write_manifest(user, "x")
         _write_manifest(project, "x")
-        # Add unique ones at each level to confirm non-conflicting
-        # plugins all surface.
+
         _write_manifest(bundled, "b-only")
         _write_manifest(user, "u-only")
         _write_manifest(project, "p-only")
@@ -219,13 +218,13 @@ class TestConflictResolution:
 
 
 # ---------------------------------------------------------------------------
-# Subdir-name vs manifest-id mismatch
+
 # ---------------------------------------------------------------------------
 
 
 class TestSubdirNameMismatch:
     def test_id_in_manifest_wins(self, tmp_path: Path) -> None:
-        # Directory called "wrong-dirname" but manifest declares id "correct"
+
         sub = tmp_path / "wrong-dirname"
         sub.mkdir()
         (sub / "pico-plugin.toml").write_text(
@@ -242,7 +241,7 @@ class TestSubdirNameMismatch:
 
 
 # ---------------------------------------------------------------------------
-# Frozen record sanity
+
 # ---------------------------------------------------------------------------
 
 

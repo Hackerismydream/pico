@@ -85,7 +85,7 @@ class SemanticNode(Generic[T]):
                     {"role": "assistant", "content": raw},
                     {"role": "user", "content": self.repair_prompt(exc)},
                 ]
-        assert last_error is not None  # loop runs at least once
+        assert last_error is not None  # 循环至少运行一次
         raise SemanticNodeError(self.name, attempts, last_error)
 
 

@@ -46,7 +46,7 @@ _ACCEPT_MARKER = "Feishu inbound accepted:"
 _SENT_MARKER = "Feishu message sent:"
 _CRON_EXEC_MARKER = "Cron: executing job"
 _REJECT_MARKER = "Feishu inbound rejected by allowlist"
-# 1x1 transparent PNG, used as the MediaOut probe artifact.
+
 _PROBE_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg=="
 )
@@ -147,8 +147,6 @@ class TracerBullet:
         config_path.write_text(json.dumps(document), encoding="utf-8")
         config_path.chmod(0o600)
 
-    # ── scratch records ────────────────────────────────────────────────
-
     def record(self, check: str, status: str, **details) -> None:
         self._scratch["checks"][check] = {"status": status, **details}
         self._flush_scratch()
@@ -160,8 +158,6 @@ class TracerBullet:
     def _flush_scratch(self) -> None:
         self.scratch_path.parent.mkdir(parents=True, exist_ok=True)
         self.scratch_path.write_text(json.dumps(self._scratch, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-    # ── gateway lifecycle ──────────────────────────────────────────────
 
     def start_gateway(self) -> None:
         assert self.process is None
@@ -207,8 +203,6 @@ class TracerBullet:
 
     def close(self) -> None:
         self.stop_gateway()
-
-    # ── observation ────────────────────────────────────────────────────
 
     def log_size(self) -> int:
         try:

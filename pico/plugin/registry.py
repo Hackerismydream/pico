@@ -37,14 +37,13 @@ from pico.tracing import semconv, trace
 logger = logging.getLogger(__name__)
 
 
-# A memory-backend factory is a callable that consumes a PluginContext
-# and returns a MemoryBackend implementation. MemoryBackend lands in
-# MB-1; until then the return is typed as Any so PG can compile alone.
+# 记忆后端工厂是接收 PluginContext 并返回 MemoryBackend 实现的可调用对象。
+# MemoryBackend 在 MB-1 落地；在此之前返回值标为 Any，使 PG 可以独立编译。
 MemoryBackendFactory = Callable[[Any], Any]
 
-# A tool factory consumes a PluginContext and returns a single
-# ``pico.agent.tools.base.Tool``. Typed as Any here so the plugin
-# layer stays import-light (no dependency on the agent package).
+# 工具工厂接收 PluginContext 并返回单个工具。
+# ``pico.agent.tools.base.Tool``。此处标为 Any，使插件
+# 保持本层轻量导入，不依赖 agent 包。
 ToolFactory = Callable[[Any], Any]
 
 
@@ -84,7 +83,7 @@ class PluginRegistry:
         self._memory_backends: dict[str, _ActivatedFactory] = {}
         self._tools: dict[str, _ActivatedFactory] = {}
 
-    # ── Activation ───────────────────────────────────────────────
+    # ── 激活 ─────────────────────────────────────────────────────
 
     def activate(
         self,
@@ -122,13 +121,13 @@ class PluginRegistry:
         location: Path | None,
     ) -> None:
         if mf.id in self._manifests:
-            # Discovery should have deduped this already; defensive.
+            # Discovery 理应已经去重；此处属于防御性检查。
             raise PluginConflictError(
                 f"plugin id {mf.id!r} activated twice",
             )
-        # Call-order sensitive: a file-based USER/PROJECT plugin ships its
-        # factory module inside the plugin directory, which nothing puts on
-        # sys.path — make it importable before _resolve_factory runs below.
+        # 调用顺序敏感：基于文件的 USER/PROJECT 插件把工厂模块放在插件目录中，
+        # 该目录不会自动加入 sys.path，因此必须在下方 _resolve_factory 执行前
+        # 先使模块可导入。
         self._ensure_importable(source, location)
 
         pending_memory_backends: dict[str, _ActivatedFactory] = {}
@@ -219,7 +218,7 @@ class PluginRegistry:
             )
         return obj  # type: ignore[return-value]
 
-    # ── Introspection ────────────────────────────────────────────
+    # ── 内省 ─────────────────────────────────────────────────────
 
     def activated_ids(self) -> list[str]:
         """Stable-ordered list of activated plugin ids."""
@@ -270,7 +269,7 @@ class PluginRegistry:
         """Return the manifest of an activated plugin, or None."""
         return self._manifests.get(plugin_id)
 
-    # ── Build (PG-3 entry point) ──────────────────────────────────
+    # ── 构建（PG-3 入口）─────────────────────────────────────────
 
     @trace.instrument("plugin.load", extract=semconv.plugin_load("memory_backend"))
     def build_memory_backend(
@@ -288,7 +287,7 @@ class PluginRegistry:
         host. Any exception from the factory propagates so the host
         sees the real cause rather than a wrapped one.
         """
-        from pico.plugin.context import PluginContext  # local: cycle-safe
+        from pico.plugin.context import PluginContext  # 局部导入以规避循环依赖
 
         factory = self.get_memory_backend_factory(name)
         ctx = PluginContext(
@@ -315,7 +314,7 @@ class PluginRegistry:
         cause. The host registers the returned tool into the agent's
         :class:`ToolRegistry`.
         """
-        from pico.plugin.context import PluginContext  # local: cycle-safe
+        from pico.plugin.context import PluginContext  # 局部导入以规避循环依赖
 
         factory = self.get_tool_factory(name)
         ctx = PluginContext(
@@ -326,10 +325,9 @@ class PluginRegistry:
         return factory(ctx)
 
 
-# Forward import for the type hint above. Kept at module-bottom so the
-# import cost is paid only when someone reads the class — and to avoid
-# the circular hit at module-load time (registry is imported from
-# __init__ before context is).
+# 为上方类型提示提供前向导入。放在模块末尾，既延后导入成本，
+# 也避免模块加载时触发循环依赖（registry 会被
+# 在上下文就绪前调用 __init__）。
 from pico.plugin.context import ServiceLocator  # noqa: E402
 
 __all__ = [

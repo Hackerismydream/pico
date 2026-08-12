@@ -15,9 +15,9 @@ from pico.spine.events import RunnerEvent, Usage
 from pico.spine.turn import TurnRequest
 
 Emit = Callable[[RunnerEvent], Awaitable[None]]
-# Read-and-remove this lane's pending injects, to merge at a tool-loop gap. The
-# runner may ignore it (the minimal-legal implementation never drains, so every
-# inject falls back to an APPEND turn). Synchronous: draining is a deque read.
+# 读取并移除当前 lane 待处理的 inject，以便在工具循环间隙合并。runner 可以
+# 忽略它；最小合法实现从不 drain，因此每个 inject 都回退为 APPEND Turn。
+# 该操作同步执行，因为 drain 只是读取 deque。
 Drain = Callable[[], list[TurnRequest]]
 
 

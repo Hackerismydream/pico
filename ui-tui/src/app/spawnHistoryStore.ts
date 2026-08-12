@@ -34,13 +34,12 @@ export const clearDiffPair = () => $spawnDiff.set(null)
 export const setDiffPair = (pair: SpawnDiffPair) => $spawnDiff.set(pair)
 
 /**
- * Commit a finished turn's spawn tree to history.  Keeps the last 10
- * non-empty snapshots — empty turns (no subagents) are dropped.
+ * 将已完成轮次的生成树写入历史。保留最近 10 个非空快照；没有子智能体的空轮次
+ * 会被丢弃。
  *
- * Why in-memory?  The primary investigation loop is "I just ran a fan-out,
- * it misbehaved, let me look at what happened" — same-session debugging.
- * Disk persistence across process restarts is a natural extension but
- * adds RPC surface for a less-common path.
+ * 之所以保存在内存，是因为主要排查闭环发生在同一会话：刚执行扇出后行为异常，
+ * 随即查看发生了什么。跨进程重启的磁盘持久化虽可自然扩展，但会为较少使用的
+ * 路径增加 RPC 接口面。
  */
 export const pushSnapshot = (
   subagents: readonly SubagentProgress[],

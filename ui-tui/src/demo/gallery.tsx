@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 EverMind.
 //
-// Component gallery — a standalone harness for previewing/restyling TUI
-// components in isolation, without wiring demo args into the main program.
-// Run via `npm run demo` (see package.json).
+// 组件画廊是独立预览和调整 TUI 组件样式的工具，无需将演示参数接入主程序。
+// 通过 `npm run demo` 运行（参见 package.json）。
 //
-// Layout: a left sidebar lists pages; the main area renders the selected
-// page's demos. Only the active page is mounted, so components on other pages
-// don't compete for input or screen space. Switch pages with Tab / ←/→;
-// within a page the focused prompt still owns its own keys (arrows/enter).
+// 布局：左侧栏列出页面，主区域渲染所选页面的演示。只挂载活动页面，其他页面的
+// 组件不会争用输入或屏幕空间。用 Tab 或 ←/→ 切换页面；页面内聚焦的提示框
+// 仍独占自身按键（方向键和回车）。
 //
-// To add components: append to an existing *Page, or add a new page to PAGES.
+// 添加组件时，可追加到现有的 *Page，或在 PAGES 中新增页面。
 
 import type { ReactNode } from 'react'
 
@@ -33,7 +31,7 @@ if (!process.stdin.isTTY) {
   process.exit(0)
 }
 
-// ── Mock data ────────────────────────────────────────────────────────
+// ── 模拟数据 ────────────────────────────────────────────────────────
 
 const clarifyChoicesReq: ClarifyReq = {
   choices: ['pnpm', 'npm', 'yarn'],
@@ -107,7 +105,7 @@ const panelSections: PanelSection[] = [
   { text: 'A free-form text section, e.g. a help blurb.' }
 ]
 
-// ── Section wrapper ──────────────────────────────────────────────────
+// ── 分区包装器 ──────────────────────────────────────────────────
 
 function Demo({ children, title }: { children: ReactNode; title: string }) {
   return (
@@ -118,7 +116,7 @@ function Demo({ children, title }: { children: ReactNode; title: string }) {
   )
 }
 
-// ── Pages ────────────────────────────────────────────────────────────
+// ── 页面 ────────────────────────────────────────────────────────────
 
 function PromptsPage() {
   return (
@@ -140,7 +138,7 @@ function PromptsPage() {
 }
 
 function AppChromePage() {
-  // Width the real status bar would get: terminal minus the sidebar.
+  // 真实状态栏可用宽度等于终端宽度减去侧边栏宽度。
   const cols = Math.max(40, (useStdout().stdout?.columns ?? 100) - SIDEBAR_W - 4)
   const now = Date.now()
 
@@ -196,7 +194,7 @@ function AppChromePage() {
 }
 
 function BrandingPage() {
-  // Width available to the page content: terminal minus the sidebar + margins.
+  // 页面内容可用宽度等于终端宽度减去侧边栏和外边距。
   const cols = Math.max(40, (useStdout().stdout?.columns ?? 100) - SIDEBAR_W - 4)
 
   return (
@@ -226,7 +224,7 @@ const PAGES: { Page: () => ReactNode; title: string }[] = [
   { Page: PromptsPage, title: 'Prompts' }
 ]
 
-// ── Shell ────────────────────────────────────────────────────────────
+// ── 外壳 ────────────────────────────────────────────────────────────
 
 function Gallery() {
   const [page, setPage] = useState(0)

@@ -153,7 +153,7 @@ class BanditTaskScheduler:
         for task_id, p in prior.items():
             if task_id not in self.tasks:
                 continue
-            # Treat prior as a single synthetic observation
+            # 将先验视为一次合成观察。
             self.tasks[task_id].per_candidate["__prior__"] = bool(p >= 0.5)
             self.tasks[task_id].n_trials += 1
             if p >= 0.5:
@@ -208,9 +208,8 @@ class BanditTaskScheduler:
             stats = self.tasks.get(task_id)
             if stats is None:
                 continue
-            # Re-running the same candidate on the same task is a no-op
-            # (it would double-count successes). Caller should de-dup,
-            # but we defend here too.
+            # 在同一任务上重新运行同一候选项不产生操作，否则会重复计算成功。调用方应去重，
+            # 此处也做防御。
             if candidate_id in stats.per_candidate:
                 continue
             stats.per_candidate[candidate_id] = bool(passed)

@@ -37,8 +37,7 @@ class MessageTool(Tool):
         default_chat_id: str = "",
         default_message_id: str | None = None,
     ):
-        # Constructor values are the fallback baseline; each turn task copies
-        # them into its own ContextVar slot on first access.
+        # 构造参数是兜底基线；每个 Turn 任务首次访问时，会将其复制到自己的 ContextVar 槽位。
         self._default = _MsgTurn(
             channel=default_channel,
             chat_id=default_chat_id,

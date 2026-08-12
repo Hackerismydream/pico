@@ -70,7 +70,7 @@ def _bucket_for(passes: int, attempts: int) -> StabilityBucket:
         return StabilityBucket.STABLE_FAIL
     if passes == attempts:
         return StabilityBucket.STABLE_PASS
-    # mixed: split between "mostly pass" and "mostly fail"
+    # 混合情况：区分“多数通过”和“多数失败”。
     if passes * 2 > attempts:
         return StabilityBucket.BORDERLINE_2_3
     return StabilityBucket.BORDERLINE_1_3

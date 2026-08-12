@@ -36,7 +36,7 @@ def _reset_warnings():
 
 
 # ---------------------------------------------------------------------------
-# is_allowed semantics
+
 # ---------------------------------------------------------------------------
 
 
@@ -58,9 +58,9 @@ class TestAllowlistSemantics:
         assert is_allowed("test_channel", "carol", ["alice", "bob"]) is False
 
     def test_int_sender_id_stringified(self):
-        # platforms like Telegram pass ints; comparison must coerce.
+
         assert is_allowed("telegram", 12345, ["12345"]) is True
-        assert is_allowed("telegram", 12345, [12345]) is True  # also from list side
+        assert is_allowed("telegram", 12345, [12345]) is True
 
     def test_warning_logged_once_for_empty_list(self, caplog):
         with caplog.at_level(logging.WARNING, logger="pico.auth.allowlist"):
@@ -69,20 +69,20 @@ class TestAllowlistSemantics:
             is_allowed("flaky_channel", "z", [])
 
         warnings = [r for r in caplog.records if "all access denied" in r.message]
-        # First call warns; subsequent calls deduplicate per channel.
+
         assert len(warnings) == 1
 
     def test_distinct_channels_each_warn_once(self, caplog):
         with caplog.at_level(logging.WARNING, logger="pico.auth.allowlist"):
             is_allowed("channel_a", "x", [])
             is_allowed("channel_b", "x", [])
-            is_allowed("channel_a", "y", [])  # already warned
+            is_allowed("channel_a", "y", [])
         warnings = [r for r in caplog.records if "all access denied" in r.message]
         assert len(warnings) == 2
 
 
 # ---------------------------------------------------------------------------
-# ChannelBase.is_allowed integration
+
 # ---------------------------------------------------------------------------
 
 
@@ -100,8 +100,6 @@ class _StubChannel:
     def __init__(self, allow_from):
         self.config = _StubConfig(allow_from=allow_from)
 
-    # Import is_allowed from the real ChannelBase so we exercise its
-    # delegation logic.
     from pico.channels.base import ChannelBase  # noqa: E402
 
     is_allowed = ChannelBase.is_allowed
@@ -133,13 +131,11 @@ class TestChannelBaseDelegation:
 
             is_allowed = ChannelBase.is_allowed
 
-        # When the config dataclass has no allow_from attribute,
-        # the channel must deny by default.
         assert _BareChannel().is_allowed("alice") is False
 
 
 # ---------------------------------------------------------------------------
-# CapabilityToken roundtrip
+
 # ---------------------------------------------------------------------------
 
 
@@ -157,7 +153,7 @@ class TestCapabilityTokens:
         secret = "test-secret"
         token = CapabilityToken(agent_id="agent-1", capabilities=["read"])
         wire = issue_token(token, secret)
-        # Flip a character in the signature.
+
         body, sig = wire.split(".", 1)
         tampered_sig = sig[:-1] + ("A" if sig[-1] != "A" else "B")
         assert verify_token(f"{body}.{tampered_sig}", secret) is None
@@ -168,7 +164,7 @@ class TestCapabilityTokens:
         assert verify_token(wire, "secret-b") is None
 
     def test_expired_token_rejected(self):
-        # Issued at t=1000, expires at t=1001; check from "now"=10000.
+
         token = CapabilityToken(
             agent_id="agent-1",
             capabilities=["x"],
@@ -177,8 +173,7 @@ class TestCapabilityTokens:
         )
         wire = issue_token(token, "s")
         recovered = verify_token(wire, "s")
-        # The current implementation checks ``time.time()`` for expiry; since
-        # 1001 is far in the past, the token is expired and rejected.
+
         assert recovered is None
 
     def test_malformed_token_returns_none(self):
@@ -196,7 +191,7 @@ class TestCapabilityTokens:
 
 
 # ---------------------------------------------------------------------------
-# ManagedSettings
+
 # ---------------------------------------------------------------------------
 
 
@@ -215,5 +210,5 @@ class TestManagedSettings:
 
     def test_frozen_dataclass(self):
         s = ManagedSettings()
-        with pytest.raises(Exception):  # FrozenInstanceError subclass
+        with pytest.raises(Exception):
             s.description = "mutated"  # type: ignore[misc]

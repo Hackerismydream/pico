@@ -61,12 +61,11 @@ async def test_exhausted_transient_falls_back_to_next_model():
     transient = LLMResponse(content="429 rate limit", finish_reason="error")
     provider = _ScriptedProvider(
         {
-            # primary: 4 transient attempts (3 sleep + 1 final) all fail
             "primary": [transient] * 4,
             "backup": [LLMResponse(content="recovered", finish_reason="stop")],
         }
     )
-    # zero out sleeps to keep the test fast
+
     provider._CHAT_RETRY_DELAYS = (0, 0, 0)
     resp = await provider.chat_with_retry(
         messages=[],
@@ -79,8 +78,7 @@ async def test_exhausted_transient_falls_back_to_next_model():
 
 @pytest.mark.asyncio
 async def test_billing_error_now_falls_back():
-    # Structured classification: billing is non-retryable on the same model
-    # (no retry ladder) but a different provider might have credit -> fall back.
+
     provider = _ScriptedProvider(
         {
             "primary": [LLMResponse(content="insufficient credit / billing", finish_reason="error")],
@@ -93,13 +91,13 @@ async def test_billing_error_now_falls_back():
         fallback_models=["backup"],
     )
     assert resp.content == "ok"
-    # single fatal attempt on primary (no retries), then switch
+
     assert provider.calls == ["primary", "backup"]
 
 
 @pytest.mark.asyncio
 async def test_auth_error_does_not_fall_back():
-    # Auth is fatal config — neither retry nor a model swap fixes it.
+
     provider = _ScriptedProvider(
         {
             "primary": [LLMResponse(content="401 unauthorized: invalid api key", finish_reason="error")],
@@ -159,7 +157,6 @@ async def test_chain_exhausted_returns_last_error():
     err = LLMResponse(content="503 overloaded", finish_reason="error")
     provider = _ScriptedProvider(
         {
-            # each model exhausts its full ladder (3 sleep + 1 final = 4)
             "primary": [err] * 4,
             "backup": [err] * 4,
         }
@@ -171,7 +168,7 @@ async def test_chain_exhausted_returns_last_error():
         fallback_models=["backup"],
     )
     assert resp.finish_reason == "error"
-    # primary exhausts its ladder (4), backup exhausts its ladder (4)
+
     assert provider.calls == ["primary"] * 4 + ["backup"] * 4
 
 
@@ -214,8 +211,7 @@ async def test_attempt_hooks_replan_and_observe_every_retry_and_fallback():
 
 @pytest.mark.asyncio
 async def test_should_fallback_classification():
-    # Structured classifier (string path): transient + capacity/availability
-    # are fallback-worthy; auth / invalid-request / context-overflow are not.
+
     assert LLMProvider._should_fallback("429 rate limit") is True
     assert LLMProvider._should_fallback("503 overloaded") is True
     assert LLMProvider._should_fallback("connection reset") is True

@@ -90,7 +90,7 @@ def extract_element(element: dict) -> list[str]:
     elif tag == "img":
         alt = element.get("alt")
         parts.append(alt.get("content", "[image]") if isinstance(alt, dict) else "[image]")
-    else:  # note / column_set / unknown containers
+    else:  # note / column_set / 未知容器
         for nested in element.get("elements", []):
             parts += extract_element(nested)
         for col in element.get("columns", []):

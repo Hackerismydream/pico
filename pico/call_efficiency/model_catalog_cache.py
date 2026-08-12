@@ -23,12 +23,12 @@ from loguru import logger
 
 from pico.config.paths import get_cache_dir
 
-# Bump to force-invalidate every on-disk file after a schema change.
+# schema 变更后递增此值，以强制失效所有磁盘缓存文件。
 CACHE_VERSION = 1
 CACHE_FILENAME = "model-catalog.json"
 
-# Test seam: when set, overrides the on-disk location so tests never touch the
-# real ~/.pico/cache/. None -> derive from get_cache_dir() lazily.
+# 测试接缝：设置后覆盖磁盘路径，确保测试不会触碰真实的 ~/.pico/cache/。
+# None 表示稍后通过 get_cache_dir() 惰性计算。
 _CACHE_PATH: Path | None = None
 
 

@@ -8,16 +8,15 @@ import type { SubagentAggregate, SubagentNode, SubagentProgress } from '../types
 const ROOT_KEY = '__root__'
 
 /**
- * Reconstruct the subagent spawn tree from a flat event-ordered list.
+ * 从按事件顺序排列的扁平列表重建子智能体生成树。
  *
- * Grouping is by `parentId`; a missing `parentId` (or one pointing at an
- * unknown subagent) is treated as a top-level spawn of the current turn.
- * Children within a parent are sorted by `depth` then `index` — same key
- * used in `turnController.upsertSubagent`, so render order matches spawn
- * order regardless of network reordering of gateway events.
+ * 按 `parentId` 分组；缺少 `parentId` 或指向未知子智能体时，视为当前轮次的
+ * 顶层生成。父节点内的子节点先按 `depth`、再按 `index` 排序，与
+ * `turnController.upsertSubagent` 使用同一组键，因此无论网关事件如何在网络中
+ * 重排，渲染顺序都与生成顺序一致。
  *
- * Older gateways omit `parentId`; every subagent is then a top-level node
- * and the tree renders flat — matching pre-observability behaviour.
+ * 旧网关会省略 `parentId`，此时每个子智能体都是顶层节点，树按扁平形式渲染，
+ * 与可观测性功能加入前的行为一致。
  */
 export function buildSubagentTree(items: readonly SubagentProgress[]): SubagentNode[] {
   if (!items.length) {
@@ -53,12 +52,11 @@ export function buildSubagentTree(items: readonly SubagentProgress[]): SubagentN
 }
 
 /**
- * Roll up counts for a node's whole subtree.  Kept pure so the live view
- * and the post-hoc replay can share the same renderer unchanged.
+ * 汇总一个节点完整子树的计数。保持纯函数，使实时视图与事后回放无需改动即可
+ * 共享同一渲染器。
  *
- * `hotness` = tools per second across the subtree — a crude proxy for
- * "how much work is happening in this branch".  Used to colour tree rails
- * in the overlay / inline view so the eye spots the expensive branch.
+ * `hotness` 表示整棵子树每秒调用工具的次数，粗略反映该分支的工作量。浮层和
+ * 行内视图用它为树形轨道着色，便于快速识别开销较大的分支。
  */
 export function aggregate(item: SubagentProgress, children: readonly SubagentNode[]): SubagentAggregate {
   let totalTools = item.toolCount ?? 0
@@ -100,8 +98,8 @@ export function aggregate(item: SubagentProgress, children: readonly SubagentNod
 }
 
 /**
- * Count of subagents at each depth level, indexed by depth (0 = top level).
- * Drives the inline sparkline (`▁▃▇▅`) and the status-bar HUD.
+ * 各深度层级的子智能体数量，以深度为索引（0 表示顶层）。用于驱动行内迷你图
+ * （`▁▃▇▅`）和状态栏 HUD。
  */
 export function widthByDepth(tree: readonly SubagentNode[]): number[] {
   const widths: number[] = []
@@ -124,7 +122,7 @@ export function widthByDepth(tree: readonly SubagentNode[]): number[] {
 }
 
 /**
- * Flat totals across the full tree — feeds the summary chip header.
+ * 整棵树的扁平汇总数据，用于摘要标签标题。
  */
 export function treeTotals(tree: readonly SubagentNode[]): SubagentAggregate {
   let totalTools = 0
@@ -166,8 +164,7 @@ export function treeTotals(tree: readonly SubagentNode[]): SubagentAggregate {
 }
 
 /**
- * Flatten the tree into visit order — useful for keyboard navigation and
- * for "kill subtree" walks that fire one RPC per descendant.
+ * 按访问顺序将树展平，供键盘导航以及“终止子树”时逐个后代发起 RPC 使用。
  */
 export function flattenTree(tree: readonly SubagentNode[]): SubagentNode[] {
   const out: SubagentNode[] = []
@@ -185,7 +182,7 @@ export function flattenTree(tree: readonly SubagentNode[]): SubagentNode[] {
 }
 
 /**
- * Collect every descendant's id for a given node (excluding the node itself).
+ * 收集指定节点所有后代的标识，不包括节点自身。
  */
 export function descendantIds(node: SubagentNode): string[] {
   const ids: string[] = []
@@ -209,8 +206,8 @@ export function isRunning(item: Pick<SubagentProgress, 'status'>): boolean {
 const SPARK_RAMP = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'] as const
 
 /**
- * 8-step unicode bar sparkline from a positive-integer array.  Zeroes render
- * as spaces so a sparse tree doesn't read as equal activity at every depth.
+ * 根据正整数数组生成八级 Unicode 柱状迷你图。零值渲染为空格，避免稀疏树看似
+ * 在每个深度都有相同活动量。
  */
 export function sparkline(values: readonly number[]): string {
   if (!values.length) {
@@ -237,7 +234,7 @@ export function sparkline(values: readonly number[]): string {
 }
 
 /**
- * Format totals into a compact one-line summary: `d2 · 7 agents · 124 tools · 2m 14s`
+ * 将汇总数据格式化为紧凑的单行摘要：`d2 · 7 agents · 124 tools · 2m 14s`。
  */
 export function formatSummary(totals: SubagentAggregate): string {
   const pieces = [`d${Math.max(0, totals.maxDepthFromHere)}`]
@@ -268,7 +265,7 @@ export function formatSummary(totals: SubagentAggregate): string {
   return pieces.join(' · ')
 }
 
-/** Compact dollar amount: `$0.02`, `$1.34`, `$12.4` — never > 5 chars beyond the `$`. */
+/** 紧凑美元金额，如 `$0.02`、`$1.34`、`$12.4`，美元符号后不超过五个字符。 */
 export function fmtCost(usd: number): string {
   if (!Number.isFinite(usd) || usd <= 0) {
     return ''
@@ -285,7 +282,7 @@ export function fmtCost(usd: number): string {
   return `$${usd.toFixed(1)}`
 }
 
-/** Compact token count: `12k`, `1.2k`, `542`. */
+/** 紧凑 token 数量，如 `12k`、`1.2k`、`542`。 */
 export function fmtTokens(n: number): string {
   if (!Number.isFinite(n) || n <= 0) {
     return '0'
@@ -303,8 +300,8 @@ export function fmtTokens(n: number): string {
 }
 
 /**
- * `Ns` / `Nm` / `Nm Ss` formatter for seconds.  Shared with the agents
- * overlay so the timeline + list + summary all speak the same dialect.
+ * 将秒数格式化为 `Ns`、`Nm` 或 `Nm Ss`。与智能体浮层共享，使时间线、列表和
+ * 摘要采用同一种表达。
  */
 export function fmtDuration(seconds: number): string {
   if (seconds < 60) {
@@ -318,10 +315,9 @@ export function fmtDuration(seconds: number): string {
 }
 
 /**
- * A subagent is top-level if it has no `parentId`, or its parent isn't in
- * the same snapshot (orphaned by a pruned mid-flight root).  Same rule
- * `buildSubagentTree` uses — keep call sites consistent across the live
- * view, disk label, and diff pane.
+ * 子智能体没有 `parentId`，或其父节点不在同一快照中（运行中根节点被裁剪而成
+ * 为孤儿）时视为顶层节点。此规则与 `buildSubagentTree` 一致，使实时视图、
+ * 磁盘标签和差异面板中的调用点保持统一。
  */
 export function topLevelSubagents(items: readonly SubagentProgress[]): SubagentProgress[] {
   const ids = new Set(items.map(s => s.id))
@@ -330,9 +326,8 @@ export function topLevelSubagents(items: readonly SubagentProgress[]): SubagentP
 }
 
 /**
- * Normalize a node's hotness into a palette index 0..N-1 where N = buckets.
- * Higher hotness = "hotter" colour. Normalized against the tree's peak hotness
- * so a uniformly slow tree still shows gradient across its busiest branches.
+ * 将节点热度归一化为调色板索引 0..N-1，其中 N 为色阶数。热度越高，颜色越
+ * “热”。以整棵树的峰值热度为基准，使整体较慢的树仍能在最繁忙分支间呈现渐变。
  */
 export function hotnessBucket(hotness: number, peakHotness: number, buckets: number): number {
   if (!Number.isFinite(hotness) || hotness <= 0 || peakHotness <= 0 || buckets <= 1) {

@@ -41,31 +41,25 @@ from tests.tui.autotest.runner import BackendError
 
 pytestmark = pytest.mark.real_llm
 
-# Content-neutral prompt: we never assert WHAT the model says, only that the
-# pipeline ran the turn.
+
 _PROMPT = "Reply with a short friendly sentence."
 
-# Working-state verbs the status bar shows while a turn is in flight, mirrored
-# from ui-tui/src/content/verbs.ts (VERBS). Keep in sync with that pool.
+
 _WORKING_RE = re.compile(
     r"\b(pondering|contemplating|musing|cogitating|ruminating|deliberating|"
     r"mulling|reflecting|processing|reasoning|analyzing|computing|"
     r"synthesizing|formulating|brainstorming)…",
     re.IGNORECASE,
 )
-# Idle turn state in the status bar (word-bounded so "readiness" won't match).
+
 _READY_RE = re.compile(r"\bready\b", re.IGNORECASE)
 
 
 @pytest.mark.e2e
 def test_tui_chat_round_trip(harness):
-    # turn.send/turn.subscribe + SubscriptionEmitter are wired; this test
-    # remains a manual live smoke for the physical alt-screen path.
+
     harness.spawn("uv run pico")
-    # Note: tui-use snapshot returns ALT-SCREEN rendered text only — the 🦞
-    # emoji visible in tui-use wait --text (which searches full stream incl.
-    # scrollback) is NOT in snapshot once Ink switches to alt-screen.
-    # Use "Pico" brand text (alt-screen-visible) for readiness instead.
+
     assert harness.wait(r"Pico", timeout=25.0), (
         f"TUI Pico readiness banner not seen in 25s; screen=\n{harness.screen()}"
     )
@@ -73,11 +67,6 @@ def test_tui_chat_round_trip(harness):
     harness.type(_PROMPT)
     harness.press("enter")
 
-    # Liveness, content-agnostic: the pipeline accepts the prompt (status bar
-    # enters a working state) and completes the turn (status returns to ready).
-    # Race the working state against model_not_available from t=0 — a blocking
-    # skip-probe would blind us to a working phase that starts and ends inside
-    # its window (the status verb is transient).
     started = False
     deadline = time.monotonic() + 20.0
     while time.monotonic() < deadline:
@@ -101,13 +90,10 @@ def test_tui_chat_round_trip(harness):
         f"return to ready) within 60s.\nscreen=\n{harness.screen()}"
     )
 
-    # Turn has settled (status returned to ready); exit via the standard Pico
-    # double Ctrl+C (first clears any composer/overlay state, second exits), the
-    # pattern the idle/typing Ctrl+C e2e tests use.
     harness.press("ctrl+c")
     time.sleep(0.5)
     try:
         harness.press("ctrl+c")
     except BackendError:
-        pass  # already exiting after the first Ctrl+C
+        pass
     assert harness.expect_exit(0, timeout=10.0), f"TUI did not exit 0 after Ctrl+C; final screen=\n{harness.screen()}"

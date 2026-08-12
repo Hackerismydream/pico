@@ -30,15 +30,15 @@ from pico.evolver.orchestrator.scoring import (
 )
 from pico.evolver.tree.node import HarnessNode
 
-# The sealed scorer shares the loop's EvalFn signature exactly — it *is* the same
-# bench scorer (worktree checkout / activation), just invoked with split="test".
+# 密封评分器与循环的 EvalFn 签名完全一致；它就是同一个基准评分器（工作树检出/激活），
+# 只是以 split="test" 调用。
 SealedEvalFn = EvalFn
 
 
 class TestLeakError(RuntimeError):
     """Raised when sealed test ids appear in the anchor or train sets."""
 
-    __test__ = False  # not a pytest test class despite the Test* name
+    __test__ = False  # 虽以 Test 开头，但不是 pytest 测试类
 
 
 def assert_no_test_leak(
@@ -90,9 +90,8 @@ class SealedTestRunner:
             self.test_task_ids,
             expected_attempts=self.k,
         )
-        # pass@1 over a FIXED denominator = the full test set (SOP §0 hard rule):
-        # a test task that produced no result scores 0, never dropped from the
-        # denominator (dropping shrinks it and overestimates generalisation).
+        # 固定分母（完整测试集）上的 pass@1，这是 SOP 第 0 节硬规则。未产生结果的测试任务按 0 分
+        # 计算，绝不能从分母删除；删除会缩小分母并高估泛化能力。
         n_test = len(self.test_task_ids)
         record = {
             "round": round_index,
@@ -210,8 +209,7 @@ def unseal_retention(
     scored: set[str] = {vanilla_node.node_id}
     for rec in journal_records:
         nid, sha = rec["next_parent_id"], rec.get("next_parent_sha")
-        # "unknown" = the root shim's placeholder in journals written before the
-        # loop recorded None; checking it out would crash the whole unseal.
+        # "unknown" 是循环改为记录 None 前，旧日志中根节点垫片的占位符；检出它会让整个解封崩溃。
         if nid in scored or not sha or sha == "unknown":
             continue
         runner.score(_shim_node(nid, sha), rec["round_index"])
@@ -238,9 +236,8 @@ def unseal_retention(
             )
         )
 
-    # Train-argmax over the promoting rounds with a sealed record. Invalid
-    # measurements remain eligible for selection so the report cannot silently
-    # substitute vanilla for a train-selected candidate that failed evaluation.
+    # 在具有密封记录的晋升轮次中按训练分数取最大值。无效测量仍可参与选择，避免报告把评测失败但
+    # 由训练选中的候选项静默替换为原始版本。
     promoting = [
         rec
         for rec in journal_records

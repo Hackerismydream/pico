@@ -53,14 +53,11 @@ AUDIT = "audit"
 
 _SEVERITY_ORDER = (FAILED, PROVIDER_FAILURE, INFRASTRUCTURE_FAILURE, INCONCLUSIVE)
 _OUTPUT_MARKERS = (PROVIDER_FAILURE, INFRASTRUCTURE_FAILURE, INCONCLUSIVE)
-# A layer names a non-default status as "<status>: <detail>". Matching the bare
-# word anywhere in a suite's output would let a test id such as
-# test_provider_failure_refuses_promotion rewrite a deterministic regression
-# into an upstream outage.
+# 层会把非默认状态命名为 "<状态>: <详情>"。若匹配测试套件输出中任意位置的裸单词，
+# test_provider_failure_refuses_promotion 之类的测试 ID 会把确定性回归误写成上游故障。
 _MARKER_PATTERNS = {status: re.compile(rf"\b{status}:") for status in _OUTPUT_MARKERS}
 
-# A report file older than the layer that claims it was produced by a previous
-# run. Filesystems with coarse timestamps need a small tolerance.
+# 若报告文件早于声称生成它的层，则它来自前一次运行。时间戳粒度较粗的文件系统需要少量容差。
 _MTIME_TOLERANCE_SECONDS = 2.0
 
 _DISTRIBUTION_ENTRYPOINT = "pico"
@@ -84,8 +81,7 @@ _EVOLUTION_SHUTDOWN_SECONDS = 300.0
 
 _BLOCKING_SEVERITIES = frozenset({"critical", "high"})
 _ACTIVE_EXCEPTION = "temporary-reachability-exception"
-# An exception that expires before V-R0 cannot waive a finding inside a V-R0
-# run: honoring it would silence exactly the advisory it asked to re-evaluate.
+# 在 V-R0 前过期的例外不能豁免 V-R0 运行中的发现；接受它会恰好压制其要求重新评估的建议。
 _EXPIRED_AT_RELEASE = frozenset({"before-v-r0"})
 _ADVISORY_PATTERN = re.compile(r"GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}", re.IGNORECASE)
 _PYTHON_ECOSYSTEM = "python"
@@ -93,9 +89,8 @@ _NPM_UI_TUI_ECOSYSTEM = "npm-ui-tui"
 _PRODUCTION_SURFACE = "production"
 _DEVELOPMENT_SURFACE = "development"
 _ENVIRONMENT_SURFACE = "environment"
-# An audit that could not run still exits non-zero with valid JSON, so the
-# result key is what separates a completed audit from an error payload such as
-# npm's {"error": {"code": "ENOLOCK"}}.
+# 无法运行的审计仍可能以非零状态退出并输出有效 JSON，因此需通过 result 键区分已完成审计和
+# npm 的 {"error": {"code": "ENOLOCK"}} 等错误载荷。
 _AUDIT_RESULT_KEY = {
     "pip_audit": "dependencies",
     "npm_audit": "vulnerabilities",
@@ -160,7 +155,7 @@ class ReleaseContext:
 
 
 # --------------------------------------------------------------------------
-# selection, classification, and binding: the pure core
+# 选择、分类与绑定：纯核心
 # --------------------------------------------------------------------------
 
 
@@ -317,7 +312,7 @@ def missing_small_real_inputs(root: Path) -> tuple[str, ...]:
 
 
 # --------------------------------------------------------------------------
-# dependency audit reconciliation
+# 依赖审计对账
 # --------------------------------------------------------------------------
 
 
@@ -493,7 +488,7 @@ def dependency_gaps(reconciled: list[dict[str, Any]]) -> tuple[dict[str, str], .
 
 
 # --------------------------------------------------------------------------
-# command execution and logging
+# 命令执行与日志记录
 # --------------------------------------------------------------------------
 
 
@@ -648,7 +643,7 @@ def skipped_record(spec: LayerSpec, *, gap: str, detail: str, status: str = SKIP
 
 
 # --------------------------------------------------------------------------
-# layer handlers
+# 分层处理器
 # --------------------------------------------------------------------------
 
 
@@ -1112,7 +1107,7 @@ HANDLERS = {
 
 
 # --------------------------------------------------------------------------
-# driver
+# 驱动器
 # --------------------------------------------------------------------------
 
 

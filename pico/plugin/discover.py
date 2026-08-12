@@ -111,7 +111,7 @@ class PluginDiscovery:
 
         return self._resolve_conflicts(all_found)
 
-    # ── File-based sources ─────────────────────────────────────────
+    # ── 基于文件的来源 ───────────────────────────────────────────
 
     def _scan_dir(
         self,
@@ -158,7 +158,7 @@ class PluginDiscovery:
             )
         return out
 
-    # ── Entry-points source ────────────────────────────────────────
+    # ── 入口点来源 ───────────────────────────────────────────────
 
     def _scan_entry_points(self, group: str) -> list[DiscoveredPlugin]:
         """Resolve every entry point in ``group`` and read the manifest
@@ -264,7 +264,7 @@ class PluginDiscovery:
                 f"{self._pico_version}; install a compatible plugin version or set memory.backend to null"
             )
 
-    # ── Conflict resolution ────────────────────────────────────────
+    # ── 冲突解决 ─────────────────────────────────────────────────
 
     @staticmethod
     def _resolve_conflicts(
@@ -294,7 +294,7 @@ class PluginDiscovery:
                     d.source.name,
                     current.source.name,
                 )
-        # Stable sort by id so caller-side display order is deterministic.
+        # 按 id 稳定排序，确保调用方展示顺序确定。
         return sorted(by_id.values(), key=lambda p: p.manifest.id)
 
 

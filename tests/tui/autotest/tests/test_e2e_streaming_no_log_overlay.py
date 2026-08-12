@@ -46,9 +46,6 @@ def test_tui_chat_streaming_no_log_overlay(harness):
     harness.type("Reply in exactly 30 words about anything.")
     harness.press("enter")
 
-    # If the configured default model isn't accessible (e.g. claude-sonnet-4-6
-    # without an API key on this host), the chat never streams — the leak
-    # patterns can't fire. Skip so a vacuous pass doesn't mask a real bug.
     if harness.wait(r"error:\s*model_not_available", timeout=5.0):
         pytest.skip(
             "Default model returned model_not_available — streaming did not "
@@ -56,13 +53,9 @@ def test_tui_chat_streaming_no_log_overlay(harness):
             "accessible model configured as default (e.g. openrouter/qwen)."
         )
 
-    # Race the leak pattern against the streaming response. If a log line
-    # surfaces on the alt-screen at any moment in the next 30 s, fail with
-    # the captured frame so the fix author can see the exact leaked text.
     leak_detected = harness.wait(_LEAK_RE, timeout=30.0)
     captured_frame = harness.screen()
 
-    # Clean cancel regardless of leak / no-leak (mirrors test_e2e_pico_tui_chat).
     for key in ("escape", "ctrl+c"):
         try:
             harness.press(key)

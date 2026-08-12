@@ -6,5 +6,5 @@ new_ids_require_review = true
 dependency_ids_are_normalized = true
 release_blocks_critical_or_high = true
 
-# Pico carries no active dependency exceptions. Any audit finding must be
-# resolved or explicitly reviewed in a future change before release.
+# Pico 当前没有有效的依赖例外。任何审计发现都必须在发布前解决，或在后续变更中
+# 经过显式评审。

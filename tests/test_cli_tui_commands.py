@@ -64,7 +64,6 @@ def patched_tui_loop_deps(monkeypatch: pytest.MonkeyPatch, tmp_path):
         lambda workspace, silent=False: sync_calls.append((workspace, silent)),
     )
 
-    # AgentLoop spy captures all ctor kwargs.
     class _AgentLoopSpy:
         def __init__(self, **kwargs):
             captured["agent_loop_kwargs"] = kwargs
@@ -73,8 +72,6 @@ def patched_tui_loop_deps(monkeypatch: pytest.MonkeyPatch, tmp_path):
 
     monkeypatch.setattr("pico.agent.loop.AgentLoop", _AgentLoopSpy)
 
-    # Stub plugin-stack helpers at the source module so patching works
-    # before and after the import is added to tui_commands.
     fake_registry = sentinel.fake_registry
     fake_backend = sentinel.fake_backend
     fake_tools = [sentinel.fake_tool_1]
@@ -101,7 +98,7 @@ def patched_tui_loop_deps(monkeypatch: pytest.MonkeyPatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# memory backend wired into AgentLoop
+
 # ---------------------------------------------------------------------------
 
 
@@ -174,7 +171,7 @@ def test_tui_agent_loop_receives_non_none_backend(patched_tui_loop_deps) -> None
 
 
 # ---------------------------------------------------------------------------
-# plugin tools wired into AgentLoop
+
 # ---------------------------------------------------------------------------
 
 
@@ -191,7 +188,7 @@ def test_tui_agent_loop_receives_plugin_tools(patched_tui_loop_deps) -> None:
 
 
 # ---------------------------------------------------------------------------
-# tool_search config wired into AgentLoop
+
 # ---------------------------------------------------------------------------
 
 
@@ -210,7 +207,7 @@ def test_tui_agent_loop_receives_tool_search_config(patched_tui_loop_deps) -> No
 
 
 # ---------------------------------------------------------------------------
-# single shared plugin registry (build_plugin_registry called once)
+
 # ---------------------------------------------------------------------------
 
 
@@ -283,7 +280,7 @@ def test_tui_build_plugin_registry_called_once(monkeypatch: pytest.MonkeyPatch, 
 
 
 # ---------------------------------------------------------------------------
-# _run_rpc_server_until_done — embedded backend lifecycle
+
 # ---------------------------------------------------------------------------
 
 
@@ -332,8 +329,6 @@ def rpc_server_deps(monkeypatch: pytest.MonkeyPatch):
         lambda: fake_runtime,
     )
 
-    # Stub RPC machinery so _run_rpc_server_until_done can import + construct
-    # without a real socket transport.
     fake_dispatcher = MagicMock()
     fake_dispatcher.register = MagicMock()
     monkeypatch.setattr("pico.tui_rpc.dispatcher.Dispatcher", lambda: fake_dispatcher)
@@ -436,11 +431,11 @@ async def _run_until_done_with_handshake(monkeypatch, ctx):
     proc_done = asyncio.Event()
     fake_sock = MagicMock()
     runner = asyncio.create_task(_run_rpc_server_until_done(fake_sock, "test-token", 1.0, proc_done))
-    await asyncio.sleep(0.02)  # let the runner register handlers + start serving
+    await asyncio.sleep(0.02)
 
     hello = next(c.args[1] for c in ctx["dispatcher"].register.call_args_list if c.args[0] == "system.hello")
-    await hello({"client_version": "0.0.1"})  # sets handshake_done -> triggers background backend start
-    await asyncio.sleep(0.05)  # let the background start run to completion
+    await hello({"client_version": "0.0.1"})
+    await asyncio.sleep(0.05)
 
     proc_done.set()
     return await runner
@@ -627,7 +622,7 @@ async def test_rpc_runner_skips_lifecycle_when_no_backend(rpc_server_deps, monke
 
 
 # ---------------------------------------------------------------------------
-# Root-logger TTY handler stripped after backend.start()
+
 # ---------------------------------------------------------------------------
 
 
@@ -659,7 +654,7 @@ async def test_rpc_runner_strips_root_stdout_handler_after_backend_start(rpc_ser
 
 
 # ---------------------------------------------------------------------------
-# fd-level stdout/stderr redirect spans the serve region
+
 # ---------------------------------------------------------------------------
 
 
@@ -720,7 +715,7 @@ async def test_rpc_runner_activates_fd_redirect_before_backend_start(rpc_server_
 
 
 # ---------------------------------------------------------------------------
-# log-path notice: surfaced only on abnormal child exit (#131)
+
 # ---------------------------------------------------------------------------
 
 

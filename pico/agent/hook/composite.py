@@ -63,7 +63,6 @@ class CompositeHook(AgentHook):
         self._hooks.extend(hooks)
 
     # ─────────────────────────────────────────────────────────────────
-    # Phase dispatchers
     # ─────────────────────────────────────────────────────────────────
 
     async def before_user_inbound(self, ctx: AgentHookContext) -> HookDecision:
@@ -82,7 +81,6 @@ class CompositeHook(AgentHook):
         return await self._run_phase("after_send", ctx)
 
     # ─────────────────────────────────────────────────────────────────
-    # Core dispatcher
     # ─────────────────────────────────────────────────────────────────
 
     async def _run_phase(self, phase: str, ctx: AgentHookContext) -> HookDecision:
@@ -112,7 +110,6 @@ class CompositeHook(AgentHook):
                 return decision
 
             if chain_content and decision.modified_content is not None:
-                # Propagate to next hook in this phase
                 ctx.outbound_content = decision.modified_content
                 last_modified = decision.modified_content
 

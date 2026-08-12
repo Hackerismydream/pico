@@ -25,8 +25,7 @@ def mute_subsystem_logs_unless_debug() -> None:
     if os.environ.get("PICO_CLI_DEBUG"):
         return
     logger.remove()
-    # diagnose=True would annotate tracebacks with local variable values,
-    # leaking secrets and message content to stderr.
+    # diagnose=True 会在回溯中标注局部变量值，把密钥和消息内容泄漏到标准错误。
     logger.add(sys.stderr, level="WARNING", backtrace=False, diagnose=False)
 
 

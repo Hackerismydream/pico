@@ -23,18 +23,14 @@ export interface MemoryMonitorOptions {
 
 const GB = 1024 ** 3
 
-// Deferred @hermes/ink import: loading `@hermes/ink` at module top-level
-// pulls the full ~414KB Ink bundle (React, renderer, components, hooks) onto
-// the critical path before the Python gateway can even be spawned. That
-// serialised roughly 150ms of Node work in front of gw.start() on every
-// cold `pico --tui` launch.
+// 延迟导入 @hermes/ink：若在模块顶层加载 `@hermes/ink`，完整约 414KB 的 Ink
+// 包（React、渲染器、组件和钩子）会在 Python 网关生成前进入关键路径，导致每次
+// 冷启动 `pico --tui` 时，gw.start() 前串行增加约 150 毫秒的 Node 工作。
 //
-// evictInkCaches only runs inside `tick()`, which fires on a 10s timer and
-// only when heap pressure crosses the high-water mark — by then Ink has
-// long since been loaded by the app entry. This dynamic import is a no-op
-// on the hot path (module is already in the ESM cache); when a startup
-// spike somehow trips the threshold before the app registers its own Ink
-// import, we pay the load cost exactly once, inside the tick that needs it.
+// evictInkCaches 只在 `tick()` 内运行；后者每 10 秒触发一次，且仅在堆压力越过
+// 高水位时执行，此时应用入口早已加载 Ink。因此动态导入在热路径上不会产生额外
+// 工作（模块已在 ESM 缓存中）。若启动尖峰在应用登记自身 Ink 导入前意外触发
+// 阈值，也只会在需要它的那次 tick 中支付一次加载成本。
 let _evictInkCaches: ((level: 'all' | 'half') => unknown) | null = null
 let _evictInkCachesPromise: Promise<(level: 'all' | 'half') => unknown> | null = null
 
@@ -83,18 +79,16 @@ export function startMemoryMonitor({
 
     inFlight.add(level)
 
-    // Prune Ink content caches before dump/exit — half on 'high' (recoverable),
-    // full on 'critical' (post-dump RSS reduction, keeps user running).
-    // Deferred import keeps `@hermes/ink` off the cold-start critical path;
-    // by the time a tick fires 10s after launch the app has already loaded
-    // the same module, so this resolves instantly from the ESM cache.
+    // 转储或退出前裁剪 Ink 内容缓存：`high`（可恢复）时裁剪一半，`critical`
+    // 时全部裁剪，以在转储后降低 RSS 并让用户继续运行。延迟导入使
+    // `@hermes/ink` 不进入冷启动关键路径；启动 10 秒后 tick 触发时，应用已经
+    // 加载同一模块，因此会直接从 ESM 缓存解析。
     try {
       try {
         const evictInkCaches = await _ensureEvictInkCaches()
         evictInkCaches(level === 'critical' ? 'all' : 'half')
       } catch {
-        // Best-effort: if the dynamic import fails for any reason we still
-        // continue to the heap dump below so the user gets diagnostics.
+        // 尽力而为：动态导入无论因何失败，都继续执行下方堆转储以提供诊断信息。
       }
 
       dumped.add(level)

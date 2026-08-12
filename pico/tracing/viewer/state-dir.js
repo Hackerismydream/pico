@@ -3,7 +3,7 @@
 const os = require('os');
 const path = require('path');
 
-// Map a framework name to its trace state dir (where logs/audit-*.log live).
+// 将框架名称映射到追踪状态目录，即 logs/audit-*.log 所在位置。
 function frameworkStateDir(name) {
   const home = os.homedir();
   switch (String(name || '').toLowerCase()) {
@@ -18,9 +18,8 @@ function frameworkStateDir(name) {
   }
 }
 
-// Parse `--state-dir <path>` / `--framework <name>` from argv, set
-// TRACING_STATE_DIR, and splice the consumed flags out of process.argv so
-// downstream positional parsing (e.g. trace-viewer's traceId) still works.
+// 从 argv 解析 `--state-dir <path>` / `--framework <name>`，设置 TRACING_STATE_DIR，
+// 并从 process.argv 删除已消费参数，使下游位置参数解析（如 trace-viewer 的 traceId）仍可工作。
 function applyStateDirArg(argv = process.argv) {
   const out = [];
   for (let i = 0; i < argv.length; i += 1) {

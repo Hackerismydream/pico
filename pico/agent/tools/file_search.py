@@ -21,8 +21,8 @@ from typing import Any
 from pico.agent.tools.execution import ToolCapability, ToolEffect
 from pico.agent.tools.filesystem import _FsTool
 
-# Noise directories skipped by the pure-Python fallback / find. ripgrep handles
-# its own ignore logic via .gitignore, so this only gates the fallback path.
+# 纯 Python 回退和 find 跳过的噪声目录。ripgrep 通过 .gitignore 自行处理忽略逻辑，
+# 因此此集合只限制回退路径。
 _IGNORE_DIRS = {
     ".git",
     "node_modules",
@@ -39,14 +39,12 @@ _IGNORE_DIRS = {
     "htmlcov",
 }
 
-# Pseudo / system filesystem roots that must never be tree-walked. A model that
-# runs `grep <pat> /` (or find over /) would otherwise traverse the entire host
-# — including slow network mounts under /proc, /sys, or /mnt — and hang the whole
-# run indefinitely (observed: a 47-min wedge in disk-sleep on a shared mount).
-# Searches must name a real subtree, not a system root.
+# 绝不允许树形遍历的伪文件系统和系统根目录。否则模型执行 `grep <pat> /` 或在 `/`
+# 上 find 时会遍历整台宿主机，包括 /proc、/sys 或 /mnt 下的慢速网络挂载，使运行无限挂起。
+# 搜索必须指定真实子树，而不是系统根目录。
 _DENY_TRAVERSAL_ROOTS = {Path(p) for p in ("/", "/proc", "/sys", "/dev", "/run", "/boot")}
-# Wall-clock cap on the pure-Python os.walk fallback so an allowed-but-huge tree
-# still cannot hang the loop. ripgrep already has its own _RG_TIMEOUT.
+# 纯 Python os.walk 回退的墙上时间上限，使允许但巨大的目录树也无法挂起循环。
+# ripgrep 已有自己的 _RG_TIMEOUT。
 _WALK_DEADLINE_S = 20.0
 
 
@@ -56,17 +54,15 @@ def _denied_traversal_root(base: Path) -> bool:
         resolved = base.resolve()
     except OSError:
         return False
-    # Any filesystem/drive root is its own parent — catches POSIX "/" and the
-    # Windows drive/UNC roots ("C:\\", "\\\\server\\share") that the POSIX-only
-    # _DENY_TRAVERSAL_ROOTS set misses (a search at C:\ would otherwise walk the
-    # whole drive).
+    # 任何文件系统或驱动器根目录都是自身的父目录。这能捕获 POSIX 的 "/" 以及
+    # _DENY_TRAVERSAL_ROOTS 会漏掉的 Windows 驱动器和 UNC 根路径，避免遍历整个驱动器。
     if resolved.parent == resolved:
         return True
     return resolved in _DENY_TRAVERSAL_ROOTS
 
 
 # ---------------------------------------------------------------------------
-# grep
+# 内容搜索
 # ---------------------------------------------------------------------------
 
 
@@ -167,8 +163,6 @@ class GrepTool(_FsTool):
         except Exception as e:
             return f"Error running grep: {e}"
 
-    # ── ripgrep backend ─────────────────────────────────────────────────
-
     async def _run_rg(
         self,
         rg: str,
@@ -185,9 +179,8 @@ class GrepTool(_FsTool):
             args.append("-i")
         if glob:
             args += ["-g", glob]
-        # rg only skips noise dirs when a .gitignore says so; add explicit excludes
-        # so it matches the pure-Python fallback regardless of repo state. These come
-        # after any user glob so the excludes win on last-match-wins ordering.
+        # rg 只在 .gitignore 声明时跳过噪声目录；添加显式排除，使其无论仓库状态如何都与
+        # 纯 Python 回退一致。排除规则放在用户 glob 之后，使它在“最后匹配获胜”顺序中生效。
         for d in _IGNORE_DIRS:
             args += ["-g", f"!{d}"]
 
@@ -199,9 +192,8 @@ class GrepTool(_FsTool):
             args += ["--line-number", "--no-heading", "--with-filename"]
             if context:
                 args += ["-C", str(context)]
-        # Force forward-slash separators in rg's output paths on every platform
-        # so results read the same on Windows as POSIX (only affects path fields,
-        # not matched content).
+        # 在所有平台上强制 rg 输出路径使用正斜杠，使 Windows 和 POSIX 的结果一致；
+        # 该设置只影响路径字段，不影响匹配内容。
         args += ["--path-separator", "/"]
         args += ["-e", pattern, "--", str(base)]
 
@@ -221,14 +213,13 @@ class GrepTool(_FsTool):
             await proc.wait()
             raise
 
-        # rg exits 1 when there are no matches — that is a normal empty result.
+        # 无匹配时 rg 以 1 退出，这是正常的空结果。
         if proc.returncode not in (0, 1):
             return f"Error running rg: {err.decode('utf-8', 'replace').strip()}"
 
         text = out.decode("utf-8", "replace")
-        # Make paths relative to the search root for compact, readable output.
-        # rg emits forward-slash paths (--path-separator above); match that when
-        # stripping the search-root prefix so the strip works on Windows too.
+        # 将路径转成搜索根目录的相对路径，使输出紧凑易读。rg 使用正斜杠路径；
+        # 移除搜索根前缀时使用相同格式，保证 Windows 上也能正常处理。
         base_str = str(base).replace(os.sep, "/")
         text = text.replace(base_str + "/", "").replace(base_str, base.name or ".")
         lines = [ln for ln in text.splitlines() if ln]
@@ -237,8 +228,6 @@ class GrepTool(_FsTool):
 
         unit = "matching lines" if output_mode == "content" else "files"
         return self._format_lines(lines, cap, unit)
-
-    # ── pure-Python fallback ────────────────────────────────────────────
 
     def _run_python(
         self,
@@ -264,7 +253,7 @@ class GrepTool(_FsTool):
                 raw = fp.read_bytes()
             except OSError:
                 continue
-            if b"\x00" in raw[:8192]:  # skip binary files
+            if b"\x00" in raw[:8192]:  # 跳过二进制文件
                 continue
             text_lines = raw.decode("utf-8", "replace").splitlines()
 
@@ -312,7 +301,7 @@ class GrepTool(_FsTool):
         deadline = time.monotonic() + _WALK_DEADLINE_S
         for root, dirs, names in os.walk(base):
             if time.monotonic() > deadline:
-                # Stop rather than hang on an unexpectedly huge / slow tree.
+                # 遇到意外巨大或慢速的目录树时停止，而不是挂起。
                 break
             dirs[:] = [d for d in dirs if d not in _IGNORE_DIRS]
             for n in sorted(names):
@@ -350,7 +339,7 @@ class GrepTool(_FsTool):
 
 
 # ---------------------------------------------------------------------------
-# find
+# 文件查找
 # ---------------------------------------------------------------------------
 
 
@@ -417,8 +406,8 @@ class FindTool(_FsTool):
                 f"({base.resolve()}). Specify a narrower directory."
             )
 
-        # A path-bearing pattern globs literally; a bare pattern matches basenames
-        # recursively (fd-style), so 'foo.py' finds it at any depth.
+        # 带路径的模式按字面执行 glob；不带路径的模式递归匹配基名（fd 风格），
+        # 因此 'foo.py' 可在任意深度被找到。
         glob_expr = pattern if "/" in pattern else f"**/{pattern}"
         try:
             matches = [

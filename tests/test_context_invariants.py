@@ -50,7 +50,7 @@ class _FakeCurator:
         self._history = history or []
 
     async def build(self, ctx: AssemblyContext) -> Segment:
-        assert ctx.prefix is not None  # phase B contract
+        assert ctx.prefix is not None
         text = f"# Curator Working State\n\n{self._ws}" if self._ws else ""
         return Segment(text=text, history=self._history)
 
@@ -68,7 +68,7 @@ async def _assemble(builder: ContextBuilder, curator, **kw):
 
 
 # ---------------------------------------------------------------------------
-# Invariant 1 — Curator only writes *history + segment 6
+
 # ---------------------------------------------------------------------------
 
 
@@ -100,12 +100,12 @@ class TestCuratorBoundary:
     ) -> None:
         hist = [{"role": "user", "content": "earlier"}]
         ac = await _assemble(builder, _FakeCurator("", history=hist))
-        # messages = [system, *history, user] → history sits in the middle.
+
         assert ac.messages[1] == {"role": "user", "content": "earlier"}
 
 
 # ---------------------------------------------------------------------------
-# Invariant 2 — one owner per segment, no transitional blocks
+
 # ---------------------------------------------------------------------------
 
 
@@ -135,20 +135,20 @@ class TestOneOwnerPerSegment:
         )
         ac = await eng.assemble("s", [], _budget(), turn=TurnContext(current_message="hi"))
         prompt = ac.messages[0]["content"]
-        # Transitional split blocks are gone for good.
+
         assert "# Recalled memory" not in prompt
         assert "# Retrieved skills" not in prompt
-        # Recall owned by # Memory; router hits owned by # Skills.
+
         assert "# Memory" in prompt and prompt.index("# Memory") < prompt.index("user fact")
         assert "### Skill: s  [local/s]" in prompt
         assert "skill body" in prompt
-        # Working state is the single, final segment.
+
         assert prompt.count("# Curator Working State") == 1
         assert prompt.rstrip().endswith("# Curator Working State\n\nws")
 
 
 # ---------------------------------------------------------------------------
-# Engine-level: the assembled prompt honors both invariants
+
 # ---------------------------------------------------------------------------
 
 
@@ -243,7 +243,7 @@ class TestEngineAssembledInvariants:
         sys_content = ac.messages[0]["content"]
         assert "# Recalled memory" not in sys_content
         assert "# Retrieved skills" not in sys_content
-        # Recall merged under # Memory; router hit rendered under # Skills.
+
         assert "# Memory" in sys_content
         assert sys_content.index("# Memory") < sys_content.index("user prefers dark mode")
         assert "### Skill: g  [local/g]" in sys_content

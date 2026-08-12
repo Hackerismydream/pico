@@ -36,8 +36,7 @@ from pico.memory_engine.skill_forge import (
 from pico.memory_engine.skill_local.local_pool import LocalPool
 from pico.memory_engine.skill_local.registry import SkillRegistry
 
-# Mock skills that mirror real ones an OpenSpace skill library would
-# contain. Each entry: (name, description-line, body keywords).
+# 模拟 OpenSpace 技能库中可能存在的真实技能。每项为（名称、描述行、正文关键词）。
 _SKILLS = [
     (
         "pdf-gen",
@@ -175,7 +174,7 @@ async def _segment_test(
         seg = await builder.build(ctx)
         ids = seg.meta.get("injected_skill_ids", [])
         print(f"  [{q['id']}] injected={ids}")
-        # Print first 2 header lines of the rendered segment
+        # 打印渲染片段的前两行标题。
         head_lines = "\n".join(seg.text.splitlines()[:6])
         print(textwrap.indent(head_lines, "    "))
         print()
@@ -184,7 +183,7 @@ async def _segment_test(
 async def main() -> int:
     queries_path = Path(__file__).resolve().parents[1] / "benchmarks" / "skill_evals" / "queries.jsonl"
     queries = [json.loads(line) for line in queries_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    # Use a curated subset that matches our fixture skills.
+    # 使用与固件技能匹配的精选子集。
     target_ids = {"q001", "q002", "q003", "q004", "q005"}
     subset = [q for q in queries if q["id"] in target_ids]
 

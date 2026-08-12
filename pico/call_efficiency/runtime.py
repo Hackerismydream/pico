@@ -175,7 +175,7 @@ class CallEfficiency:
             try:
                 self.ledger.append(record)
             except Exception:
-                # Accounting evidence must not turn a completed Provider call into a failed Turn.
+                # 记账证据不得把已完成的 Provider 调用变成失败的 Turn。
                 logger.exception("CallEfficiency could not persist a Call Record")
         return record
 

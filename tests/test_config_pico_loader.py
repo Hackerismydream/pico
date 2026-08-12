@@ -31,15 +31,13 @@ def stub_config_path(monkeypatch, tmp_path: Path):
     def _stub() -> Path:
         return p
 
-    # Both call sites read the symbol directly from their own module
-    # namespace, so we have to patch in both places.
     monkeypatch.setattr("pico.config.loader.get_config_path", _stub)
     monkeypatch.setattr("pico.config.pico.get_config_path", _stub)
     return p
 
 
 def test_missing_config_falls_through_to_defaults(stub_config_path) -> None:
-    # No file on disk — both base + extensions should be defaults.
+
     cfg = ec_module.load_pico_config()
     assert cfg.skill_forge.enabled is True
     assert cfg.skill_forge.top_k == 5
@@ -86,7 +84,7 @@ def test_explicit_null_falls_back_to_defaults(stub_config_path: Path) -> None:
     crash the loader — treat as 'use defaults'."""
     _write_config(stub_config_path, {"skill_forge": None})
     cfg = ec_module.load_pico_config()
-    assert cfg.skill_forge.enabled is True  # default
+    assert cfg.skill_forge.enabled is True
 
 
 def test_only_specified_block_overrides(stub_config_path: Path) -> None:
@@ -169,7 +167,7 @@ def test_mass_library_db_path_round_trips(stub_config_path: Path) -> None:
 def test_invalid_json_falls_through(stub_config_path: Path) -> None:
     stub_config_path.write_text("{ this is not valid json", encoding="utf-8")
     cfg = ec_module.load_pico_config()
-    # Doesn't raise; uses defaults.
+
     assert cfg.skill_forge.enabled is True
 
 

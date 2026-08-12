@@ -74,8 +74,7 @@ class TestPairedLift:
         assert r.verdict is EvaluationVerdict.accepted
 
     def test_hand_computed_z(self):
-        # diffs = [1, 1, 0, 0]: mean 0.5, stdev sqrt(1/3), se sqrt(1/3)/2,
-        # z = 0.5 / (sqrt(1/3)/2) = sqrt(3) ~ 1.732 -> promoted, NOT credited.
+
         cand = _evals({"t1": (3, 3), "t2": (3, 3), "t3": (0, 3), "t4": (0, 3)})
         ctrl = _evals({t: (0, 3) for t in ("t1", "t2", "t3", "t4")})
         r = paired_lift(
@@ -114,7 +113,7 @@ class TestPairedLift:
         assert not r.promoted and not r.credited_2sigma
 
     def test_missing_task_scores_zero_for_that_arm(self):
-        # Candidate never launched t2: it must score 0.0, not be dropped.
+
         cand = _evals({"t1": (3, 3)})
         ctrl = _evals({"t1": (0, 3), "t2": (3, 3)})
         r = paired_lift(
@@ -125,7 +124,7 @@ class TestPairedLift:
         )
         assert r.candidate_mean == pytest.approx(0.5)
         assert r.control_mean == pytest.approx(0.5)
-        assert not r.promoted  # tie, not a win
+        assert not r.promoted
         assert r.verdict is EvaluationVerdict.inconclusive
 
     def test_missing_task_cannot_hide_behind_positive_mean_lift(self):
@@ -180,11 +179,11 @@ class TestPairedLift:
 
 class TestFisher:
     def test_hand_computed_extreme(self):
-        # [[3,0],[0,3]]: P(a=3) = C(3,3)*C(3,0)/C(6,3) = 1/20 = 0.05.
+
         assert fisher_one_sided(3, 0, 0, 3) == pytest.approx(0.05)
 
     def test_hand_computed_moderate(self):
-        # [[8,2],[2,8]]: sum_{a=8..10} C(10,a)*C(10,10-a)/C(20,10)
+
         # = (45*45 + 10*10 + 1) / 184756 = 2126/184756.
         assert fisher_one_sided(8, 2, 2, 8) == pytest.approx(2126 / 184756)
 
@@ -192,19 +191,19 @@ class TestFisher:
         assert fisher_one_sided(0, 3, 3, 0) == pytest.approx(1.0)
 
     def test_degenerate_margins_return_one(self):
-        assert fisher_one_sided(0, 0, 2, 1) == 1.0  # empty candidate row
-        assert fisher_one_sided(2, 1, 0, 0) == 1.0  # empty control row
-        assert fisher_one_sided(0, 3, 0, 3) == 1.0  # no passes anywhere
-        assert fisher_one_sided(3, 0, 3, 0) == 1.0  # all passes everywhere
+        assert fisher_one_sided(0, 0, 2, 1) == 1.0
+        assert fisher_one_sided(2, 1, 0, 0) == 1.0
+        assert fisher_one_sided(0, 3, 0, 3) == 1.0
+        assert fisher_one_sided(3, 0, 3, 0) == 1.0
 
     def test_focused_counts_keeps_infra_as_fails(self):
         evals = {"t1": _te("t1", 1, 3, infra=2), "t2": _te("t2", 3, 3)}
-        # t3 never launched: skipped here (train_mean owns the denominator).
+
         assert focused_counts(evals, ["t1", "t2", "t3"]) == (4, 2)
 
     def test_train_mean_fixed_denominator(self):
         evals = _evals({"t1": (3, 3)})
-        # Missing t2 contributes 0.0 but stays in the denominator.
+
         assert train_mean(evals, ["t1", "t2"]) == pytest.approx(0.5)
         assert train_mean(evals, []) == 0.0
 
@@ -359,11 +358,11 @@ class TestFocusedFisherGate:
 
     def test_promotes_on_full_train_lift(self):
         train = ["f1", "t2", "t3"]
-        base = _evals({"f1": (0, 3), "t2": (3, 3), "t3": (0, 3)})  # mean 1/3
+        base = _evals({"f1": (0, 3), "t2": (3, 3), "t3": (0, 3)})
         fake = _FakeEval(
             {
                 "_focused": _evals({"f1": (2, 3)}),
-                "_confirm": _evals({"f1": (2, 3), "t2": (3, 3), "t3": (0, 3)}),  # mean 5/9
+                "_confirm": _evals({"f1": (2, 3), "t2": (3, 3), "t3": (0, 3)}),
             }
         )
         out = FocusedFisherGate(k=3).decide(_ctx(fake, base, train, focused_task_ids=["f1"]))
@@ -385,21 +384,20 @@ class TestFocusedFisherGate:
             }
         )
         out = FocusedFisherGate(k=3, min_confirm_lift=0.5).decide(_ctx(fake, base, train, focused_task_ids=["f1"]))
-        assert out.status == NodeStatus.pruned_at_confirm  # lift 2/9 < 0.5
+        assert out.status == NodeStatus.pruned_at_confirm
 
     def test_stable_sentinel_regression_prunes_at_screen(self):
         train = ["s1", "s2", "t3"]
         base = _evals({"s1": (3, 3), "s2": (3, 3), "t3": (0, 3)})
         fake = _FakeEval({"_focused": _evals({"s1": (1, 3), "s2": (3, 3)})})
-        # st_c = mean(1/3, 1) = 2/3 < 1.0 - guard(1.5/(2*3)=0.25) = 0.75 -> prune.
+
         out = FocusedFisherGate(k=3).decide(_ctx(fake, base, train, sentinel_task_ids=["s1", "s2"]))
         assert out.status == NodeStatus.pruned_at_screen
         assert out.stats["sentinel_regression"] is True
-        assert len(fake.calls) == 1  # no confirm was paid for
+        assert len(fake.calls) == 1
 
     def test_fragile_sentinel_noise_is_tolerated(self):
-        # A borderline (1/3) sentinel dipping to 0/3 is not significant
-        # (fisher p = 0.5): wide-pass advances to confirm instead of pruning.
+
         train = ["s1", "t2"]
         base = _evals({"s1": (1, 3), "t2": (0, 3)})
         fake = _FakeEval(
@@ -419,7 +417,7 @@ class TestFocusedFisherGate:
         out = FocusedFisherGate(k=3).decide(_ctx(fake, base, train, focused_task_ids=train))
         assert out.status == NodeStatus.pruned_at_screen
         assert out.stats["pruned_significantly_worse"] is True
-        # fisher_p_worse = P for [[9,0],[0,9]] = 1/C(18,9) = 1/48620.
+
         assert out.stats["fisher_p_worse"] == pytest.approx(1 / 48620)
         assert len(fake.calls) == 1
 
@@ -440,7 +438,7 @@ class TestPairedTwoSigmaGate:
         out = PairedTwoSigmaGate().decide(_ctx(fake, base, train, anchor=self._anchor(["a1", "a2"])))
         assert out.status == NodeStatus.pruned_at_screen
         assert out.screen.bucket == "cull"
-        assert len(fake.calls) == 1  # confirm never ran
+        assert len(fake.calls) == 1
 
     def test_partial_control_at_confirm_is_inconclusive(self):
         base = _evals({"t1": (0, 1)})
@@ -460,15 +458,13 @@ class TestPairedTwoSigmaGate:
         assert not outcome.promoted
 
     def test_fired_subset_cannot_promote_a_full_train_regression(self):
-        # Gate-b narrows the paired stats to {t1} where the candidate wins,
-        # but the full-train mean regresses (1/3 vs 2/3): the dual condition
-        # must refuse promotion and report the FULL mean as the score.
+
         train = ["t1", "t2", "t3"]
-        base = _evals({"t1": (0, 3), "t2": (3, 3), "t3": (3, 3)})  # mean 2/3
+        base = _evals({"t1": (0, 3), "t2": (3, 3), "t3": (3, 3)})
         fake = _FakeEval(
             {
-                "_screen": _evals({"t2": (1, 1)}),  # within band -> advance
-                "_confirm": _evals({"t1": (3, 3), "t2": (0, 3), "t3": (0, 3)}),  # mean 1/3
+                "_screen": _evals({"t2": (1, 1)}),
+                "_confirm": _evals({"t1": (3, 3), "t2": (0, 3), "t3": (0, 3)}),
             }
         )
         out = PairedTwoSigmaGate().decide(
@@ -480,10 +476,10 @@ class TestPairedTwoSigmaGate:
                 fired_source=lambda node, ids: {"t1"},
             )
         )
-        assert out.gate.paired.promoted  # the fired subset alone looks like a win
+        assert out.gate.paired.promoted
         assert out.status == NodeStatus.pruned_at_confirm
         assert out.verdict is EvaluationVerdict.rejected
-        assert out.score == pytest.approx(1 / 3)  # full-train mean, never the subset mean
+        assert out.score == pytest.approx(1 / 3)
         assert out.gate.unfired_excluded == ["t2", "t3"]
 
     def test_provider_failure_at_confirm_is_failed_not_promoted(self):

@@ -66,7 +66,7 @@ class BeforeIterationHook(AgentHook):
     def _estimate_tokens(messages: list[dict]) -> int:
         try:
             return len(json.dumps(messages, ensure_ascii=False, default=str)) // 4
-        except Exception:  # noqa: BLE001 — fall through to no-op on estimator error
+        except Exception:  # noqa: BLE001 — 估算器出错时降级为空操作
             return 0
 
 

@@ -44,13 +44,10 @@ from pico.tracing import semconv, trace
 from pico.utils.helpers import estimate_prompt_tokens
 from pico.utils.persisted_payload import sanitize_persisted_payload
 
-# NOTE: ``pico.context_engine`` is intentionally imported lazily (inside
-# ``__init__`` and ``_assemble_context_messages``) to break a runtime
-# import cycle: ``pico.agent.__init__`` eagerly loads AgentLoop,
-# while ``pico.context_engine.curator`` imports ``ContextBuilder`` from
-# ``pico.agent.context`` — a module-level top-down ``from
-# pico.context_engine import ...`` here re-enters a partially-initialized
-# package and raises ImportError on ``TurnContext``.
+# 刻意在 ``__init__`` 和 ``_assemble_context_messages`` 内延迟导入 ``pico.context_engine``，以打破运行时
+# 循环导入：``pico.agent.__init__`` 急切加载 AgentLoop，而 ``pico.context_engine.curator``
+# 又从 ``pico.agent.context`` 导入 ``ContextBuilder``。如果在此模块顶层导入，会重新进入
+# 只初始化了一部分的包，并在 ``TurnContext`` 上抛出 ImportError。
 
 if TYPE_CHECKING:
     from pico.agent.hook import CompositeHook
@@ -86,7 +83,7 @@ class TurnOutcome:
     next turn's recovery prompt.
     """
 
-    status: str = "completed"  # "completed" | "interrupted" | "error"
+    status: str = "completed"  # 可选 "completed" | "interrupted" | "error"
     checkpoint_id: str | None = None
     edited_files: list[str] = field(default_factory=list)
     error_category: str | None = None
@@ -100,9 +97,8 @@ class ProviderTurnError(RuntimeError):
         super().__init__(f"provider_error:{category}")
 
 
-# Asks the model for a best-effort wrap-up after the iteration budget is spent.
-# Tools are withheld on this call, so the prompt must not invite another tool
-# use or a question — there is no further turn to answer it.
+# 迭代预算用尽后，让模型尽力收尾。本次调用不提供工具，因此提示词不能诱导
+# 模型再次调用工具或提问，因为不会再有下一轮回答。
 _MAX_ITER_SYNTHESIS_PROMPT = (
     "You've used up the tool-calling budget for this turn, so no tools are "
     "available now. Using only what you've already gathered, give your best "
@@ -113,18 +109,17 @@ _MAX_ITER_SYNTHESIS_PROMPT = (
     "conversation language)."
 )
 
-# Returned only if the synthesis call itself fails — never leave the turn silent.
+# 只在合成调用自身失败时返回，绝不让 Turn 没有响应。
 _MAX_ITER_STATIC_FALLBACK = (
     "I reached the maximum number of tool call iterations ({n}) without "
     "completing the task. You can try breaking the task into smaller steps."
 )
 
-# Origins whose turns skip user-inbound hooks because their content was not
-# typed by the user.
+# 这些来源的内容并非用户输入，所以对应 Turn 跳过用户入站 Hook。
 _SKIP_USER_INBOUND_ORIGINS = frozenset({Origin.CRON, Origin.SUBAGENT})
 
-# Failure markers a plain retry would likely clear — these must NOT count toward
-# the tool-failure-loop streak (nudging on a 429 that self-heals is just noise).
+# 普通重试很可能清除这些失败标记，因此不得计入工具失败连续记录；
+# 对会自愈的 429 发出提示只会制造噪声。
 _TRANSIENT_FAILURE_MARKERS = (
     "429",
     "rate limit",
@@ -134,9 +129,8 @@ _TRANSIENT_FAILURE_MARKERS = (
     "502",
     "503",
 )
-# Successful-but-empty results: the tool ran fine and just found nothing. A
-# repeated empty search is legitimate exploration, not a stuck dead call, so it
-# must NOT count toward the failure streak.
+# 成功但为空的结果表示工具正常运行，只是没找到内容。重复空搜索是合法探索，
+# 而不是卡死的无效调用，因此不得计入失败连续记录。
 _EMPTY_SUCCESS_MARKERS = ("no matches found", "no files found")
 
 
@@ -208,13 +202,13 @@ class AgentLoop:
     """
 
     _TOOL_RESULT_MAX_CHARS = 16_000
-    # Max emergency context shrinks per turn before a context overflow is fatal.
+    # 每个 Turn 在上下文溢出成为致命错误前，最多执行的紧急收缩次数。
     _MAX_COMPRESS_RETRIES = 2
-    # Most recent tool results kept intact when emergency-shrinking; older ones
-    # are elided (their bodies are the bulk of mid-turn context growth).
+    # 紧急收缩时保持完整的最新工具结果数；更旧结果被省略，
+    # 因为它们的正文是 Turn 中途上下文增长的主体。
     _SHRINK_KEEP_RECENT_TOOL_RESULTS = 3
-    # Tool-failure-loop break: nudge after the same tool fails deterministically
-    # this many times running; cap the nudges per turn so it can't itself loop.
+    # 工具失败循环打断：同一工具连续确定性失败达到此次数后发出提示；
+    # 同时限制每个 Turn 的提示次数，避免提示本身形成循环。
     _LOOP_BREAK_THRESHOLD = 2
     _LOOP_BREAK_MAX = 2
 
@@ -248,17 +242,14 @@ class AgentLoop:
         max_subagent_spawns_per_hour: int = 30,
         disabled_tools: list[str] | None = None,
         tool_search_config: Any = None,
-        # Optional plugin-provided MemoryBackend. None disables backend recall
-        # and storage while preserving Session and Local Skills.
+        # 可选的插件 MemoryBackend。None 禁用后端回忆和存储，但保留 Session 和本地 Skill。
         backend: "MemoryBackend | None" = None,
-        # Forwarded to ``build_context_engine`` for the Memory lane and Local
-        # Skill router.
+        # 转发给 ``build_context_engine``，供 Memory 通道和本地 Skill 路由器使用。
         memory_config: "MemoryConfig | None" = None,
         skill_forge_router_config: "SkillForgeRouterConfig | None" = None,
-        # Tools contributed by activated plugins (built by the CLI via
-        # ``build_plugin_tools``). Registered alongside the built-in tools
-        # in ``_register_default_tools``. ``None`` / empty = no plugin
-        # tools, default behavior unchanged.
+        # 已激活插件贡献的工具，由 CLI 通过 ``build_plugin_tools`` 构建，并在
+        # ``_register_default_tools`` 中与内置工具一起注册。None 或空列表表示无插件工具，
+        # 默认行为不变。
         plugin_tools: "list[Tool] | None" = None,
         empty_recovery: RecoveryLimits | None = None,
         context_engine_factory: "ContextEngineFactory | None" = None,
@@ -275,7 +266,7 @@ class AgentLoop:
         self.state = state or workspace
         self.model = model or provider.get_default_model()
         self.max_iterations = max_iterations
-        # Empty-response recovery budgets. None → enabled defaults.
+        # 空响应恢复预算。None 表示使用已启用的默认值。
         self._recovery_limits = empty_recovery if empty_recovery is not None else RecoveryLimits()
         self.context_window_tokens = context_window_tokens
         self.brave_api_key = brave_api_key
@@ -284,21 +275,18 @@ class AgentLoop:
         self.exec_config = exec_config or ExecToolConfig()
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
-        # The legacy registry remains the tool-list and benchmark extension seam.
+        # 旧版注册表继续作为工具列表和基准扩展边界。
         self.strategies = strategies if strategies is not None else StrategyRegistry([])
         self.call_efficiency = call_efficiency or CallEfficiency.disabled()
-        # Fake-clock injection point for benchmark/sim harnesses. Defaults
-        # to wall clock so production paths (gateway, REPL) are unaffected.
-        # Used both here (session entry timestamps) and threaded into
-        # ContextBuilder so the LLM's "Current Time:" prompt stays in
-        # sync with what we record on persisted messages.
+        # 基准和模拟框架的伪时钟注入点。默认使用墙上时钟，不影响网关和 REPL 等生产路径。
+        # 它同时用于会话项时间戳并传入 ContextBuilder，使 LLM 提示词中的 ``Current Time:``
+        # 与持久化消息记录的时间保持同步。
         self._now_fn = now_fn or datetime.now
 
         self.backend: "MemoryBackend | None" = backend
         self.memory_enabled = backend is not None
 
-        # Tools contributed by activated plugins; registered into the
-        # ToolRegistry by ``_register_default_tools``.
+        # 已激活插件贡献的工具，由 ``_register_default_tools`` 注册到 ToolRegistry。
         self.plugin_tools: "list[Tool]" = list(plugin_tools or [])
 
         self.context = ContextBuilder(
@@ -309,21 +297,17 @@ class AgentLoop:
             now_fn=now_fn,
         )
         self.sessions = session_manager or SessionManager(self.state)
-        # Tool names to omit from the registry — applied after default-tool
-        # registration and after MCP connect so it can blacklist either group.
-        # Used by eval harnesses (e.g. BCP) that need a strict tool subset.
+        # 从注册表中排除的工具名称。在默认工具注册和 MCP 连接后均应用，因此可同时限制两组。
+        # 供 BCP 等需要严格工具子集的评测框架使用。
         self._disabled_tools = set(disabled_tools or [])
         self._tool_search_config = tool_search_config
         self.tools = ToolRegistry()
 
-        # Context engine — the single ContextAssembler.
-        # Constructed here (after self.tools) so the factory can capture
-        # ``self.tools.get_definitions`` as a deferred callable; the actual
-        # tool registry contents are filled by ``_register_default_tools``
-        # later in this constructor.
+        # Context Engine 是唯一的 ContextAssembler。在 self.tools 之后于此构建，使工厂能将
+        # ``self.tools.get_definitions`` 捕获为延迟可调用对象；真正的工具注册表内容
+        # 稍后由同一构造函数中的 ``_register_default_tools`` 填充。
         #
-        # Deferred ``pico.context_engine`` import: see module-level note about
-        # the import cycle with ``pico.agent.__init__``.
+        # 延迟导入 ``pico.context_engine`` 的原因见模块顶部关于 ``pico.agent.__init__`` 循环导入的说明。
         if context_config is None:
             from pico.config.pico import ContextConfig
 
@@ -343,17 +327,15 @@ class AgentLoop:
             context_window_tokens=context_window_tokens,
             get_tool_definitions=self.tools.get_definitions,
             now_fn=now_fn,
-            # The factory uses these to assemble the unified Memory and
-            # Local Skill lanes.
+            # 工厂使用这些参数组装统一的 Memory 和本地 Skill 通道。
             backend=backend,
             memory_config=memory_config,
             skill_forge_router_config=skill_forge_router_config,
             skill_forge_config=skill_forge_config,
         )
 
-        # Runtime discipline (5th pillar). Bug2 uses ``runtime.checkpoint``;
-        # gated by (policy, interactive) — see ``_checkpoint_active``. When
-        # the gate is closed the loop is byte-identical to baseline.
+        # 运行时约束（第五支柱）。检查点受 policy 和 interactive 联合门控，见 ``_checkpoint_active``。
+        # 门禁关闭时，Agent Loop 与基线字节级一致。
         if runtime_config is None:
             from pico.config.pico import RuntimeConfig
 
@@ -371,13 +353,11 @@ class AgentLoop:
                     state=self.state if self.state != workspace else None,
                 )
             except ValueError as exc:
-                # Bad shadow_dir (e.g. ``../escape`` or absolute path) →
-                # CheckpointService refuses to construct. Don't crash the
-                # whole agent over a config typo; log and disable the
-                # safety net so the turn still runs.
+                # shadow_dir 无效（如 ``../escape`` 或绝对路径）时 CheckpointService 拒绝构建。
+                # 不因配置笔误让整个 Agent 崩溃；记录日志并禁用安全网，使 Turn 仍可运行。
                 logger.warning("runtime.checkpoint disabled — {}", exc)
-        # session_key -> {"checkpoint_id", "files"} stashed when a turn is
-        # interrupted (max-iter); consumed by the next turn's recovery prompt.
+        # Turn 因迭代上限中断时，保存 session_key -> {"checkpoint_id", "files"}；
+        # 下一个 Turn 的恢复提示词会消费它。
         self._pending_recovery: dict[str, dict] = {}
 
         self._sandbox_config = sandbox_config
@@ -398,7 +378,7 @@ class AgentLoop:
             max_spawns_per_hour=max_subagent_spawns_per_hour,
         )
 
-        # Executor: synchronous construction only; VM starts in _start_executor()
+        # 执行器此处只同步构建，虚拟机在 _start_executor() 中启动。
         self._executor: SandboxExecutor = build_executor(sandbox_config, workspace, self._owned_ids)
         self._executor_stack: AsyncExitStack | None = None
         self._executor_started: bool = False
@@ -406,15 +386,14 @@ class AgentLoop:
         self._debug_server: SandboxDebugServer | None = None
 
         self.router = router
-        self.enable_personalization = False  # Set via configure_personalization()
+        self.enable_personalization = False  # 通过 configure_personalization() 设置
         self._running = False
         self._mcp_servers = mcp_servers or {}
         self._mcp_stack: AsyncExitStack | None = None
         self._mcp_connected = False
         self._mcp_connecting = False
         self._processing_lock = asyncio.Lock()
-        # Fired after every dispatched turn (success, error, or cancel).
-        # Callbacks must be cheap and must not raise.
+        # 每个已分派 Turn 结束后触发，无论成功、错误还是取消。回调必须低成本且不得抛错。
         self.on_turn_complete: list[Callable[[], None]] = []
         self.memory_consolidator = MemoryConsolidator(
             workspace=self.state,
@@ -429,19 +408,16 @@ class AgentLoop:
 
         self._consolidation_tasks: set[asyncio.Task] = set()
 
-        # Phase B-3: the L4 facade (``DefaultMemoryEngine`` /
-        # ``MemoryEngine`` ABC) has been retired. AgentLoop now holds
-        # the underlying subsystems directly:
+        # B-3 阶段已移除 L4 外观（``DefaultMemoryEngine`` / ``MemoryEngine`` 抽象基类）。
+        # AgentLoop 现在直接持有底层子系统：
         #
-        # - ``self.memory_consolidator`` (above) — markdown compaction
-        #   policy. Owns the ``MemoryStore`` it built; reach it via
-        #   ``self.memory_consolidator.store`` when needed.
-        # - ``self.context.skills`` — :class:`LocalSkillCatalog` for the
-        #   always-skills + ``# Skills`` render path. The SkillForgeRouter stack
-        #   (assembled in ``context_engine.factory``) owns retrieval.
+        # - ``self.memory_consolidator`` 负责 Markdown 压缩策略，并拥有它构建的 ``MemoryStore``；
+        #   需要时通过 ``self.memory_consolidator.store`` 访问。
+        # - ``self.context.skills`` 是 :class:`LocalSkillCatalog`，负责常驻 Skill 和 ``# Skills`` 渲染路径。
+        #   由 ``context_engine.factory`` 组装的 SkillForgeRouter 栈拥有检索职责。
 
-        # AgentHook lifecycle chain. Eval and caller-supplied hooks share one
-        # ordered Interface without feature-specific callback adapters.
+        # AgentHook 生命周期链。评测 Hook 和调用方 Hook 共享同一个有序接口，
+        # 无需按功能定制回调适配器。
         self.hooks: "CompositeHook" = CompositeHook()
         if hooks is not None:
             self.hooks.extend(hooks)
@@ -496,29 +472,24 @@ class AgentLoop:
         self.tools.register(WebFetchTool(api_key=self.jina_api_key, proxy=self.web_proxy))
         self.tools.register(MessageTool())
         self.tools.register(SpawnTool(manager=self.subagents))
-        # The QuestionBroker is a per-transport singleton, late-bound via
-        # set_broker once the transport (TUI RPC server / gateway hub) exists.
+        # QuestionBroker 按传输层为单例；当传输层（TUI RPC 服务器或网关 hub）存在后，
+        # 通过 set_broker 延迟绑定。
         self.tools.register(AskUserTool())
         if self.cron_service:
-            # Lazy import: CronTool lives under pico.proactive_engine.schedulers.cron.tool
-            # which (a) imports pico.agent.tools.base, triggering pico.agent.__init__,
-            # which (b) imports this very loop module. Importing at function scope breaks the
-            # cycle since loop.py is fully loaded by the time _register_default_tools runs.
+            # 延迟导入：CronTool 所在模块会导入 pico.agent.tools.base，触发 pico.agent.__init__，
+            # 后者又导入当前循环模块。在函数作用域导入可打破循环，因为执行
+            # _register_default_tools 时 loop.py 已完全加载。
             from pico.proactive_engine.schedulers.cron.tool import CronTool
 
             self.tools.register(CronTool(self.cron_service))
 
-        # Plugin-contributed tools.
-        # Registered last so a plugin can override a built-in by name if
-        # it deliberately contributes the same name; ``_apply_disabled_tools``
-        # still runs afterward and can strip any of them.
+        # 插件贡献的工具最后注册，使插件在有意提供同名工具时能覆盖内置实现。
+        # 随后仍会运行 ``_apply_disabled_tools``，因此任何工具都可被移除。
         for tool in self.plugin_tools:
             self.tools.register(tool, replace=True)
 
-        # Progressive tool disclosure. Registered last so the catalog it
-        # searches covers every built-in/plugin tool above; MCP tools join
-        # later (registered in ``_connect_mcp``) and the strategy picks them up
-        # since it re-reads the registry each turn.
+        # 渐进式工具披露最后注册，使其搜索目录覆盖上方全部内置和插件工具。
+        # MCP 工具稍后在 ``_connect_mcp`` 中加入；策略每个 Turn 都重读注册表，因此能自动获取。
         cfg = self._tool_search_config
         if cfg is not None and cfg.enabled:
             from pico.agent.tools.tool_search import (
@@ -537,9 +508,8 @@ class AgentLoop:
             )
             self.tools.register(ToolSearchTool(self.tool_search_controller))
             self.tools.register(ToolCallTool(self.tool_search_controller))
-            # ``first=True``: filter the tool list before CacheOptimizer marks
-            # the final tool with ``cache_control`` (else the marked tool may be
-            # filtered out and the breakpoint lost).
+            # ``first=True`` 表示在 CacheOptimizer 用 ``cache_control`` 标记最后一个工具前先过滤列表；
+            # 否则已标记的工具可能被过滤，导致缓存断点丢失。
             self.strategies.register(
                 ToolSearchStrategy(
                     self.tool_search_controller,
@@ -548,7 +518,7 @@ class AgentLoop:
                 first=True,
             )
 
-    # ── Context engine helpers ──────────────────────────────────────────
+    # ── 上下文引擎辅助方法 ─────────────────────────────────────────────
 
     def _context_messages_for_session(self, session: Session) -> list[dict[str, Any]]:
         """Return the candidate message view owned by the active context engine.
@@ -608,7 +578,7 @@ class AgentLoop:
         metadata_sink: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Ask the active context engine for the main-agent message window."""
-        from pico.context_engine import TurnContext  # deferred — see module note
+        from pico.context_engine import TurnContext  # 延迟导入，原因见模块说明
 
         session_messages = self._context_messages_for_session(session)
         assembled = await self.context_engine.assemble(
@@ -641,7 +611,7 @@ class AgentLoop:
             return False
         if policy == "always":
             return True
-        return interactive  # policy == "interactive"
+        return interactive  # policy 为 interactive
 
     def _stash_recovery(self, session_key: str, outcome: "TurnOutcome") -> None:
         """Remember an interrupted turn's snapshot so the next turn in this
@@ -673,8 +643,7 @@ class AgentLoop:
             return
         last = messages[-1]
         if last.get("role") != "user":
-            # Last message isn't the user turn — keep the recovery pending so
-            # the next assembly (which does end with the user message) injects it.
+            # 最后一条消息不是用户 Turn 时，保持恢复待处理，使下次以用户消息结尾的组装注入它。
             return
         content = last.get("content")
         files = recovery.get("files") or []
@@ -686,15 +655,14 @@ class AgentLoop:
             lines.append(f"Checkpoint: {cid}")
         lines.append("Verify the current state of these files before continuing.")
         block = "\n".join(lines)
-        # Mutate first, pop second — atomic from the caller's perspective. If
-        # we can't safely write to ``content`` (unknown shape) the recovery
-        # stays pending instead of being silently dropped on the floor.
+        # 先修改、后弹出，从调用方视角看是原子操作。如果无法安全写入形状未知的 ``content``，
+        # 恢复保持待处理，而不是被静默丢弃。
         if isinstance(content, str):
             last["content"] = f"{block}\n\n{content}"
         elif isinstance(content, list):
             last["content"] = [{"type": "text", "text": block}] + content
         else:
-            return  # unexpected content shape → keep pending
+            return  # 内容形状异常时保持待恢复状态
         self._pending_recovery.pop(session_key, None)
 
     @trace.instrument("memory.store", extract=semconv.memory_store)
@@ -803,9 +771,8 @@ class AgentLoop:
             await server.start()
             self._debug_server = server
         except Exception as exc:
-            # The user explicitly opted in to debug mode; failing silently here
-            # leaves them puzzled when `pico sandbox` later says "socket not
-            # found". Log loud so the reason is visible.
+            # 用户已明确选择调试模式；此处静默失败会让用户在稍后看到 `pico sandbox`
+            # 报“套接字不存在”时困惑。需明确记录原因。
             logger.error("Failed to start sandbox debug server: %s", exc)
 
     async def close_executor(self) -> None:
@@ -828,11 +795,11 @@ class AgentLoop:
         """Connect to configured MCP servers (one-time, lazy)."""
         if self._mcp_connected or self._mcp_connecting or not self._mcp_servers:
             return
-        # Set flag synchronously before the first await — asyncio is single-threaded so no
-        # context switch occurs here; a lock is not needed for this mutual-exclusion pattern.
+        # 在第一个 await 之前同步设置标志。asyncio 单线程执行，此处不会发生上下文切换，
+        # 该互斥模式无需锁。
         self._mcp_connecting = True
         try:
-            await self._start_executor()  # ensure executor is live before MCP servers connect
+            await self._start_executor()  # MCP 服务器连接前，执行器必须已启动
             from pico.agent.tools.mcp import connect_mcp_servers
 
             self._mcp_stack = AsyncExitStack()
@@ -843,13 +810,13 @@ class AgentLoop:
                 self._mcp_stack,
                 executor=self._executor,
             )
-            # Re-apply blacklist: MCP servers may register tool names that
-            # also appear in ``disabled_tools`` (e.g. ``mcp_<server>_search``).
+            # 重新应用黑名单：MCP 服务器可能注册也出现在 ``disabled_tools`` 中的工具名，
+            # 例如 ``mcp_<server>_search``。
             self._apply_disabled_tools()
             self._mcp_connected = True
             self._mcp_connecting = False
         except Exception:
-            # Reset in-progress flag so a subsequent call can retry.
+            # 重置进行中标志，使后续调用可重试。
             self._mcp_connecting = False
             if self._mcp_stack:
                 try:
@@ -1083,10 +1050,8 @@ class AgentLoop:
         except Exception as exc:
             logger.warning("Max-iter synthesis call failed: {}", exc)
         fallback = _MAX_ITER_STATIC_FALLBACK.format(n=self.max_iterations)
-        # The streamed-success path already delivered its text through
-        # ``on_token_delta``; this fallback did not. Push it through the stream
-        # too, or the run_turn boundary — which suppresses the closing ``Text``
-        # once anything has streamed — would drop it on a streaming outlet.
+        # 流式成功路径已通过 ``on_token_delta`` 交付文本，此回退路径则没有。因此也要将它推入流；
+        # 否则一旦已有内容流出，run_turn 边界会抑制结尾 ``Text``，导致流式出口丢失回退文本。
         if on_token_delta is not None:
             await on_token_delta(fallback)
         return fallback
@@ -1122,23 +1087,20 @@ class AgentLoop:
         session_key = session_key or ""
         effective_model = model or self.model
 
-        # Bug2 / decision B — track whether the turn was a normal exit or a
-        # max-iter interruption. ``status`` is the only piece read downstream
-        # (used to label the shadow-git commit and stamp the ``TurnOutcome``).
+        # 记录 Turn 是正常退出还是因迭代上限中断。下游只读取 ``status``，
+        # 用于标记影子 Git 提交并写入 ``TurnOutcome``。
         status = "completed"
         error_category: str | None = None
 
-        # Context-overflow recovery: bound the number of emergency shrinks so a
-        # turn that overflows even after eliding can't loop forever.
+        # 上下文溢出恢复：限制紧急收缩次数，避免省略后仍溢出的 Turn 永久循环。
         compress_retries = 0
-        # Tool-failure-loop break (#1b): track consecutive same-tool hard
-        # failures across iterations; nudge once per fresh streak, bounded/turn.
+        # 工具失败循环打断：跨迭代跟踪同一工具的连续硬失败；
+        # 每个新连续段提示一次，并按 Turn 限制总数。
         loop_fail_tool: str | None = None
         loop_fail_streak = 0
         loop_nudges = 0
-        # Empty-response recovery state, local to the turn — the AgentLoop is a
-        # long-lived singleton shared across sessions, so per-instance counters
-        # would leak across turns; resetting here gives clean per-turn budgets.
+        # 空响应恢复状态属于当前 Turn。AgentLoop 是跨会话共享的长生命周期单例，
+        # 实例级计数器会跨 Turn 泄漏；此处重置可为每个 Turn 提供干净预算。
         prev_had_tool_calls = False
         post_tool_nudges = 0
         prefill_retries = 0
@@ -1153,9 +1115,8 @@ class AgentLoop:
                 effective_model,
             )
 
-            # Merge any INJECT-ed user messages (BusyPolicy.INJECT) before this
-            # iteration's LLM call. Media-carrying injects keep their file
-            # paths in the text so nothing is silently dropped.
+            # 在本次迭代的 LLM 调用前合并所有通过 BusyPolicy.INJECT 注入的用户消息。
+            # 携带媒体的注入会在文本中保留文件路径，避免内容静默丢失。
             if drain is not None:
                 for inj in drain():
                     inj_text = inj.text or ""
@@ -1169,7 +1130,7 @@ class AgentLoop:
 
             tool_defs = self.tools.get_definitions()
 
-            # Historical strategies run first so tool filtering precedes cache planning.
+            # 先运行历史策略，使工具过滤先于缓存规划。
             call_messages, call_tools, call_model = await self.strategies.before_llm_call(
                 messages,
                 tool_defs,
@@ -1208,16 +1169,14 @@ class AgentLoop:
                 },
                 usage_snapshot,
             )
-            # tui-chat L2-A wire: stream caller (turn.* handler) may want the
-            # final-iteration usage to populate `message.complete.payload.usage`
-            # per CAP-CHAT-1 wire shape. Use the wire-contract UsageSnapshot
-            # fields (prompt_tokens / completion_tokens / total_tokens) — not
-            # the agent-internal snapshot with model / cache / cost fields.
+            # tui-chat L2-A 线路：流式调用方（turn.* 处理器）可能需要用最后一次迭代用量
+            # 按 CAP-CHAT-1 形状填充 `message.complete.payload.usage`。应使用线上合约 UsageSnapshot
+            # 的 prompt_tokens、completion_tokens 和 total_tokens，而非带模型、缓存和成本字段的
+            # Agent 内部快照。
             if usage_sink is not None and response.usage:
                 prompt_tokens = int(response.usage.get("prompt_tokens", 0) or 0)
                 completion_tokens = int(response.usage.get("completion_tokens", 0) or 0)
-                # Real window from the model's provider table when LiteLLM lags
-                # (e.g. OpenRouter); otherwise the configured default.
+                # LiteLLM 信息滞后时，从模型提供商表获取真实窗口；否则使用配置默认值。
                 context_max = (
                     resolve_context_window(
                         call_record.accounting_model,
@@ -1238,10 +1197,9 @@ class AgentLoop:
                 usage_sink["context_used"] = context_used
                 usage_sink["context_percent"] = round(100 * context_used / context_max) if context_max else 0
 
-            # Context-window overflow recovery: the structured classifier flags
-            # should_compress (a smaller window won't help, but eliding the bulk
-            # of accumulated tool output will). Shrink in place and retry this
-            # iteration instead of surfacing it as a fatal error. Bounded.
+                # 上下文窗口溢出恢复：结构化分类器标记 should_compress。更小窗口无济于事，
+                # 但省略大量累积工具输出有效。就地收缩并重试当前迭代，而不暴露为致命错误；
+                # 重试次数受限。
             cls_ = response.error_classification
             if (
                 response.finish_reason == "error"
@@ -1253,7 +1211,7 @@ class AgentLoop:
                 if elided > 0:
                     messages = shrunk
                     compress_retries += 1
-                    iteration -= 1  # the overflowed call did no work; don't bill it
+                    iteration -= 1  # 溢出的调用没有执行工作，不计入迭代次数
                     logger.warning(
                         "Context overflow; elided {} old tool result(s), retrying ({}/{})",
                         elided,
@@ -1356,8 +1314,7 @@ class AgentLoop:
                 for tool_call, execution in zip(response.tool_calls, executions, strict=True):
                     result = execution.result
                     messages = self.context.add_tool_result(messages, tool_call.id, tool_call.name, result)
-                    # #1b Track consecutive same-tool deterministic failures
-                    # (transient errors excluded — a retry would clear those).
+                    # 跟踪同一工具的连续确定性失败；排除可通过重试清除的短暂错误。
                     if _is_hard_tool_failure(result):
                         if tool_call.name == loop_fail_tool:
                             loop_fail_streak += 1
@@ -1366,9 +1323,8 @@ class AgentLoop:
                     else:
                         loop_fail_tool, loop_fail_streak = None, 0
 
-                # #1b Failure-loop break: the same tool failed deterministically
-                # `threshold` times running → append a change-approach nudge to
-                # the last tool result so the model stops repeating a dead call.
+                # 失败循环打断：同一工具连续确定性失败 `threshold` 次后，
+                # 向最后一个工具结果附加改变方法的提示，让模型停止重复无效调用。
                 if (
                     loop_fail_streak >= self._LOOP_BREAK_THRESHOLD
                     and loop_nudges < self._LOOP_BREAK_MAX
@@ -1381,12 +1337,11 @@ class AgentLoop:
                         + "\n\n"
                         + _loop_break_nudge(loop_fail_tool, loop_fail_streak)
                     )
-                    loop_fail_streak = 0  # fire once per fresh streak
+                    loop_fail_streak = 0  # 每轮新的连续失败只触发一次
                 prev_had_tool_calls = True
             else:
                 clean = self._strip_think(response.content)
-                # Don't persist error responses to session history — they can
-                # poison the context and cause permanent 400 loops (#1303).
+                # 不将错误响应持久化到会话历史，因为它们可能污染上下文，导致永久 400 循环。
                 if response.finish_reason == "error":
                     logger.error("LLM returned error: {}", (clean or "")[:200])
                     final_content = clean or "Sorry, I encountered an error calling the AI model."
@@ -1398,11 +1353,9 @@ class AgentLoop:
                     error_category = classification.category if classification is not None else "unknown"
                     break
 
-                # Empty-response recovery: an empty assistant turn would
-                # otherwise break out here and surface a "no response to give"
-                # dud. Try to recover before giving up. Synthetic scaffolding is
-                # marked ``_recovery_synthetic`` and stripped before persistence
-                # / extraction so it can't poison future context.
+                # 空响应恢复：如果不处理，空的 Assistant Turn 会在此退出，暴露“无回复可给”的无效结果。
+                # 放弃前先尝试恢复。合成脚手架用 ``_recovery_synthetic`` 标记，并在持久化和提取前移除，
+                # 避免污染未来上下文。
                 action = classify_empty_response(
                     response,
                     clean,
@@ -1419,10 +1372,8 @@ class AgentLoop:
                         prefill_retries,
                         self._recovery_limits.thinking_prefill_max_retries,
                     )
-                    # Re-feed the model its own reasoning (not stripped) so it
-                    # continues into the body. Marked synthetic → dropped before
-                    # persistence/extraction; the reasoning fields are stripped
-                    # from the wire request by the provider's key allowlist.
+                    # 将模型自身未删减的推理回填，使其继续生成正文。消息标记为合成，
+                    # 在持久化和提取前丢弃；提供商的键白名单会从线上请求中移除推理字段。
                     messages = self.context.add_assistant_message(
                         messages,
                         response.content,
@@ -1435,8 +1386,8 @@ class AgentLoop:
                 if action is RecoveryAction.NUDGE:
                     post_tool_nudges += 1
                     logger.warning("empty-recovery: post-tool empty nudge")
-                    # The (empty) assistant must sit between the tool result and
-                    # the nudge — a bare tool→user sequence is a 400 on most APIs.
+                    # 空 Assistant 消息必须位于工具结果和提示之间，因为多数 API 会对裸的
+                    # tool → user 序列返回 400。
                     messages = self.context.add_assistant_message(messages, "(empty)")
                     messages[-1]["_recovery_synthetic"] = True
                     messages.append({"role": "user", "content": POST_TOOL_NUDGE, "_recovery_synthetic": True})
@@ -1463,15 +1414,12 @@ class AgentLoop:
 
         if final_content is None and iteration >= self.max_iterations:
             logger.warning("Max iterations ({}) reached; synthesizing final answer", self.max_iterations)
-            # Exhaustion is two orthogonal facts, not an either/or:
-            #   1. The turn did NOT complete — tag it ``interrupted`` so the
-            #      shadow-git checkpoint commit is labelled and the next turn's
-            #      recovery prompt can surface the sha + edited files to resume.
-            #   2. The user still deserves a useful reply NOW — so, checkpoint
-            #      or not, synthesize a best-effort wrap-up (one tools-disabled
-            #      call summarising what was done and what's left) instead of a
-            #      canned apology. Synthesis falls back to a static message
-            #      internally if the call fails, so the turn is never silent.
+            # 耗尽包含两个彼此独立的事实，并非二选一：
+            #   1. 本轮尚未完成——将其标记为 ``interrupted``，让影子 Git 检查点提交带上
+            #      对应标签，并让下一轮的恢复提示展示提交 SHA 和已编辑文件以便续作。
+            #   2. 用户现在仍应得到有用的回复——因此无论是否存在检查点，都尽力生成收尾
+            #      （调用一次禁用工具的模型，总结已完成和待完成事项），而不是返回固定道歉。
+            #      如果生成失败，辅助方法内部会回退到静态消息，确保本轮不会静默结束。
             status = "interrupted"
             final_content = await self._synthesize_final_on_exhaustion(
                 messages,
@@ -1481,20 +1429,15 @@ class AgentLoop:
                 on_token_delta=on_token_delta,
                 on_reasoning_delta=on_reasoning_delta,
             )
-            # Persist the wrap-up into history like any normal final reply.
-            # Persistence downstream reads only the returned ``messages`` list,
-            # so without this the synthesized answer reaches the user via the
-            # stream yet never enters the conversation — the next turn (notably
-            # an interrupted-turn resume) could not see what was summarized. The
-            # synthesis prompt itself stays local to the helper, so only the
-            # reply lands here.
+            # 像普通最终回复一样，把收尾内容持久化到历史中。下游持久化只读取返回的
+            # ``messages`` 列表；若不这样做，生成的答案虽会经由流到达用户，却不会进入
+            # 对话，下一轮（尤其是中断恢复轮）便看不到本次总结。生成提示本身只保留在
+            # 辅助方法内部，因此这里只落下回复。
             if final_content:
                 messages = self.context.add_assistant_message(messages, final_content)
 
-        # Drop transient empty-recovery scaffolding before persistence and
-        # return - Pico's empty-recovery marks
-        # synthetic nudge/prefill messages with ``_recovery_synthetic``; strip
-        # them so they never persist.
+        # 持久化和返回前移除临时的空响应恢复脚手架。Pico 会用
+        # ``_recovery_synthetic`` 标记合成的推动/预填消息，必须移除以免持久化。
         if any(m.get("_recovery_synthetic") for m in messages):
             messages = [m for m in messages if not m.get("_recovery_synthetic")]
 
@@ -1503,9 +1446,8 @@ class AgentLoop:
             error_category=error_category,
         )
         if self._checkpoint is not None:
-            # Per-turn snapshot: one commit covering all of this turn's edits,
-            # for both normal and interrupted exits (matches Claude Code/Cursor
-            # granularity). Best-effort — commit_turn never raises.
+            # 每轮快照：一次提交覆盖本轮全部编辑，正常退出和中断退出均如此
+            # （与 Claude Code/Cursor 的粒度一致）。这里只尽力而为，commit_turn 从不抛错。
             label = f"turn {session_key or 'anon'} [{status}]"
             cid, changed = await self._checkpoint.commit_turn(label)
             outcome.checkpoint_id = cid
@@ -1558,11 +1500,11 @@ class AgentLoop:
             try:
                 await self._mcp_stack.aclose()
             except (RuntimeError, BaseExceptionGroup):
-                pass  # MCP SDK cancel scope cleanup is noisy but harmless
+                pass  # MCP SDK 的取消作用域清理会产生噪声，但无害
             self._mcp_stack = None
-        self._mcp_connected = False  # reset so _connect_mcp() can reconnect after close
-        self._mcp_connecting = False  # reset so a concurrent caller isn't permanently blocked
-        await self.close_executor()  # always runs, even when no MCP servers are configured
+        self._mcp_connected = False  # 重置后 _connect_mcp() 才能在关闭后重连
+        self._mcp_connecting = False  # 重置以免并发调用方永久阻塞
+        await self.close_executor()  # 即使未配置 MCP 服务器也始终执行
 
     def stop(self) -> None:
         """Stop the agent loop."""
@@ -1616,10 +1558,9 @@ class AgentLoop:
         turn_media = list(req.media)
         msg_session_key = req.conversation or f"{channel}:{chat_id}"
 
-        # AgentHook ``before_user_inbound`` chain.
+        # AgentHook 的 ``before_user_inbound`` 链。
         #
-        # Observer and short-circuit hooks share the same ordered chain.
-        # Skip the phase for origins that are not user input.
+        # 观察型钩子和短路型钩子共用同一条有序链。来源不是用户输入时跳过本阶段。
         skip_user_inbound = origin in _SKIP_USER_INBOUND_ORIGINS
         if len(self.hooks) > 0 and not skip_user_inbound:
             _hook_ctx = AgentHookContext(
@@ -1636,7 +1577,7 @@ class AgentLoop:
         key = session_key or msg_session_key
         session = self.sessions.get_or_create(key)
 
-        # Slash commands
+        # 斜杠命令
         cmd = content.strip().lower()
         if cmd == "/new":
             try:
@@ -1668,11 +1609,10 @@ class AgentLoop:
         if not self.context_engine.owns_compaction:
             await self.memory_consolidator.maybe_consolidate_by_tokens(session)
 
-        # ── Personalization flow (global switch: self.enable_personalization) ──
-        # Skip for a subagent result re-injection: its content is a system-generated
-        # announce, not user input — personalizing it would pollute the profile or
-        # fire a clarification on the announce. Only SUBAGENT skips here (not the
-        # wider user-inbound set): Cron turns reach this flow today and keep it.
+        # ── 个性化流程（全局开关：self.enable_personalization）────────────────
+        # 子智能体结果回注时跳过：其内容是系统生成的通知而非用户输入；个性化处理会污染
+        # 用户画像，或针对通知触发澄清。此处仅 SUBAGENT 跳过（不是更宽泛的用户输入集合）：
+        # Cron 轮次目前仍会进入并保留该流程。
         if self.enable_personalization and origin is not Origin.SUBAGENT:
             from datetime import datetime as _dt
 
@@ -1680,20 +1620,18 @@ class AgentLoop:
 
             _personalizer = Personalizer(MemoryStore(self.state), self.provider, self.model)
 
-            # ── Step 2 completion: user is answering a pending clarification ──
+            # ── 步骤 2 完成阶段：用户正在回答待处理的澄清问题 ──
             if session.pending_clarification:
                 _pending = session.pending_clarification
 
-                # Determine whether the user is answering the previous question
-                # or starting a fresh request. A fresh request typically contains
-                # action verbs and is unrelated to the original; re-classify to
-                # decide: if clarification is still needed, treat it as new.
+                # 判断用户是在回答上一个问题，还是发起新请求。新请求通常包含动作动词，
+                # 且与原请求无关；重新分类以作判断：若仍需澄清，就按新请求处理。
                 _recent = session.get_history(max_messages=4)
                 _recheck = await _personalizer.classify(content, history=_recent)
                 _is_new_request = _recheck.get("needs_clarification", False)
 
                 if _is_new_request:
-                    # User started a new request; discard the old pending state and re-classify.
+                    # 用户发起了新请求；丢弃旧的待处理状态并重新分类。
                     session.pending_clarification = None
                     self.sessions.save(session)
                     logger.info("Personalization: new request detected, discarding old pending_clarification")
@@ -1717,14 +1655,14 @@ class AgentLoop:
                             session.key,
                         )
                         return (_question, [])
-                    # Clear pending state and proceed normally when question generation fails.
+                        # 问题生成失败时清除待处理状态，并按正常流程继续。
                     session.pending_clarification = None
 
                 else:
-                    # User is answering the previous question; extract preference and resume the original task.
+                    # 用户正在回答上一个问题；提取偏好并恢复原任务。
                     session.pending_clarification = None
 
-                    # Extract preference into MEMORY.md in the background without blocking the response.
+                    # 后台提取偏好并写入 MEMORY.md，不阻塞响应。
                     async def _extract():
                         await _personalizer.extract_and_store_preference(
                             original_message=_pending["original_message"],
@@ -1735,27 +1673,27 @@ class AgentLoop:
                     _t = asyncio.create_task(_extract())
                     self._consolidation_tasks.add(_t)
                     _t.add_done_callback(self._consolidation_tasks.discard)
-                    # Continue normally: LLM understands the task via conversation history.
+                    # 正常继续：LLM 通过对话历史理解任务。
 
             else:
-                # ── Step 1: classify the request — decide whether clarification is needed ──
+                # ── 步骤 1：分类请求——判断是否需要澄清 ──
                 _recent = session.get_history(max_messages=4)
                 _classification = await _personalizer.classify(content, history=_recent)
 
                 if _classification.get("needs_clarification"):
-                    # ── Step 2: pre-action interaction — generate and return a clarifying question ──
+                    # ── 步骤 2：行动前交互——生成并返回澄清问题 ──
                     _question = await _personalizer.generate_question(
                         content,
                         _classification.get("domain", ""),
                     )
 
                     if _question:
-                        # Write the original request and the clarifying question into history to keep the conversation coherent.
+                        # 将原请求和澄清问题写入历史，保持对话连贯。
                         _ts = _dt.now().isoformat()
                         session.record({"role": "user", "content": content, "timestamp": _ts})
                         session.record({"role": "assistant", "content": _question, "timestamp": _ts})
 
-                        # Save the pending state so the next message can resume it.
+                        # 保存待处理状态，让下一条消息可以恢复流程。
                         session.pending_clarification = {
                             "original_message": content,
                             "question": _question,
@@ -1765,23 +1703,22 @@ class AgentLoop:
 
                         logger.info("Personalization: asked clarification for session {}", session.key)
                         return (_question, [])
-                    # generate_question failed: skip silently and proceed
-        # ── End personalization flow ─────────────────────────────────────────
+                        # generate_question 失败：静默跳过并继续
+            # ── 个性化流程结束 ────────────────────────────────────────────────
 
         self._set_tool_context(channel, chat_id, metadata.get("message_id"), session_key=key)
         if message_tool := self.tools.get("message"):
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
-        # ask_user keys by the true conversation_id (== the lane / gate key),
-        # which is topic-aware (req.conversation), not just channel:chat_id.
+            # ask_user 使用真实 conversation_id（即通道/门控键）作为键；该标识感知话题
+            # （req.conversation），而非仅使用 channel:chat_id。
         if (ask_tool := self.tools.get("ask_user")) and isinstance(ask_tool, AskUserTool):
             ask_tool.set_context(key)
 
         context_messages = self._context_messages_for_session(session)
-        # SkillForge: Selector picks top-K. See note in the system-message
-        # branch above — empty return falls back to the full directory.
-        # Phase B-3: routed via ``_select_skills_for_turn`` so the new
-        # ``default`` engine short-circuits selection here.
+        # SkillForge：选择器选出前 K 个。参见上方系统消息分支中的说明——返回空列表时
+        # 回退到完整目录。B-3 阶段统一经由 ``_select_skills_for_turn`` 路由，使新的
+        # ``default`` 引擎可在此直接结束选择。
         selected_skills = await self._select_skills_for_turn(
             content,
             context_messages,
@@ -1801,7 +1738,7 @@ class AgentLoop:
             context_metadata.get("injected_skill_ids") or self._collect_injected_skill_ids(selected_skills)
         )
 
-        # ── Model routing (EcoClaw-style) ────────────────────────────────────
+        # ── 模型路由（EcoClaw 风格）──────────────────────────────────────────
         routed_model: str | None = None
         fallback_models: list[str] = []
         if self.router is not None:
@@ -1833,8 +1770,7 @@ class AgentLoop:
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
 
-        # AgentHook ``after_send`` is a generic outbound phase and applies to
-        # every origin.
+            # AgentHook 的 ``after_send`` 是通用出站阶段，适用于所有来源。
         if len(self.hooks) > 0:
             from pico.agent.hook import AgentHookContext
 
@@ -1872,9 +1808,9 @@ class AgentLoop:
         if not self.context_engine.owns_compaction:
             await self.memory_consolidator.maybe_consolidate_by_tokens(session)
 
-        # ── Step 4: post-action learning (background, non-blocking) ─────────────
-        # Skip for a subagent result re-injection (see the pre-turn flow above):
-        # its content is a system-generated announce, not user input to learn from.
+            # ── 步骤 4：行动后学习（后台、非阻塞）──────────────────────────────
+            # 子智能体结果回注时跳过（参见上方轮次前流程）：其内容是系统生成的通知，
+            # 不是可供学习的用户输入。
         if self.enable_personalization and origin is not Origin.SUBAGENT:
             from pico.agent.personalizer import Personalizer
 
@@ -1886,14 +1822,12 @@ class AgentLoop:
             _t4 = asyncio.create_task(_post_learn())
             self._consolidation_tasks.add(_t4)
             _t4.add_done_callback(self._consolidation_tasks.discard)
-        # ── End Step 4 ──────────────────────────────────────────────────────
+            # ── 步骤 4 结束 ────────────────────────────────────────────────────
 
         if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt.sent_in_turn:
-            # Defensive fingerprint. The silent return None
-            # previously left no trace when the agent replied via message
-            # tool, making stochastic dud-turn bugs invisible to grep. Log
-            # the would-be response so future investigations have a trail
-            # parallel to "Response to ..." below.
+            # 防御性指纹。过去智能体通过 message 工具回复并静默返回 None 时不会留下
+            # 痕迹，导致随机出现的无效轮次无法通过 grep 发现。记录原本要返回的响应，
+            # 为后续调查留下与下方 "Response to ..." 并行的线索。
             if final_content:
                 preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
                 logger.info(
@@ -1923,14 +1857,14 @@ class AgentLoop:
             if origin is Origin.SUBAGENT and index == 0 and role == "user":
                 continue
             if entry.get("_recovery_synthetic"):
-                continue  # #1a synthetic recovery nudge — never persist scaffolding
+                continue  # #1a 合成恢复推动消息——绝不持久化脚手架
             if role == "assistant" and not content and not entry.get("tool_calls"):
-                continue  # skip empty assistant messages — they poison session context
+                continue  # 跳过空助手消息——它们会污染会话上下文
             if role == "tool" and isinstance(content, str) and len(content) > self._TOOL_RESULT_MAX_CHARS:
                 entry["content"] = content[: self._TOOL_RESULT_MAX_CHARS] + "\n... (truncated)"
             elif role == "user":
                 if isinstance(content, str) and content.startswith(ContextBuilder._RUNTIME_CONTEXT_TAG):
-                    # Strip the runtime-context prefix, keep only the user text.
+                    # 去除运行时上下文前缀，只保留用户文本。
                     parts = content.split("\n\n", 1)
                     if len(parts) > 1 and parts[1].strip():
                         entry["content"] = parts[1]
@@ -1944,7 +1878,7 @@ class AgentLoop:
                             and isinstance(c.get("text"), str)
                             and c["text"].startswith(ContextBuilder._RUNTIME_CONTEXT_TAG)
                         ):
-                            continue  # Strip runtime context from multimodal messages
+                            continue  # 从多模态消息中去除运行时上下文
                         if c.get("type") == "image_url" and c.get("image_url", {}).get("url", "").startswith(
                             "data:image/"
                         ):
@@ -2071,10 +2005,9 @@ class AgentLoop:
                     )
 
         async def on_progress(text: str, tool_hint: bool = False) -> None:
-            # Keep the progress/tool-hint distinction so an outlet can gate each on
-            # its own config flag (send_progress vs send_tool_hints), as the bus
-            # path did — tool-hint text rides NoticeKind.TOOL_HINT, progress rides
-            # PROGRESS. Outlets that don't render either eat both kinds anyway.
+            # 保留进度与工具提示的区别，让出口像总线路径一样，分别通过配置开关
+            # （send_progress 与 send_tool_hints）控制：工具提示文本使用
+            # NoticeKind.TOOL_HINT，进度使用 PROGRESS。不渲染两者的出口仍会吞掉这两类通知。
             if text:
                 await emit(
                     Notice(
@@ -2088,20 +2021,16 @@ class AgentLoop:
                 MediaOut(media=tuple(Media(path=p, mime="application/octet-stream", kind="file") for p in paths))
             )
 
-        # Route the message tool's reply through the token stream so a
-        # tool-driven reply streams like the main response; _process_message
-        # then returns None, so the boundary below emits nothing for it. The
-        # callback is turn-local (a ContextVar in MessageTool), so a concurrent
-        # turn cannot clobber this turn's routing — no save/restore needed.
+        # 将 message 工具的回复路由到令牌流，使工具驱动的回复像主响应一样流式输出；
+        # 此时 _process_message 返回 None，因此下方边界不会再次发出内容。回调属于当前轮次
+        # （MessageTool 中的 ContextVar），并发轮次无法覆盖本轮路由，无需保存和恢复。
         message_tool = self.tools.get("message")
         if isinstance(message_tool, MessageTool):
 
             async def _route_to_stream(content: str, media: list[str]) -> None:
-                # A message-tool reply can attach media; emit it independently so
-                # it is not dropped (_process_message returns None for a tool reply
-                # so the boundary below never sees it). The content follows the same
-                # stream switch as the main reply: StreamDelta when streaming, one
-                # Text otherwise — else a non-streaming outlet would eat the delta.
+                # message 工具的回复可以附带媒体；需独立发出以免丢失（工具回复会让
+                # _process_message 返回 None，下方边界看不到它）。内容与主回复遵循同一流式开关：
+                # 流式时使用 StreamDelta，否则使用单个 Text；不然非流式出口会吞掉增量。
                 if media:
                     await _emit_media(media)
                 if text_sink is not None and content:
@@ -2113,10 +2042,9 @@ class AgentLoop:
 
             message_tool.set_send_callback(_route_to_stream)
 
-        # A CRON turn must not let the agent schedule new cron jobs mid-run. The
-        # CronTool guards via a ContextVar; set it here, in the lane task that runs
-        # the turn, so it propagates to the tool — the cron callback sets it in a
-        # different task that never reaches this one.
+        # CRON 轮次不得让智能体在运行途中调度新的 cron 任务。CronTool 通过 ContextVar
+        # 防护；需在此处、即实际运行本轮的通道任务中设置，才能传播到工具。cron 回调在
+        # 另一个任务中设置该值，无法传到本任务。
         cron_tool = self.tools.get("cron")
         cron_token = None
         if req.origin is Origin.CRON and isinstance(cron_tool, CronTool):
@@ -2146,8 +2074,8 @@ class AgentLoop:
             if cron_token is not None and isinstance(cron_tool, CronTool):
                 cron_tool.reset_cron_context(cron_token)
 
-        # Single return->emit boundary (N-UNIFORM). MediaOut is independent of the
-        # stream and precedes Text (G-MEDIA-2(a): the current order is media-first).
+        # 单一的返回到发出边界（N-UNIFORM）。MediaOut 独立于流，并先于 Text
+        # （G-MEDIA-2(a)：当前顺序为媒体优先）。
         if out is not None:
             reply_content, reply_media = out
             if reply_media:
@@ -2162,8 +2090,8 @@ class AgentLoop:
             completion_tokens=int(usage_sink.get("completion_tokens", 0) or 0),
             total_tokens=int(usage_sink.get("total_tokens", 0) or 0),
         )
-        # A message-tool reply returns None from _process_message but did reply,
-        # so it counts as an explicit reply too.
+        # message 工具回复虽会让 _process_message 返回 None，但确实已回复，
+        # 因此也计作显式回复。
         replied_via_tool = isinstance(message_tool, MessageTool) and message_tool.sent_in_turn
         return TurnOutcome(
             usage=usage,

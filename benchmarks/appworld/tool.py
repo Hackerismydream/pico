@@ -74,5 +74,5 @@ class AppWorldExecuteTool(Tool):
         return resp.json().get("output", "")
 
     async def execute(self, code: str) -> str:
-        # Blocking HTTP -> run off the event loop so the loop stays responsive.
+        # 阻塞式 HTTP 需移出事件循环执行，保持循环响应性。
         return await asyncio.to_thread(self._post_execute, code)

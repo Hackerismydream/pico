@@ -85,9 +85,6 @@ def dispatcher() -> Dispatcher:
     return d
 
 
-# --- Happy path ---
-
-
 async def test_turn_send_happy_path_returns_turn_id_and_accepted() -> None:
     scheduler = FakeScheduler()
     turn_ids: dict[int, str] = {}
@@ -109,8 +106,7 @@ async def test_turn_send_happy_path_returns_turn_id_and_accepted() -> None:
     assert set(result) == {"turn_id", "accepted"}
     assert result["accepted"] is True
     assert isinstance(result["turn_id"], str) and len(result["turn_id"]) >= 16
-    # The turn was submitted and the slot bound. The real runner emits
-    # message.start only when this request actually begins.
+
     assert len(scheduler.submitted) == 1
     assert scheduler.submitted[0].conversation == "tui:default"
     request_key = id(scheduler.submitted[0])
@@ -155,9 +151,6 @@ async def test_turn_send_binds_active_slot_after_submit() -> None:
     assert turn_mod.is_turn_active("tui:default") is True
 
 
-# --- Error paths ---
-
-
 async def test_turn_send_rejects_active_turn_with_minus_32003() -> None:
     scheduler = FakeScheduler()
     turn_ids: dict[int, str] = {}
@@ -197,7 +190,7 @@ async def test_turn_send_rejects_unknown_model_with_minus_32008() -> None:
 
 
 async def test_turn_send_without_scheduler_emits_model_not_available() -> None:
-    # No agent loop wired (scheduler None, no build error) → per-turn -32008 event.
+
     emitter = FakeEmitter()
     result = await turn_send(
         {
@@ -228,7 +221,7 @@ async def test_turn_send_without_scheduler_reports_discarded_attachment(tmp_path
 
 
 async def test_turn_send_when_submit_rejected_surfaces_turn_failed() -> None:
-    # Server draining: submit raises → message.start + turn_failed error, no bind.
+
     from pico.spine.scheduler import SchedulerDrainingError
     from pico.tui_rpc.methods import turn as turn_mod
 
@@ -243,12 +236,12 @@ async def test_turn_send_when_submit_rejected_surfaces_turn_failed() -> None:
     assert result["accepted"] is True
     assert emitter.types() == ["message.start", "error"]
     assert emitter.emitted[-1][1]["payload"]["message"] == "turn_failed"
-    # No leak: a rejected submit binds neither map.
+
     assert turn_ids == {} and "tui:default" not in turn_mod._active_turns
 
 
 async def test_turn_send_without_scheduler_surfaces_build_error_code() -> None:
-    # A latched build error surfaces with its own code, not -32008.
+
     class _BuildErr(RpcError):
         CODE = -32603
         MESSAGE = "internal_error"
@@ -289,9 +282,6 @@ async def test_turn_send_without_scheduler_hides_unmarked_build_error_detail() -
     assert "secret detail" not in payload["message"]
 
 
-# --- Params validation ---
-
-
 async def test_turn_send_rejects_missing_session_key() -> None:
     with pytest.raises(Exception):  # noqa: BLE001
         await turn_send({"content": "missing session_key"}, scheduler=FakeScheduler())
@@ -318,9 +308,6 @@ async def test_turn_send_accepts_optional_channel_chat_id_sender_id() -> None:
     assert result["accepted"] is True
     src = scheduler.submitted[0].source
     assert (src.channel, src.chat_id, src.sender_id) == ("tui", "default", "user")
-
-
-# --- End-to-end via Dispatcher ---
 
 
 async def test_turn_send_dispatches_via_dispatcher(dispatcher: Dispatcher) -> None:

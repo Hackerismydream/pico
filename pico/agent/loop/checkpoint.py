@@ -36,8 +36,7 @@ from loguru import logger
 
 from pico.product import WORKSPACE_STATE_DIRNAME
 
-# Committer identity baked into the shadow repo so commits don't depend on the
-# user's global git config (and never touch it).
+# 将提交者身份写入影子仓库，使提交不依赖也不修改用户的全局 Git 配置。
 _GIT_IDENT = (
     "-c",
     "user.name=Pico",
@@ -48,19 +47,14 @@ _GIT_IDENT = (
 )
 
 
-# Ephemeral / risky patterns baked into the shadow ``info/exclude``. Defense
-# in depth: even when the workspace has no ``.gitignore``, these never end up
-# in a snapshot. Categories (kept aligned with what real projects ignore):
+# 将临时或高风险模式写入影子仓库的 ``info/exclude``。通过纵深防御，即使工作区
+# 没有 ``.gitignore``，它们也不会进入快照。分类与真实项目通常忽略的内容保持一致：
 #
-# - Self / Python caches: avoid recursion into the shadow itself + standard
-#   Python build noise.
-# - Build / package artifacts: typical multi-language output dirs that can be
-#   GB-scale and have zero recovery value.
-# - Virtual environments: same — large and re-creatable from lockfiles.
-# - Credentials & dotenv: high-impact leak vectors. The user's own
-#   ``.gitignore`` usually covers these; we still exclude in case it doesn't
-#   (e.g. a fresh workspace that was never git-init'd).
-# - Logs / OS junk / IDE state: not secrets, just noise that bloats the repo.
+# - 影子仓库自身和 Python 缓存：避免递归收录仓库和常见 Python 构建噪声。
+# - 构建和打包产物：常见多语言输出目录，可达 GB 级且没有恢复价值。
+# - 虚拟环境：体积大，且可从锁文件重建。
+# - 凭据和 dotenv：高影响泄漏载体。用户的 ``.gitignore`` 通常会覆盖，但仍需兜底排除。
+# - 日志、操作系统垃圾和 IDE 状态：不是密钥，只会使仓库膨胀。
 _DEFAULT_EXCLUDES = """\
 # Pico shadow-git default excludes (see checkpoint.py).
 # Layered on top of any .gitignore files in the work-tree.
@@ -115,18 +109,14 @@ Thumbs.db
 """
 
 
-# How often (in successful commits) to fire ``git gc --auto`` against the
-# shadow repo. ``--auto`` lets git itself decide whether GC is warranted based
-# on its internal heuristics (``gc.auto`` threshold etc.); we just provide the
-# heartbeat. 0 disables the periodic invocation entirely.
+# 对影子仓库触发 ``git gc --auto`` 的成功提交间隔。``--auto`` 让 Git 根据内部启发式
+# 自行判断是否需要 GC，此处只提供心跳。0 完全禁用周期调用。
 _GC_EVERY_N_COMMITS = 50
 
 
-# Upper bound on any single git subprocess. Without this, an NFS lock, a
-# held ``.git/index.lock``, or a full disk could hang ``communicate()``
-# indefinitely and brick the agent loop — violating this service's
-# "never break a turn" contract. Generous enough that normal cold-init
-# fits comfortably; tight enough to detect a real hang within one turn.
+# 单个 Git 子进程的上限。如果没有此限制，NFS 锁、被占用的 ``.git/index.lock`` 或磁盘已满
+# 都可能让 ``communicate()`` 永久挂起并锁死 Agent Loop。该值宽裕到可容纳正常冷启动，
+# 又足够严格，能在一个 Turn 内识别真正挂起。
 _GIT_TIMEOUT_SECONDS = 30.0
 
 
@@ -147,13 +137,10 @@ class CheckpointService:
             shadow_path = Path(*shadow_path.parts[1:])
         candidate = (state_root / shadow_path).resolve()
         root_label = "workspace" if state is None else "state root"
-        # Containment is a load-bearing invariant: per-workspace recovery
-        # isolation (Bug2) breaks if the shadow git lands outside its state
-        # root, since a second AgentLoop on a different workspace
-        # configured with a similarly-escaping path could share the repo
-        # and cross-contaminate ``edited_files``. ``..`` / absolute paths /
-        # ``""`` / ``"."`` all fall into this trap; reject them with a
-        # clear error rather than letting the resolved path drift silently.
+        # 包容性是关键不变式：如果影子 Git 落到状态根目录之外，按工作区的恢复隔离就会失效。
+        # 不同工作区中配置了类似逃逸路径的另一个 AgentLoop 可能共享仓库，交叉污染
+        # ``edited_files``。``..``、绝对路径、``""`` 和 ``"."`` 都会触发该问题；
+        # 应以清晰错误拒绝，而不是让解析后的路径静默漂移。
         if candidate == state_root or not candidate.is_relative_to(state_root):
             raise ValueError(
                 f"shadow_dir={shadow_dir!r} must resolve to a path strictly "
@@ -191,9 +178,8 @@ class CheckpointService:
                 timeout=_GIT_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:
-            # NFS / index-lock / disk-full pathology: don't leak a zombie,
-            # don't let the turn hang. Synthesize a non-zero rc so the
-            # caller's degrade-on-failure path engages.
+            # NFS、索引锁或磁盘已满时，不泄漏僵尸进程，也不让 Turn 挂起。
+            # 合成非零返回码，触发调用方的失败降级路径。
             try:
                 proc.kill()
                 await proc.wait()
@@ -218,9 +204,8 @@ class CheckpointService:
                 if rc != 0:
                     logger.debug("checkpoint init failed: {}", err.strip())
                     return False
-                # Drop a discoverability hint next to the shadow git so a user
-                # who notices ``.pico/`` can identify it without grepping
-                # the codebase. Best-effort — write failure here is fine.
+                # 在影子 Git 旁写入可发现性提示，让注意到 ``.pico/`` 的用户无需搜索代码库即可识别它。
+                # 该操作尽力而为，写入失败不影响主流程。
                 try:
                     notice = self._git_dir.parent / "NOTICE.txt"
                     notice.write_text(
@@ -237,24 +222,17 @@ class CheckpointService:
                     )
                 except OSError:
                     pass
-            # Layered ignore: shadow-specific defaults + the user's own
-            # .gitignore (auto-walked by git in the work-tree). Together they
-            # keep build artifacts, ephemeral state, and user-marked-private
-            # files (.env, secrets.yml) out of any snapshot.
+            # 分层忽略：影子仓库默认规则加用户自己的 .gitignore，后者由 Git 在工作树中自动遍历。
+            # 两者共同将构建产物、临时状态和用户标记为私密的文件排除在所有快照之外。
             exclude = self._git_dir / "info" / "exclude"
             exclude.parent.mkdir(parents=True, exist_ok=True)
             exclude.write_text(_DEFAULT_EXCLUDES, encoding="utf-8")
-            # gc.auto: git's own threshold for "objects/refs are getting
-            # crufty, fire a real GC". Setting it once at init lets every
-            # subsequent ``git gc --auto`` consult the same threshold without
-            # us passing ``-c`` on each call.
+            # gc.auto 是 Git 判断对象和引用是否已累积到需要真正 GC 的阈值。初始化时设置一次，
+            # 后续每次 ``git gc --auto`` 都可查询同一阈值，无需每次传入 ``-c``。
             await self._git("config", "gc.auto", "256")
-            # gc.autoDetach=false: when git decides to auto-gc, run gc in the
-            # foreground instead of detaching a background daemon. Detached
-            # gc races with workspace cleanup (test tempdirs, agent shutdown)
-            # and leaves "Directory not empty" errors when the rmtree hits a
-            # gc still writing into ``objects/``. Synchronous gc is governed
-            # by our _GIT_TIMEOUT_SECONDS so it can't hang the turn either.
+            # gc.autoDetach=false 让 Git 决定自动 GC 时在前台运行，而不分离后台守护进程。
+            # 分离的 GC 会与工作区清理（测试临时目录、Agent 关闭）竞态；rmtree 遇到仍在写
+            # ``objects/`` 的 GC 时会报“目录非空”。同步 GC 受 _GIT_TIMEOUT_SECONDS 约束，同样不会挂起 Turn。
             await self._git("config", "gc.autoDetach", "false")
             self._ready = True
             return True
@@ -275,11 +253,11 @@ class CheckpointService:
             if rc != 0:
                 logger.debug("checkpoint add failed: {}", err.strip())
                 return None, []
-            # Files staged this turn = this turn's changes. Capture before commit.
+            # 当前 Turn 暂存的文件就是本 Turn 的变更，需在提交前捕获。
             _, out, _ = await self._git("diff", "--cached", "--name-only")
             changed = [ln for ln in out.splitlines() if ln.strip()]
             if not changed:
-                return None, []  # nothing to snapshot
+                return None, []  # 没有可快照的内容
             rc, _, err = await self._git(*_GIT_IDENT, "commit", "-m", label)
             if rc != 0:
                 logger.debug("checkpoint commit failed: {}", err.strip())

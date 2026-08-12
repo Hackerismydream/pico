@@ -73,7 +73,7 @@ async def test_analyze_handles_code_fence_wrapping() -> None:
 async def test_analyze_provider_error_defaults_to_retrieval() -> None:
     provider = _StubProvider(RuntimeError("provider boom"))
     result = await QueryRewriter(provider).analyze("something")
-    # Safe fallback — never silently disable retrieval on infra failure.
+
     assert result.need_retrieval is True
     assert result.rewritten_query is None
 
@@ -87,8 +87,7 @@ async def test_analyze_bad_json_defaults_to_retrieval() -> None:
 async def test_analyze_empty_query_skips_retrieval() -> None:
     provider = _StubProvider(json.dumps({"need_retrieval": True}))
     result = await QueryRewriter(provider).analyze("   ")
-    # No point calling the LLM on whitespace — and the agent has nothing
-    # to retrieve for anyway.
+
     assert result.need_retrieval is False
     assert provider.calls == []
 

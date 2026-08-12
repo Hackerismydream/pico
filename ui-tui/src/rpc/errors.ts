@@ -1,13 +1,12 @@
-// Pico TUI RPC — typed error class hierarchy.
+// Pico TUI RPC 带类型的错误类层次结构。
 //
-// Mirrors the 15 server-defined error codes in specs/tui-ipc.md §4.
-// `rpcErrorFromFrame(frame)` is the canonical constructor used by `client.ts`
-// when a JSON-RPC error response arrives — it selects the matching subclass
-// by `code`, falling back to the generic `RpcError` for unknown codes.
+// 与 specs/tui-ipc.md §4 中服务端定义的 15 个错误码对应。收到 JSON-RPC
+// 错误响应时，`client.ts` 使用规范构造器 `rpcErrorFromFrame(frame)` 按
+// `code` 选择匹配子类，未知错误码则回退到通用 `RpcError`。
 
 import type { JsonRpcErrorObject } from './generated.js'
 
-/** Base class for all JSON-RPC error responses surfaced to callers. */
+/** 所有向调用方暴露的 JSON-RPC 错误响应的基类。 */
 export class RpcError extends Error {
   readonly code: number
   readonly data: unknown
@@ -20,7 +19,7 @@ export class RpcError extends Error {
   }
 }
 
-// -- Server-defined business errors (specs §4) -------------------------------
+// -- 服务端定义的业务错误（规范 §4）------------------------------------------
 
 export class SessionNotFoundError extends RpcError {
   constructor(f: JsonRpcErrorObject) {
@@ -113,7 +112,7 @@ export class NotDispatchCompatibleError extends RpcError {
   }
 }
 
-// -- code → subclass mapping -------------------------------------------------
+// -- 错误码到子类的映射 --------------------------------------------------------
 
 const CODE_TO_CTOR: Record<number, new (f: JsonRpcErrorObject) => RpcError> = {
   [-32001]: SessionNotFoundError,

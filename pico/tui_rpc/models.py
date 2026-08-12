@@ -17,9 +17,8 @@ from typing import Annotated, Any, Literal, Union
 from pydantic import BaseModel, ConfigDict, Field
 
 # ---------------------------------------------------------------------------
-# Re-usable model config.  ``extra="forbid"`` makes Pydantic emit
-# ``additionalProperties: false`` in the generated JSON Schema, matching the
-# OpenRPC schema's explicit ``additionalProperties: false`` on every object.
+# 可复用的模型配置。``extra="forbid"`` 会让 Pydantic 在生成的 JSON Schema 中输出
+# ``additionalProperties: false``，与 OpenRPC 模式对每个对象的显式定义一致。
 # ---------------------------------------------------------------------------
 
 
@@ -30,14 +29,13 @@ class _Strict(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Public types (specs/tui-ipc.md §3.12)
+# 公开类型（specs/tui-ipc.md §3.12）
 # ---------------------------------------------------------------------------
 
 
-# ``JsonValue`` in JSON Schema is the union of all primitive + container types.
-# We use ``Any`` here because the schema declares ``JsonValue`` as a permissive
-# any-of-primitives type and the schema-match test pins JsonValue to its OpenRPC
-# spec rather than to its Pydantic schema (see ``components/schemas/JsonValue``).
+# JSON Schema 中的 ``JsonValue`` 是全部基本类型和容器类型的联合。此处使用 ``Any``，
+# 因为模式将 ``JsonValue`` 定义为宽松的基本类型任选项，而模式匹配测试将 JsonValue
+# 锁定到 OpenRPC 规范而非 Pydantic 模式（见 ``components/schemas/JsonValue``）。
 JsonValue = Any
 
 
@@ -79,7 +77,7 @@ class UsageSnapshot(_Strict):
 
 
 # ---------------------------------------------------------------------------
-# TurnEvent — discriminated union over the wire event variants.
+# TurnEvent：线上事件变体的可辨别联合。
 # ---------------------------------------------------------------------------
 
 
@@ -208,7 +206,7 @@ TurnEvent = Annotated[
 
 
 # ---------------------------------------------------------------------------
-# session.* methods
+# session.* 方法
 # ---------------------------------------------------------------------------
 
 
@@ -366,7 +364,7 @@ class SessionBranchResult(_Strict):
 
 
 # ---------------------------------------------------------------------------
-# turn.* methods
+# turn.* 方法
 # ---------------------------------------------------------------------------
 
 
@@ -419,7 +417,7 @@ class ImageAttachResult(_Strict):
 
 
 # ---------------------------------------------------------------------------
-# model.* methods
+# model.* 方法
 # ---------------------------------------------------------------------------
 
 
@@ -489,7 +487,7 @@ class ModelRemoveModelResult(_Strict):
 
 
 # ---------------------------------------------------------------------------
-# config.* methods
+# config.* 方法
 # ---------------------------------------------------------------------------
 
 
@@ -513,16 +511,15 @@ class ConfigSetParams(_Strict):
 
 class ConfigSetResult(_Strict):
     applied: bool
-    # ``previous`` is a *required* field whose value may legitimately be
-    # ``null``.  We type it as ``JsonValue`` (``Any``) because ``JsonValue``
-    # already includes ``null``; the schema's redundant ``oneOf: [JsonValue,
-    # null]`` collapses to the same canonical "any" form.
+    # ``previous`` 是必填字段，但值可以合法地为 ``null``。将它标注为 ``JsonValue``
+    # （``Any``），因为 ``JsonValue`` 已包含 ``null``；模式中冗余的
+    # ``oneOf: [JsonValue, null]`` 最终也会收敛为同一标准的“任意值”形式。
     previous: JsonValue = Field(...)
     value: str | None = None
 
 
 # ---------------------------------------------------------------------------
-# system.* methods
+# system.* 方法
 # ---------------------------------------------------------------------------
 
 
@@ -599,13 +596,13 @@ class ClarifyRespondResult(_Strict):
 
 
 # ---------------------------------------------------------------------------
-# Method registry — used by tests/test_rpc_schema_match.py to walk every
-# method and compare its Pydantic Params/Result models against the OpenRPC
-# schema.  Keys MUST match the ``method.name`` strings in openrpc.json.
+# 方法注册表：tests/test_rpc_schema_match.py 用它遍历每个方法，并将其 Pydantic
+# Params/Result 模型与 OpenRPC 模式比较。键必须与 openrpc.json 中的
+# ``method.name`` 字符串一致。
 # ---------------------------------------------------------------------------
 
 METHOD_MODELS: dict[str, tuple[type[BaseModel], type[BaseModel]]] = {
-    # session.*
+    # session.* 方法
     "session.list": (SessionListParams, SessionListResult),
     "session.create": (SessionCreateParams, SessionCreateResult),
     "session.close": (SessionCloseParams, SessionCloseResult),
@@ -617,22 +614,22 @@ METHOD_MODELS: dict[str, tuple[type[BaseModel], type[BaseModel]]] = {
     "session.undo": (SessionUndoParams, SessionUndoResult),
     "session.branch": (SessionBranchParams, SessionBranchResult),
     "session.export": (SessionExportParams, SessionExportResult),
-    # turn.*
+    # turn.* 方法
     "turn.send": (TurnSendParams, TurnSendResult),
     "turn.subscribe": (TurnSubscribeParams, TurnSubscribeResult),
     "turn.unsubscribe": (TurnUnsubscribeParams, TurnUnsubscribeResult),
     "turn.cancel": (TurnCancelParams, TurnCancelResult),
     "image.attach": (ImageAttachParams, ImageAttachResult),
-    # model.*
+    # model.* 方法
     "model.options": (ModelOptionsParams, ModelOptionsResult),
     "model.save_key": (ModelSaveKeyParams, ModelSaveKeyResult),
     "model.disconnect": (ModelDisconnectParams, ModelDisconnectResult),
     "model.add_model": (ModelAddModelParams, ModelAddModelResult),
     "model.remove_model": (ModelRemoveModelParams, ModelRemoveModelResult),
-    # config.*
+    # config.* 方法
     "config.get": (ConfigGetParams, ConfigGetResult),
     "config.set": (ConfigSetParams, ConfigSetResult),
-    # system.*
+    # system.* 方法
     "system.hello": (SystemHelloParams, SystemHelloResult),
     "system.ping": (SystemPingParams, SystemPingResult),
     "system.version": (SystemVersionParams, SystemVersionResult),
@@ -643,7 +640,7 @@ METHOD_MODELS: dict[str, tuple[type[BaseModel], type[BaseModel]]] = {
 }
 
 __all__ = [
-    # public types
+    # 公开类型
     "SessionInfo",
     "SessionListItem",
     "SessionMessage",
@@ -674,6 +671,6 @@ __all__ = [
     "CronDeliveredPayload",
     "SubagentDeliveredEvent",
     "SubagentDeliveredPayload",
-    # registry
+    # 注册表
     "METHOD_MODELS",
 ]

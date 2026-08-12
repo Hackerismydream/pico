@@ -36,12 +36,10 @@ from pico.token_wise.base import TokenStrategy
 if TYPE_CHECKING:
     from pico.agent.tools.registry import ToolRegistry
 
-# Core tools kept exposed every turn — the agent would be crippled having to
-# search for these. Beyond the file/search/exec primitives, ``message``,
-# ``ask_user`` and ``spawn`` are interaction/orchestration primitives the agent
-# must reach on any turn (reply, unblock via a question, delegate a subagent) —
-# hiding them risks the model not thinking to search for them at all. Config
-# ``tools.tool_search.always_visible`` extends this set.
+# 核心工具在每个 Turn 都保持可见，否则 Agent 还得搜索它们，基本能力会受限。除文件、
+# 搜索和执行原语外，``message``、``ask_user`` 和 ``spawn`` 是任何 Turn 都可能需要的
+# 交互和编排原语：回复、通过提问解除阻塞、委托子 Agent。隐藏后模型可能根本想不到搜索它们。
+# ``tools.tool_search.always_visible`` 配置可扩展此集合。
 DEFAULT_ALWAYS_VISIBLE: tuple[str, ...] = (
     "read_file",
     "write_file",
@@ -56,7 +54,7 @@ DEFAULT_ALWAYS_VISIBLE: tuple[str, ...] = (
 )
 
 TOOL_CALL_NAME: str = "tool_call"
-# The meta-tools: always registered when the feature is on, never cataloged.
+# 元工具在功能开启时始终注册，但绝不进入目录。
 META_TOOL_NAMES: frozenset[str] = frozenset({"tool_search", TOOL_CALL_NAME})
 
 
@@ -300,9 +298,8 @@ class ToolSearchStrategy(TokenStrategy):
             return messages, out, model
         present = {t["function"]["name"] for t in tools}
         if not META_TOOL_NAMES.issubset(present):
-            # Meta-tools unavailable (e.g. removed via disabled_tools): expose
-            # everything rather than strand the cataloged tools behind a search
-            # the model cannot invoke.
+            # 元工具不可用时，例如被 disabled_tools 移除，直接暴露全部工具；
+            # 不要将已编目的工具困在模型无法调用的搜索之后。
             return messages, tools, model
         visible = self._ctrl.visible_names()
         out = [t for t in tools if t["function"]["name"] in visible]

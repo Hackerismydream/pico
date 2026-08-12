@@ -45,9 +45,8 @@ class EvalEngine:
     ) -> None:
         self._config = config or EvalEngineConfig()
 
-        # Judge needs a provider; if none was supplied (test harnesses,
-        # disabled-config deployments) we substitute a stub that always
-        # returns unknown so the after-iteration hook stays quiet.
+        # Judge 需要 Provider；若未提供（例如测试框架或禁用配置的部署），
+        # 则替换为始终返回 unknown 的桩，使 after-iteration hook 保持静默。
         if provider is not None:
             self._judge: EvalJudge = EvalJudge(
                 provider,
@@ -79,9 +78,9 @@ class EvalEngine:
 
 
 # ---------------------------------------------------------------------------
-# Stub fallbacks used when the engine is constructed without a provider /
-# MemoryEngine — keep ``EvalEngine.hooks()`` returning real AgentHook
-# instances so the type contract holds for downstream CompositeHook use.
+# Engine 在没有 Provider / MemoryEngine 时使用的桩回退。
+# 让 ``EvalEngine.hooks()`` 仍返回真实 AgentHook 实例，确保下游
+# CompositeHook 使用时满足类型契约。
 # ---------------------------------------------------------------------------
 
 

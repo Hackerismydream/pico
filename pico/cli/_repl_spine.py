@@ -77,7 +77,7 @@ class CliOutlet:
             and self._render_error is not None
         ):
             self._render_error(f"Tool failed: {out.result_preview}")
-        # Other Notice kinds / ToolEvent / MediaOut are eaten (render-can't path).
+        # 其他 Notice 类型、ToolEvent 和 MediaOut 会被吞掉（无法渲染的路径）。
 
 
 def _make_cli_sink(
@@ -156,8 +156,8 @@ async def run_repl_loop(
     barrier that the async outlet has caught up. tty/console and exit/slash are
     injected so this runs against the real scheduler and hub under test."""
     while True:
-        # Wrap the whole iteration (read + turn) so Ctrl-C / EOF at any point —
-        # including mid-turn — exits cleanly, as the bus loop did.
+        # 包住整个迭代（读取和轮次），使任意时刻（包括轮次中途）的 Ctrl-C / EOF 都能像
+        # 总线循环一样干净退出。
         try:
             user_input = await read_input()
             command = user_input.strip()

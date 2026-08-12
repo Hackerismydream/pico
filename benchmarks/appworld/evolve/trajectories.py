@@ -119,8 +119,8 @@ def default_sess_path(runs_root: Path, ws_root: Path, tid: str, exp: str, k: int
     legacy = ws_root / "sessions" / f"{tid}_{exp}_k{k}.jsonl"
     if legacy.exists():
         return legacy
-    # Pico SessionManager layout: conversation key "appworld:<tid>_<exp>_k<k>"
-    # persists to sessions/<channel>/<chat_id>.jsonl.
+    # Pico SessionManager 将对话键 "appworld:<tid>_<exp>_k<k>" 持久化为
+    # sessions/<channel>/<chat_id>.jsonl。
     pico = ws_root / "sessions" / "appworld" / f"{tid}_{exp}_k{k}.jsonl"
     return pico if pico.exists() else None
 
@@ -165,9 +165,9 @@ def _failing_attempt(runs_root: Path, ws_root: Path, exp: str, tid: str, k: int)
         if sp is None or not rp.exists():
             continue
         r = json.load(open(rp))
-        if r.get("infra_error"):  # infra != agent failure — don't diagnose
+        if r.get("infra_error"):  # 基础设施故障不等于智能体失败，不参与诊断。
             continue
-        if r.get("success"):  # want a FAILING attempt (borderline tasks have both)
+        if r.get("success"):  # 需要失败尝试；临界任务可能同时有成败尝试。
             continue
         return sp, r
     return None
@@ -241,7 +241,7 @@ def build_out_dir_trajectory_source(
         n_failing = 0
         for tid in sorted(chosen):
             src_exp, ev = chosen[tid]
-            if ev.passes >= ev.attempts:  # fully passing -> not a failure, skip
+            if ev.passes >= ev.attempts:  # 全部通过则不属于失败，跳过。
                 continue
             n_failing += 1
             picked = _failing_attempt(runs_root, ws_root, src_exp, tid, k)
@@ -255,10 +255,9 @@ def build_out_dir_trajectory_source(
                 transcript = f"{attempts}\n\n{transcript}"
             trajs.append((tid, desc, transcript))
         if n_failing and not trajs:
-            # Results exist but not one failing trajectory could be rendered:
-            # the session transcripts are gone (e.g. a results-only cold start
-            # where runs/ was copied but ws/sessions/ was not). Diagnosis would
-            # otherwise silently judge 0 failures and every round spins empty.
+            # 结果存在但没有任何失败轨迹可渲染，说明会话记录已丢失，例如只复制
+            # runs/ 而未复制 ws/sessions/ 的仅结果冷启动。否则诊断会静默判定零
+            # 失败，使每轮都空转。
             raise RuntimeError(
                 f"diagnosis found {n_failing} failing task(s) in '{exp}' but "
                 f"could render 0 trajectories — the session transcripts under "
@@ -294,8 +293,8 @@ def build_failed_attempt_renderer(
                 if picked is not None:
                     desc, transcript = render_trajectory(picked[0], picked[1], cap=cap)
                     return f"TASK: {desc}\n\n{transcript}"
-            # No failing attempt -> a fully-passing task: render it as contrast
-            # material, so the driver can check its trigger does NOT fire here.
+            # 没有失败尝试表示任务全部通过；将其渲染为对照材料，让驱动检查触发器
+            # 不会在这里触发。
             for name in _ladder_exps(exp):
                 picked = _passing_attempt(runs_root, ws_root, name, task_id, k)
                 if picked is not None:

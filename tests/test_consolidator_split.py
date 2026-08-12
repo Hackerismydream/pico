@@ -42,7 +42,7 @@ _EVIDENCE_RE = re.compile(r"\[src: episodes\.md @ [^\]]+\]")
 
 
 # ===========================================================================
-# FakeProvider — multi-tool aware.
+
 # ===========================================================================
 
 
@@ -83,7 +83,7 @@ class _FakeProvider(LLMProvider):
 
 
 # ===========================================================================
-# Pure-helper tests.
+
 # ===========================================================================
 
 
@@ -130,14 +130,13 @@ class TestSpliceH2Section:
         )
         assert "old project bullet" not in new
         assert "new project bullet" in new
-        # other sections survive verbatim
+
         assert "- habit bullet [src: episodes.md @ 2026-05-02 09:00]" in new
         assert "- note bullet [src: episodes.md @ 2026-05-03 11:00]" in new
 
     def test_preserves_h1_and_other_h2_byte_identical(self):
         new = _splice_h2_section(self.USER_MD, "## Projects", "- new\n")
-        # Hash the bytes of `## Habits` onward — should equal the original
-        # from `## Habits` onward.
+
         orig_tail = self.USER_MD[self.USER_MD.index("## Habits") :]
         new_tail = new[new.index("## Habits") :]
         assert new_tail == orig_tail
@@ -150,14 +149,14 @@ class TestSpliceH2Section:
         )
         assert "## Foresight" in new
         assert "predicted X" in new
-        # original ## Projects/## Habits/## Notes still present
+
         assert "## Projects" in new
         assert "## Habits" in new
         assert "## Notes" in new
 
 
 # ===========================================================================
-# annotate() — light path.
+
 # ===========================================================================
 
 CASE_06_MESSAGES: list[dict[str, Any]] = [
@@ -211,7 +210,7 @@ async def test_annotate_does_not_touch_user_md(tmp_path: Path):
 
     ok = await store.annotate(CASE_06_MESSAGES, provider, "fake-model")
     assert ok is True
-    # Byte-identical user.md.
+
     assert store.read_long_term() == seeded
 
 
@@ -310,7 +309,7 @@ async def test_annotate_tolerates_string_episode_summary(tmp_path: Path):
 
 
 # ===========================================================================
-# Tag counting + hot-tag detection.
+
 # ===========================================================================
 
 
@@ -345,22 +344,22 @@ class TestTagAccounting:
             ],
         )
         hot = store.hot_tags(threshold=5)
-        # project-b: 5 occurrences ≥ 5 → hot. project-a: 2 < 5 → not hot.
+
         assert [t for t, _, _ in hot] == ["project-b"]
 
     def test_hot_tags_respects_existing_offset(self, tmp_path: Path):
         store = MemoryStore(tmp_path)
         _seed_episodes(store, [f"[2026-05-{day:02d} 09:00] e{day} #project-b" for day in range(1, 8)])
-        # Offset already at 6, so only 1 new episode — below threshold 5.
+
         store.write_tag_offsets({"project-b": 6})
         assert store.hot_tags(threshold=5) == []
-        # If we lower threshold to 1, the 1 new episode lights it up.
+
         hot = store.hot_tags(threshold=1)
         assert [t for t, _, _ in hot] == [("project-b", 7, 6)[0]]
 
 
 # ===========================================================================
-# refresh_section() + maybe_refresh_hot_tags() — heavy path.
+
 # ===========================================================================
 
 SEEDED_USER_MD = (
@@ -425,10 +424,10 @@ async def test_refresh_section_rewrites_target_only(tmp_path: Path):
     assert ok is True
 
     new_user_md = store.read_long_term()
-    # Hot section updated.
+
     assert "Status: lock fix verified" in new_user_md
-    assert "old A status" in new_user_md  # preserved inside the same H2
-    # ## Habits + ## Notes byte-identical from their headings to EOF.
+    assert "old A status" in new_user_md
+
     habits_orig = SEEDED_USER_MD[SEEDED_USER_MD.index("## Habits") :]
     habits_new = new_user_md[new_user_md.index("## Habits") :]
     assert habits_new == habits_orig
@@ -439,19 +438,19 @@ async def test_maybe_refresh_hot_tags_fires_only_above_threshold(tmp_path: Path)
     """Below threshold → no refresh, no LLM call, no state file write."""
     store = MemoryStore(tmp_path, now_fn=lambda: datetime(2026, 5, 8, 10, 0))
     store.write_long_term(SEEDED_USER_MD)
-    _seed_project_b_episodes(store, n=3)  # only 3 — below threshold 5
+    _seed_project_b_episodes(store, n=3)
 
     provider = _FakeProvider()
-    # No response configured: any LLM call will RAISE.
+
     refreshed = await store.maybe_refresh_hot_tags(
         provider,
         "fake-model",
         threshold=5,
     )
     assert refreshed == 0
-    # Offsets file should NOT have been written.
+
     assert not store._tag_offsets_path.exists()
-    # user.md still byte-identical to seed.
+
     assert store.read_long_term() == SEEDED_USER_MD
 
 
@@ -480,5 +479,5 @@ async def test_maybe_refresh_hot_tags_advances_offsets(tmp_path: Path):
     assert refreshed == 1
     offsets = store.read_tag_offsets()
     assert offsets == {"project-b": 5}
-    # Profile bullet wrote successfully.
+
     assert "post-refresh bullet" in store.read_long_term()

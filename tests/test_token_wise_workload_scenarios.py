@@ -69,7 +69,7 @@ def api_key() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Workspace seeding
+
 # ---------------------------------------------------------------------------
 
 
@@ -119,7 +119,7 @@ def _seed_workspace(workspace: Path, soul: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Custom fixed-response tool for Scenario B
+
 # ---------------------------------------------------------------------------
 
 
@@ -150,7 +150,7 @@ class _DataLookupTool(Tool):
 
 
 # ---------------------------------------------------------------------------
-# Recording tracker — same idea as in the prior experiment
+
 # ---------------------------------------------------------------------------
 
 
@@ -167,7 +167,7 @@ class _RecordingTracker(UsageTracker):
 
 
 # ---------------------------------------------------------------------------
-# Per-call / per-variant data structures
+
 # ---------------------------------------------------------------------------
 
 
@@ -223,7 +223,7 @@ class ScenarioResult:
 
 
 # ---------------------------------------------------------------------------
-# Variant runner — scenario A (long conversation)
+
 # ---------------------------------------------------------------------------
 
 
@@ -289,13 +289,11 @@ async def _run_long_conversation(
         channels_config=None,
         strategies=registry,
     )
-    loop.tools._tools.clear()  # no tools in this scenario
+    loop.tools._tools.clear()
 
     sys_prompt = loop.context.build_system_prompt()
     sys_chars = len(sys_prompt)
 
-    # Pre-seed the session with synthetic history. Each pair adds ~180 chars,
-    # so 16 turns ≈ 2900 chars ≈ ~750 tokens of cacheable conversation prefix.
     session_key = f"sceneA:{name}"
     session = loop.sessions.get_or_create(session_key)
     seed_topics = [
@@ -358,7 +356,7 @@ async def _run_long_conversation(
 
 
 # ---------------------------------------------------------------------------
-# Variant runner — scenario B (tool result accumulation)
+
 # ---------------------------------------------------------------------------
 
 
@@ -402,7 +400,7 @@ async def _run_tool_accumulation(
         channels_config=None,
         strategies=registry,
     )
-    # Strip default tools; install ONLY our deterministic data_lookup.
+
     loop.tools._tools.clear()
     loop.tools.register(_DataLookupTool())
 
@@ -427,7 +425,7 @@ async def _run_tool_accumulation(
                 session_key=session_key,
                 chat_id=name,
             )
-        # Each fresh turn should have produced (decide → respond) = 2 LLM calls.
+
         for snap in tracker.history:
             result.calls.append(
                 CallResult(
@@ -446,7 +444,7 @@ async def _run_tool_accumulation(
 
 
 # ---------------------------------------------------------------------------
-# Report writer
+
 # ---------------------------------------------------------------------------
 
 
@@ -502,7 +500,6 @@ def _write_report(scenarios: list[ScenarioResult]) -> str:
                 )
             lines.append("")
 
-        # Conclusions per scenario
         v3 = next((v for v in sc.variants if v.name.startswith("V3")), None)
         v2 = next((v for v in sc.variants if v.name.startswith("V2")), None)
         v1 = next((v for v in sc.variants if v.name.startswith("V1")), None)
@@ -561,7 +558,7 @@ def _write_report(scenarios: list[ScenarioResult]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Tests
+
 # ---------------------------------------------------------------------------
 
 
@@ -570,7 +567,6 @@ async def test_workload_scenarios(api_key: str, tmp_path: Path):
     """Run scenarios A and B end-to-end and emit a combined report."""
     cost_so_far: dict[str, float] = {}
 
-    # ---- Scenario A: medium system + long pre-seeded history ----
     a_v1 = await _run_long_conversation(
         name="V1_baseline",
         description="No cache_control. Provider auto-cache OFF.",
@@ -613,7 +609,6 @@ async def test_workload_scenarios(api_key: str, tmp_path: Path):
 
     await asyncio.sleep(2)
 
-    # ---- Scenario B: tool result accumulation ----
     b_v1 = await _run_tool_accumulation(
         name="V1_baseline",
         description="No cache_control. Provider auto-cache OFF.",
@@ -657,9 +652,8 @@ async def test_workload_scenarios(api_key: str, tmp_path: Path):
 
     body = _write_report([scenario_a, scenario_b])
     print(f"\nReport written to: {REPORT_PATH}\n")
-    print(body[:4000])  # print head only; tail is dominated by raw JSON
+    print(body[:4000])
 
-    # ---- Hard assertions ----
     for sc in [scenario_a, scenario_b]:
         for v in sc.variants:
             assert v.error is None, f"Scenario {sc.name} variant {v.name} crashed: {v.error}"
@@ -667,13 +661,13 @@ async def test_workload_scenarios(api_key: str, tmp_path: Path):
 
     for sc in [scenario_a, scenario_b]:
         v1, v2, v3 = sc.variants[0], sc.variants[1], sc.variants[2]
-        # No cache markers ⇒ no cache activity.
+
         assert v1.total_cache_read == 0, f"{sc.name}/{v1.name}: cache reads on baseline"
         assert v1.total_cache_write == 0, f"{sc.name}/{v1.name}: cache writes on baseline"
-        # V2 + V3 must hit cache.
+
         assert v2.total_cache_read > 0, f"{sc.name}/{v2.name}: zero cache hits"
         assert v3.total_cache_read > 0, f"{sc.name}/{v3.name}: zero cache hits"
-        # Both must save vs V1.
+
         assert v3.total_cost < v1.total_cost, (
             f"{sc.name}: V3 (${v3.total_cost:.6f}) not cheaper than V1 (${v1.total_cost:.6f})"
         )
@@ -681,7 +675,6 @@ async def test_workload_scenarios(api_key: str, tmp_path: Path):
             f"{sc.name}: V2 (${v2.total_cost:.6f}) not cheaper than V1 (${v1.total_cost:.6f})"
         )
 
-    # The structural claim: V3 must beat V2 on these workloads, by at least 5%.
     for sc in [scenario_a, scenario_b]:
         v2, v3 = sc.variants[1], sc.variants[2]
         margin_pct = (1 - v3.total_cost / v2.total_cost) * 100 if v2.total_cost > 0 else 0

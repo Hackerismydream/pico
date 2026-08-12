@@ -24,9 +24,8 @@ from typing import Any
 class AnchorParams:
     """Slot budget + cull width for the K=1 anchor screen (see ``select_anchor``)."""
 
-    # 12 = 6 stable + 6 borderline controls per candidate (stratified + rotated
-    # in loop._sentinels_for): regressions concentrate on borderline tasks, and
-    # 3 stable-only sentinels were observed missing a 58%-regression candidate.
+    # 每个候选项使用 12 个对照：6 个稳定任务和 6 个边界任务，在 loop._sentinels_for 中分层并
+    # 轮换。退化集中在边界任务；观察到仅 3 个稳定哨兵会漏掉退化 58% 的候选项。
     n_sentinel: int = 12
     n_icebreaker: int = 5
     n_borderline: int = 7
@@ -86,8 +85,7 @@ class OrchestratorConfig:
     budget: Budget = field(default_factory=Budget)
     termination: Termination = field(default_factory=Termination)
 
-    # Sealed test: scored by a script into a dir the driver never reads, so the
-    # sealed-test rule is enforced by isolation, not by driver discipline.
+    # 密封测试：由脚本评分并写入驱动器永不读取的目录，因此密封规则由隔离保证，而非依赖驱动器自律。
     sealed_test_split: str = "test"
     sealed_output_dir: Path | None = None
 
@@ -99,7 +97,7 @@ class OrchestratorConfig:
         if self.k_screen < 1 or self.k_confirm < 1:
             raise ValueError("k_screen and k_confirm must be >= 1")
 
-    # Conventional on-disk state layout under work_dir.
+    # work_dir 下的约定磁盘状态布局。
     @property
     def nodes_dir(self) -> Path:
         return self.work_dir / "nodes"

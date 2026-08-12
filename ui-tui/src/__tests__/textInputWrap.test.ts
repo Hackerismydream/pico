@@ -18,14 +18,14 @@ describe('cursorLayout — word-wrap parity with wrap-ansi', () => {
   })
 
   it('wraps to next line when cursor lands exactly at the right edge', () => {
-    // 8 chars on an 8-col line: text fills the row exactly; the cursor's
-    // inverted-space cell overflows to col 0 of the next row.
+    // 八列行中放入八个字符时文本恰好填满一行，光标的反色空格单元格会溢出到
+    // 下一行第 0 列。
     expect(cursorLayout('abcdefgh', 8, 8)).toEqual({ column: 0, line: 1 })
   })
 
   it('moves words across wrap boundaries instead of splitting them', () => {
-    // With wordWrap:true, "hello wor" at cols=8 is "hello \nwor" rather
-    // than "hello wo\nr".
+    // wordWrap:true 且 cols=8 时，"hello wor" 会变成 "hello \nwor"，而不是
+    // "hello wo\nr"。
     expect(cursorLayout('hello wo', 8, 8)).toEqual({ column: 0, line: 1 })
     expect(cursorLayout('hello wor', 9, 8)).toEqual({ column: 3, line: 1 })
     expect(cursorLayout('hello worl', 10, 8)).toEqual({ column: 4, line: 1 })
@@ -83,12 +83,12 @@ describe('offsetFromPosition — word-wrap inverse of cursorLayout', () => {
   })
 
   it('maps clicks on a wrapped second row at cols boundary', () => {
-    // Long words still hard-wrap when there is no word boundary.
+    // 没有单词边界时，长单词仍会强制换行。
     expect(offsetFromPosition('abcdefghij', 1, 0, 8)).toBe(8)
   })
 
   it('maps clicks on a word-wrapped second row', () => {
-    // "hello world" at cols=8 wraps to "hello \nworld".
+    // cols=8 时，"hello world" 换行为 "hello \nworld"。
     expect(offsetFromPosition('hello world', 1, 0, 8)).toBe(6)
     expect(offsetFromPosition('hello world', 1, 3, 8)).toBe(9)
   })

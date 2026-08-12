@@ -39,15 +39,7 @@ describe('slashCompletions', () => {
   })
 })
 
-function HookSpy({
-  input,
-  blocked,
-  out
-}: {
-  input: string
-  blocked: boolean
-  out: { completions: string[] }
-}) {
+function HookSpy({ input, blocked, out }: { input: string; blocked: boolean; out: { completions: string[] } }) {
   out.completions = useCompletion(input, blocked).completions.map(item => item.display)
 
   return React.createElement(React.Fragment, null)

@@ -25,16 +25,13 @@ class Tool(ABC):
     the environment, such as reading files, executing commands, etc.
     """
 
-    # Hard ceiling (seconds) the registry enforces via asyncio.wait_for, so a
-    # tool that lacks its own timeout can't wedge the whole agent loop. None ->
-    # the registry default. Tools with a longer legitimate runtime (exec,
-    # spawn) raise this; see ToolRegistry.execute.
+    # 注册表通过 asyncio.wait_for 强制的硬上限（秒），避免未设置自身超时的工具
+    # 卡死整个 Agent Loop。None 使用注册表默认值；exec、spawn 等合法长时任务会提高它。
     timeout_seconds: float | None = None
 
-    # Tools that intentionally block waiting on a human (ask_user,
-    # request_permissions, future human-approval gates) set this True so the
-    # registry does NOT wrap them in a timeout — they manage their own
-    # auto-resolution instead of being killed mid-wait.
+    # 有意阻塞等待人类的工具（ask_user、request_permissions 及未来的人工审批门禁）
+    # 将此值设为 True，使注册表不为它们包装超时。它们自行管理自动解决，
+    # 而不是在等待中途被终止。
     blocking_interaction: bool = False
     capability = ToolCapability()
 

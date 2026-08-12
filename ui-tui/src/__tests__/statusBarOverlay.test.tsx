@@ -2,12 +2,10 @@
 // Copyright (c) 2026 EverMind.
 // See NOTICES.md.
 //
-// Regression guard: floating overlays must stay visible when the
-// status bar sits below the input (statusBar='bottom'). A blocking overlay
-// (pager / picker) unmounts the input rows, collapsing the
-// overlay's relative anchor box to height 0; at statusBar='bottom' the
-// StatusRule sibling then shares the box's computed top, which previously
-// tripped the renderer's height-0 skip and dropped the overlay entirely.
+// 回归保护：状态栏位于输入框下方（statusBar='bottom'）时，浮动浮层必须保持
+// 可见。阻塞浮层（pager/picker）会卸载输入行，使浮层的相对锚点容器高度收缩为
+// 0；此时 StatusRule 兄弟节点共享容器计算后的顶部位置，曾触发渲染器的零高度
+// 跳过逻辑并完全丢弃浮层。
 
 import { renderSync } from '@hermes/ink'
 import React from 'react'
@@ -102,9 +100,8 @@ const App = ({ completions = [] }: { completions?: CompletionItem[] }) => (
   </GatewayProvider>
 )
 
-// Render one frame at a fixed 80x24 viewport through the real @hermes/ink
-// renderer and return the rendered screen text (ANSI stripped). `setup` runs
-// after the stores are reset and statusBar is set, before the first render.
+// 通过真实 @hermes/ink 渲染器在固定 80x24 视口渲染一帧，并返回去除 ANSI 的
+// 屏幕文本。`setup` 在重置存储和设置 statusBar 后、首次渲染前运行。
 const renderFrame = async (
   mode: StatusBarMode,
   { completions = [], setup }: { completions?: CompletionItem[]; setup?: () => void } = {}

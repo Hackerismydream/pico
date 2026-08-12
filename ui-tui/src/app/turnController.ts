@@ -31,10 +31,8 @@ import { getUiState, patchUiState } from './uiStore.js'
 const ACTIVITY_LIMIT = 8
 const TRAIL_LIMIT = 8
 
-// Extracts the raw patch from a diff-only segment produced by
-// pushInlineDiffSegment. Used at message.complete to dedupe against final
-// assistant text that narrates the same patch. Returns null for anything
-// else so real assistant narration never gets touched.
+// 从 pushInlineDiffSegment 生成的纯差异片段中提取原始补丁。message.complete 使用它与叙述
+// 同一补丁的最终助手文本去重。其他内容返回 null，确保真实助手叙述不受影响。
 const diffSegmentBody = (msg: Msg): null | string => {
   if (msg.kind !== 'diff') {
     return null
@@ -183,16 +181,12 @@ class TurnController {
     resetFlowOverlays()
   }
 
-  // Preserve the interrupted turn's already-streamed content in the transcript
-  // and drop live turn state. Shared by the legacy `interruptTurn` and the
-  // typed spine cancel path (chatStream.restoreInputPrompt) so the two cannot
-  // diverge on what survives a cancel. `appendMessage`/`sys` are optional:
-  // callers without a transcript sink (older/no-op cases) get the idle-only
-  // teardown with nothing appended.
+  // 在转录中保留中断轮次已流出的内容，并丢弃实时轮次状态。旧 `interruptTurn` 与带类型的 spine
+  // 取消路径 chatStream.restoreInputPrompt 共用该逻辑，避免两者对取消后保留内容产生分歧。
+  // `appendMessage`/`sys` 可选；没有转录出口的旧调用方或空操作场景只执行空闲清理，不追加内容。
   finalizeInterruptedTurn({ appendMessage, sys }: FinalizeInterruptDeps) {
-    // A re-entrant call (e.g. a second Ctrl+C force-reset racing the server's
-    // cancel error) finds turn state already drained: it must not re-emit the
-    // bare interrupted indicator that the first call already surfaced.
+    // 重入调用（如第二次 Ctrl+C 强制重置与服务器取消错误竞速）会发现轮次状态已排空；不得重复发出
+    // 第一次调用已显示的裸中断提示。
     const reentrant = this.interrupted
     this.interrupted = true
     this.closeReasoningSegment()
@@ -201,9 +195,8 @@ class TurnController {
     const partial = this.bufRef.trimStart()
     const tools = this.pendingSegmentTools
 
-    // Drain streaming/segment state off the nanostore before writing the
-    // preserved snapshot to the transcript — otherwise each flushed segment
-    // appears in both `turn.streamSegments` and the transcript for one frame.
+    // 将保留快照写入转录前，先从 nanostore 排空流式/片段状态；否则每个已刷新片段会在一帧内
+    // 同时出现在 `turn.streamSegments` 和转录中。
     this.idle()
     this.clearReasoning()
     this.turnTools = []
@@ -217,10 +210,8 @@ class TurnController {
       appendMessage(msg)
     }
 
-    // Always surface an interruption indicator — if there's an in-flight
-    // `partial` or pending tools, fold them into a single assistant message;
-    // otherwise emit a sys note so the transcript always records that the
-    // turn was cancelled, even when only prior `segments` were preserved.
+    // 始终显示中断提示：若有正在生成的 `partial` 或待处理工具，将其折叠成单条助手消息；否则
+    // 发出系统说明，使转录始终记录轮次已取消，即使只保留了此前 `segments`。
     if (partial || tools.length) {
       appendMessage({
         role: 'assistant',
@@ -357,28 +348,22 @@ class TurnController {
   }
 
   pushInlineDiffSegment(diffText: string, tools: string[] = []) {
-    // Strip CLI chrome the gateway emits before the unified diff (e.g. a
-    // leading "┊ review diff" header written by `_emit_inline_diff` for the
-    // terminal printer). That header only makes sense as stdout dressing,
-    // not inside a markdown ```diff block.
+    // 移除网关在统一差异前发出的 CLI 装饰，例如 `_emit_inline_diff` 为终端打印器写入的前导
+    // "┊ review diff" 标题。该标题只适合作为标准输出装饰，不应出现在 Markdown ```diff 块内。
     const stripped = diffText.replace(/^\s*┊[^\n]*\n?/, '').trim()
 
     if (!stripped) {
       return
     }
 
-    // Flush any in-progress streaming text as its own segment first, so the
-    // diff lands BETWEEN the assistant narration that preceded the edit and
-    // whatever the agent streams afterwards — not glued onto the final
-    // message. This is the whole point of segment-anchored diffs: the diff
-    // renders where the edit actually happened.
+    // 先把正在生成的流式文本刷新为独立片段，使差异落在编辑前的助手叙述和之后的流式内容之间，
+    // 而不是粘到最终消息上。这正是片段锚定差异的目的：差异在编辑实际发生的位置渲染。
     this.flushStreamingSegment()
 
     const block = `\`\`\`diff\n${stripped}\n\`\`\``
 
-    // Skip consecutive duplicates (same tool firing tool.complete twice, or
-    // two edits producing the same patch). Keeping this cheap — deeper
-    // dedupe against the final assistant text happens at message.complete.
+    // 跳过连续重复项，例如同一工具触发两次 tool.complete，或两次编辑产生相同补丁。此处保持低成本；
+    // 与最终助手文本的深度去重在 message.complete 时执行。
     if (this.segmentMessages.at(-1)?.text === block) {
       return
     }
@@ -437,12 +422,9 @@ class TurnController {
   recordMessageComplete(payload: { rendered?: string; reasoning?: string; text?: string }) {
     this.closeReasoningSegment()
 
-    // Ink renders markdown via <Md>; the gateway's Rich-rendered ANSI
-    // (`payload.rendered`) is for terminals that can't.  Prioritising
-    // `rendered` here garbles output whenever a user opts into
-    // `display.final_response_markdown: render` because raw ANSI escapes
-    // pass through into the React tree.  Prefer raw text and fall back
-    // only when the gateway elected not to send any (#16391).
+    // Ink 通过 <Md> 渲染 Markdown；网关的 Rich ANSI 结果（`payload.rendered`）供无法渲染的终端
+    // 使用。用户启用 `display.final_response_markdown: render` 时，若此处优先使用 `rendered`，
+    // 原始 ANSI 转义会进入 React 树并造成乱码。应优先原始文本，仅在网关未发送文本时回退（#16391）。
     const rawText = (payload.text ?? payload.rendered ?? this.bufRef).trimStart()
     const split = splitReasoning(rawText)
     const finalText = finalTail(split.text, this.segmentMessages)
@@ -461,11 +443,8 @@ class TurnController {
       tools = []
     }
 
-    // Drop diff-only segments the agent is about to narrate in the final
-    // reply. Without this, a closing "here's the diff …" message would
-    // render two stacked copies of the same patch. Only touches segments
-    // with `kind: 'diff'` emitted by pushInlineDiffSegment — real
-    // assistant narration stays put.
+    // 删除智能体即将在最终回复中叙述的纯差异片段。否则收尾“这是差异……”消息会堆叠渲染两份
+    // 相同补丁。仅处理 pushInlineDiffSegment 发出的 `kind: 'diff'` 片段，真实助手叙述保持不动。
     const finalHasOwnDiffFence = /```(?:diff|patch)\b/i.test(finalText)
 
     const segments = this.segmentMessages.filter(msg => {
@@ -489,8 +468,7 @@ class TurnController {
       ...(tools.length && { tools })
     }
 
-    // Archive prepended so the trail msg anchors under the user prompt,
-    // not between thinking/tools and final assistant text.
+    // 将归档前置，使轨迹消息锚定在用户提示下，而不是思考/工具与最终助手文本之间。
     const finalMessages: Msg[] = [
       ...archiveDoneTodos(),
       ...segments,
@@ -503,17 +481,15 @@ class TurnController {
 
     const wasInterrupted = this.interrupted
 
-    // Archive the turn's spawn tree to history BEFORE idle() drops subagents
-    // from turnState.  Lets /replay and the overlay's history nav pull up
-    // finished fan-outs without a round-trip to disk.
+    // 在 idle() 从 turnState 丢弃子智能体前，将轮次 spawn 树归档到历史。这样 /replay 和浮层历史
+    // 导航无需往返磁盘即可调出已完成的扇出。
     const finishedSubagents = getTurnState().subagents
     const sessionId = getUiState().sid
 
     if (finishedSubagents.length > 0) {
       pushSnapshot(finishedSubagents, { sessionId, startedAt: null })
-      // Fire-and-forget disk persistence so /replay survives process restarts.
-      // The same snapshot lives in memory via spawnHistoryStore for immediate
-      // recall — disk is the long-term archive.
+      // 异步写入磁盘，使 /replay 在进程重启后仍可用。同一快照通过 spawnHistoryStore 保留在内存中
+      // 供立即召回；磁盘用于长期归档。
       void this.persistSpawnTree?.(finishedSubagents, sessionId)
     }
 
@@ -536,11 +512,9 @@ class TurnController {
     this.pruneTransient()
     this.endReasoningPhase()
 
-    // Always accumulate the raw text delta.  The pre-#16391 path replaced
-    // the entire buffer with `rendered` (an *incremental* Rich ANSI
-    // fragment), which on every tick discarded everything streamed so far
-    // — visible as overlapping coloured text and lost prose under
-    // `display.final_response_markdown: render`.
+    // 始终累积原始文本增量。#16391 前的路径会用增量 Rich ANSI 片段 `rendered` 替换整个缓冲区，
+    // 每次 tick 都丢弃此前已流出的全部内容；启用 `display.final_response_markdown: render` 时表现为
+    // 彩色文本重叠和正文丢失。
     this.bufRef += text
 
     if (getUiState().streaming) {
@@ -768,18 +742,16 @@ class TurnController {
     patch: (current: SubagentProgress) => Partial<SubagentProgress>,
     opts: { createIfMissing?: boolean } = { createIfMissing: true }
   ) {
-    // Stable id: prefer the server-issued subagent_id (survives nested
-    // grandchildren + cross-tree joins).  Fall back to the composite key
-    // for older gateways that omit the field — those produce a flat list.
+    // 稳定 ID：优先使用服务器签发的 subagent_id，可跨嵌套孙节点和跨树关联保持稳定。旧网关省略
+    // 该字段时回退到复合键；这些网关只产生扁平列表。
     const id = p.subagent_id || `sa:${p.task_index}:${p.goal || 'subagent'}`
 
     patchTurnState(state => {
       const existing = state.subagents.find(item => item.id === id)
 
-      // Late events (subagent.complete/tool/progress arriving after message.complete
-      // has already fired idle()) would otherwise resurrect a finished
-      // subagent into turn.subagents and block the "finished" title on the
-      // /agents overlay.  When `createIfMissing` is false we drop silently.
+      // 迟到事件（message.complete 已触发 idle() 后到达的 subagent.complete/tool/progress）原本会
+      // 把已完成子智能体重新放入 turn.subagents，阻止 /agents 浮层显示“已完成”标题。
+      // `createIfMissing` 为 false 时静默丢弃。
       if (!existing && !opts.createIfMissing) {
         return state
       }
@@ -801,9 +773,8 @@ class TurnController {
         toolsets: p.toolsets
       }
 
-      // Map snake_case payload keys onto camelCase state.  Only overwrite
-      // when the event actually carries the field; `??` preserves prior
-      // values across streaming events that emit partial payloads.
+      // 将 snake_case 载荷键映射到 camelCase 状态。仅在事件实际携带字段时覆盖；`??` 会在只发出
+      // 部分载荷的流式事件之间保留旧值。
       const outputTail = p.output_tail
         ? p.output_tail.map(e => ({
             isError: Boolean(e.is_error),
@@ -833,9 +804,8 @@ class TurnController {
         ...patch(base)
       }
 
-      // Stable order: by spawn (depth, parent, index) rather than insert time.
-      // Without it, grandchildren can shuffle relative to siblings when
-      // events arrive out of order under high concurrency.
+      // 稳定顺序按 spawn 的深度、父节点和索引，而非插入时间。若无此规则，高并发下事件乱序到达时，
+      // 孙节点会相对同级节点重新洗牌。
       const subagents = existing
         ? state.subagents.map(item => (item.id === id ? next : item))
         : [...state.subagents, next].sort((a, b) => a.depth - b.depth || a.index - b.index)

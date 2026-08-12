@@ -48,7 +48,7 @@ const buildCtx = (appended: Msg[]) =>
       panel: (title: string, sections: any[]) =>
         appended.push({ kind: 'panel', panelData: { sections, title }, role: 'system', text: '' }),
       setHistoryItems: vi.fn()
-    },
+    }
   }) as any
 
 describe('createGatewayEventHandler', () => {
@@ -95,8 +95,7 @@ describe('createGatewayEventHandler', () => {
 
     expect(finalText).toBeDefined()
     expect(trail).toMatchObject({ kind: 'trail', role: 'system', todos, todoIncomplete: true })
-    // Todo archive must sit ABOVE the final assistant text so the panel
-    // doesn't visibly jump across the final answer at end-of-turn.
+    // 待办归档必须位于最终助手文本上方，避免轮次结束时面板明显跳过最终答案。
     expect(appended.indexOf(trail!)).toBeLessThan(appended.indexOf(finalText!))
     expect(getTurnState().todos).toEqual([])
   })
@@ -168,9 +167,7 @@ describe('createGatewayEventHandler', () => {
       type: 'error'
     } as any)
 
-    expect(ctx.system.sys).toHaveBeenCalledWith(
-      'pending image attachment discarded; attach it again before retrying'
-    )
+    expect(ctx.system.sys).toHaveBeenCalledWith('pending image attachment discarded; attach it again before retrying')
   })
 
   it('keeps the current todo list visible when the next message starts', () => {
@@ -437,8 +434,8 @@ describe('createGatewayEventHandler', () => {
     const appended: Msg[] = []
     const onEvent = createGatewayEventHandler(buildCtx(appended))
     const raw = 'Pico here.\n\nLine two.'
-    // Rich-rendered ANSI (`final_response_markdown: render`) used to win,
-    // which left visible escape codes in Ink output. Raw text must win.
+    // Rich 渲染的 ANSI（`final_response_markdown: render`）此前会优先，导致 Ink
+    // 输出出现可见转义码；必须以原始文本优先。
     const rendered = '\u001b[33mPico here.\u001b[0m\n\n\u001b[2mLine two.\u001b[0m'
 
     onEvent({ payload: { rendered, text: raw }, type: 'message.complete' } as any)
@@ -463,9 +460,8 @@ describe('createGatewayEventHandler', () => {
     const appended: Msg[] = []
     const onEvent = createGatewayEventHandler(buildCtx(appended))
 
-    // Stream of partial text deltas; each delta carries an incremental
-    // Rich-ANSI fragment.  Pre-fix code would replace the whole bufRef
-    // with the latest fragment, dropping prior text.
+    // 部分文本增量流中每个增量都携带 Rich-ANSI 片段。修复前代码会用最新片段
+    // 替换整个 bufRef，丢失先前文本。
     onEvent({ payload: { rendered: '\u001b[33mFi\u001b[0m', text: 'Fi' }, type: 'message.delta' } as any)
     onEvent({ payload: { rendered: '\u001b[33mrst.\u001b[0m', text: 'rst.' }, type: 'message.delta' } as any)
     onEvent({ payload: { text: ' second.' }, type: 'message.delta' } as any)
@@ -482,14 +478,13 @@ describe('createGatewayEventHandler', () => {
     const cleaned = '--- a/foo.ts\n+++ b/foo.ts\n@@\n-old\n+new'
     const block = `\`\`\`diff\n${cleaned}\n\`\`\``
 
-    // Narration → tool → tool-complete → more narration → message-complete.
-    // The diff MUST land between the two narration segments, not tacked
-    // onto the final one.
+    // 顺序为叙述、工具、工具完成、更多叙述、消息完成。差异必须落在两个叙述片段
+    // 之间，不能附加到最后一段。
     onEvent({ payload: { text: 'Editing the file' }, type: 'message.delta' } as any)
     onEvent({ payload: { context: 'foo.ts', name: 'patch', tool_id: 'tool-1' }, type: 'tool.start' } as any)
     onEvent({ payload: { inline_diff: diff, summary: 'patched', tool_id: 'tool-1' }, type: 'tool.complete' } as any)
 
-    // Diff is already committed to segmentMessages as its own segment.
+    // 差异已作为独立片段写入 segmentMessages。
     expect(appended).toHaveLength(0)
     expect(turnController.segmentMessages).toEqual([
       { role: 'assistant', text: 'Editing the file' },
@@ -536,8 +531,7 @@ describe('createGatewayEventHandler', () => {
     onEvent({ payload: { inline_diff: cleaned, summary: 'patched', tool_id: 'tool-1' }, type: 'tool.complete' } as any)
     onEvent({ payload: { text: assistantText }, type: 'message.complete' } as any)
 
-    // Only the final message — diff-only segment dropped so we don't
-    // render two stacked copies of the same patch.
+    // 只保留最终消息；丢弃仅含差异的片段，避免上下重复渲染同一补丁。
     expect(appended).toHaveLength(1)
     expect(appended[0]?.text).toBe(assistantText)
     expect((appended[0]?.text.match(/```diff/g) ?? []).length).toBe(1)
@@ -551,7 +545,7 @@ describe('createGatewayEventHandler', () => {
     onEvent({ payload: { inline_diff: raw, summary: 'patched', tool_id: 'tool-1' }, type: 'tool.complete' } as any)
     onEvent({ payload: { text: 'done' }, type: 'message.complete' } as any)
 
-    // Tool trail first, then diff segment (kind='diff'), then final narration.
+    // 顺序应为工具轨迹、差异片段（kind='diff'）、最终叙述。
     expect(appended).toHaveLength(2)
     expect(appended[0]?.kind).toBe('diff')
     expect(appended[0]?.text).not.toContain('┊ review diff')
@@ -588,8 +582,7 @@ describe('createGatewayEventHandler', () => {
     } as any)
     onEvent({ payload: { text: 'done' }, type: 'message.complete' } as any)
 
-    // Tool row is now placed before the diff, so telemetry does not render
-    // below the patch that came from that tool.
+    // 工具行现在位于差异之前，因此遥测信息不会渲染到该工具产生的补丁下方。
     expect(appended).toHaveLength(2)
     expect(appended[0]?.kind).toBe('diff')
     expect(appended[0]?.text).toContain('```diff')
@@ -661,5 +654,4 @@ describe('createGatewayEventHandler', () => {
 
     expect(getTurnState().activity).toMatchObject([{ text: 'boom', tone: 'error' }])
   })
-
 })

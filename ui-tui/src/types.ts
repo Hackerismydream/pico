@@ -128,11 +128,10 @@ export type Role = 'assistant' | 'system' | 'tool' | 'user'
 export type DetailsMode = 'hidden' | 'collapsed' | 'expanded'
 export type ThinkingMode = 'collapsed' | 'truncated' | 'full'
 
-// Per-section overrides for the agent details accordion.  Resolution order
-// at lookup time is: explicit `display.sections.<name>` → built-in
-// SECTION_DEFAULTS → global `details_mode`.  Today the built-in defaults
-// expand `thinking`/`tools` and hide `activity`; `subagents` falls through
-// to the global mode.  Any explicit value still wins for that one section.
+// 智能体详情手风琴的分区级覆盖设置。查询时依次采用显式的
+// `display.sections.<name>`、内置 SECTION_DEFAULTS、全局 `details_mode`。
+// 当前内置默认值会展开 `thinking`/`tools` 并隐藏 `activity`，`subagents`
+// 则回退到全局模式；任意显式值仍只对对应分区优先。
 export type SectionName = 'thinking' | 'tools' | 'subagents' | 'activity'
 export type SectionVisibility = Partial<Record<SectionName, DetailsMode>>
 

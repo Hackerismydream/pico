@@ -2,11 +2,10 @@
 // Copyright (c) 2026 EverMind.
 // See NOTICES.md.
 //
-// Bridges `RpcClient.subscribe<TurnEvent>('turn.subscribe', ...)` notifications
-// onto the existing `turnController`. The factory
-// returns a thin handle with `attach / detach / send / cancel / isTurnActive`
-// so it can be unit-tested against a fake RpcClient (no socket required) and
-// wired into `useMainApp.ts` as a per-session lifecycle object.
+// 将 `RpcClient.subscribe<TurnEvent>('turn.subscribe', ...)` 通知桥接到现有的
+// `turnController`。工厂返回只包含 `attach / detach / send / cancel /
+// isTurnActive` 的轻量句柄，既能通过虚假 RpcClient 做无套接字单元测试，
+// 也能在 `useMainApp.ts` 中作为每个会话的生命周期对象接入。
 
 import { randomUUID } from 'node:crypto'
 
@@ -31,10 +30,9 @@ import { patchTurnState } from './turnStore.js'
 import { getUiState, patchUiState } from './uiStore.js'
 
 /**
- * Minimal RpcClient surface the chat path needs. Defining this locally lets
- * tests inject a fake without touching the real socket-backed RpcClient.
- * The shape mirrors the public methods of `src/rpc/client.ts::RpcClient`,
- * including the `subscribe` return shape `{subscription_id, unsubscribe}`.
+ * 聊天路径所需的最小 RpcClient 接口。局部定义后，测试可以注入替身而不接触
+ * 真实的套接字 RpcClient。结构与 `src/rpc/client.ts::RpcClient` 的公开方法
+ * 一致，包括 `subscribe` 的返回结构 `{subscription_id, unsubscribe}`。
  */
 export interface ChatStreamRpcClient {
   rpc<R = unknown, P = unknown>(method: string, params: P): Promise<R>
@@ -52,27 +50,24 @@ export interface ChatStreamOptions {
   releaseSessionImages?: (sessionId: string, claimId?: string) => void
   rollbackSessionImages?: (sessionId: string, claimId?: string) => void
   submissionIdFactory?: () => string
-  /** Optional sys-message hook for surfacing non-cancellation errors. */
+  /** 用于展示非取消类错误的可选系统消息钩子。 */
   sys?: (msg: string) => void
   /**
-   * Append a finished message to the React history list. Required for
-   * `message.complete` to persist the assistant turn's final text + tool
-   * trail in the UI — without this the streamed tokens vanish on completion.
-   * Mirrors the legacy `createGatewayEventHandler.ts:675` pattern.
+   * 将完成的消息追加到 React 历史列表。`message.complete` 需要借此在界面中
+   * 持久化助手轮次的最终文本和工具轨迹；否则流式 token 会在完成时消失。
+   * 沿用旧版 `createGatewayEventHandler.ts:675` 的模式。
    */
   appendMessage?: (msg: Msg) => void
   /**
-   * Server-ack watchdog window (ms). Armed when `send` starts; if NO server
-   * event of any kind arrives within this window the turn is treated as wedged
-   * (events lost / subscription not delivering / turn.send hung) and the input
-   * is restored instead of freezing. It measures server-ack liveness only — the
-   * first inbound event disarms it — never LLM first-token latency. Defaults to
-   * {@link DEFAULT_WATCHDOG_MS}.
+   * 服务端确认看门狗窗口（毫秒）。`send` 开始时启动；若窗口内未收到任何
+   * 服务端事件，则认为轮次卡死（事件丢失、订阅未投递或 turn.send 挂起），
+   * 恢复输入而不是让界面冻结。它只衡量服务端确认活性，首个入站事件即解除，
+   * 不衡量大模型首 token 延迟。默认值为 {@link DEFAULT_WATCHDOG_MS}。
    */
   watchdogMs?: number
 }
 
-/** Default server-ack watchdog window — see {@link ChatStreamOptions.watchdogMs}. */
+/** 默认服务端确认看门狗窗口，参见 {@link ChatStreamOptions.watchdogMs}。 */
 export const DEFAULT_WATCHDOG_MS = 10_000
 
 export interface ChatStreamHandle {
@@ -83,9 +78,8 @@ export interface ChatStreamHandle {
   isTurnActive: () => boolean
   sessionKey: string
   /**
-   * Local hard reset: drop the active turn and restore the prompt WITHOUT a
-   * server round-trip. Backs the Ctrl+C escape hatch and the watchdog so a
-   * turn that produces no terminal event can never wedge the UI.
+   * 本地强制重置：不经过服务端往返，直接丢弃活动轮次并恢复提示符。它为
+   * Ctrl+C 逃生路径和看门狗提供支撑，确保没有终止事件的轮次不会卡死界面。
    */
   forceReset: () => void
 }
@@ -165,8 +159,7 @@ const dispatch = (
       return
     }
     default: {
-      // Exhaustiveness — if a new TurnEvent variant lands the type-checker
-      // will complain here, forcing this file to be updated.
+      // 用穷尽检查确保新增 TurnEvent 变体时类型检查器在此报错，迫使同步更新本文件。
       const exhaustive: never = event
       void exhaustive
     }
@@ -207,9 +200,8 @@ const onTokenDelta = (ev: TokenDeltaEvent): void => {
 
 const onToolStart = (ev: ToolStartEvent): void => {
   const { tool_call_id, name, arguments: args } = ev.payload
-  // Render a short context line from the first scalar argument value so the
-  // active-tool list shows useful preview text without leaking the full
-  // argument blob into the UI.
+  // 从首个标量参数值生成简短上下文，使活动工具列表显示有用预览，同时避免
+  // 将完整参数块泄漏到界面中。
   const previewKey = Object.keys(args)[0]
   const previewVal = previewKey !== undefined ? args[previewKey] : undefined
   const context =
@@ -220,12 +212,7 @@ const onToolStart = (ev: ToolStartEvent): void => {
 const onToolComplete = (ev: ToolCompleteEvent): void => {
   const { tool_call_id, result_preview, failed, truncated } = ev.payload
   const summary = truncated ? `${result_preview} (truncated)` : result_preview
-  turnController.recordToolComplete(
-    tool_call_id,
-    undefined,
-    failed ? summary : undefined,
-    failed ? undefined : summary
-  )
+  turnController.recordToolComplete(tool_call_id, undefined, failed ? summary : undefined, failed ? undefined : summary)
 }
 
 const releaseAttemptImages = (attempt: SendAttempt, releaseSessionImages?: (claimId?: string) => void): void => {
@@ -265,12 +252,11 @@ const onMessageComplete = (
 
   state.current = null
   state.turnId = null
-  // The typed message.complete carries `{turn_id, usage}` per CAP-CHAT-1
-  // wire shape (B1 fix); the assistant content is reconstructed from the
-  // `bufRef` accumulated via token.delta. recordMessageComplete reads bufRef
-  // when payload.text is omitted and returns the final message list that
-  // the caller must commit into history — without this the streamed tokens
-  // appear during the turn but vanish when the turn closes.
+  // 按 CAP-CHAT-1 线协议结构（B1 修复），带类型的 message.complete 携带
+  // `{turn_id, usage}`；助手内容由 token.delta 累积到 `bufRef` 后重建。
+  // payload.text 缺失时，recordMessageComplete 会读取 bufRef，并返回调用方
+  // 必须写入历史记录的最终消息列表；否则流式 token 会在轮次中出现，却在
+  // 轮次结束时消失。
   if (ev.payload.usage) {
     patchUiState(s => ({ ...s, usage: mergeUsage(s.usage, ev.payload.usage) }))
   }
@@ -340,8 +326,7 @@ const onError = (
     restoreInputPrompt(appendMessage, sys)
     return
   }
-  // Non-cancellation error: surface a sys note, idle the turn, and reset
-  // the live anchor so the user can submit again.
+  // 非取消类错误需要显示系统提示、将轮次置为空闲并重置实时锚点，允许再次提交。
   if (sys) {
     sys(`error: ${message} (code=${code})`)
   }
@@ -351,8 +336,7 @@ const onError = (
 }
 
 const restoreInputPrompt = (appendMessage?: (msg: Msg) => void, sys?: (msg: string) => void): void => {
-  // Preserve streamed content, drop streaming state, release `busy`, and
-  // settle the visible status after a cancelled turn.
+  // 轮次取消后保留已流式输出的内容，清除流式状态、释放 `busy` 并稳定可见状态。
   turnController.finalizeInterruptedTurn({ appendMessage, sys })
   turnController.clearStatusTimer()
   patchUiState({ busy: false, status: 'interrupted' })
@@ -614,10 +598,9 @@ export const createChatStream = (opts: ChatStreamOptions): ChatStreamHandle => {
     await opts.rpcClient.rpc<{ cancelled: boolean }, { session_key: string }>('turn.cancel', {
       session_key: opts.sessionKey
     })
-    // We do NOT clear state.turnId here — the server is expected to emit an
-    // `error(reason=cancelled_by_client)` event that drives the actual
-    // UI-state reset via dispatch(). Clearing locally would race with the
-    // event delivery and leave the turn-active guard inconsistent.
+    // 此处不能清除 state.turnId：服务端应发送
+    // `error(reason=cancelled_by_client)` 事件，再由 dispatch() 驱动实际的
+    // 界面状态重置。本地提前清除会与事件投递竞争，导致轮次活动保护状态不一致。
   }
 
   const isTurnActive = (): boolean => state.attempts.size > 0

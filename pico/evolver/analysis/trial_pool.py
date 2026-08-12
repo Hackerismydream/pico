@@ -85,7 +85,7 @@ def build_trial_pool(trial_dir: str | Path) -> list[Trial]:
     stability_map = compute_stability(trial_dir)
     features_map = extract_trial_dir(trial_dir)
 
-    # Group ProxyFeatures by task for attempt numbering
+    # 按任务分组 ProxyFeatures，以便给尝试编号。
     by_task: dict[str, list[ProxyFeatures]] = defaultdict(list)
     for pf in features_map.values():
         by_task[pf.task_id].append(pf)
@@ -96,8 +96,7 @@ def build_trial_pool(trial_dir: str | Path) -> list[Trial]:
     for task_id in sorted(by_task.keys()):
         task_stability = stability_map.get(task_id)
         if task_stability is None:
-            # Defensive: shouldn't happen since both modules walk the
-            # same dir, but skip silently rather than crash on edge case
+            # 防御性处理：两个模块遍历同一目录，理论上不应发生；边界情况下静默跳过而非崩溃。
             continue
         for attempt_idx, pf in enumerate(by_task[task_id], start=1):
             passed = pf.final_exit_status == ExitStatus.PASSED

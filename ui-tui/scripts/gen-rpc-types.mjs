@@ -1,30 +1,28 @@
 #!/usr/bin/env node
-// Reads `ui-tui/rpc-schema/openrpc.json` (single source of truth — REQ-5)
-// and emits TypeScript types into `ui-tui/src/rpc/generated.ts`.
+// 读取唯一事实来源 `ui-tui/rpc-schema/openrpc.json`（REQ-5），并将 TypeScript
+// 类型输出到 `ui-tui/src/rpc/generated.ts`。
 //
-// What gets emitted:
-//   - All `components/schemas/*`
-//   - One `<MethodName>Params` + `<MethodName>Result` interface per RPC method
-//   - JSON-RPC 2.0 envelope types (hand-written tail — they aren't in the
-//     schema since they're protocol-level not method-level)
+// 输出内容：
+//   - 所有 `components/schemas/*`；
+//   - 每个 RPC 方法各一个 `<MethodName>Params` 和 `<MethodName>Result` 接口；
+//   - JSON-RPC 2.0 信封类型（手写尾部；它们属于协议层而非方法层，不在模式中）。
 //
-// F-C fork point (per research-findings.md Finding 2 + design Q1):
-//   `json-schema-to-typescript` historically struggled with OpenRPC-style
-//   `discriminator` (issue bcherny/json-schema-to-typescript#239). We MUST
-//   verify the emitted `TurnEvent` narrows correctly:
+// F-C 分叉点（参见 research-findings.md 发现 2 与设计问题 Q1）：
+//   `json-schema-to-typescript` 过去难以处理 OpenRPC 风格的 `discriminator`
+//   （问题 bcherny/json-schema-to-typescript#239），因此必须验证输出的
+//   `TurnEvent` 能正确收窄：
 //
 //       if (event.type === 'token.delta') { event.payload.text /* string */ }
 //
-//   The probe in `verifyTurnEventNarrowing()` below runs the codegen, greps
-//   the output, and warns if the union looks broken. If the probe trips, the
-//   documented escape hatch is to swap to `@open-rpc/typings` — see
-//   `docs/RepoMem/temp/tui-ipc-bridge/01-schema-tooling-decision.md`.
+//   下方 `verifyTurnEventNarrowing()` 探针运行代码生成、搜索输出，并在联合类型
+//   疑似损坏时警告。探针触发时，文档约定的逃生方案是切换到
+//   `@open-rpc/typings`，参见 schema tooling decision 文档。
 //
-// Usage:
-//   node scripts/gen-rpc-types.mjs            # write generated.ts
-//   node scripts/gen-rpc-types.mjs --check    # write to tmp + diff against
-//                                              # checked-in generated.ts;
-//                                              # exit 1 on drift (CI lint mode)
+// 用法：
+//   node scripts/gen-rpc-types.mjs            # 写入 generated.ts
+//   node scripts/gen-rpc-types.mjs --check    # 写入临时文件并与已检入的
+//                                              # generated.ts 比较；发生漂移时
+//                                              # 以 1 退出（CI lint 模式）
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -50,7 +48,7 @@ const HEADER = `// AUTO-GENERATED — DO NOT EDIT — run \`npm run gen:rpc\`
 `;
 
 // ---------------------------------------------------------------------------
-// Param-name → PascalCase (e.g. "turn.send" → "TurnSend")
+// 参数名转 PascalCase，例如 "turn.send" 转为 "TurnSend"。
 // ---------------------------------------------------------------------------
 function methodToPascal(method) {
   return method
@@ -59,8 +57,8 @@ function methodToPascal(method) {
     .join('');
 }
 
-// Convert OpenRPC method `params: [{name, required, schema}, ...]` to a single
-// JSON Schema object type. This is what json-schema-to-typescript needs.
+// 将 OpenRPC 方法的 `params: [{name, required, schema}, ...]` 转为单个 JSON
+// Schema 对象类型，以满足 json-schema-to-typescript 的输入要求。
 function paramsToSchema(method) {
   const properties = {};
   const required = [];
@@ -76,10 +74,9 @@ function paramsToSchema(method) {
   };
 }
 
-// Build a single composite root schema that json-schema-to-typescript can
-// compile in one pass. All `$ref`s in the original schema use
-// `#/components/schemas/X` — we preserve that by hoisting them to
-// `#/definitions/X` (the canonical JSON-Schema location) and rewriting refs.
+// 构建 json-schema-to-typescript 可一次编译的单一复合根模式。原模式中的所有
+// `$ref` 使用 `#/components/schemas/X`；将其提升到 JSON Schema 规范位置
+// `#/definitions/X` 并改写引用，以保留结构。
 function buildRootSchema(openrpcDoc) {
   const defs = {};
   const componentSchemas = openrpcDoc.components?.schemas ?? {};
@@ -88,7 +85,7 @@ function buildRootSchema(openrpcDoc) {
     defs[name] = rewriteRefs(schema);
   }
 
-  // Per-method Params + Result types.
+  // 各方法的 Params 与 Result 类型。
   for (const method of openrpcDoc.methods) {
     const pascal = methodToPascal(method.name);
     defs[`${pascal}Params`] = rewriteRefs(paramsToSchema(method));
@@ -130,7 +127,7 @@ function rewriteRefs(node) {
 }
 
 // ---------------------------------------------------------------------------
-// JSON-RPC 2.0 envelope — appended verbatim (protocol-level, not in schema).
+// JSON-RPC 2.0 信封按原样追加，属于协议层而不在模式中。
 // ---------------------------------------------------------------------------
 const JSON_RPC_ENVELOPE = `
 // ---------------------------------------------------------------------------
@@ -183,16 +180,16 @@ export function isJsonRpcError<R>(
 `;
 
 // ---------------------------------------------------------------------------
-// F-C check — verify TurnEvent narrows correctly.
+// F-C 检查：验证 TurnEvent 能正确收窄。
 // ---------------------------------------------------------------------------
 function verifyTurnEventNarrowing(emitted) {
-  // The "good" emit either:
-  //   (a) inlines a tagged union like:  { type: 'token.delta'; payload: ... }
-  //       inside `export type TurnEvent = ...`
-  //   (b) emits TurnEvent as `TurnEventMessageStart | TurnEventTokenDelta | ...`
-  //       where each variant has a literal `type` discriminator.
-  // The "bad" emit collapses payload into Record<string, any> or drops the
-  // `type` literal, making narrowing impossible.
+  // 正确输出有两种形式：
+  //   (a) 在 `export type TurnEvent = ...` 中内联类似
+  //       `{ type: 'token.delta'; payload: ... }` 的带标签联合；
+  //   (b) 将 TurnEvent 输出为 `TurnEventMessageStart | TurnEventTokenDelta | ...`，
+  //       且每个变体都包含字面量 `type` 判别字段。
+  // 错误输出会把 payload 折叠为 Record<string, any> 或丢弃 `type` 字面量，
+  // 导致无法收窄。
 
   const turnEventBlock = emitted.match(/export type TurnEvent\s*=([\s\S]*?);/);
   if (!turnEventBlock) {
@@ -202,10 +199,9 @@ function verifyTurnEventNarrowing(emitted) {
     };
   }
   const body = turnEventBlock[1];
-  // Heuristic: ensure every discriminator literal appears as a
-  // literal type either inline (`type: 'token.delta'`) or as a referenced
-  // interface (which itself contains the literal). We accept either form by
-  // also checking the full file for the literals.
+  // 启发式检查：确保每个判别字面量都以内联字面量类型
+  // `type: 'token.delta'` 或包含该字面量的引用接口出现。通过检查完整文件中的
+  // 字面量同时接受两种形式。
   const literals = [
     'message.start',
     'token.delta',
@@ -229,7 +225,7 @@ function verifyTurnEventNarrowing(emitted) {
       reason: `TurnEvent missing discriminator literals: ${missing.join(', ')}`,
     };
   }
-  // Verify it's a union (contains `|`) of object-shapes with `type` discriminator.
+  // 验证它是包含 `|` 且对象结构带 `type` 判别字段的联合类型。
   if (!body.includes('|')) {
     return {
       ok: false,
@@ -240,19 +236,18 @@ function verifyTurnEventNarrowing(emitted) {
 }
 
 // ---------------------------------------------------------------------------
-// Codegen pipeline
+// 代码生成流水线。
 // ---------------------------------------------------------------------------
 async function generate() {
   const raw = await readFile(SCHEMA_PATH, 'utf-8');
   const openrpcDoc = JSON.parse(raw);
   const root = buildRootSchema(openrpcDoc);
 
-  // Compile. Options chosen to minimize false drift between runs:
-  //   - declareExternallyReferenced: false (we control the ref tree)
-  //   - unreachableDefinitions: true (emit method-scoped types even though
-  //     they're only referenced from the root object)
-  //   - bannerComment: empty (we prepend our own HEADER)
-  //   - additionalProperties: false (preserve the schema's strict closure)
+  // 编译选项以减少运行间的虚假漂移：
+  //   - declareExternallyReferenced: false（引用树由我们控制）；
+  //   - unreachableDefinitions: true（即使方法范围类型仅由根对象引用也输出）；
+  //   - bannerComment: empty（自行前置 HEADER）；
+  //   - additionalProperties: false（保留模式的严格闭合）。
   const compiled = await compile(root, 'PicoRpcRoot', {
     bannerComment: '',
     unreachableDefinitions: true,
@@ -260,20 +255,18 @@ async function generate() {
     style: { singleQuote: true, semi: true, trailingComma: 'all' },
   });
 
-  // Drop the synthetic root interface — it's just a `Record` over every
-  // definition and not useful to consumers. Keep only the named types.
+  // 丢弃合成根接口；它只是覆盖所有定义的 `Record`，对消费者无用。仅保留命名类型。
   const withoutRoot = compiled
     .replace(/export interface PicoRpcRoot\s*\{[\s\S]*?\n\}\n?/, '')
     .trim();
 
-  // json-schema-to-typescript merges structurally-identical definitions into
-  // a single exported type (e.g. all 6 hermes-only stub results collapse to
-  // `StubResult`; `CliDispatchResult` collapses into `CliResult`). To keep
-  // every schema-named type reachable by its schema-canonical name, we emit
-  // type aliases for any definition name that didn't get its own declaration.
+  // json-schema-to-typescript 会把结构相同的定义合并为单个导出类型，例如六个仅限
+  // Hermes 的桩结果都折叠为 `StubResult`，`CliDispatchResult` 折叠为
+  // `CliResult`。为使每个模式命名类型都能按规范名称访问，对未得到独立声明的
+  // 定义名称输出类型别名。
   //
-  // We detect the canonical name by parsing the deferred-comment trail that
-  // json-schema-to-typescript writes ABOVE each merged declaration:
+  // 通过解析 json-schema-to-typescript 写在各合并声明上方的延迟注释轨迹，
+  // 检测规范名称：
   //   /**
   //    * This interface was referenced by `PicoRpcRoot`'s JSON-Schema
   //    * via the `definition` "CliResult".
@@ -287,9 +280,8 @@ async function generate() {
   let m;
   while ((m = declRegex.exec(withoutRoot)) !== null) declared.add(m[1]);
 
-  // Walk each declaration with its preceding doc comment and map all
-  // referenced definition names to the declared canonical.
-  const aliasFor = {}; // missingName -> canonicalName
+  // 遍历每个声明及其前置文档注释，将所有被引用的定义名称映射到已声明规范名称。
+  const aliasFor = {}; // 缺失名称映射到规范名称。
   const blockRegex =
     /\/\*\*([\s\S]*?)\*\/\s*export (?:interface|type) (\w+)\b/g;
   while ((m = blockRegex.exec(withoutRoot)) !== null) {
@@ -305,15 +297,14 @@ async function generate() {
     }
   }
 
-  // Belt-and-suspenders: for any name still not declared and not aliased,
-  // emit an empty-object fallback so downstream imports still type-check.
+  // 双重保险：对仍未声明且没有别名的名称输出空对象回退，使下游导入仍通过类型检查。
   const aliasLines = [];
   for (const name of allNames) {
     if (declared.has(name)) continue;
     if (aliasFor[name]) {
       aliasLines.push(`export type ${name} = ${aliasFor[name]};`);
     } else {
-      // Should never happen — bail loudly.
+      // 理论上不应发生，发生时明确失败。
       throw new Error(
         `codegen: definition "${name}" produced no declaration and no alias` +
           ' candidate was found in deferred-comments. Inspect compiled output.',
@@ -328,7 +319,7 @@ async function generate() {
 
   const full = HEADER + '\n' + withoutRoot + '\n' + aliasBlock + JSON_RPC_ENVELOPE;
 
-  // F-C check.
+  // 执行 F-C 检查。
   const probe = verifyTurnEventNarrowing(full);
   if (!probe.ok) {
     console.error('');

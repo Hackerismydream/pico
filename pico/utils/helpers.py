@@ -62,7 +62,7 @@ def split_message(content: str, max_len: int = 2000) -> list[str]:
             chunks.append(content)
             break
         cut = content[:max_len]
-        # Try to break at newline first, then space, then hard break
+        # 优先在换行符处截断，其次是空格，最后才强制截断。
         pos = cut.rfind("\n")
         if pos <= 0:
             pos = cut.rfind(" ")
@@ -212,21 +212,20 @@ def sync_workspace_templates(workspace: Path, silent: bool = False) -> list[str]
         dest.write_text(text, encoding="utf-8")
         added.append(f"{dest.relative_to(workspace)} (migrated from {src.relative_to(workspace)})")
 
-    # Step 1 — migrate legacy workspace files into the L4 layout. Each
-    # rule fires only when the legacy file exists and the L4 target is
-    # still missing, so user edits made directly to L4 paths win.
+    # 第一步：把旧版工作区文件迁移到 L4 布局。只有旧文件存在且 L4 目标
+    # 尚不存在时规则才生效，因此用户直接对 L4 路径所做的修改优先。
     _migrate(workspace / "memory" / "MEMORY.md", workspace / "user_memory" / "profile" / "user.md")
     _migrate(workspace / "memory" / "HISTORY.md", workspace / "user_memory" / "episodic" / "episodes.md")
     _migrate(workspace / "SOUL.md", workspace / "agent_memory" / "profile" / "soul.md")
     _migrate(workspace / "AGENTS.md", workspace / "agent_memory" / "profile" / "agent.md")
     _migrate(workspace / "USER.md", workspace / "user_memory" / "profile" / "user.md")
-    # Step 2 — fall back to bundled templates for anything still missing.
-    # L4 pillar files first; TOOLS.md stays at the workspace root.
+    # 第二步：其余缺失文件回退到内置模板。先处理 L4 支柱文件；
+    # TOOLS.md 仍保留在工作区根目录。
     _write(tpl / "SOUL.md", workspace / "agent_memory" / "profile" / "soul.md")
     _write(tpl / "AGENTS.md", workspace / "agent_memory" / "profile" / "agent.md")
     _write(tpl / "USER.md", workspace / "user_memory" / "profile" / "user.md")
     _write(None, workspace / "user_memory" / "episodic" / "episodes.md")
-    # Procedural memory files have no source in the legacy layout.
+    # 程序性记忆文件在旧版布局中没有对应来源。
     _write(None, workspace / "agent_memory" / "procedural" / "skills.md")
     _write(None, workspace / "agent_memory" / "procedural" / "case.md")
     _write(tpl / "TOOLS.md", workspace / "TOOLS.md")

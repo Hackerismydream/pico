@@ -20,9 +20,8 @@ from typing import Iterable
 logger = logging.getLogger(__name__)
 
 
-# Channel names that have already logged the "empty allowlist" warning
-# in this process. Module-level to share across all instances of a
-# given channel adapter and across repeated invocations.
+# 记录本进程中已经输出过“空白名单”警告的渠道名称。放在模块级，
+# 以便同一渠道适配器的所有实例和多次调用共享。
 _warned_empty: set[str] = set()
 
 
@@ -49,8 +48,8 @@ def is_allowed(
         _warn_empty_once(channel_name)
         return False
 
-    # Materialize once so we can both check membership and detect emptiness
-    # without forcing the caller to provide a sequence.
+    # 只展开一次，既能检查成员关系也能判断是否为空，
+    # 同时不强制调用方传入序列。
     allow_set = set(map(str, allow_list))
     if not allow_set:
         _warn_empty_once(channel_name)

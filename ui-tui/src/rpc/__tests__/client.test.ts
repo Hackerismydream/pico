@@ -1,6 +1,5 @@
-// Pico TUI RPC — client.ts integration tests against a mock unix socket
-// server. Covers happy path, parallel requests, typed error mapping, abrupt
-// disconnect, frame size enforcement, and codegen type-sanity.
+// Pico TUI RPC client.ts 针对模拟 Unix 套接字服务端的集成测试。覆盖正常路径、
+// 并行请求、带类型错误映射、突然断开连接、帧大小限制以及代码生成类型基线。
 
 import type { Server, Socket } from 'node:net'
 
@@ -16,8 +15,8 @@ import { RpcClient } from '../client.js'
 import { SessionNotFoundError, ConfigValidationError, RpcError } from '../errors.js'
 
 // --------------------------------------------------------------------------
-// Mock server: line-delimited JSON, handler-driven. Each connection's frames
-// flow into `onFrame`, which can write 0+ response frames back.
+// 模拟服务端使用逐行 JSON 并由处理器驱动。每个连接的帧流入 `onFrame`，后者可
+// 写回零个或多个响应帧。
 // --------------------------------------------------------------------------
 
 type Frame = Record<string, unknown>
@@ -25,11 +24,11 @@ type Frame = Record<string, unknown>
 interface MockServer {
   socketPath: string
   server: Server
-  /** Push response/notification frames into the currently-connected client. */
+  /** 向当前已连接客户端推送响应或通知帧。 */
   send: (frame: Frame) => void
-  /** Replace the per-frame handler. */
+  /** 替换逐帧处理器。 */
   setHandler: (h: (frame: Frame) => void) => void
-  /** Force-close the active connection (simulates server crash). */
+  /** 强制关闭活动连接，以模拟服务端崩溃。 */
   killConnection: () => void
   close: () => Promise<void>
 }
@@ -55,7 +54,7 @@ function startMock(): Promise<MockServer> {
             try {
               handler(JSON.parse(line))
             } catch (e) {
-              // swallow — let tests assert on outcome
+              // 吞掉异常，由测试断言结果。
               void e
             }
           }
@@ -106,7 +105,7 @@ function startMock(): Promise<MockServer> {
 }
 
 // --------------------------------------------------------------------------
-// Tests
+// 测试。
 // --------------------------------------------------------------------------
 
 describe('RpcClient', () => {
@@ -146,12 +145,12 @@ describe('RpcClient', () => {
   })
 
   it('routes parallel responses to the correct caller by id', async () => {
-    // Buffer incoming requests and reply out-of-order to verify id-matching.
+    // 缓冲入站请求并乱序响应，以验证标识匹配。
     const seen: Frame[] = []
     mock.setHandler(frame => {
       seen.push(frame)
       if (seen.length === 3) {
-        // Reply in reverse order
+        // 以相反顺序响应。
         for (let i = 2; i >= 0; i--) {
           mock.send({
             jsonrpc: '2.0',
@@ -210,7 +209,7 @@ describe('RpcClient', () => {
   })
 
   it('rejects all pending promises when peer disconnects mid-flight', async () => {
-    // Capture the request but never reply — then drop the connection.
+    // 捕获请求但永不响应，随后断开连接。
     mock.setHandler(() => {
       setTimeout(() => mock.killConnection(), 10)
     })
@@ -223,21 +222,18 @@ describe('RpcClient', () => {
 
   it('refuses to write frames over 1 MiB', async () => {
     mock.setHandler(() => {
-      // never reached
+      // 不应执行到这里。
     })
     client = new RpcClient({ socketPath: mock.socketPath })
     await client.ready()
-    const huge = 'x'.repeat(1024 * 1024 + 100) // > 1 MiB after JSON-stringify
-    await expect(
-      client.rpc('turn.send', { content: huge, session_key: 'tui:test' } as TurnSendParams)
-    ).rejects.toThrow(
+    const huge = 'x'.repeat(1024 * 1024 + 100) // JSON 序列化后大于 1 MiB。
+    await expect(client.rpc('turn.send', { content: huge, session_key: 'tui:test' } as TurnSendParams)).rejects.toThrow(
       /frame.*exceeds/
     )
   })
 
   it('typecheck: retained method types are reachable from generated.ts', async () => {
-    // This test exists primarily for the compile-time `tsc` pass — if the
-    // codegen broke, the import or the field access would fail to compile.
+    // 此测试主要用于编译期 `tsc` 检查；若代码生成损坏，导入或字段访问会编译失败。
     mock.setHandler(frame => {
       const params = frame.params as TerminalResizeParams
       expect(typeof params.cols).toBe('number')

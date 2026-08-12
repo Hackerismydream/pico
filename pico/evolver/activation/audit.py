@@ -40,8 +40,7 @@ def audit_trials(roots: list[Path], expected_sources: list[str]) -> dict:
                 else:
                     counts[src] += 1
 
-        # Skills log only to skill_injections.jsonl and hooks only to the
-        # ledger - no overlap, so merging the two never double-counts.
+        # 技能只记录到 skill_injections.jsonl，钩子只记录到账本，两者不重叠，合并时不会重复计算。
         for inj in Path(root).glob("**/skill_injections.jsonl"):
             for rec in _iter_jsonl(inj):
                 for s in rec.get("skills", []):

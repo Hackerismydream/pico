@@ -23,17 +23,16 @@ if TYPE_CHECKING:
 
 
 # ----------------------------------------------------------------------------
-# Versioning
+# 版本定义
 # ----------------------------------------------------------------------------
-# server_version: the IPC bridge protocol implementation version. Bumped when
-#   we ship a new wire-compatible release.
-# schema_version: matches OpenRPC `info.version` in `ui-tui/rpc-schema/openrpc.json`.
-# pico_version: the Pico distribution version (from installed metadata).
+# server_version：IPC 桥接协议的实现版本，发布新的线上协议兼容版本时递增。
+# schema_version：与 `ui-tui/rpc-schema/openrpc.json` 中的 OpenRPC `info.version` 一致。
+# pico_version：从已安装元数据读取的 Pico 发行版本。
 SERVER_VERSION = "0.1.0"
 SCHEMA_VERSION = "0.1.0"
 SERVER_CAPABILITIES = ["jsonrpc-2.0", "subscriptions", "attachments", "sessions", "confirm"]
 
-# Lenient semver: <major>.<minor>.<patch> with optional `-prerelease` / `+build`.
+# 宽松的语义化版本：<major>.<minor>.<patch>，可选 `-prerelease` 或 `+build`。
 _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
 
 
@@ -41,13 +40,12 @@ def _pico_version() -> str:
     try:
         return _md.version("pico-harness")
     except _md.PackageNotFoundError:
-        # Editable install in CI may not register metadata; fall back to a
-        # well-known sentinel rather than crashing the handshake.
+        # CI 中的可编辑安装可能未注册元数据；回退到约定的哨兵值，避免握手崩溃。
         return "0.0.0+unknown"
 
 
 # ----------------------------------------------------------------------------
-# Handlers
+# 处理器
 # ----------------------------------------------------------------------------
 
 
@@ -69,7 +67,7 @@ async def system_hello(params: dict) -> dict:
         )
 
     client_capabilities = params.get("client_capabilities", []) or []
-    # pid distinguishes concurrent `pico` processes sharing one log file.
+    # pid 用于区分共享同一日志文件的并发 `pico` 进程。
     logger.info(
         "tui_rpc: handshake — pid={} client_version={} client_capabilities={}",
         os.getpid(),

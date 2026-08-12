@@ -103,13 +103,13 @@ def _run_smoke(args: argparse.Namespace) -> int:
             print(f"[fail] readiness {args.wait_readiness!r} timed out ({elapsed_ms}ms)")
 
         t0 = time.monotonic()
-        # Polite Ctrl+C; some TUIs need two presses (cancel-then-exit).
+
         try:
             h.press("ctrl+c")
             time.sleep(0.3)
             h.press("ctrl+c")
         except HarnessError:
-            pass  # subprocess may have already exited
+            pass
         exit_ok = h.expect_exit(0, timeout=args.exit_timeout)
         actual = h._cached_exit_code if h._killed else h._poll_exit_code(timeout=0.0)
         elapsed_ms = int((time.monotonic() - t0) * 1000)
@@ -125,7 +125,6 @@ def _run_smoke(args: argparse.Namespace) -> int:
         print(f"=== exit code: {0 if (ready and exit_ok) else 1} ===")
         return 0 if (ready and exit_ok) else 1
     finally:
-        # Idempotent — safe even if subprocess already exited.
         try:
             h.kill()
         except Exception:
@@ -137,7 +136,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit as e:
-        # argparse exits 2 on bad args / unknown subcommands; let it propagate.
         return int(e.code) if e.code is not None else 2
 
     if args.subcommand == "smoke":

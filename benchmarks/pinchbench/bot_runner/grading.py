@@ -78,7 +78,7 @@ def grade_task(
 
 
 # ---------------------------------------------------------------------------
-# Automated grading
+# 自动评分。
 # ---------------------------------------------------------------------------
 
 
@@ -129,7 +129,7 @@ def _grade_automated(task: Task, execution_result: Dict[str, Any], verbose: bool
 
 
 # ---------------------------------------------------------------------------
-# LLM judge grading — calls OpenRouter directly via litellm
+# 大模型裁判评分，通过 LiteLLM 直接调用 OpenRouter。
 # ---------------------------------------------------------------------------
 
 
@@ -148,7 +148,7 @@ def _grade_llm_judge(
     if verbose:
         logger.info("  Judge prompt (first 500 chars): %s", prompt[:500])
 
-    # Call LLM judge via litellm
+    # 通过 LiteLLM 调用大模型裁判。
     try:
         import os
 
@@ -198,7 +198,7 @@ def _grade_llm_judge(
 
 
 # ---------------------------------------------------------------------------
-# Hybrid grading
+# 混合评分。
 # ---------------------------------------------------------------------------
 
 
@@ -224,7 +224,7 @@ def _combine_grades(task: Task, auto_result: GradeResult, llm_result: GradeResul
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# 辅助函数。
 # ---------------------------------------------------------------------------
 
 
@@ -302,7 +302,7 @@ def _parse_judge_response_text(raw_text: str) -> Dict[str, Any]:
     if not raw_text:
         return {}
 
-    # Try code block
+    # 尝试解析代码块。
     m = re.search(r"```json\s*(.*?)\s*```", raw_text, re.DOTALL)
     if m:
         try:
@@ -312,7 +312,7 @@ def _parse_judge_response_text(raw_text: str) -> Dict[str, Any]:
         except json.JSONDecodeError:
             pass
 
-    # Extract JSON objects by balanced braces
+    # 按平衡花括号提取 JSON 对象。
     candidates: List[str] = []
     depth = 0
     current: List[str] = []
@@ -344,7 +344,7 @@ def _parse_judge_response_text(raw_text: str) -> Dict[str, Any]:
         except json.JSONDecodeError:
             continue
 
-    # Fallback: regex for total score
+    # 回退：用正则提取总分。
     sm = re.search(
         r"(?:total|overall|final)\s*(?:score)?[:\s]*(0\.\d+|1\.0+)",
         raw_text,

@@ -20,8 +20,8 @@ from pico.sandbox.config import SandboxConfig
 from pico.sandbox.direct_executor import DirectExecutor
 from pico.sandbox.interfaces import ExecResult, SandboxExecutor, SandboxInitError
 
-# Warn once per process: many executors (AgentLoop + each subagent) are built
-# over a process lifetime, but the "no sandbox" caveat only needs saying once.
+# 每个进程只警告一次：进程生命周期内会创建多个执行器（AgentLoop 及各子 Agent），
+# 但“未使用沙箱”的风险提示只需输出一次。
 _warned_no_sandbox = False
 
 __all__ = [
@@ -65,7 +65,7 @@ def build_executor(
 
     if backend in ("auto", "boxlite"):
         try:
-            import boxlite as _  # noqa: F401 — probe availability before constructing executor
+            import boxlite as _  # noqa: F401 — 构造执行器前探测可用性
 
             from pico.sandbox.boxlite_executor import BoxliteExecutor
         except ImportError as exc:

@@ -29,7 +29,7 @@ from pico.memory_engine.skill_local.registry import (
 )
 
 # ----------------------------------------------------------------------
-# Fixtures
+
 # ----------------------------------------------------------------------
 
 
@@ -71,7 +71,6 @@ def tmp_builtin(tmp_path: Path):
 
     _write_skill(builtin, "simple", description="A simple builtin skill")
 
-    # ``always: true`` in top-level frontmatter
     _write_skill(
         builtin,
         "always_flag_top",
@@ -79,7 +78,6 @@ def tmp_builtin(tmp_path: Path):
         frontmatter_extra="always: true",
     )
 
-    # ``always: true`` inside nested metadata JSON
     _write_skill(
         builtin,
         "always_flag_nested",
@@ -87,7 +85,6 @@ def tmp_builtin(tmp_path: Path):
         frontmatter_extra='metadata: {"pico":{"always":true}}',
     )
 
-    # Requires a fake binary that almost certainly doesn't exist
     _write_skill(
         builtin,
         "needs_fake_bin",
@@ -95,7 +92,6 @@ def tmp_builtin(tmp_path: Path):
         frontmatter_extra='metadata: {"pico":{"requires":{"bins":["this_bin_does_not_exist_xyz"]}}}',
     )
 
-    # Same name as workspace skill to test precedence
     _write_skill(
         builtin,
         "user_custom",
@@ -106,7 +102,7 @@ def tmp_builtin(tmp_path: Path):
 
 
 # ----------------------------------------------------------------------
-# Module-level parsers
+
 # ----------------------------------------------------------------------
 
 
@@ -161,7 +157,7 @@ class TestRequirementsHelpers:
 
 
 # ----------------------------------------------------------------------
-# SkillRegistry — data layer
+
 # ----------------------------------------------------------------------
 
 
@@ -169,7 +165,7 @@ class TestSkillRegistryListAndPrecedence:
     def test_lists_workspace_and_builtin(self, tmp_workspace, tmp_builtin):
         store = SkillRegistry(tmp_workspace, builtin_skills_dir=tmp_builtin)
         names = {m.name for m in store.list_all()}
-        # Both sources represented
+
         assert "user_custom" in names
         assert "simple" in names
         assert "always_flag_top" in names
@@ -206,11 +202,9 @@ class TestSkillRegistryCacheInvalidation:
         without re-scanning unchanged sources."""
         store = SkillRegistry(tmp_workspace, builtin_skills_dir=tmp_builtin)
         before = {(m.source, m.name) for m in store.list_all()}
-        # Sanity: nested-mode source ``generated`` not present yet.
+
         assert not any(s == "generated" for s, _ in before)
 
-        # Materialize a new skill under nested layout
-        # ``<workspace>/skills/generated/<X>/SKILL.md``.
         nested_dir = tmp_workspace / "skills" / "generated" / "42"
         nested_dir.mkdir(parents=True)
         (nested_dir / "SKILL.md").write_text(
@@ -218,7 +212,6 @@ class TestSkillRegistryCacheInvalidation:
             encoding="utf-8",
         )
 
-        # Without invalidation the cache hides the new file.
         names = {m.name for m in store.list_all()}
         assert "dynamic-skill" not in names
 
@@ -226,8 +219,7 @@ class TestSkillRegistryCacheInvalidation:
         after = store.list_all()
         names_after = {m.name for m in after}
         assert "dynamic-skill" in names_after
-        # All previously-cached entries are still present (no full rescan
-        # collateral damage).
+
         assert before.issubset({(m.source, m.name) for m in after})
 
     def test_invalidate_source_drops_removed_skill(
@@ -237,7 +229,7 @@ class TestSkillRegistryCacheInvalidation:
     ):
         """If a SKILL.md disappears, the source's incremental rescan
         should drop the stale entry."""
-        # Seed a generated skill, prime cache, then delete + invalidate.
+
         nested_dir = tmp_workspace / "skills" / "generated" / "1"
         nested_dir.mkdir(parents=True)
         (nested_dir / "SKILL.md").write_text(
@@ -247,13 +239,12 @@ class TestSkillRegistryCacheInvalidation:
         store = SkillRegistry(tmp_workspace, builtin_skills_dir=tmp_builtin)
         assert any(m.name == "gone-soon" for m in store.list_all())
 
-        # Wipe disk — emulate retire path.
         import shutil
 
         shutil.rmtree(nested_dir)
         store.invalidate_source("generated")
         assert not any(m.name == "gone-soon" for m in store.list_all())
-        # Other sources untouched.
+
         assert any(m.name == "simple" for m in store.list_all())
 
     def test_invalidate_source_when_cache_unprimed_is_noop(
@@ -264,7 +255,7 @@ class TestSkillRegistryCacheInvalidation:
         """``invalidate_source`` before any list_all must not crash;
         the very first list_all is still a full scan."""
         store = SkillRegistry(tmp_workspace, builtin_skills_dir=tmp_builtin)
-        store.invalidate_source("generated")  # no-op
+        store.invalidate_source("generated")
         assert store._metas_cache is None
         names = {m.name for m in store.list_all()}
         assert "simple" in names
@@ -286,8 +277,7 @@ class TestResolveSourceForPath:
         tmp_builtin,
     ):
         store = SkillRegistry(tmp_workspace, builtin_skills_dir=tmp_builtin)
-        # Path need not exist on disk — resolution is lexical so
-        # delete events can route too.
+
         path = tmp_workspace / "skills" / "generated" / "42" / "SKILL.md"
         assert store.resolve_source_for_path(path) == "generated"
 
@@ -318,7 +308,7 @@ class TestResolveSourceForPath:
 
     def test_unknown_path_returns_none(self, tmp_path, tmp_workspace, tmp_builtin):
         store = SkillRegistry(tmp_workspace, builtin_skills_dir=tmp_builtin)
-        # Sibling of workspace, outside any layer root.
+
         assert store.resolve_source_for_path(tmp_path / "elsewhere" / "SKILL.md") is None
 
     def test_skill_md_at_layer_root_returns_none(
@@ -392,7 +382,7 @@ class TestSkillRegistryAlwaysResolution:
 
 
 # ----------------------------------------------------------------------
-# SkillService — facade (legacy-compatible API)
+
 # ----------------------------------------------------------------------
 
 
@@ -400,9 +390,9 @@ class TestSkillServiceLegacyAPI:
     def test_list_skills_returns_legacy_shape(self, tmp_workspace, tmp_builtin):
         svc = LocalSkillCatalog(tmp_workspace, builtin_skills_dir=tmp_builtin)
         items = svc.list_skills()
-        # Shape: list[dict] with exactly three keys
+
         assert all(set(i.keys()) == {"name", "path", "source"} for i in items)
-        # Unavailable ones filtered by default
+
         assert not any(i["name"] == "needs_fake_bin" for i in items)
 
     def test_list_skills_unfiltered_includes_unavailable(self, tmp_workspace, tmp_builtin):
@@ -424,7 +414,7 @@ class TestSkillServiceLegacyAPI:
         always = {m.name for m in svc.get_always_skills()}
         assert "always_flag_top" in always
         assert "always_flag_nested" in always
-        # The non-always skills should not show up
+
         assert "simple" not in always
         assert "user_custom" not in always
 
@@ -435,9 +425,9 @@ class TestSkillServiceLegacyAPI:
         assert "### Skill: simple" in out
         assert "### Skill: always_flag_top" in out
         assert "Body text." in out
-        # Frontmatter markers must be gone
+
         assert "---" not in out.replace("\n\n---\n\n", "")
-        # Separator between skills
+
         assert "\n\n---\n\n" in out
 
     def test_get_skill_metadata(self, tmp_workspace, tmp_builtin):
@@ -474,14 +464,14 @@ class TestBuildSkillsSummary:
 
 
 # ----------------------------------------------------------------------
-# Rendering helpers
+
 # ----------------------------------------------------------------------
 
 
 class TestRenderingHelpers:
     def test_strip_frontmatter_removes_header(self):
         src = "---\nname: x\n---\n\nBody"
-        # registry's _strip_frontmatter keeps the body verbatim, only strips leading frontmatter
+
         assert _strip_frontmatter(src) == "\nBody"
 
     def test_strip_frontmatter_passes_through_when_absent(self):
@@ -492,33 +482,28 @@ class TestRenderingHelpers:
 
 
 # ----------------------------------------------------------------------
-# ContextBuilder integration — skill_names must actually take effect
+
 # ----------------------------------------------------------------------
 
 
 class TestContextBuilderIntegration:
     def test_skill_names_narrows_xml_directory(self, tmp_workspace, tmp_builtin, monkeypatch):
-        # ContextBuilder uses the real built-in directory by default; point it
-        # at our synthetic one so the test is deterministic.
+
         from pico.agent.context import ContextBuilder
 
         cb = ContextBuilder(tmp_workspace)
-        # Swap the skills service for one that uses our synthetic builtin.
+
         from pico.memory_engine.skill_forge import LocalSkillCatalog
 
         cb.skills = LocalSkillCatalog(tmp_workspace, builtin_skills_dir=tmp_builtin)
 
-        # With selected_skills=None → full directory
         prompt_full = cb.build_system_prompt(selected_skills=None)
         assert "<name>simple</name>" in prompt_full
         assert "<name>always_flag_top</name>" in prompt_full
 
-        # With selected_skills=[simple_meta] → only simple shows up in the XML
-        # (always-loaded skills are still injected in the # Active Skills
-        # section — that's separate from the XML directory)
         simple_meta = [m for m in cb.skills._registry.list_all() if m.name == "simple"]
         prompt_filtered = cb.build_system_prompt(selected_skills=simple_meta)
-        # XML directory: only simple
+
         xml_start = prompt_filtered.index("<skills>")
         xml_end = prompt_filtered.index("</skills>") + len("</skills>")
         xml_block = prompt_filtered[xml_start:xml_end]
@@ -534,18 +519,13 @@ class TestContextBuilderIntegration:
         cb.skills = LocalSkillCatalog(tmp_workspace, builtin_skills_dir=tmp_builtin)
 
         prompt = cb.build_system_prompt(selected_skills=[])
-        # Non-empty XML block — this is the safety net
+
         assert "<skills>" in prompt
         assert "<name>simple</name>" in prompt
 
 
-# Note: the remote-skill materialization tests (``_materialize_remote``
-# / ``_is_remote``) were retired alongside the removed remote Skill integration.
-# Only file-system-backed skills flow through ``SkillService`` now.
-
-
 # ----------------------------------------------------------------------
-# Real built-in directory smoke test
+
 # ----------------------------------------------------------------------
 
 
@@ -555,8 +535,7 @@ class TestRealBuiltinSmokeTest:
     def test_real_builtin_has_known_skills(self, tmp_path):
         workspace = tmp_path / "ws"
         workspace.mkdir()
-        store = SkillRegistry(workspace)  # default builtin dir
+        store = SkillRegistry(workspace)
         names = {m.name for m in store.list_all()}
-        # weather is the only builtin still shipped after the 8 stale
-        # builtins were retired.
+
         assert "weather" in names

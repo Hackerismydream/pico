@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 
 # ────────────────────────────────────────────────────────────────────
-# Delivery resolution (consumed at TRIGGER time, not at job creation)
+# 投递解析：在触发时消费，而不是创建任务时。
 # ────────────────────────────────────────────────────────────────────
 
 
@@ -93,7 +93,7 @@ def resolve_cron_delivery(
 
 
 # ────────────────────────────────────────────────────────────────────
-# CronTool (LLM-facing)
+# CronTool（面向 LLM）
 # ────────────────────────────────────────────────────────────────────
 
 
@@ -276,9 +276,9 @@ class CronTool(Tool):
             return "Error: message is required for add"
         if not self._channel or not self._chat_id:
             return "Error: no session context (channel/chat_id)"
-        # tz anchors a cron expression's wall-clock recurrence and a naive `at`
-        # datetime; for an every schedule (a relative interval) it is meaningless
-        # and is ignored rather than erroring (no needless agent retry).
+        # tz 为 cron 表达式的 wall-clock 周期和无时区 `at` datetime 提供锚点；
+        # 对表示相对间隔的 every schedule 没有意义，因此忽略而不报错，
+        # 避免 Agent 无谓重试。
         if tz and (cron_expr or at):
             from zoneinfo import ZoneInfo
 
@@ -287,7 +287,7 @@ class CronTool(Tool):
             except Exception:
                 return f"Error: unknown timezone '{tz}'"
 
-        # Build schedule
+        # 构建 schedule。
         delete_after = False
         if every_seconds:
             schedule = CronSchedule(kind="every", every_ms=every_seconds * 1000)
@@ -300,9 +300,9 @@ class CronTool(Tool):
                 dt = datetime.fromisoformat(at)
             except ValueError:
                 return f"Error: invalid ISO datetime format '{at}'. Expected format: YYYY-MM-DDTHH:MM:SS"
-            # A naive `at` + tz means "that wall-clock time in tz" — anchor it so
-            # .timestamp() does not silently fall back to the host's local zone.
-            # An offset-aware string already carries its zone, so tz is ignored.
+            # 无时区 `at` + tz 表示“tz 中的该 wall-clock 时间”；为它附加时区，
+            # 避免 .timestamp() 静默回退到 Host 本地时区。带 offset 的字符串
+            # 已自带时区，因此忽略 tz。
             if dt.tzinfo is None and tz:
                 from zoneinfo import ZoneInfo
 
@@ -313,9 +313,8 @@ class CronTool(Tool):
         else:
             return "Error: either every_seconds, cron_expr, or at is required"
 
-        # Store request-time channel/chat_id verbatim. Delivery resolution
-        # (per-job pass-through vs ephemeral forward) happens at trigger
-        # time in ``pico.cli._cron_handler`` via ``resolve_cron_delivery``.
+        # 原样保存请求时的 channel/chat_id。投递解析（按任务直通或临时转发）
+        # 在触发时由 ``pico.cli._cron_handler`` 通过 ``resolve_cron_delivery`` 完成。
         try:
             job = self._cron.add_job(
                 name=message[:30],
@@ -328,9 +327,9 @@ class CronTool(Tool):
                 topic_tag=topic_tag,
             )
         except ValueError as exc:
-            # A non-runnable schedule (at in the past, every_seconds <= 0, an
-            # invalid cron expr) is rejected by the service rather than stored as
-            # a job that silently never fires — surface it so the agent retries.
+            # service 会拒绝不可运行的 schedule（过去的 at、every_seconds <= 0、
+            # 无效 cron expr），而不是保存成永不触发的任务。把错误暴露给 Agent，
+            # 使其可以重试。
             return f"Error: {exc}"
         return f"Created job '{job.name}' (id: {job.id})"
 

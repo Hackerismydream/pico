@@ -33,8 +33,7 @@ def test_usage_is_frozen_with_three_int_fields():
 
 
 def test_notice_kind_is_closed_enum_with_progress_and_tool_hint():
-    # tool_hint is a distinct kind so an outlet can gate it on send_tool_hints
-    # separately from progress (send_progress), as the bus path did.
+
     assert {k.value for k in NoticeKind} == {
         "progress",
         "tool_hint",
@@ -51,7 +50,7 @@ def test_tool_phase_is_closed_two_value_enum():
     assert {p.value for p in ToolPhase} == {"start", "complete"}
     assert str(ToolPhase.START) == "start"
     with pytest.raises(ValueError):
-        ToolPhase("error")  # tool failure is ToolEvent.ok=False, not a phase
+        ToolPhase("error")
 
 
 def test_lifecycle_events_construct_and_are_frozen():
@@ -66,7 +65,7 @@ def test_lifecycle_events_construct_and_are_frozen():
 
 def test_turn_failed_has_no_usage():
     fields = {f.name for f in dataclasses.fields(TurnFailed)}
-    assert fields == {"error", "cancelled", "conversation_id"}  # failure carries no usage
+    assert fields == {"error", "cancelled", "conversation_id"}
 
 
 def test_turn_ended_carries_usage_latency_and_explicit_reply():
@@ -85,8 +84,7 @@ def test_turn_ended_carries_usage_latency_and_explicit_reply():
 
 
 def test_every_deliverable_defaults_source_to_none():
-    # All six deliverables carry source (default None) so the hub can route every
-    # one statelessly by source.channel; emit stamps the turn's source on arrival.
+
     m = Media(path="/tmp/a.jpg", mime="image/jpeg", kind="image")
     assert Text(content="hi").source is None
     assert MediaOut(media=(m,)).source is None
@@ -94,16 +92,14 @@ def test_every_deliverable_defaults_source_to_none():
     assert StreamDelta(delta="d").source is None
     assert Reasoning(content="r").source is None
     assert Notice(kind=NoticeKind.PROGRESS).source is None
-    # the other defaulted stamp/payload slots
+
     assert Text(content="hi").reply_to is None
     assert StreamDelta(delta="d").stream_id is None
     assert Notice(kind=NoticeKind.PROGRESS).detail is None
 
 
 def test_every_turn_event_defaults_conversation_id_to_none():
-    # conversation_id is one axis across all nine events — six deliverables and
-    # the three lifecycle events — so a stream-scoped consumer (the hub) can
-    # correlate any of them to its lane; emit/worker stamp it on arrival.
+
     m = Media(path="/tmp/a.jpg", mime="image/jpeg", kind="image")
     deliverables = [
         Text(content="hi"),
@@ -120,7 +116,7 @@ def test_every_turn_event_defaults_conversation_id_to_none():
     ]
     for event in deliverables + lifecycle:
         assert event.conversation_id is None
-    # lifecycle carries the correlation key but no source — it is never routed
+
     assert not any(hasattr(e, "source") for e in lifecycle)
 
 
@@ -140,7 +136,7 @@ def test_tool_event_phase_is_typed():
 def test_runner_event_is_the_six_deliverables_excluding_lifecycle():
     runner_members = set(get_args(RunnerEvent))
     assert runner_members == {ToolEvent, Text, MediaOut, StreamDelta, Reasoning, Notice}
-    # lifecycle events are not deliverable: the basis for narrowing the runner's emit
+
     assert TurnStarted not in runner_members
     assert TurnFailed not in runner_members
     assert TurnEnded not in runner_members
@@ -150,14 +146,14 @@ def test_runner_event_is_the_six_deliverables_excluding_lifecycle():
 
 
 def test_deliverable_is_the_runner_event_union_under_its_delivery_role_name():
-    assert Deliverable is RunnerEvent  # one union, two role names; not a separate type
+    assert Deliverable is RunnerEvent
 
 
 def test_notice_wraps_a_typed_kind_and_carries_source_and_detail():
     src = Source(channel="t", chat_id="c", sender_id="u", chat_type=ChatType.DM)
     n = Notice(kind=NoticeKind.DELIVERY_FAILED, source=src, detail="telegram send failed")
-    assert n.kind is NoticeKind.DELIVERY_FAILED  # kind stays the closed-set enum
-    assert n.source is src and n.detail == "telegram send failed"  # parallel fields, not in the enum
+    assert n.kind is NoticeKind.DELIVERY_FAILED
+    assert n.source is src and n.detail == "telegram send failed"
 
 
 def test_reasoning_carries_content_and_is_frozen():

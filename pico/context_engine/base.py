@@ -31,22 +31,21 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from pico.memory_engine.base import AssembledContext, TokenBudget
 
 if TYPE_CHECKING:
-    # Avoid runtime import — ``curator`` imports back from this module
-    # for ``ContextEngine``, so referencing ``TurnContext`` only in type
-    # hints keeps the loop unbroken.
+    # 避免运行时导入：``curator`` 会反向从本模块导入 ``ContextEngine``，
+    # 因此仅在类型提示中引用 ``TurnContext``，以打破循环依赖。
     from pico.context_engine.curator import TurnContext
     from pico.spine.message import Media
 
 
 # ---------------------------------------------------------------------------
-# SegmentBuilder abstraction — the uniform contributor model
+# SegmentBuilder 抽象：统一的上下文贡献者模型
 # ---------------------------------------------------------------------------
 #
-# Every part of the turn context is produced by a :class:`SegmentBuilder`.
-# seg1–5 (identity / bootstrap / memory / active-skills / skills) and the
-# Curator are all SegmentBuilders — there is no separate "lane" category.
-# :class:`ContextAssembler` runs them in two phases and routes their
-# outputs into the system / history slots.
+# Turn 上下文的每一部分都由 :class:`SegmentBuilder` 产生。
+# seg1–5（identity / bootstrap / memory / active-skills / skills）和 Curator
+# 都是 SegmentBuilder，不再另设“lane”类别。
+# :class:`ContextAssembler` 分两个阶段运行它们，并路由其
+# 将输出写入 system / history 槽位。
 
 
 @dataclass(frozen=True)

@@ -31,7 +31,7 @@ export type StatusBarMode = 'bottom' | 'off' | 'top'
 
 export type BusyInputMode = 'interrupt' | 'queue'
 
-// Single source of truth for indicator style names.
+// 指示器样式名称的唯一事实来源。
 export const INDICATOR_STYLES = ['ascii', 'emoji', 'kaomoji', 'unicode'] as const
 export type IndicatorStyle = (typeof INDICATOR_STYLES)[number]
 export const DEFAULT_INDICATOR_STYLE: IndicatorStyle = 'unicode'
@@ -61,9 +61,9 @@ export interface GatewayServices {
   gw: TuiRpcClient
   rpc: GatewayRpc
   /**
-   * Typed RpcClient handle for the Phase 6 chat path (per design.md §D7).
-   * Optional because the gateway-stub fixture used in tests does not own a
-   * real socket; production wiring always populates it via entry.tsx.
+   * 聊天路径使用的带类型 RpcClient 句柄（参见 design.md §D7）。测试使用的
+   * 网关桩夹具不拥有真实套接字，因此此项可选；生产装配始终通过 entry.tsx
+   * 填充它。
    */
   rpcClient?: ChatStreamRpcClient
 }
@@ -101,10 +101,9 @@ export interface UiState {
   busyInputMode: BusyInputMode
   compact: boolean
   /**
-   * Set after the first Ctrl+C on an in-flight typed turn: the normal cancel
-   * was issued and a second Ctrl+C now hard-resets the prompt locally
-   * (Ctrl+C escape hatch). Flips the busy placeholder hint. Cleared when the
-   * turn ends (see `turnController.idle`).
+   * 在进行中的带类型轮次首次收到 Ctrl+C 后设置：常规取消已发出，第二次
+   * Ctrl+C 将在本地强制重置提示符（Ctrl+C 逃生路径），并切换忙碌占位提示。
+   * 轮次结束时清除，参见 `turnController.idle`。
    */
   escapeArmed: boolean
   detailsMode: DetailsMode

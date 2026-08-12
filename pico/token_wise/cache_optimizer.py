@@ -116,22 +116,21 @@ class CacheOptimizer(TokenStrategy):
         new_tools = tools
         new_messages = list(messages)
 
-        # ── bp1: tools (only when tools are present) ──
+        # ── bp1：工具（仅在存在工具时）──
         if tools and budget > 0:
             new_tools = copy.deepcopy(tools)
             new_tools[-1] = _mark_cache(new_tools[-1])
             budget -= 1
 
-        # ── bp2: system prompt tail ──
+        # ── bp2：系统提示尾部 ──
         sys_idx = _last_index(new_messages, role="system")
         if sys_idx is not None and budget > 0:
             new_messages[sys_idx] = _mark_message_tail(new_messages[sys_idx])
             budget -= 1
 
-        # ── bp3..4 (or bp2..4 when no tools): rolling tail window ──
-        # Place breakpoints on the last N non-system messages, where
-        # N = remaining budget. This is the rolling-window approach that
-        # covers both intra-turn tool chains and cross-turn prefix reuse.
+        # ── bp3..4（无工具时为 bp2..4）：滚动尾部窗口 ──
+        # 在最后 N 条非 system 消息上放置断点，其中 N = 剩余预算。
+        # 这种滚动窗口方式同时覆盖 Turn 内工具链和跨 Turn 前缀复用。
         if budget > 0:
             non_sys = [i for i in range(len(new_messages)) if new_messages[i].get("role") != "system"]
             for idx in non_sys[-budget:]:

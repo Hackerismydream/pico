@@ -52,7 +52,7 @@ class _ReplyAgent:
 
     def __init__(self, events=()) -> None:
         self._events = list(events)
-        self.notify_count = 0  # _notify_turn_complete spy (the gateway sink fires it)
+        self.notify_count = 0
 
     def _notify_turn_complete(self) -> None:
         self.notify_count += 1
@@ -66,11 +66,7 @@ class _ReplyAgent:
 
 
 def test_build_gateway_requires_a_running_loop():
-    # Scheduler pins its home loop at construction (submit must come from that
-    # loop), so build_gateway must be called under a running loop — the gateway
-    # command builds it inside run(), not in its sync prologue. This is a sync
-    # test (no loop) on purpose: every async test runs under pytest's loop, so
-    # only a sync call reproduces the "no running event loop" startup crash.
+
     with pytest.raises(RuntimeError):
         build_gateway(_ReplyAgent(), {})
 
@@ -79,7 +75,6 @@ async def test_build_gateway_registers_an_outlet_per_channel():
     channels = {"telegram": _FakeChannel("telegram"), "discord": _FakeChannel("discord")}
     scheduler, hub, readback_texts, _sources, teardown = build_gateway(_ReplyAgent(), channels)
     try:
-        # The hub routes by channel name; both channels must have an outlet registered.
         assert {"telegram", "discord"} <= set(hub._outlets)
     finally:
         await teardown()
@@ -108,8 +103,7 @@ async def test_build_gateway_honors_configured_pool_and_retry_sizes():
 
 
 async def test_cron_reply_reaches_the_channel_via_outlet():
-    # End-to-end: build_gateway -> submit (origin=CRON) -> run_turn emits Text ->
-    # hub -> ChannelOutletAdapter -> channel.send.
+
     ch = _FakeChannel("telegram")
     scheduler, hub, readback_texts, _sources, teardown = build_gateway(
         _ReplyAgent([Text(content="reminder!")]), {"telegram": ch}
@@ -121,15 +115,12 @@ async def test_cron_reply_reaches_the_channel_via_outlet():
         await teardown()
 
     assert len(ch.sent) == 1
-    assert ch.sent[0][0] == "c9"  # chat_id (channel routing is by source.channel)
-    assert ch.sent[0][1] == "reminder!"  # content
+    assert ch.sent[0][0] == "c9"
+    assert ch.sent[0][1] == "reminder!"
 
 
 async def test_readback_captures_cron_reply_text():
-    # The reachability leg: a CRON turn's reply text is captured into
-    # readback_texts[conversation] (the submitter cannot pass run_turn's text_sink
-    # itself — the capturing runner bridges it) so the cron handler can deliver
-    # the result to additional targets after result() resolves.
+
     ch = _FakeChannel("telegram")
     scheduler, hub, readback_texts, _sources, teardown = build_gateway(
         _ReplyAgent([Text(content="done at 17:05")]), {"telegram": ch}
@@ -143,8 +134,7 @@ async def test_readback_captures_cron_reply_text():
 
 
 async def test_readback_skips_non_readback_origin():
-    # A delivery-only turn (origin=USER) is never stored — only its hub delivery
-    # happens; storing it would leak in the long-running daemon (no one pops it).
+
     ch = _FakeChannel("telegram")
     scheduler, hub, readback_texts, _sources, teardown = build_gateway(
         _ReplyAgent([Text(content="hello")]), {"telegram": ch}
@@ -153,8 +143,8 @@ async def test_readback_skips_non_readback_origin():
     try:
         await scheduler.submit(user_req).result()
         await hub.wait_idle("telegram")
-        assert "telegram:u1" not in readback_texts  # USER turn not captured
-        assert len(ch.sent) == 1  # but still delivered
+        assert "telegram:u1" not in readback_texts
+        assert len(ch.sent) == 1
     finally:
         await teardown()
 
@@ -175,26 +165,18 @@ async def test_cron_media_reply_sends_local_paths():
 
 
 async def test_reply_to_unregistered_channel_is_dropped_not_raised():
-    # The hub drops (warning, not raise) a deliverable whose source channel has no
-    # outlet — so the gateway must register every channel a cron source can target,
-    # else its reply is silently lost.
+
     ch = _FakeChannel("telegram")
     scheduler, hub, readback_texts, _sources, teardown = build_gateway(
         _ReplyAgent([Text(content="hi")]), {"telegram": ch}
     )
     try:
-        # Submit a turn whose source channel ("discord") has no registered outlet.
         await scheduler.submit(_req(channel="discord", conversation="cron:2")).result()
         await hub.wait_idle("telegram")
     finally:
         await teardown()
 
-    assert ch.sent == []  # dropped, and no exception propagated
-
-
-# --- gateway sink lifecycle: on_turn_complete + TurnFailed error reply ---
-# Restores the bus drainer's completion/error side effects that the plain hub
-# sink dropped. Sorry is sent only on a real failure, never on /stop cancellation.
+    assert ch.sent == []
 
 
 async def test_gateway_sink_notifies_on_turn_end():
@@ -274,26 +256,24 @@ async def test_gateway_sink_sends_error_reply_on_failure():
         try:
             await scheduler.submit(_req(channel="telegram", chat_id="c9")).result()
         except Exception:
-            pass  # the failed turn's future may surface the error; the reply is the point
+            pass
         await hub.wait_idle("telegram")
     finally:
         await teardown()
-    # A non-cancelled failure delivers a user-visible error reply to the channel,
-    # and still fires on_turn_complete (bus _dispatch except + finally parity).
+
     assert len(ch.sent) == 1 and ch.sent[0][1] == "Sorry, I encountered an error."
-    assert ch.sent[0][0] == "c9"  # chat_id (channel routing is by source.channel)
+    assert ch.sent[0][0] == "c9"
     assert agent.notify_count >= 1
 
 
 async def test_gateway_sink_no_error_reply_on_cancel():
-    # /stop cancels a running turn -> TurnFailed(cancelled=True) -> notify but NO
-    # "Sorry" (the bus path re-raises CancelledError without the error message).
+
     started = asyncio.Event()
 
     class _BlockingAgent(_ReplyAgent):
         async def run_turn(self, req, emit, drain, *, stream, usage_sink=None, text_sink=None):
             started.set()
-            await asyncio.Event().wait()  # block until cancelled
+            await asyncio.Event().wait()
 
     agent = _BlockingAgent()
     ch = _FakeChannel("telegram")
@@ -309,7 +289,7 @@ async def test_gateway_sink_no_error_reply_on_cancel():
         await hub.wait_idle("telegram")
     finally:
         await teardown()
-    assert ch.sent == []  # no "Sorry" on a cancel
+    assert ch.sent == []
     assert agent.notify_count >= 1
 
 
@@ -322,9 +302,9 @@ async def test_build_gateway_teardown_leaves_no_pending_tasks():
     await scheduler.submit(_req(channel="telegram")).result()
     await hub.wait_idle("telegram")
     spawned = asyncio.all_tasks() - baseline - {asyncio.current_task()}
-    assert any(not t.done() for t in spawned)  # live spine tasks exist before teardown
+    assert any(not t.done() for t in spawned)
     await teardown()
-    assert all(t.done() for t in spawned)  # teardown stopped every one
+    assert all(t.done() for t in spawned)
 
 
 async def test_gateway_teardown_closes_delivery_after_scheduler_cancellation():

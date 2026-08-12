@@ -40,7 +40,7 @@ SCHEMA_PATH = Path(__file__).resolve().parent.parent / "ui-tui" / "rpc-schema" /
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+
 # ---------------------------------------------------------------------------
 
 
@@ -55,7 +55,7 @@ def methods_by_name(schema: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Normalization helpers
+
 # ---------------------------------------------------------------------------
 
 
@@ -79,9 +79,6 @@ def _resolve_pyd_ref(ref: str, root: dict[str, Any]) -> dict[str, Any]:
     return node
 
 
-#: Refs that mean "any JSON value" on both sides — the OpenRPC side uses a
-#: ``$ref`` to the ``JsonValue`` component, the Pydantic side emits an empty
-#: schema for ``typing.Any``.  We canonicalize both to ``{"any": True}``.
 _ANY_REFS = {"JsonValue"}
 
 
@@ -106,7 +103,6 @@ def _normalize_oas_type(
         return expanded
     out: dict[str, Any] = {}
     if "type" in node:
-        # OpenRPC declares JsonValue as a multi-typed primitive node; collapse.
         if isinstance(node["type"], list):
             out["any"] = True
         else:
@@ -129,8 +125,7 @@ def _normalize_oas_type(
                 out["values"] = _normalize_oas_type(ap, schema, _seen)
     if "oneOf" in node:
         branches = node["oneOf"]
-        # ``oneOf: [JsonValue, null]`` is the schema's way of declaring an
-        # optional-but-required-nullable field; collapse to "any".
+
         non_null = [b for b in branches if not (isinstance(b, dict) and b.get("type") == "null")]
         if len(branches) == 2 and len(non_null) == 1:
             inner = _normalize_oas_type(non_null[0], schema)
@@ -164,7 +159,7 @@ def _normalize_pyd_type(
     that ref'd objects compare equal to schema-side inline objects.
     """
     node, _was_nullable = _strip_null_anyof(node)
-    # Drop purely-decorative keys before deciding emptiness.
+
     stripped = {k: v for k, v in node.items() if k not in ("title", "description", "default")}
     if stripped == {}:
         return {"any": True}
@@ -185,8 +180,6 @@ def _normalize_pyd_type(
         out["items"] = _normalize_pyd_type(stripped["items"], root, _seen)
     if stripped.get("type") == "object":
         if "properties" in stripped:
-            # Strip null-anyOf at the property level (mirrors strip-null in
-            # the field-level normalization at _pyd_object_properties).
             props_out: dict[str, dict[str, Any]] = {}
             local_required = set(stripped.get("required", []))
             for pname, psub in stripped["properties"].items():
@@ -201,7 +194,7 @@ def _normalize_pyd_type(
             out["values"] = {"any": True}
         elif isinstance(ap, dict):
             out["values"] = _normalize_pyd_type(ap, root, _seen)
-        # ap is False (extra='forbid' default) or absent → no "values"
+
     if "oneOf" in stripped:
         out["oneOf_refs"] = sorted(
             (sub["$ref"].split("/")[-1] for sub in stripped["oneOf"] if "$ref" in sub),
@@ -246,7 +239,7 @@ def _oas_object_properties(
 ) -> tuple[dict[str, dict[str, Any]], set[str]]:
     """For an OpenRPC object schema (after $ref resolution), return
     ``({prop_name → normalized}, required_set)``."""
-    # Follow a single layer of $ref if present.
+
     if "$ref" in obj_schema:
         obj_schema = _resolve_ref(obj_schema["$ref"], schema)
     properties = obj_schema.get("properties", {})
@@ -273,7 +266,7 @@ def _pyd_object_properties(
 
 
 # ---------------------------------------------------------------------------
-# Method-set parity
+
 # ---------------------------------------------------------------------------
 
 
@@ -288,7 +281,7 @@ def test_method_set_matches(methods_by_name: dict[str, dict[str, Any]]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Parametrized per-method drift checks
+
 # ---------------------------------------------------------------------------
 
 
@@ -332,11 +325,6 @@ def _check_result_drift(method_name: str, method: dict[str, Any], schema: dict[s
         )
 
 
-# Three explicit smoke tests called out in the implementation brief.  These
-# also act as red-stage starting points if the parametrized suite below
-# regresses.
-
-
 def test_schema_match_terminal_resize(methods_by_name: dict[str, dict[str, Any]], schema: dict[str, Any]) -> None:
     method = methods_by_name["terminal.resize"]
     _check_params_drift("terminal.resize", method, schema)
@@ -368,17 +356,12 @@ def test_schema_match_turn_event_discriminated_union(schema: dict[str, Any]) -> 
     pyd_refs = sorted(sub["$ref"].split("/")[-1] for sub in pyd["oneOf"])
 
     assert oas_refs == pyd_refs, f"TurnEvent variant set drift: schema={oas_refs} vs pydantic={pyd_refs}"
-    # Mapping (type-literal → variant name) must align as well.
+
     oas_mapping = oas["discriminator"]["mapping"]
     pyd_mapping = pyd["discriminator"]["mapping"]
     oas_normal = {k: v.split("/")[-1] for k, v in oas_mapping.items()}
     pyd_normal = {k: v.split("/")[-1] for k, v in pyd_mapping.items()}
     assert oas_normal == pyd_normal, f"TurnEvent discriminator mapping drift: schema={oas_normal} vs pyd={pyd_normal}"
-
-
-# Parametrized full-suite sweep — one test instance per method.  This is the
-# primary CI guard; the three explicit tests above are sentinels with extra
-# context-rich failure modes.
 
 
 def _all_method_names() -> list[str]:
@@ -407,7 +390,7 @@ def test_method_result_matches_schema(
 
 
 # ---------------------------------------------------------------------------
-# Error code parity (specs §4)
+
 # ---------------------------------------------------------------------------
 
 

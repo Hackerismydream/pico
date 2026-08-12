@@ -32,7 +32,7 @@ import pytest
 from pico.memory_engine.consolidate.consolidator import MemoryStore
 
 # ---------------------------------------------------------------------------
-# Path attribute sanity
+
 # ---------------------------------------------------------------------------
 
 
@@ -40,13 +40,13 @@ class TestHistoryFilePath:
     def test_history_file_is_a_path(self, tmp_path: Path) -> None:
         store = MemoryStore(tmp_path)
         assert isinstance(store.history_file, Path)
-        # The path resolves under the workspace's user_memory pillar.
+
         assert "user_memory" in str(store.history_file)
         assert store.history_file.name == "episodes.md"
 
 
 # ---------------------------------------------------------------------------
-# read_history_tail
+
 # ---------------------------------------------------------------------------
 
 
@@ -88,7 +88,7 @@ class TestReadHistoryTail:
 
 
 # ---------------------------------------------------------------------------
-# update_section
+
 # ---------------------------------------------------------------------------
 
 
@@ -116,7 +116,7 @@ class TestUpdateSection:
         text = store.read_long_term()
         assert "old body" not in text
         assert "new body" in text
-        # `## Other` survives — only the named section was touched.
+
         assert "keep me" in text
 
     def test_at_end_true_moves_section_to_end(
@@ -151,7 +151,7 @@ class TestUpdateSection:
                 at_end=False,
             )
         text = store.read_long_term()
-        # Section stayed in-place; `## Tail` still after it.
+
         preferences_pos = text.index("## Preferences")
         tail_pos = text.index("## Tail")
         assert preferences_pos < tail_pos
@@ -160,7 +160,7 @@ class TestUpdateSection:
 
 
 # ---------------------------------------------------------------------------
-# locked() integration with update_section
+
 # ---------------------------------------------------------------------------
 
 
@@ -177,14 +177,13 @@ class TestLockedSectionWrite:
         barrier = threading.Barrier(2)
 
         def writer(label: str, delay_inside_lock_s: float) -> None:
-            barrier.wait()  # ensure both threads race for the lock
+            barrier.wait()
             with store.locked():
-                # Inside the lock, record observation order
                 observed_orders.append(label)
                 current = store.read_long_term()
-                # Simulate slow LLM-driven section build
+
                 time.sleep(delay_inside_lock_s)
-                # Each writer claims its own H2 section
+
                 heading = f"## {label}"
                 store.update_section(heading, f"body-{label}")
 
@@ -195,13 +194,12 @@ class TestLockedSectionWrite:
         t1.join()
         t2.join()
 
-        # Both sections present, neither lost.
         text = store.read_long_term()
         assert "## alpha" in text
         assert "## beta" in text
         assert "body-alpha" in text
         assert "body-beta" in text
-        # Two enter-lock observations recorded.
+
         assert len(observed_orders) == 2
 
     def test_update_section_without_lock_works_in_single_thread(

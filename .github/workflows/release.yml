@@ -1,11 +1,10 @@
-# Release build - DRAFT.
+# 发布构建——草稿。
 #
-# The canonical distribution verifier owns the TUI build, package build,
-# isolated installs, installed Runtime probes, wheel manifest checks, and sdist
-# round trip. Release assets therefore come from the same V-P0 gate used
-# locally instead of a second build path.
+# 规范发布验证器统一负责 TUI 构建、包构建、隔离安装、已安装运行时探针、wheel
+# 清单检查和 sdist 往返验证。因此发布资产来自本地使用的同一 V-P0 门禁，而不是
+# 第二套构建路径。
 #
-# Trigger: push a version tag (v1.2.3) or run manually.
+# 触发方式：推送版本标签（v1.2.3）或手动运行。
 name: release
 
 on:
@@ -53,9 +52,8 @@ jobs:
             ${{ runner.temp }}/pico-distribution/distribution-report.json
           if-no-files-found: error
 
-      # On a version tag, publish a draft GitHub Release with the verified
-      # wheel, sdist, and evidence report attached. Manual dispatch stops after
-      # the Actions artifact upload above.
+      # 推送版本标签时发布 GitHub Release 草稿，并附带已验证的 wheel、sdist 和
+      # 证据报告。手动触发在上方 Actions 产物上传后停止。
       - name: Check tag matches pyproject version
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -73,13 +71,13 @@ jobs:
           repo="${{ github.repository }}"
           ver="${tag#v}"
           today="$(date -u +%Y-%m-%d)"
-          # Prerelease tags must never become /releases/latest because
-          # install.sh serves that release to public installers.
+          # 预发布标签绝不能成为 /releases/latest，因为 install.sh 会向公开安装器
+          # 提供该版本。
           pre=""
           case "$tag" in *-*) pre="--prerelease" ;; esac
           sed "s/__VERSION__/$ver/g; s/__TAG__/$tag/g" \
             .github/release-notes-template.md > "$RUNNER_TEMP/notes.md"
-          # Recreate a stale draft on rerun, but never replace a published release.
+          # 重跑时可重建陈旧草稿，但绝不能替换已发布版本。
           rel=$(gh api "repos/$repo/releases?per_page=100" --jq "map(select(.tag_name==\"$tag\"))[0] // {}")
           id=$(printf '%s' "$rel" | jq -r '.id // empty')
           isdraft=$(printf '%s' "$rel" | jq -r '.draft // false')
@@ -98,8 +96,8 @@ jobs:
             echo "Release $tag already published (id=$id); leaving as-is."
           fi
 
-      # (Optional, wire up when ready) publish to PyPI on tag:
-      # - name: Publish to PyPI
+      # 可选：准备就绪后接入，在标签上发布到 PyPI：
+      # - name: 发布到 PyPI
       #   if: startsWith(github.ref, 'refs/tags/v')
       #   run: uv publish "$RUNNER_TEMP"/pico-distribution/dist/*
       #   env:

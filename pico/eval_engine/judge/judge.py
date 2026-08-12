@@ -36,10 +36,9 @@ class JudgeVerdict(str, Enum):
     Encoded as a string enum so values serialize cleanly through the adapter.
     """
 
-    completed = "completed"  # User goal addressed; turn ended cleanly.
-    failed = "failed"  # Visible error / refusal / missed objective.
-    unknown = "unknown"  # Indeterminate (timeout, parse failure,
-    # judge disabled, ambiguous turn).
+    completed = "completed"  # 已满足用户目标，Turn 正常结束。
+    failed = "failed"  # 出现可见错误、拒绝或未达成目标。
+    unknown = "unknown"  # 无法确定（超时、解析失败、judge 禁用或 Turn 有歧义）。
 
 
 class EvalJudge:
@@ -95,7 +94,7 @@ class EvalJudge:
         except asyncio.TimeoutError:
             logger.debug("EvalJudge: timed out after %.1fs", self._timeout)
             return JudgeVerdict.unknown
-        except Exception as exc:  # noqa: BLE001 — judge must never crash AgentLoop
+        except Exception as exc:  # noqa: BLE001 — judge 不得导致 AgentLoop 崩溃
             logger.debug("EvalJudge: provider raised %s: %s", type(exc).__name__, exc)
             return JudgeVerdict.unknown
 

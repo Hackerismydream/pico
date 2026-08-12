@@ -24,7 +24,7 @@ class Task:
     task_id: str
     name: str
     category: str
-    grading_type: str  # automated | llm_judge | hybrid
+    grading_type: str  # 自动、llm_judge 或混合评分。
     timeout_seconds: int
     workspace_files: List[Dict[str, str]]
     prompt: str

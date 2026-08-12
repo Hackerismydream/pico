@@ -18,29 +18,27 @@ from pico.providers.registry import find_by_model, find_gateway
 litellm = import_litellm()
 acompletion = litellm.acompletion
 
-# LiteLLM's async logging worker (LoggingWorker) binds its queue to a single
-# event loop. Pico runs each turn under a fresh loop (asyncio.run per call), so
-# on the next turn the queue is reset and any pending ``Logging.async_*_handler``
-# coroutine is dropped without being awaited. Python then prints a
-# ``coroutine ... was never awaited`` RuntimeWarning that bleeds into the Ink TUI
-# render. The dropped callback is LiteLLM's own success/failure logging, which
-# Pico does not rely on. Scope the filter to LiteLLM's ``Logging`` handlers only
-# -- a bare ``coroutine '.*'`` pattern would also hide genuine never-awaited bugs
-# in Pico's own coroutines.
+# LiteLLM 的异步日志 worker（LoggingWorker）会把队列绑定到单一 event loop。
+# Pico 每个 Turn 使用新 loop（每次调用 asyncio.run），所以下一个 Turn 会重置
+# 队列，所有待处理的 ``Logging.async_*_handler`` 协程都会在未 await 的情况下
+# 被丢弃。Python 随后打印 ``coroutine ... was never awaited`` RuntimeWarning，
+# 并污染 Ink TUI 渲染。被丢弃的是 LiteLLM 自身的成功/失败日志回调，Pico 不依赖
+# 它们。过滤范围只限于 LiteLLM 的 ``Logging`` handler；宽泛的
+# ``coroutine '.*'`` 模式也会掩盖 Pico 自身真正的未 await 错误。
 warnings.filterwarnings(
     "ignore",
     message=r"coroutine 'Logging\.async_.*' was never awaited",
     category=RuntimeWarning,
 )
 
-# Standard chat-completion message keys.
+# 标准 chat-completion 消息字段。
 _ALLOWED_MSG_KEYS = frozenset({"role", "content", "tool_calls", "tool_call_id", "name", "reasoning_content"})
 _ANTHROPIC_EXTRA_KEYS = frozenset({"thinking_blocks"})
 _ALNUM = string.ascii_letters + string.digits
 
-# LiteLLM defaults to X-Title="liteLLM" / HTTP-Referer="https://litellm.ai" for OpenRouter
-# requests, which would credit traffic to LiteLLM instead of Pico on openrouter.ai/apps.
-# Explicit headers here override those defaults; user-supplied extra_headers win over these.
+# LiteLLM 默认给 OpenRouter 请求设置 X-Title="liteLLM" 和
+# HTTP-Referer="https://litellm.ai"，这会让 openrouter.ai/apps 把流量归因给
+# LiteLLM 而非 Pico。这里显式覆盖默认值；用户提供的 extra_headers 优先级更高。
 _OPENROUTER_ATTRIBUTION: dict[str, str] = {
     "HTTP-Referer": "https://github.com/Hackerismydream/pico-harness",
     "X-Title": "Pico Agent Harness",
@@ -123,30 +121,29 @@ class LiteLLMProvider(LLMProvider):
         super().__init__(api_key, api_base)
         self.default_model = default_model
         self.extra_headers = extra_headers or {}
-        # CallEfficiency owns explicit request rewriting at the Runtime seam.
-        # False is retained only for historical experiment compatibility.
+        # CallEfficiency 负责在 Runtime 接缝显式重写请求。
+        # False 仅为历史实验兼容而保留。
         self.disable_auto_cache_control = disable_auto_cache_control
-        # Provider-specific request body extras forwarded verbatim to LiteLLM.
-        # Common use: OpenRouter routing affinity to keep prompt-cache hits warm,
-        #   extra_body={"provider": {"order": ["Anthropic"], "allow_fallbacks": False}}
+        # Provider 专属请求体扩展会原样转发给 LiteLLM。常见用途是固定
+        # OpenRouter 路由 affinity，以维持 prompt cache 热度，
+        #   参数示例：extra_body={"provider": {"order": ["Anthropic"], "allow_fallbacks": False}}
         self.extra_body = extra_body or {}
         self.set_transport_num_retries(transport_num_retries)
 
-        # Detect gateway / local deployment.
-        # provider_name (from config key) is the primary signal;
-        # api_key / api_base are fallback for auto-detection.
+        # 检测网关/本地部署。来自配置键的 provider_name 是主要信号；
+        # api_key / api_base 仅用于自动检测回退。
         self._gateway = find_gateway(provider_name, api_key, api_base)
         if self._gateway and self._gateway.name == "openrouter":
             self.extra_headers = {**_OPENROUTER_ATTRIBUTION, **self.extra_headers}
 
-        # Configure environment variables
+        # 配置环境变量。
         if api_key:
             self._setup_env(api_key, api_base, default_model)
 
         if api_base:
             litellm.api_base = api_base
 
-        # Drop unsupported parameters for providers (e.g., gpt-5 rejects some params)
+        # 移除 Provider 不支持的参数，例如 gpt-5 会拒绝部分参数。
         litellm.drop_params = True
 
     def set_transport_num_retries(
@@ -165,18 +162,18 @@ class LiteLLMProvider(LLMProvider):
         if not spec:
             return
         if not spec.env_key:
-            # OAuth/provider-only specs (for example: openai_codex)
+            # 仅 OAuth/Provider 使用的 spec，例如 openai_codex。
             return
 
-        # Gateway/local overrides existing env; standard provider doesn't
+        # 网关/本地部署覆盖现有 env；标准 Provider 不覆盖。
         if self._gateway:
             os.environ[spec.env_key] = api_key
         else:
             os.environ.setdefault(spec.env_key, api_key)
 
-        # Resolve env_extras placeholders:
-        #   {api_key}  → user's API key
-        #   {api_base} → user's api_base, falling back to spec.default_api_base
+        # 解析 env_extras 占位符：
+        #   {api_key}  → 用户 API key
+        #   {api_base} → 用户 api_base，缺失时回退到 spec.default_api_base
         effective_base = api_base or spec.default_api_base
         for env_name, env_val in spec.env_extras:
             resolved = env_val.replace("{api_key}", api_key)
@@ -186,7 +183,7 @@ class LiteLLMProvider(LLMProvider):
     def _resolve_model(self, model: str) -> str:
         """Resolve model name by applying provider/gateway prefixes."""
         if self._gateway:
-            # Gateway mode: apply gateway prefix, skip provider-specific prefixes
+            # 网关模式：应用网关前缀，跳过 Provider 专属前缀。
             prefix = self._gateway.litellm_prefix
             if self._gateway.strip_model_prefix:
                 model = model.split("/")[-1]
@@ -194,7 +191,7 @@ class LiteLLMProvider(LLMProvider):
                 model = f"{prefix}/{model}"
             return model
 
-        # Standard mode: auto-prefix for known providers
+        # 标准模式：为已知 Provider 自动添加前缀。
         spec = find_by_model(model)
         if spec and spec.litellm_prefix:
             model = self._canonicalize_explicit_prefix(model, spec.name, spec.litellm_prefix)
@@ -310,8 +307,8 @@ class LiteLLMProvider(LLMProvider):
             ):
                 clean["reasoning_content"] = ""
 
-            # Keep assistant tool_calls[].id and tool tool_call_id in sync after
-            # shortening, otherwise strict providers reject the broken linkage.
+            # 缩短后保持 assistant tool_calls[].id 与 tool tool_call_id 同步，
+            # 否则严格 Provider 会拒绝断裂的关联。
             if isinstance(clean.get("tool_calls"), list):
                 normalized_tool_calls = []
                 for tc in clean["tool_calls"]:
@@ -358,8 +355,8 @@ class LiteLLMProvider(LLMProvider):
         if self._supports_cache_control(original_model) and not self.disable_auto_cache_control:
             messages, tools = self._apply_cache_control(messages, tools)
 
-        # Clamp max_tokens to at least 1 — negative or zero values cause
-        # LiteLLM to reject the request with "max_tokens must be at least 1".
+        # max_tokens 下限为 1；负数或零会让 LiteLLM 以
+        # "max_tokens must be at least 1" 拒绝请求。
         max_tokens = max(1, max_tokens)
 
         kwargs: dict[str, Any] = {
@@ -371,30 +368,29 @@ class LiteLLMProvider(LLMProvider):
             ),
             "max_tokens": max_tokens,
             "temperature": temperature,
-            # Hard cap on a single LLM call to prevent the agent from hanging
-            # when an upstream endpoint half-closes or never sends FIN. LiteLLM's
-            # default is 6000s — too long for an interactive agent loop. 600s
-            # covers slow reasoning-heavy generations while still failing fast
-            # on stuck connections, so chat_with_retry can retry or give up.
+            # 限制单次 LLM 调用时长，避免上游端点半关闭或从不发送 FIN 时 Agent
+            # 永久悬挂。LiteLLM 默认 6000 秒，对交互式 Agent Loop 过长；600 秒
+            # 足以覆盖缓慢的重推理生成，同时能让卡住的连接快速失败，供
+            # chat_with_retry 重试或放弃。
             "timeout": 600,
         }
 
-        # Apply model-specific overrides (e.g. kimi-k2.5 temperature)
+        # 应用模型专属覆盖，例如 kimi-k2.5 temperature。
         self._apply_model_overrides(model, kwargs)
 
-        # Pass api_key directly — more reliable than env vars alone
+        # 直接传入 api_key，比只依赖环境变量更可靠。
         if self.api_key:
             kwargs["api_key"] = self.api_key
 
-        # Pass api_base for custom endpoints
+        # 为自定义端点传入 api_base。
         if self.api_base:
             kwargs["api_base"] = self.api_base
 
-        # Pass extra headers (e.g. APP-Code for AiHubMix)
+        # 传入额外 header，例如 AiHubMix 的 APP-Code。
         if self.extra_headers:
             kwargs["extra_headers"] = self.extra_headers
 
-        # Pass provider-specific body extras (e.g. OpenRouter routing pin)
+        # 传入 Provider 专属 body 扩展，例如 OpenRouter 路由固定参数。
         if self.extra_body:
             kwargs["extra_body"] = self.extra_body
 
@@ -412,9 +408,8 @@ class LiteLLMProvider(LLMProvider):
             response = await acompletion(**kwargs)
             return self._parse_response(response)
         except Exception as e:
-            # Return error as content for graceful handling, but classify the
-            # live exception here (status_code + type) before it's lost to a
-            # string — the retry/fallback layer reads this verdict.
+            # 把错误作为 content 返回以便平稳处理，但要在实时异常
+            # （status_code + type）退化成字符串前完成分类；重试/fallback 层读取该结论。
             return LLMResponse(
                 content=f"Error calling LLM: {str(e)}",
                 finish_reason="error",
@@ -462,9 +457,8 @@ class LiteLLMProvider(LLMProvider):
             "max_tokens": max_tokens,
             "temperature": temperature,
             "stream": True,
-            # OpenAI-compatible providers only emit the trailing usage chunk
-            # when usage is explicitly requested; without it the stream carries
-            # no token counts and downstream cost / context tracking sees zero.
+            # OpenAI-compatible Provider 只有在显式请求 usage 时才发出末尾 usage
+            # chunk；否则 stream 不含 token 计数，下游成本/上下文追踪会看到零。
             "stream_options": {"include_usage": True},
         }
 
@@ -529,13 +523,12 @@ class LiteLLMProvider(LLMProvider):
 
             tool_call_delta: dict[str, Any] | None = None
             if tool_calls:
-                # Surface raw tool_call deltas as a list of dict snapshots so
-                # downstream layers can re-assemble; intentionally light-touch
-                # here (full tool-call accumulation is the consumer's job).
+                # 把原始 tool_call delta 作为字典快照列表暴露，供下游重组；
+                # 此处有意只做轻量处理，完整工具调用累积属于消费者职责。
                 serialized = []
                 for tc in tool_calls:
                     try:
-                        serialized.append(tc.model_dump())  # pydantic v2
+                        serialized.append(tc.model_dump())  # 使用 Pydantic v2 接口
                     except AttributeError:
                         serialized.append(
                             {
@@ -569,8 +562,8 @@ class LiteLLMProvider(LLMProvider):
         content = message.content
         finish_reason = choice.finish_reason
 
-        # Some providers (e.g. GitHub Copilot) split content and tool_calls
-        # across multiple choices. Merge them so tool_calls are not lost.
+        # 部分 Provider（如 GitHub Copilot）会把 content 和 tool_calls 拆到多个
+        # choice 中；将其合并，避免丢失 tool_calls。
         raw_tool_calls = []
         for ch in response.choices:
             msg = ch.message
@@ -588,7 +581,7 @@ class LiteLLMProvider(LLMProvider):
 
         tool_calls = []
         for tc in raw_tool_calls:
-            # Parse arguments from JSON string if needed
+            # 必要时从 JSON 字符串解析参数。
             args = tc.function.arguments
             if isinstance(args, str):
                 args = json_repair.loads(args)

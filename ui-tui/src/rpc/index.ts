@@ -1,6 +1,6 @@
-// Pico TUI RPC — one-stop public entrypoint for consumers.
+// Pico TUI RPC 面向消费者的统一公开入口。
 //
-// ui-tui consumers should import everything from `./rpc`:
+// ui-tui 消费者应统一从 `./rpc` 导入：
 //   import { RpcClient, SessionNotFoundError, type TurnEvent } from './rpc';
 
 export { RpcClient } from './client.js'

@@ -61,7 +61,7 @@ const nextTreeRails = (rails: TreeRails, branch: TreeBranch) => [...rails, branc
 const treeLead = (rails: TreeRails, branch: TreeBranch) =>
   `${rails.map(on => (on ? '│ ' : '  ')).join('')}${branch === 'mid' ? '├─ ' : '└─ '}`
 
-// ── Primitives ───────────────────────────────────────────────────────
+// ── 基础组件 ─────────────────────────────────────────────────────────
 
 function TreeRow({
   branch,
@@ -275,8 +275,7 @@ function heatColor(node: SubagentNode, peak: number, theme: Theme): string | und
   const palette = [theme.color.border, theme.color.accent, theme.color.primary, theme.color.warn, theme.color.error]
   const idx = hotnessBucket(node.aggregate.hotness, peak, palette.length)
 
-  // Below the median bucket we keep the default dim stem so cool branches
-  // fade into the chrome — only "hot" branches draw the eye.
+  // 低于中位分桶时保留默认暗色树干，使冷分支淡入界面装饰；只有“热”分支吸引视线。
   if (idx < 2) {
     return undefined
   }
@@ -331,8 +330,7 @@ function SubagentAccordion({
   const title = `${prefix}${open ? goalLabel : compactPreview(goalLabel, 60)}`
   const summary = compactPreview((item.summary || '').replace(/\s+/g, ' ').trim(), 72)
 
-  // Suffix packs branch rollup: status · elapsed · per-branch tool/agent/token/cost.
-  // Emphasises the numbers the user can't easily eyeball from a flat list.
+  // 后缀汇总分支：状态、耗时、逐分支工具/智能体/令牌/成本，强调用户无法从扁平列表快速看出的数字。
   const statusLabel = item.status === 'queued' ? 'queued' : item.status === 'running' ? 'running' : String(item.status)
 
   const rollupBits: string[] = [statusLabel]
@@ -495,8 +493,7 @@ function SubagentAccordion({
   }
 
   if (children.length > 0) {
-    // Nested grandchildren — rendered recursively via SubagentAccordion,
-    // sharing the same keybindings / expand semantics as top-level nodes.
+    // 嵌套孙节点通过 SubagentAccordion 递归渲染，与顶层节点共用相同快捷键和展开语义。
     sections.push({
       header: (
         <Chevron
@@ -528,8 +525,7 @@ function SubagentAccordion({
     })
   }
 
-  // Heatmap: amber→error gradient on the stem when this branch is "hot"
-  // (high tools/sec) relative to the whole tree's peak.
+  // 热力图：该分支相对全树峰值较“热”（每秒工具数高）时，树干使用从琥珀色到错误色的渐变。
   const stem = heatColor(node, peak, t)
 
   return (
@@ -579,7 +575,7 @@ function SubagentAccordion({
   )
 }
 
-// ── Thinking ─────────────────────────────────────────────────────────
+// ── 思考 ─────────────────────────────────────────────────────────────
 
 export const Thinking = memo(function Thinking({
   active = false,
@@ -639,7 +635,7 @@ export const Thinking = memo(function Thinking({
   )
 })
 
-// ── ToolTrail ────────────────────────────────────────────────────────
+// ── 工具轨迹 ─────────────────────────────────────────────────────────
 
 interface Group {
   color: string
@@ -693,13 +689,10 @@ export const ToolTrail = memo(function ToolTrail({
   )
 
   const [now, setNow] = useState(() => Date.now())
-  // Local toggles own the open state once mounted.  Init from the resolved
-  // section visibility so default-expanded sections (thinking/tools) render
-  // open on first paint; the useEffect below re-syncs when the user mutates
-  // visibility at runtime via /details.  NEVER OR these against
-  // `visible.X === 'expanded'` at render time — that locks the panel open
-  // and silently breaks manual chevron clicks for default-expanded
-  // sections (regression caught after #14968).
+  // 挂载后由本地开关拥有展开状态。以解析后的区段可见性初始化，使默认展开区段（思考/工具）
+  // 首次绘制即打开；用户运行时通过 /details 修改可见性后，下方 useEffect 重新同步。渲染时绝不能
+  // 与 `visible.X === 'expanded'` 做或运算，否则面板会锁定为展开，并静默破坏默认展开区段的
+  // 手动箭头点击；该回归在 #14968 后被发现。
   const [openThinking, setOpenThinking] = useState(visible.thinking === 'expanded')
   const [openTools, setOpenTools] = useState(visible.tools === 'expanded')
   const [openSubagents, setOpenSubagents] = useState(visible.subagents === 'expanded')
@@ -725,9 +718,8 @@ export const ToolTrail = memo(function ToolTrail({
 
   const cot = useMemo(() => thinkingPreview(reasoning, 'full', THINKING_COT_MAX), [reasoning])
 
-  // Spawn-tree derivations must live above any early return so React's
-  // rules-of-hooks sees a stable call order.  Cheap O(N) builds memoised
-  // by subagent-list identity.
+  // spawn 树派生必须位于所有提前返回之前，使 React 钩子规则看到稳定调用顺序。低成本 O(N) 构建
+  // 按子智能体列表身份记忆化。
   const spawnTree = useMemo(() => buildSubagentTree(subagents), [subagents])
   const spawnPeak = useMemo(() => peakHotness(spawnTree), [spawnTree])
   const spawnTotals = useMemo(() => treeTotals(spawnTree), [spawnTree])
@@ -748,7 +740,7 @@ export const ToolTrail = memo(function ToolTrail({
     return null
   }
 
-  // ── Build groups + meta ────────────────────────────────────────
+  // ── 构建分组与元数据 ──────────────────────────────────────────────
 
   const groups: Group[] = []
   const meta: DetailRow[] = []
@@ -835,7 +827,7 @@ export const ToolTrail = memo(function ToolTrail({
     meta.push({ color, content: `${glyph} ${item.text}`, dimColor: item.tone === 'info', key: `a-${item.id}` })
   }
 
-  // ── Derived ────────────────────────────────────────────────────
+  // ── 派生值 ────────────────────────────────────────────────────────
 
   const hasTools = groups.length > 0
   const hasSubagents = subagents.length > 0
@@ -871,14 +863,11 @@ export const ToolTrail = memo(function ToolTrail({
     )
   }
 
-  // ── Backstop: floating alerts when every panel is hidden ─────────
+  // ── 兜底：所有面板隐藏时显示浮动警报 ───────────────────────────────
   //
-  // Per-section overrides win over the global details_mode (they're computed
-  // by sectionMode), so we only collapse to nothing when EVERY section is
-  // resolved to hidden — that way `details_mode: hidden` + `sections.tools:
-  // expanded` still renders the tools panel.  When all panels are hidden
-  // AND ambient errors/warnings exist, surface them as a compact inline
-  // backstop so quiet-mode users aren't blind to failures.
+  // 逐区段覆盖优先于全局 details_mode，由 sectionMode 计算。因此只有每个区段都解析为隐藏时才完全
+  // 收起；这样 `details_mode: hidden` 加 `sections.tools: expanded` 仍会渲染工具面板。所有面板
+  // 隐藏且存在环境错误/警告时，以紧凑行内兜底显示，避免安静模式用户看不到失败。
 
   const allHidden =
     visible.thinking === 'hidden' &&
@@ -900,7 +889,7 @@ export const ToolTrail = memo(function ToolTrail({
     ) : null
   }
 
-  // ── Tree render fragments ──────────────────────────────────────
+  // ── 树渲染片段 ──────────────────────────────────────────────────
 
   const metaTone: 'dim' | 'error' | 'warn' = activity.some(i => i.tone === 'error')
     ? 'error'
@@ -1025,8 +1014,7 @@ export const ToolTrail = memo(function ToolTrail({
   }
 
   if (hasSubagents && !inlineDelegateKey && visible.subagents !== 'hidden') {
-    // Spark + summary give a one-line read on the branch shape before
-    // opening the subtree.  `/agents` opens the full-screen audit overlay.
+    // 火花图加摘要在打开子树前提供一行分支形态概览；`/agents` 打开全屏审计浮层。
     const suffix = spawnSpark ? `${spawnSummaryLabel}  ${spawnSpark}  (/agents)` : `${spawnSummaryLabel}  (/agents)`
 
     panels.push({

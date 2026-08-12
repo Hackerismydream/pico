@@ -1,43 +1,41 @@
-# Small real Evolution Run: one funnel round against the disposable subject
-# repo materialized by scripts/setup_small_real_subject.py.
+# 小型真实演化运行：针对 scripts/setup_small_real_subject.py 生成的一次性目标仓库
+# 执行一轮漏斗。
 #
-#   uv run python scripts/setup_small_real_subject.py            # once
+#   uv run python scripts/setup_small_real_subject.py            # 仅执行一次
 #   uv run pico evolve check    --config benchmarks/evolver/small_real.yaml
 #   uv run pico evolve run      --config benchmarks/evolver/small_real.yaml --smoke
 #   uv run pico evolve run      --config benchmarks/evolver/small_real.yaml
 #   uv run pico evolve status   --config benchmarks/evolver/small_real.yaml
 #   uv run pico evolve finalize --config benchmarks/evolver/small_real.yaml --yes
 #
-# The bench key is `appworld` because that is the registered module path
-# (benchmarks.appworld.evolve.entry:build) and the registry imports it FROM the
-# subject repo below - the disposable subject carries its own entry.py; the
-# real AppWorld environment is never touched.
+# bench 键使用 `appworld`，因为它是已注册模块路径
+# benchmarks.appworld.evolve.entry:build，注册表会从下方目标仓库导入它。
+# 一次性目标自带 entry.py，不会接触真实 AppWorld 环境。
 
 bench: appworld
-repo_root: subject                # relative to this file; gitignored, created
-                                  # by scripts/setup_small_real_subject.py
-# base_sha omitted: the subject has exactly one commit, resolved at launch and
-# pinned for the whole run.
-work_dir: ../../.pico/evolver/small-real   # outside the subject repo, under
-                                           # the gitignored .pico/ evidence root
+repo_root: subject                # 相对此文件；被 Git 忽略并由脚本创建
+                                  # scripts/setup_small_real_subject.py
+# 省略 base_sha：目标恰有一个提交，启动时解析并在整个运行期间固定。
+work_dir: ../../.pico/evolver/small-real   # 位于目标仓库外、被 Git 忽略的
+                                           # .pico/ 证据根目录下
 
-# models omitted entirely: all loop roles use Pico's own configured model
-# (~/.pico/config.json agents.defaults.model).
+# 完全省略 models：所有循环角色使用 Pico 自身配置的模型，即
+# ~/.pico/config.json 中的 agents.defaults.model。
 
-funnel:                           # sized for one real round
+funnel:                           # 规模适配一轮真实运行
   k_screen: 1
   k_confirm: 2
   budget:      {max_why_per_round: 1, candidates_per_why: 1}
   termination: {patience: 1, max_rounds: 1}
 
 bench_config:
-  timeout: 120                    # grading subprocess timeout, seconds
-  # train_task_ids / test_task_ids: omitted -> the subject's built-in split
-  # (10 train / 4 sealed test assertion tasks over agent_cli.py).
+  timeout: 120                    # 评分子进程超时秒数
+  # 省略 train_task_ids/test_task_ids，使用目标内置拆分：针对 agent_cli.py 的
+  # 10 个训练任务与 4 个密封测试断言任务。
 
-# Deep-merged on top when --smoke is passed (after the built-in shrink:
-# 1 WHY x 1 candidate x 1 round, K=1; work_dir gets a _smoke suffix). Pins the
-# three slugify tasks (two of them failing) and one non-overlapping sealed id.
+# 传入 --smoke 时在内置缩减后深度合并：1 个 WHY、1 个候选、1 轮、K=1，
+# work_dir 添加 _smoke 后缀。固定三个 slugify 任务（其中两个失败）和一个不重叠的
+# 密封标识。
 smoke:
   bench_config:
     train_task_ids: ["slug-basic", "slug-trim", "slug-collapse"]

@@ -1,15 +1,14 @@
-# Pico one-line installer for native Windows PowerShell.
+# Pico 原生 Windows PowerShell 一键安装脚本。
 #
-# Remote:
+# 远程：
 #   irm https://raw.githubusercontent.com/Hackerismydream/pico/main/install.ps1 | iex
 #
-# Goal: a clean Windows machine ends up able to run `pico`
-# without admin rights. The script is idempotent: it reuses existing tools when
-# available and only fills the gaps:
-#   1. uv            (Python toolchain + package manager)
-#   2. Node.js >= 22 (TUI runtime; installed privately if the system lacks it)
-#   3. pico         (installed as a global uv tool)
-#   4. myna-memory  (when MYNA_WHEEL_URL or a paired release asset is available)
+# 目标：让全新 Windows 机器无需管理员权限即可运行 `pico`。脚本具备幂等性，
+# 会复用已有工具并只补齐缺项：
+#   1. uv            （Python 工具链与包管理器）
+#   2. Node.js >= 22 （TUI 运行时；系统缺少时私有安装）
+#   3. pico          （作为全局 uv 工具安装）
+#   4. myna-memory   （MYNA_WHEEL_URL 或配套发布资产可用时安装）
 
 $ErrorActionPreference = "Stop"
 
@@ -233,9 +232,8 @@ function Install-Pico([string]$UvPath, [string]$NodePath) {
                 Write-Warn "Found node but not npm; skipping TUI bundle build"
             }
         }
-        # Install all channel adapters by default; fall back to base pico if
-        # the umbrella extra fails to build on this platform, so one broken
-        # channel SDK cannot block the whole install.
+        # 默认安装全部渠道适配器；若聚合额外依赖无法在当前平台构建，则回退到
+        # 基础 Pico，避免单个渠道 SDK 阻塞完整安装。
         $mynaArgs = @()
         if ($env:MYNA_WHEEL_URL) {
             Write-Info "Installing Myna from $env:MYNA_WHEEL_URL"

@@ -69,9 +69,8 @@ const capHistory = (items: Msg[]): Msg[] => {
   return items[0]?.kind === 'intro' ? [items[0]!, ...items.slice(-(MAX_HISTORY - 1))] : items.slice(-MAX_HISTORY)
 }
 
-// Seam for the typed chat path's session key: the stream handle MUST be
-// keyed to the minted ui.sid (from session.create / session.resume), never
-// a hardcoded default — exported so tests can pin this against regressions.
+// 带类型聊天路径的会话键接缝：流句柄必须使用 session.create / session.resume 签发的 ui.sid，
+// 绝不能使用硬编码默认值。将其导出，使测试能固定此行为，防止回归。
 export const buildChatStreamHandle = (
   rpcClient: ChatStreamRpcClient | undefined,
   sid: null | string,
@@ -255,14 +254,11 @@ export function useMainApp(gw: TuiRpcClient, rpcClient?: ChatStreamRpcClient) {
     selection.setSelectionBgColor(ui.theme.color.selectionBg)
   }, [selection, ui.theme.color.selectionBg])
 
-  // macOS Terminal.app does not forward Cmd+C to fullscreen TUIs that enable
-  // mouse tracking, so the only reliable native-feeling path is iTerm-style
-  // copy-on-select: once a drag creates a stable TUI selection, write it to
-  // the system clipboard while keeping the highlight visible.
+  // macOS Terminal.app 不会把 Cmd+C 转发给启用鼠标追踪的全屏 TUI，因此唯一可靠且符合原生体验的
+  // 路径是 iTerm 式选中即复制：拖拽产生稳定 TUI 选区后写入系统剪贴板，同时保留高亮。
   //
-  // Subscribe directly via the ink selection bus (not useSyncExternalStore)
-  // so React doesn't re-render MainApp on every drag-move tick. The version
-  // ref de-dupes against re-entrant notifications.
+  // 直接通过 Ink 选择总线订阅，而非 useSyncExternalStore，避免 React 在每次拖拽移动 tick 时
+  // 重渲染 MainApp。版本 Ref 用于去除重入通知。
   useEffect(() => {
     if (!isMac) {
       return
@@ -369,9 +365,8 @@ export function useMainApp(gw: TuiRpcClient, rpcClient?: ChatStreamRpcClient) {
     return cache
   }, [heightCacheKey])
 
-  // Index of the first user-role message — separator-rendering in
-  // appLayout.tsx skips this row, so the height estimator must skip it
-  // too. -1 when no user message exists yet (no row will gate true).
+  // 第一条用户角色消息的索引。appLayout.tsx 的分隔符渲染会跳过该行，高度估算器也必须跳过。
+  // 尚无用户消息时为 -1，此时不会有行通过门控。
   const firstUserIdx = useMemo(() => virtualRows.findIndex(r => r.msg.role === 'user'), [virtualRows])
 
   const estimateRowHeight = useCallback(
@@ -465,13 +460,10 @@ export function useMainApp(gw: TuiRpcClient, rpcClient?: ChatStreamRpcClient) {
     [gw, sys]
   )
 
-  // Phase 6 typed chat path scaffold (per design.md §D7). The
-  // `ChatStreamHandle` is constructed once per `sid` change and exposed
-  // through `chatStreamRef` so the Ctrl+C handler in useInputHandlers
-  // can route into `turn.cancel` whenever a typed turn is in flight.
-  // Live `attach()` is deferred until the Python `turn.*` handlers ship
-  // (separate L2 phase) — until then the handle stays detached and is a
-  // no-op, but the wiring is in place so the flip is a one-line change.
+  // 第 6 阶段带类型聊天路径脚手架，见 design.md 第 D7 节。每次 `sid` 变化构造一次
+  // `ChatStreamHandle`，并通过 `chatStreamRef` 暴露，使 useInputHandlers 中的 Ctrl+C 处理器
+  // 可在带类型轮次进行时路由到 `turn.cancel`。实时 `attach()` 延迟到 Python `turn.*` 处理器
+  // 交付（独立 L2 阶段）；此前句柄保持分离且为空操作，但接线已就绪，切换只需改一行。
   const chatStreamRef = useRef<ChatStreamHandle | null>(null)
 
   const gateway = useMemo(() => ({ gw, rpc, rpcClient }), [gw, rpc, rpcClient])
@@ -479,12 +471,10 @@ export function useMainApp(gw: TuiRpcClient, rpcClient?: ChatStreamRpcClient) {
   const die = useCallback(() => {
     gw.kill()
     exit()
-    // Ink's exit() calls unmount() which resets terminal modes but does NOT
-    // call process.exit().  Without an explicit exit the Node process stays
-    // alive (stdin listener keeps the event loop open), so the process.on('exit')
-    // handler in entry.tsx — which sends the final resetTerminalModes() — never
-    // fires.  This leaves kitty keyboard protocol, mouse modes, etc. enabled
-    // in the parent shell.  See issue #19194.
+    // Ink 的 exit() 调用 unmount() 重置终端模式，但不会调用 process.exit()。若不显式退出，
+    // 标准输入监听器会保持事件循环，Node 进程继续存活，entry.tsx 中发送最终
+    // resetTerminalModes() 的 process.on('exit') 处理器永不触发，使父 Shell 仍启用 kitty 键盘
+    // 协议、鼠标模式等。见问题 #19194。
     process.exit(0)
   }, [exit, gw])
 
@@ -512,12 +502,10 @@ export function useMainApp(gw: TuiRpcClient, rpcClient?: ChatStreamRpcClient) {
     }
   }, [ui.busy])
 
-  // Install / replace the typed chat stream handle whenever the session
-  // identifier changes. The handle is created eagerly AND attach()-ed so
-  // turn.subscribe streams token.delta events through the typed path
-  // (Phase 4 turn-streaming live per design.md §D7). The Ctrl+C handler in
-  // useInputHandlers reads `chatStreamRef.current` to prefer a typed
-  // `turn.cancel` whenever a turn is in flight.
+  // 会话标识变化时安装或替换带类型聊天流句柄。句柄会立即创建并 attach()，使 turn.subscribe
+  // 通过带类型路径流式传递 token.delta 事件，即 design.md 第 D7 节的第 4 阶段轮次流。
+  // useInputHandlers 中的 Ctrl+C 处理器读取 `chatStreamRef.current`，轮次进行时优先使用带类型
+  // `turn.cancel`。
   useEffect(() => {
     const handle = buildChatStreamHandle(rpcClient, ui.sid, sys, appendMessage, releaseSubmittedClipboardImages)
 
@@ -529,8 +517,7 @@ export function useMainApp(gw: TuiRpcClient, rpcClient?: ChatStreamRpcClient) {
 
     chatStreamRef.current = handle
     void handle.attach().catch(err => {
-      // Surface subscription failure to the system message log; do not crash
-      // the React tree. turn.cancel / send still callable if user inputs.
+      // 将订阅失败显示到系统消息日志，不让 React 树崩溃；用户输入时 turn.cancel/send 仍可调用。
       sys(`chat stream attach failed: ${String(err)}`)
     })
 
@@ -653,7 +640,7 @@ export function useMainApp(gw: TuiRpcClient, rpcClient?: ChatStreamRpcClient) {
     sys
   })
 
-  // Drain one queued message whenever the session settles.
+  // 会话稳定后排空一条排队消息。
   useEffect(() => {
     if (
       !ui.sid ||
@@ -743,7 +730,7 @@ export function useMainApp(gw: TuiRpcClient, rpcClient?: ChatStreamRpcClient) {
     gw.on('exit', exitHandler)
     gw.drain()
 
-    // entry.tsx's setupGracefulExit handles process cleanup on real exit.
+    // 真正退出时由 entry.tsx 的 setupGracefulExit 处理进程清理。
     return () => {
       gw.off('event', handler)
       gw.off('exit', exitHandler)
@@ -839,10 +826,8 @@ export function useMainApp(gw: TuiRpcClient, rpcClient?: ChatStreamRpcClient) {
 
   const hasReasoning = useTurnSelector(state => Boolean(state.reasoning.trim()))
 
-  // Per-section overrides win over the global mode — when every section is
-  // resolved to hidden, the only thing ToolTrail will surface is the
-  // floating-alert backstop (errors/warnings).  Mirror that so we don't
-  // render an empty wrapper Box above the streaming area in quiet mode.
+  // 逐区段覆盖优先于全局模式。所有区段最终均隐藏时，ToolTrail 只会显示浮动警报兜底
+  // （错误/警告）。同步该行为，避免安静模式下在流式区域上方渲染空包装 Box。
   const anyPanelVisible = SECTION_NAMES.some(
     s => sectionMode(s, ui.detailsMode, ui.sections, ui.detailsModeCommandOverride) !== 'hidden'
   )
@@ -919,9 +904,8 @@ export function useMainApp(gw: TuiRpcClient, rpcClient?: ChatStreamRpcClient) {
     [cols, composerActions, composerState, empty, pagerPageSize, submit]
   )
 
-  // Pass current progress through unfrozen — streaming update throttling
-  // handles interaction load; progress must stay truthful so panels don't
-  // randomly disappear when the live tail scrolls offscreen.
+  // 当前进度不冻结地传递。流式更新节流负责交互负载；进度必须保持真实，避免实时尾部滚出视口时
+  // 面板随机消失。
   const appProgress = useMemo(() => ({ showProgressArea }), [showProgressArea])
 
   const cwd = ui.info?.cwd || process.env.PICO_CWD || process.cwd()

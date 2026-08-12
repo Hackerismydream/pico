@@ -3,32 +3,23 @@
 // Modifications Copyright (c) 2026 EverMind.
 // See NOTICES.md and LICENSES/MIT-hermes-agent.txt.
 
-// Best-effort LaTeX → Unicode for inline / display math captured by the
-// markdown renderer. The terminal can't typeset LaTeX, but Unicode covers
-// most of what models actually emit: Greek letters, blackboard / fraktur /
-// calligraphic capitals, set theory + logic operators, common arrows,
-// sub/superscripts, and `\frac{a}{b}` collapsed to `a/b`.
+// 尽力把 Markdown 渲染器捕获的行内/块级数学 LaTeX 转为 Unicode。终端无法排版 LaTeX，
+// 但 Unicode 能覆盖模型实际输出的大部分内容：希腊字母、黑板粗体/哥特体/花体大写字母、
+// 集合论和逻辑运算符、常用箭头、上下标，以及把 `\frac{a}{b}` 折叠为 `a/b`。
 //
-// Design rules:
-//   • Pure regex pipeline. Anything we don't recognise is preserved
-//     verbatim (so a `\foo{bar}` we've never heard of still survives).
-//     A real LaTeX parser would be more correct but throws on partial
-//     input — terminal users would rather see the raw command than a
-//     parse-error placeholder.
-//   • Longest-match-first ordering on commands so `\le` doesn't shadow
-//     `\leq`, `\sub` doesn't shadow `\subseteq`, etc.
-//   • Word-boundary lookahead `(?![A-Za-z])` after each command so
-//     `\pix` (made-up command) doesn't get partially substituted as `π`.
-//   • `\mathbb{X}`, `\mathcal{X}`, `\mathfrak{X}` only handle a single
-//     letter argument — multi-letter `\mathbb{NN}` is rare and would
-//     need a real parser to do correctly.
-//   • Sub/super scripts only convert if EVERY character has a Unicode
-//     equivalent. Mixed content like `^{n+1}` falls back to the raw
-//     LaTeX so we don't emit `ⁿ+¹` (which has no `+` superscript glyph
-//     in some fonts and reads worse than the source).
+// 设计规则：
+//   • 使用纯正则流水线。无法识别的内容原样保留，因此未知的 `\foo{bar}` 仍不会丢失。
+//     真正的 LaTeX 解析器虽更准确，却会在不完整输入上抛错；终端用户更愿意看到原始命令，
+//     而不是解析错误占位符。
+//   • 命令按最长匹配优先排序，避免 `\le` 遮蔽 `\leq`、`\sub` 遮蔽 `\subseteq` 等。
+//   • 每个命令后使用词边界前瞻 `(?![A-Za-z])`，避免虚构命令 `\pix` 被部分替换为 `π`。
+//   • `\mathbb{X}`、`\mathcal{X}`、`\mathfrak{X}` 仅处理单字母参数；多字母
+//     `\mathbb{NN}` 很少见，正确处理需要真正的解析器。
+//   • 只有每个字符都有 Unicode 对应字符时才转换上下标。`^{n+1}` 等混合内容回退到原始
+//     LaTeX，避免输出 `ⁿ+¹`；某些字体没有上标 `+`，显示效果反而比源码更差。
 
 const SYMBOLS: Record<string, string> = {
-  // Greek lowercase
+  // 小写希腊字母
   '\\alpha': 'α',
   '\\beta': 'β',
   '\\gamma': 'γ',
@@ -59,7 +50,7 @@ const SYMBOLS: Record<string, string> = {
   '\\psi': 'ψ',
   '\\omega': 'ω',
 
-  // Greek uppercase
+  // 大写希腊字母
   '\\Gamma': 'Γ',
   '\\Delta': 'Δ',
   '\\Theta': 'Θ',
@@ -72,7 +63,7 @@ const SYMBOLS: Record<string, string> = {
   '\\Psi': 'Ψ',
   '\\Omega': 'Ω',
 
-  // Big operators
+  // 大型运算符
   '\\sum': '∑',
   '\\prod': '∏',
   '\\coprod': '∐',
@@ -87,12 +78,12 @@ const SYMBOLS: Record<string, string> = {
   '\\bigoplus': '⨁',
   '\\bigotimes': '⨂',
 
-  // Calculus
+  // 微积分
   '\\partial': '∂',
   '\\nabla': '∇',
   '\\sqrt': '√',
 
-  // Sets
+  // 集合
   '\\emptyset': '∅',
   '\\varnothing': '∅',
   '\\infty': '∞',
@@ -110,7 +101,7 @@ const SYMBOLS: Record<string, string> = {
   '\\setminus': '∖',
   '\\complement': '∁',
 
-  // Logic
+  // 逻辑
   '\\forall': '∀',
   '\\exists': '∃',
   '\\nexists': '∄',
@@ -121,7 +112,7 @@ const SYMBOLS: Record<string, string> = {
   '\\therefore': '∴',
   '\\because': '∵',
 
-  // Relations
+  // 关系运算符
   '\\le': '≤',
   '\\leq': '≤',
   '\\ge': '≥',
@@ -144,20 +135,18 @@ const SYMBOLS: Record<string, string> = {
   '\\nmid': '∤',
   '\\divides': '∣',
 
-  // Common standalone glyphs
+  // 常用独立符号
   '\\blacksquare': '■',
   '\\square': '□',
   '\\Box': '□',
   '\\qed': '∎',
   '\\bigstar': '★',
 
-  // Modular arithmetic — the `\pmod{p}` form (with arg) is handled below;
-  // the bare `\bmod` / `\mod` commands are simple text substitutions.
+  // 模运算——带参数的 `\pmod{p}` 形式在下方处理；裸 `\bmod` / `\mod` 命令只做文本替换。
   '\\bmod': 'mod',
   '\\mod': 'mod',
 
-  // Brackets / fences (named delimiter commands; the `\left\X` / `\right\X`
-  // unwrapping below leaves these behind for the symbol pass to resolve).
+  // 括号/围栏（具名分隔符命令）；下方展开 `\left\X` / `\right\X` 后将它们留给符号阶段解析。
   '\\langle': '⟨',
   '\\rangle': '⟩',
   '\\lceil': '⌈',
@@ -166,7 +155,7 @@ const SYMBOLS: Record<string, string> = {
   '\\rfloor': '⌋',
   '\\|': '‖',
 
-  // Arrows
+  // 箭头
   '\\to': '→',
   '\\rightarrow': '→',
   '\\leftarrow': '←',
@@ -184,7 +173,7 @@ const SYMBOLS: Record<string, string> = {
   '\\downarrow': '↓',
   '\\updownarrow': '↕',
 
-  // Binary operators
+  // 二元运算符
   '\\cdot': '⋅',
   '\\cdots': '⋯',
   '\\ldots': '…',
@@ -209,7 +198,7 @@ const SYMBOLS: Record<string, string> = {
   '\\angle': '∠',
   '\\triangle': '△',
 
-  // Spacing — collapse to varying widths of regular space
+  // 间距——折叠为不同宽度的普通空格
   '\\,': ' ',
   '\\;': ' ',
   '\\:': ' ',
@@ -218,7 +207,7 @@ const SYMBOLS: Record<string, string> = {
   '\\quad': '  ',
   '\\qquad': '    ',
 
-  // Functions (LaTeX renders these in roman; we just keep the name)
+  // 函数（LaTeX 使用罗马体渲染；这里只保留名称）
   '\\sin': 'sin',
   '\\cos': 'cos',
   '\\tan': 'tan',
@@ -247,7 +236,7 @@ const SYMBOLS: Record<string, string> = {
   '\\arg': 'arg',
   '\\gcd': 'gcd',
 
-  // Escaped literals — model occasionally emits these for display
+  // 转义字面量——模型偶尔会为了显示而输出这些内容
   '\\&': '&',
   '\\%': '%',
   '\\$': '$',
@@ -422,24 +411,20 @@ const SUBSCRIPT: Record<string, string> = {
   x: 'ₓ'
 }
 
-// Sentinel control characters used to mark `\boxed` / `\fbox` regions in
-// the converted output. The renderer splits on these to apply a highlight
-// style; consumers that don't want highlighting can strip them with the
-// exported `BOX_RE` below.
+// 哨兵控制字符用于在转换结果中标记 `\boxed` / `\fbox` 区域。渲染器按它们切分并应用
+// 高亮样式；不需要高亮的使用方可用下方导出的 `BOX_RE` 移除。
 export const BOX_OPEN = '\u0001'
 export const BOX_CLOSE = '\u0002'
-// eslint-disable-next-line no-control-regex -- BOX_OPEN/BOX_CLOSE are sentinel U+0001/U+0002 used by math-unicode renderer; regex must match them literally.
+// eslint-disable-next-line no-control-regex -- BOX_OPEN/BOX_CLOSE 是数学 Unicode 渲染器使用的 U+0001/U+0002 哨兵；正则必须按字面匹配。
 export const BOX_RE = /\u0001([^\u0001\u0002]*)\u0002/g
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-// Pre-compile two symbol regexes: one for letter-ending commands (`\pi`,
-// `\sum`) which need a `(?![A-Za-z])` lookahead so they don't partially
-// match `\pix` or `\summa`, and one for punctuation-ending commands
-// (`\{`, `\,`, `\|`) which must NOT have the lookahead — otherwise
-// `\{p` would refuse to substitute because `p` is a letter.
+// 预编译两类符号正则：以字母结尾的命令（`\pi`、`\sum`）需要 `(?![A-Za-z])` 前瞻，
+// 避免部分匹配 `\pix` 或 `\summa`；以标点结尾的命令（`\{`、`\,`、`\|`）绝不能使用
+// 该前瞻，否则 `\{p` 会因 `p` 是字母而拒绝替换。
 //
-// Longest commands first inside each group so `\leq` beats `\le`.
+// 每组内最长命令优先，使 `\leq` 优先于 `\le`。
 const splitByEnding = (keys: string[]) => {
   const letter: string[] = []
   const punct: string[] = []
@@ -486,12 +471,9 @@ const convertScript = (input: string, table: Record<string, string>, sigil: '^' 
     return out
   }
 
-  // Fallback: if the body is a single visible character (e.g. `∞` after
-  // earlier symbol substitution), render it without braces — `^∞` reads
-  // far better than `^{∞}` in a terminal. Multi-char bodies that don't
-  // fully convert use parens (`e^(iπ)`) instead of braces (`e^{iπ}`)
-  // because parens are normal punctuation while braces look like
-  // unrendered LaTeX.
+  // 回退：若正文是单个可见字符（如早先符号替换后的 `∞`），则不带花括号渲染；终端中的
+  // `^∞` 远比 `^{∞}` 易读。未完全转换的多字符正文使用圆括号（`e^(iπ)`）而非花括号
+  // （`e^{iπ}`），因为圆括号是普通标点，花括号看起来像未渲染的 LaTeX。
   const trimmed = input.trim()
 
   if ([...trimmed].length === 1) {
@@ -501,11 +483,9 @@ const convertScript = (input: string, table: Record<string, string>, sigil: '^' 
   return `${sigil}(${trimmed})`
 }
 
-// Walk the string and parse `{...}` honouring nested braces. Unlike a
-// `\{[^{}]*\}` regex this survives `\frac{|t|^{p-1}|P(t)|^p}{...}` where
-// the numerator contains its own braces from a superscript. Returns the
-// inner content (without the outer braces) and the offset just past the
-// closing `}`. Returns null if there is no balanced brace at `start`.
+// 遍历字符串并解析 `{...}`，正确处理嵌套花括号。与 `\{[^{}]*\}` 正则不同，它能处理
+// `\frac{|t|^{p-1}|P(t)|^p}{...}` 这种分子因上标自带花括号的情况。返回不含外层花括号的
+// 内部内容，以及结束 `}` 后的偏移量；`start` 处没有配对花括号时返回 null。
 const readBraced = (s: string, start: number): { content: string; end: number } | null => {
   if (s[start] !== '{') {
     return null
@@ -517,8 +497,7 @@ const readBraced = (s: string, start: number): { content: string; end: number } 
   while (i < s.length && depth > 0) {
     const c = s[i]
 
-    // Skip escapes — `\{` and `\}` inside a body are literal braces and
-    // should not change the brace counter.
+    // 跳过转义；正文中的 `\{` 和 `\}` 是字面花括号，不应改变花括号计数。
     if (c === '\\' && i + 1 < s.length) {
       i += 2
 
@@ -543,11 +522,9 @@ const readBraced = (s: string, start: number): { content: string; end: number } 
   return { content: s.slice(start + 1, i), end: i + 1 }
 }
 
-// Replace every occurrence of `\command{arg}` using balanced-brace parsing
-// (so `\boxed{x^{n+1}}` works where a `[^{}]*` regex would fail). The
-// `render` callback receives the inner content already recursed-into, so
-// `\boxed{\boxed{x}}` resolves outside-in cleanly. Unmatched `\command`
-// (no following `{...}`) is preserved verbatim.
+// 使用配对花括号解析替换每个 `\command{arg}`，使 `\boxed{x^{n+1}}` 在 `[^{}]*` 正则
+// 失败的情况下仍可工作。`render` 回调接收已递归处理的内部内容，因此
+// `\boxed{\boxed{x}}` 可从外到内干净解析。无后续 `{...}` 的未匹配 `\command` 原样保留。
 const replaceBracedCommand = (input: string, command: string, render: (content: string) => string): string => {
   const cmdLen = command.length
   let out = ''
@@ -595,10 +572,8 @@ const replaceBracedCommand = (input: string, command: string, render: (content: 
   return out
 }
 
-// Replace every `\frac{num}{den}` with `num/den` (parens around either
-// side when its precedence demands it). The recursion handles nested
-// fractions naturally: `\frac{1}{\frac{1}{x}}` collapses to `1/(1/x)`
-// because we recurse into `den` before deciding whether to parenthesise.
+// 将每个 `\frac{num}{den}` 替换为 `num/den`，优先级需要时在任一侧加圆括号。递归天然处理
+// 嵌套分数：`\frac{1}{\frac{1}{x}}` 会折叠为 `1/(1/x)`，因为决定是否加括号前先递归分母。
 const replaceFracs = (input: string): string => {
   let out = ''
   let i = 0
@@ -614,7 +589,7 @@ const replaceFracs = (input: string): string => {
 
     const after = input[idx + 5]
 
-    // `(?![A-Za-z])` — protect hypothetical commands like `\fraction`.
+    // `(?![A-Za-z])` 用于保护 `\fraction` 等假设命令。
     if (after && /[A-Za-z]/.test(after)) {
       out += input.slice(i, idx + 5)
       i = idx + 5
@@ -661,14 +636,11 @@ const replaceFracs = (input: string): string => {
   return out
 }
 
-// Wrap multi-token expressions in parens so `\frac{a+b}{c}` becomes
-// `(a+b)/c` rather than `a+b/c`. We wrap whenever inline `/` would
-// change the meaning — that's any binary operator (`+`, `-`, `*`, `/`)
-// or whitespace separating tokens. `*` and `/` matter because nested
-// fractions and products like `\frac{a*b}{c}` and `\frac{1/x}{y}` would
-// otherwise read as `a*b/c` (right-associative ambiguity) and `1/x/y`.
-// Atomic factors like `n!`, `x^2`, `\sin x` don't trigger any of these
-// and stay un-parenthesised — wrapping them just clutters the output.
+// 用圆括号包住多令牌表达式，使 `\frac{a+b}{c}` 变为 `(a+b)/c` 而非 `a+b/c`。只要行内
+// `/` 会改变含义就加括号，包括任何二元运算符（`+`、`-`、`*`、`/`）或分隔令牌的空格。
+// `*` 和 `/` 很重要，否则 `\frac{a*b}{c}` 与 `\frac{1/x}{y}` 会显示成有结合歧义的
+// `a*b/c` 和 `1/x/y`。`n!`、`x^2`、`\sin x` 等原子因子不触发规则并保持无括号，
+// 否则只会让输出更杂乱。
 const wrapForFrac = (expr: string) => {
   const trimmed = expr.trim()
 
@@ -709,76 +681,55 @@ export function texToUnicode(input: string): string {
 
   s = replaceFracs(s)
 
-  // `\boxed{X}` / `\fbox{X}` highlight a final answer. Terminals can't
-  // draw a real box, so we wrap the content in U+0001 / U+0002 control
-  // characters — non-printable, never present in real text — and let the
-  // markdown renderer split on them and apply a highlight style (inverse
-  // video) to the bracketed region. This keeps `texToUnicode` pure-string
-  // while letting the React layer do the actual visual emphasis.
-  // Argument is parsed with balanced braces so nested `{...}` from
-  // superscripts / fractions inside the box survive.
+  // `\boxed{X}` / `\fbox{X}` 用于高亮最终答案。终端无法绘制真正的框，因此用不可打印且
+  // 不会出现在真实文本中的 U+0001 / U+0002 控制字符包住内容，让 Markdown 渲染器按它们
+  // 切分并对框内区域应用高亮样式（反色）。这样 `texToUnicode` 仍是纯字符串转换，实际视觉
+  // 强调由 React 层完成。参数使用配对花括号解析，保留框内上下标/分数中的嵌套 `{...}`。
   s = replaceBracedCommand(s, '\\boxed', body => `${BOX_OPEN}${body.trim()}${BOX_CLOSE}`)
   s = replaceBracedCommand(s, '\\fbox', body => `${BOX_OPEN}${body.trim()}${BOX_CLOSE}`)
 
-  // `\xrightarrow{label}` / `\xleftarrow{label}` collapse to an arrow with
-  // the label inline. LaTeX renders the label above the arrow; in monospace
-  // we put it adjacent — `─label→` is the closest readable approximation.
-  // Run before the symbol pass so the label can still pick up Greek and
-  // operator substitutions afterwards.
+  // `\xrightarrow{label}` / `\xleftarrow{label}` 折叠为带行内标签的箭头。LaTeX 将标签渲染
+  // 在箭头上方；等宽终端中将它相邻放置，`─label→` 是最接近且可读的近似。需在符号阶段前
+  // 运行，使标签随后仍能替换希腊字母和运算符。
   s = s.replace(/\\xrightarrow\s*\{([^{}]*)\}/g, (_, label: string) => `─${label.trim()}→`)
   s = s.replace(/\\xleftarrow\s*\{([^{}]*)\}/g, (_, label: string) => `←${label.trim()}─`)
   s = s.replace(/\\Longrightarrow/g, '⟹')
   s = s.replace(/\\Longleftarrow/g, '⟸')
   s = s.replace(/\\Longleftrightarrow/g, '⟺')
 
-  // `\pmod{p}` → ` (mod p)` (LaTeX adds parens automatically); `\pod{p}`
-  // is a paren-less variant; `\tag{n}` is the equation-number annotation
-  // shown to the right of an equation. Collapse to a single-space-prefixed
-  // bracketed form. The leading `\s*` in the pattern absorbs any whitespace
-  // already in the source so we don't end up with `b  (mod p)` (double
-  // space) when the user wrote `b \pmod{p}`.
+  // `\pmod{p}` 转为 ` (mod p)`（LaTeX 自动加括号）；`\pod{p}` 是无括号变体；`\tag{n}`
+  // 是显示在公式右侧的编号标注。统一折叠为前导单空格的括号形式。模式开头的 `\s*` 吸收
+  // 源码已有空白，避免用户写 `b \pmod{p}` 时得到双空格的 `b  (mod p)`。
   s = s.replace(/\s*\\pmod\s*\{([^{}]*)\}/g, (_, p: string) => ` (mod ${p.trim()})`)
   s = s.replace(/\s*\\pod\s*\{([^{}]*)\}/g, (_, p: string) => ` (${p.trim()})`)
   s = s.replace(/\s*\\tag\s*\{([^{}]*)\}/g, (_, n: string) => ` (${n.trim()})`)
 
-  // `\big`, `\Big`, `\bigg`, `\Bigg` (with optional `l`/`r`/`m` suffix)
-  // are sizing wrappers analogous to `\left`/`\right` but without the
-  // automatic-pairing semantics. Strip them and leave whatever delimiter
-  // follows. The trailing `(?![A-Za-z])` protects `\bigtriangleup` and
-  // any other letter-continuation command from being shaved.
+  // `\big`、`\Big`、`\bigg`、`\Bigg`（可带 `l`/`r`/`m` 后缀）是类似
+  // `\left`/`\right` 但无自动配对语义的尺寸包装器。移除包装器并保留后续分隔符；末尾
+  // `(?![A-Za-z])` 防止削掉 `\bigtriangleup` 等继续以字母组成的命令。
   s = s.replace(/\\(?:Bigg|bigg|Big|big)[lrm]?(?![A-Za-z])/g, '')
 
-  // Style / size hints that don't typeset any glyph and only affect how
-  // things would be sized in a real LaTeX engine. In a terminal every
-  // glyph is one monospace cell, so there's nothing to do — drop them
-  // (with any trailing whitespace) so they don't leak through as raw
-  // `\displaystyle` in the output.
+  // 样式/尺寸提示不排版任何字形，只影响真实 LaTeX 引擎中的尺寸。终端中每个字形都占一个
+  // 等宽单元，因此无需处理；将其连同尾随空白删除，避免原始 `\displaystyle` 泄漏到输出。
   s = s.replace(/\\(?:scriptscriptstyle|displaystyle|scriptstyle|textstyle|nolimits|limits)(?![A-Za-z])\s*/g, '')
 
-  // `\left` and `\right` are sizing wrappers around any delimiter — bare
-  // (`\left(`), escaped (`\left\{`), or named (`\left\langle`). Strip the
-  // wrapper unconditionally and let the rest of the pipeline (or the
-  // upcoming symbol pass) handle whatever delimiter follows. The optional
-  // `.?` consumes `\left.` / `\right.` which mean "no delimiter".
-  // Lookahead `(?![A-Za-z])` keeps `\leftarrow` / `\leftrightarrow` safe.
+  // `\left` 和 `\right` 是任意分隔符的尺寸包装器，可为裸分隔符（`\left(`）、转义分隔符
+  // （`\left\{`）或具名分隔符（`\left\langle`）。无条件移除包装器，由后续流水线或符号
+  // 阶段处理分隔符。可选 `.?` 会消费表示“无分隔符”的 `\left.` / `\right.`；前瞻
+  // `(?![A-Za-z])` 保护 `\leftarrow` / `\leftrightarrow`。
   s = s.replace(/\\left(?![A-Za-z])\.?/g, '')
   s = s.replace(/\\right(?![A-Za-z])\.?/g, '')
 
-  // Run symbol substitution BEFORE scripts so a body like `^{\infty}`
-  // becomes `^{∞}` first; convertScript can then either map ∞ to a
-  // superscript (it can't — Unicode lacks one) or fall back to `^∞`
-  // by stripping braces around the now-single-character body.
+  // 在上下标前运行符号替换，使 `^{\infty}` 先变为 `^{∞}`；convertScript 随后尝试把 ∞
+  // 映射为上标（Unicode 无此字符），或移除已变成单字符正文外的花括号并回退为 `^∞`。
   //
-  // Punctuation pass first — these can be followed by letters (`\{p`
-  // is "open-brace then p"), so the letter pass's `(?![A-Za-z])` rule
-  // would wrongly block them.
+  // 标点阶段先运行；标点后可以跟字母（`\{p` 表示左花括号后接 p），字母阶段的
+  // `(?![A-Za-z])` 规则会错误阻止它们。
   s = s.replace(SYMBOL_PUNCT_RE, m => SYMBOLS[m] ?? m)
   s = s.replace(SYMBOL_LETTER_RE, m => SYMBOLS[m] ?? m)
 
-  // Bare `^c` / `_c` handles ONLY alphanumerics and `+`/`-`/`=`. Parens
-  // are intentionally excluded because the braced-fallback above can
-  // emit `(...)` and we don't want a second pass to greedily convert
-  // its opening paren into `⁽` and orphan the closing one.
+  // 裸 `^c` / `_c` 仅处理字母数字和 `+`/`-`/`=`。刻意排除圆括号，因为上方花括号回退
+  // 可能输出 `(...)`；不应让第二遍贪婪地把左括号转为 `⁽`，留下孤立的右括号。
   s = s.replace(/\^\s*\{([^{}]+)\}/g, (_, body: string) => convertScript(body, SUPERSCRIPT, '^'))
   s = s.replace(/\^([A-Za-z0-9+\-=])/g, (raw, ch: string) => SUPERSCRIPT[ch] ?? raw)
   s = s.replace(/_\s*\{([^{}]+)\}/g, (_, body: string) => convertScript(body, SUBSCRIPT, '_'))

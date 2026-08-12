@@ -23,7 +23,7 @@ from task_loader import Task
 
 logger = logging.getLogger(__name__)
 
-# Default OpenRouter config
+# 默认 OpenRouter 配置。
 DEFAULT_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 DEFAULT_MODEL = os.environ.get("PICO_BENCH_MODEL", "anthropic/claude-sonnet-4")
 
@@ -167,18 +167,18 @@ async def execute_task(
     from pico.session.manager import SessionManager
     from pico.spine import ChatType, Origin, Source, Text, TurnRequest
 
-    # Prepare workspace
+    # 准备工作区。
     task_workspace = prepare_workspace(task, workspace, assets_dir)
 
-    # Create OpenRouter provider
+    # 创建 OpenRouter 供应商。
     provider = _make_openrouter_provider(model, api_key)
 
     session_mgr = SessionManager(task_workspace)
     session_key = f"{CHANNEL_NAME}:{task.task_id}"
 
-    # Load skill_forge config so injection_mode / inject_max / mass_library_db
-    # etc. are honored under bot benchmark runs. Without this AgentLoop gets
-    # skill_forge_config=None → SkillService falls back to dataclass defaults.
+    # 加载 skill_forge 配置，使机器人基准运行遵守 injection_mode、inject_max、
+    # mass_library_db 等设置。否则 AgentLoop 收到 skill_forge_config=None，
+    # SkillService 会回退到数据类默认值。
     from pico.config.pico import load_pico_config
 
     _ec_cfg = load_pico_config()
@@ -195,9 +195,8 @@ async def execute_task(
         session_manager=session_mgr,
         skill_forge_config=skill_forge_cfg,
         runtime_config=getattr(_ec_cfg, "runtime", None),
-        # Benchmarks are non-interactive batch runs - opt out of Bug2's
-        # per-turn shadow-git checkpoint (no recovery channel to inject
-        # into, and we don't want ``.pico/shadow.git`` in task workspaces).
+        # 基准是非交互式批量运行，因此禁用 Bug2 的逐轮 shadow-git 检查点；既没有
+        # 可注入恢复信息的渠道，也不希望任务工作区出现 ``.pico/shadow.git``。
         interactive=False,
     )
 
@@ -214,9 +213,8 @@ async def execute_task(
         timeout_seconds,
     )
 
-    # Run one USER turn through the spine and accumulate the reply text.
-    # run_turn lazily starts the executor / MCP on first call, so no separate
-    # runtime task is needed. Non-streaming → the reply arrives as Text events.
+    # 通过 Spine 运行一个用户轮次并累计回复文本。run_turn 首次调用时延迟启动
+    # 执行器与 MCP，因此无需独立运行时任务；非流式回复以 Text 事件到达。
     parts: List[str] = []
 
     async def _collect(ev: object) -> None:
@@ -253,7 +251,7 @@ async def execute_task(
         status = "error"
         logger.error("Task %s failed: %s", task.task_id, exc, exc_info=True)
     finally:
-        # Stop the agent loop and clean up
+        # 停止智能体循环并清理。
         agent.stop()
         try:
             await agent.close_mcp()
@@ -262,7 +260,7 @@ async def execute_task(
 
     execution_time = time.time() - start_time
 
-    # Extract transcript from session
+    # 从会话中提取记录。
     session = session_mgr.get_or_create(session_key)
     raw_messages = list(session.messages)
     transcript = _session_to_openclaw_transcript(raw_messages)

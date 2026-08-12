@@ -32,12 +32,6 @@ from pico.config.loader import set_config_path
 runner = CliRunner()
 
 
-# --------------------------------------------------------------------------- async stub helpers
-# ``_scancode_login`` drives ``asyncio.run(adapter.login(...))``. Tests stay
-# synchronous (no running loop) and replace ``login`` with an async function
-# returning a canned value, so ``asyncio.run`` is the only loop in play.
-
-
 def _async_return(value: Any):
     """Build an async method stub that always returns ``value``."""
 
@@ -142,9 +136,6 @@ def stub_step3(monkeypatch: pytest.MonkeyPatch):
     )
 
 
-# --------------------------------------------------------------------------- help
-
-
 def test_onboard_help_lists_all_flags() -> None:
     """``pico onboard --help`` exposes the full flag surface."""
     r = runner.invoke(app, ["onboard", "--help"])
@@ -165,9 +156,6 @@ def test_onboard_help_lists_all_flags() -> None:
     ):
         assert flag in out, f"missing flag in help: {flag}"
     assert "--skip-deep-research" not in out
-
-
-# --------------------------------------------------------------------------- non-interactive happy path
 
 
 def test_onboard_non_interactive_minimum_flags(tmp_env: Path, stub_verify, stub_step3) -> None:
@@ -236,9 +224,6 @@ def test_onboard_skip_channel_default(tmp_env: Path, stub_verify, stub_step3) ->
     assert "Skipped via --skip-channel" in r.stdout
 
 
-# --------------------------------------------------------------------------- error paths
-
-
 def test_onboard_non_interactive_missing_provider_fails(tmp_env: Path) -> None:
     """Without ``--provider`` non-interactive mode can't proceed."""
     r = runner.invoke(
@@ -298,12 +283,9 @@ def test_onboard_non_tty_no_flag_fails(tmp_env: Path) -> None:
     assert "Non-interactive terminal detected" in r.stdout
 
 
-# --------------------------------------------------------------------------- existing-config handling
-
-
 def test_onboard_existing_config_blocks_without_yes(tmp_env: Path, stub_verify, stub_step3) -> None:
     """Re-running over an existing populated config fails closed."""
-    # Seed a populated config.
+
     runner.invoke(
         app,
         [
@@ -332,7 +314,7 @@ def test_onboard_existing_config_blocks_without_yes(tmp_env: Path, stub_verify, 
     )
     assert r.exit_code == 2
     assert "Existing config detected" in r.stdout
-    # The original key must NOT have been overwritten.
+
     data = json.loads(tmp_env.read_text())
     assert data["providers"]["openai"]["apiKey"] == "sk-existing"
 
@@ -370,9 +352,6 @@ def test_onboard_reset_flag_forces_redo(tmp_env: Path, stub_verify, stub_step3) 
     assert data["providers"]["openai"]["apiKey"] == "sk-new"
 
 
-# --------------------------------------------------------------------------- verification / step3 failure paths
-
-
 def test_onboard_provider_test_failure_warns_but_continues(
     tmp_env: Path, monkeypatch: pytest.MonkeyPatch, stub_step3
 ) -> None:
@@ -402,9 +381,9 @@ def test_onboard_provider_test_failure_warns_but_continues(
             "--yes",
         ],
     )
-    assert r.exit_code == 0  # non-interactive falls through with warning
+    assert r.exit_code == 0
     assert "Auth failed" in r.stdout
-    # The unmet connectivity check is summarized in the footer warning.
+
     assert "didn't pass a connectivity test" in r.stdout
 
 
@@ -439,28 +418,22 @@ def test_onboard_test_probe_failure_shows_warning_footer(
     assert "didn't pass a connectivity test" in r.stdout
 
 
-# --------------------------------------------------------------------------- interactive (stubbed)
-
-
 def test_onboard_interactive_uses_stubbed_pickers(
     tmp_env: Path, monkeypatch: pytest.MonkeyPatch, stub_verify, stub_step3
 ) -> None:
     """Interactive path: stub the per-step helpers and assert ops-lib is hit."""
-    # CliRunner makes sys.stdout non-tty, so _check_tty_or_die would bail
-    # before our stubs ever run. Skip it for this test.
+
     monkeypatch.setattr(onboard_commands, "_check_tty_or_die", lambda non_interactive: None)
     monkeypatch.setattr(onboard_commands, "_pick_language", lambda: None)
     monkeypatch.setattr(onboard_commands, "_select_provider", lambda: "anthropic")
     monkeypatch.setattr(onboard_commands, "_prompt_api_key", lambda provider, **kw: "sk-int-test")
-    # Bypass the autocomplete picker — Step 1 catalog UI is exercised
-    # separately by ``test_step1_picker_uses_catalog_when_available``.
+
     monkeypatch.setattr(
         onboard_commands,
         "_pick_model",
         lambda spec, **_: spec.default_model,
     )
-    # Optional steps 2-4 are covered separately; no-op them here so the
-    # interactive Step 1 path can be asserted without driving every screen.
+
     monkeypatch.setattr(onboard_commands, "_step3_sandbox", lambda **_: None)
     monkeypatch.setattr(onboard_commands, "_step4_channel", lambda **_: None)
     monkeypatch.setattr(onboard_commands, "_step2_memory", lambda **_: None)
@@ -471,9 +444,6 @@ def test_onboard_interactive_uses_stubbed_pickers(
     data = json.loads(tmp_env.read_text())
     assert data["providers"]["anthropic"]["apiKey"] == "sk-int-test"
     assert data["agents"]["defaults"]["model"] == "anthropic/claude-sonnet-5"
-
-
-# --------------------------------------------------------------------------- unit-level
 
 
 def test_step1_writes_via_ops_lib(tmp_env: Path, monkeypatch: pytest.MonkeyPatch, stub_verify) -> None:
@@ -542,9 +512,6 @@ def test_run_first_turn_uses_public_run_command(
     assert text == "Hello from the Runtime"
     assert tokens is None
     assert elapsed >= 0
-
-
-# --------------------------------------------------------------------------- model picker
 
 
 def test_step1_model_flag_overrides_picker(tmp_env: Path, stub_verify, stub_step3) -> None:
@@ -632,9 +599,6 @@ def test_step1_picker_uses_catalog_when_available(tmp_env: Path, monkeypatch: py
     r = runner.invoke(app, ["onboard"])
     assert r.exit_code == 0, r.stdout
 
-    # Catalog feeds the picker. The schema's pre-existing default model
-    # (``anthropic/claude-opus-4-5``) routes to anthropic by prefix, so it
-    # gets prepended as the "keep current" candidate.
     assert captured_choices["choices"] == [
         "anthropic/claude-opus-4-5",
         "claude-haiku-4-5",
@@ -642,7 +606,7 @@ def test_step1_picker_uses_catalog_when_available(tmp_env: Path, monkeypatch: py
         "claude-opus-4-5",
     ]
     assert captured_choices["default"] == "anthropic/claude-opus-4-5"
-    # User's pick made it into config
+
     data = json.loads(tmp_env.read_text())
     assert data["agents"]["defaults"]["model"] == "claude-haiku-4-5"
 
@@ -655,19 +619,18 @@ def test_format_model_for_provider_prefix_rules() -> None:
     deepseek = find_by_name("deepseek")
     openai = find_by_name("openai")
 
-    # Gateway with prefix: bare id gets prefixed
     assert (
         onboard_commands._format_model_for_provider(openrouter, "anthropic/claude-sonnet-4-5")
         == "openrouter/anthropic/claude-sonnet-4-5"
     )
-    # Already prefixed by us → idempotent
+
     assert (
         onboard_commands._format_model_for_provider(openrouter, "openrouter/anthropic/claude-sonnet-4-5")
         == "openrouter/anthropic/claude-sonnet-4-5"
     )
-    # Direct provider with empty prefix → pass-through
+
     assert onboard_commands._format_model_for_provider(openai, "gpt-4o-mini") == "gpt-4o-mini"
-    # skip_prefixes match → no double-prefix
+
     assert onboard_commands._format_model_for_provider(deepseek, "deepseek/deepseek-chat") == "deepseek/deepseek-chat"
     assert onboard_commands._format_model_for_provider(deepseek, "deepseek-chat") == "deepseek/deepseek-chat"
 
@@ -680,16 +643,15 @@ def test_model_routes_to_provider_heuristic() -> None:
     anthropic = find_by_name("anthropic")
     openai = find_by_name("openai")
 
-    # Prefix match (most explicit)
     assert onboard_commands._model_routes_to_provider("openrouter/anthropic/claude-sonnet-4-5", openrouter)
-    # Wrong prefix → no match for anthropic (even though "claude" is in the string)
+
     assert not onboard_commands._model_routes_to_provider("openrouter/anthropic/claude-sonnet-4-5", anthropic)
-    # Bare model: keyword match
+
     assert onboard_commands._model_routes_to_provider("claude-sonnet-4-5", anthropic)
     assert onboard_commands._model_routes_to_provider("gpt-4o-mini", openai)
-    # No match
+
     assert not onboard_commands._model_routes_to_provider("gemini-2.5-flash", openai)
-    # Empty / None inputs
+
     assert not onboard_commands._model_routes_to_provider("", anthropic)
     assert not onboard_commands._model_routes_to_provider("claude", None)
 
@@ -712,9 +674,6 @@ def test_registry_default_models_present() -> None:
         assert spec.default_model, f"{name} has empty default_model"
 
 
-# --------------------------------------------------------------------------- fixtures (4-step)
-
-
 def _seed_provider(provider: str = "openai", key: str = "sk-seed", model: str = "openai/gpt-4o-mini") -> None:
     """Write a minimal populated config via the ops layer."""
     from pico.config.update import set_default_model
@@ -724,9 +683,6 @@ def _seed_provider(provider: str = "openai", key: str = "sk-seed", model: str = 
     set_default_model(model)
 
 
-# --------------------------------------------------------------------------- gate
-
-
 def test_is_config_populated_requires_provider_and_model(tmp_env: Path) -> None:
     """Gate criterion: provider key + default model are BOTH required."""
     from pico.config.update import set_default_model
@@ -734,7 +690,7 @@ def test_is_config_populated_requires_provider_and_model(tmp_env: Path) -> None:
 
     assert onboard_commands._is_config_populated() is False
     set_provider_fields("openai", {"api_key": "sk-x"})
-    # key alone is not enough (default model still the schema default? no — fresh file has none)
+
     data = json.loads(tmp_env.read_text()) if tmp_env.exists() else {}
     if not data.get("agents", {}).get("defaults", {}).get("model"):
         assert onboard_commands._is_config_populated() is False
@@ -748,7 +704,7 @@ def test_ensure_configured_short_circuits_when_complete(tmp_env: Path, monkeypat
     ran: list[bool] = []
     monkeypatch.setattr(onboard_commands, "run_wizard", lambda **_: ran.append(True))
     assert onboard_commands.ensure_configured_or_onboard() is True
-    assert ran == []  # wizard never invoked
+    assert ran == []
 
 
 def test_ensure_configured_runs_wizard_when_missing(tmp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -757,9 +713,6 @@ def test_ensure_configured_runs_wizard_when_missing(tmp_env: Path, monkeypatch: 
     monkeypatch.setattr(onboard_commands, "run_wizard", lambda **_: ran.append(True))
     assert onboard_commands.ensure_configured_or_onboard() is False
     assert ran == [True]
-
-
-# --------------------------------------------------------------------------- entry-point gate wiring
 
 
 def test_run_gate_triggers_when_missing(tmp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -771,10 +724,10 @@ def test_run_gate_triggers_when_missing(tmp_env: Path, monkeypatch: pytest.Monke
 
     def _gate(**_):
         gate_called.append(True)
-        raise typer.Exit(0)  # stop before the heavy loop builds
+        raise typer.Exit(0)
 
     monkeypatch.setattr(onboard_commands, "ensure_configured_or_onboard", _gate)
-    # Config is empty (tmp_env fresh) → _is_config_populated() is False.
+
     r = runner.invoke(app, ["run"])
     assert gate_called == [True]
     assert r.exit_code == 0
@@ -793,13 +746,12 @@ def test_run_gate_skips_when_populated(tmp_env: Path, monkeypatch: pytest.Monkey
         lambda **_: gate_called.append(True),
     )
 
-    # Stub the heavy loop so the command returns quickly after the gate check.
     def _boom(*a, **kw):
         raise typer.Exit(0)
 
     monkeypatch.setattr("pico.cli._helpers.load_runtime_config", _boom)
     runner.invoke(app, ["run"])
-    # Populated → _is_config_populated() True → gate body never runs.
+
     assert gate_called == []
 
 
@@ -851,7 +803,7 @@ def test_tui_gate_triggers_when_missing(tmp_env: Path, monkeypatch: pytest.Monke
 
     def _gate(**_):
         gate_called.append(True)
-        raise typer.Exit(0)  # stop before find_node / spawn
+        raise typer.Exit(0)
 
     monkeypatch.setattr(onboard_commands, "ensure_configured_or_onboard", _gate)
     r = runner.invoke(app, [])
@@ -870,13 +822,10 @@ def test_tui_gate_skips_check_flag(tmp_env: Path, monkeypatch: pytest.MonkeyPatc
         "ensure_configured_or_onboard",
         lambda **_: gate_called.append(True),
     )
-    # Stub find_node so --check exits fast without a real Node child.
+
     monkeypatch.setattr(tui_commands, "find_node", lambda: (None, None))
     runner.invoke(app, ["--check"])
     assert gate_called == []
-
-
-# --------------------------------------------------------------------------- sandbox step
 
 
 def test_sandbox_backend_persisted_via_ops(tmp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -911,7 +860,7 @@ def test_sandbox_boxlite_probe_failure_falls_back(tmp_env: Path, monkeypatch: py
 
     monkeypatch.setattr(questionary, "select", lambda *a, **kw: _FQ(next(answers)))
     monkeypatch.setattr(onboard_commands, "_probe_boxlite", lambda: (False, "missing"))
-    # Failure submenu picks "fall back to host".
+
     monkeypatch.setattr(onboard_commands, "_failure_choice", lambda options, *, non_interactive: "host")
     onboard_commands._step3_sandbox(skip=False, non_interactive=False)
     data = json.loads(tmp_env.read_text())
@@ -937,11 +886,8 @@ def test_sandbox_keep_current_first_option(tmp_env: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(questionary, "select", _select)
     onboard_commands._step3_sandbox(skip=False, non_interactive=False)
     assert "keep" in captured["choices"]
-    # 'keep' leaves the backend untouched.
+
     assert json.loads(tmp_env.read_text())["tools"]["sandbox"]["backend"] == "boxlite"
-
-
-# --------------------------------------------------------------------------- memory step
 
 
 def test_memory_skip_sets_backend_null(
@@ -1055,7 +1001,7 @@ def test_beta_channel_selection_prints_one_honest_note(channel: str, capsys: pyt
     """Picking a Beta channel states its evidence level without claiming a
     live integration."""
     onboard_commands._print_maturity_note(channel)
-    out = " ".join(capsys.readouterr().out.split())  # console wraps at terminal width
+    out = " ".join(capsys.readouterr().out.split())
     assert f"{channel} is Beta" in out
     assert "deterministic contract and security checks only" in out
     assert "no live send/receive evidence yet" in out
@@ -1089,9 +1035,6 @@ def test_add_one_channel_announces_maturity_before_credentials(
     assert order == ["note:qq", "prompt:qq", "enable:qq"]
 
 
-# --------------------------------------------------------------------------- multi-provider add/remove
-
-
 def test_provider_remove_clears_key(tmp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Removing a provider clears its api_key (disable, not hard-delete)."""
     from pico.config.update_providers import set_provider_fields
@@ -1108,7 +1051,6 @@ def test_provider_remove_clears_key(tmp_env: Path, monkeypatch: pytest.MonkeyPat
         def ask(self):
             return self._a
 
-    # pick anthropic → remove → back
     select_answers = iter(["anthropic", "remove", onboard_commands._BACK])
     monkeypatch.setattr(questionary, "select", lambda *a, **kw: _FQ(next(select_answers)))
 
@@ -1116,7 +1058,7 @@ def test_provider_remove_clears_key(tmp_env: Path, monkeypatch: pytest.MonkeyPat
     data = json.loads(tmp_env.read_text())
     assert not data["providers"]["anthropic"].get("apiKey")
     assert data["providers"]["openai"]["apiKey"] == "sk-a"
-    # openai still counts as configured; anthropic no longer does.
+
     assert onboard_commands._configured_providers() == ["openai"]
 
 
@@ -1140,9 +1082,6 @@ def test_provider_picker_back_sentinel(monkeypatch: pytest.MonkeyPatch) -> None:
     assert onboard_commands._BACK in captured["values"]
 
 
-# --------------------------------------------------------------------------- back navigation (state machine)
-
-
 def test_back_navigation_rewinds_one_screen(tmp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A screen returning _BACK rewinds the state machine by one index."""
     calls: list[str] = []
@@ -1153,7 +1092,7 @@ def test_back_navigation_rewinds_one_screen(tmp_env: Path, monkeypatch: pytest.M
 
     def _s2(**_):
         calls.append("s2")
-        # First visit to s2 goes back; second proceeds.
+
         return onboard_commands._BACK if calls.count("s2") == 1 else None
 
     def _s3(**_):
@@ -1170,7 +1109,7 @@ def test_back_navigation_rewinds_one_screen(tmp_env: Path, monkeypatch: pytest.M
     monkeypatch.setattr(onboard_commands, "_step2_memory", _s2)
 
     onboard_commands.run_wizard(non_interactive=False)
-    # The Memory screen returns BACK once, so provider setup replays before it.
+
     assert calls == ["s1", "s2", "s1", "s2", "s3", "s3"]
 
 
@@ -1191,15 +1130,13 @@ def test_first_screen_back_does_not_skip_step1(
     monkeypatch.setattr(onboard_commands, "_select_provider", lambda: next(picks))
     monkeypatch.setattr(onboard_commands, "_prompt_api_key", lambda provider, **kw: "sk-back-test")
     monkeypatch.setattr(onboard_commands, "_pick_model", lambda spec, **_: spec.default_model)
-    # Optional steps are no-ops here; we only assert Step 1 wasn't skipped.
+
     monkeypatch.setattr(onboard_commands, "_step3_sandbox", lambda **_: None)
     monkeypatch.setattr(onboard_commands, "_step4_channel", lambda **_: None)
     monkeypatch.setattr(onboard_commands, "_step2_memory", lambda **_: None)
 
     onboard_commands.run_wizard(non_interactive=False)
 
-    # Provider + model were written despite the first Back — config is populated,
-    # so the gate would NOT re-trigger (no infinite loop).
     data = json.loads(tmp_env.read_text())
     assert data["providers"]["openai"]["apiKey"] == "sk-back-test"
     assert data["agents"]["defaults"]["model"] == "openai/gpt-5.5"
@@ -1211,7 +1148,7 @@ def test_switch_provider_returns_to_picker_keeps_steps(
 ) -> None:
     """BUG-2 regression: 'Switch provider' on a verify failure re-runs the
     picker instead of exiting the whole wizard."""
-    # First provider verify fails, second succeeds.
+
     calls = {"n": 0}
 
     def _verify(name, *a, **kw):
@@ -1230,21 +1167,20 @@ def test_switch_provider_returns_to_picker_keeps_steps(
     monkeypatch.setattr("pico.config.update_providers.test_provider", _verify)
     monkeypatch.setattr(onboard_commands, "_check_tty_or_die", lambda non_interactive: None)
     monkeypatch.setattr(onboard_commands, "_pick_language", lambda: None)
-    # Picker returns anthropic first (fails), then openai (succeeds on switch).
+
     picks = iter(["anthropic", "openai"])
     monkeypatch.setattr(onboard_commands, "_select_provider", lambda: next(picks))
     monkeypatch.setattr(onboard_commands, "_prompt_api_key", lambda provider, **kw: f"sk-{provider}")
     monkeypatch.setattr(onboard_commands, "_pick_model", lambda spec, **_: spec.default_model)
-    # On the failure submenu, choose "switch".
+
     monkeypatch.setattr(onboard_commands, "_failure_choice", lambda options, *, non_interactive: "switch")
     monkeypatch.setattr(onboard_commands, "_step3_sandbox", lambda **_: None)
     monkeypatch.setattr(onboard_commands, "_step4_channel", lambda **_: None)
     monkeypatch.setattr(onboard_commands, "_step2_memory", lambda **_: None)
 
-    # Should complete (not raise typer.Exit) — steps 2/3/4 ran.
     onboard_commands.run_wizard(non_interactive=False)
     data = json.loads(tmp_env.read_text())
-    # Switched to openai; its key written, default model is openai's.
+
     assert data["providers"]["openai"]["apiKey"] == "sk-openai"
     assert data["agents"]["defaults"]["model"] == "openai/gpt-5.5"
 
@@ -1262,7 +1198,6 @@ def test_add_provider_keeps_existing(tmp_env: Path, monkeypatch: pytest.MonkeyPa
         def ask(self):
             return self._a
 
-    # Entry menu: "add" once, then "done".
     entry_answers = iter(["add", "done"])
     monkeypatch.setattr(questionary, "select", lambda *a, **kw: _FQ(next(entry_answers)))
     monkeypatch.setattr(onboard_commands, "_select_provider", lambda: "anthropic")
@@ -1327,7 +1262,7 @@ def test_fresh_bootstrap_seeds_extension_blocks(tmp_env: Path, monkeypatch: pyte
     assert data["plugins"]["config"] == {}
     assert data["skillForge"]["router"] == {"enabled": True}
     assert "hub" not in data["skillForge"]["router"]
-    # No optional service fields written to the user's plaintext config.
+
     for leaked in ("embeddingApiKey", "rerankerApiKey", "massLibraryDb"):
         assert leaked not in data["skillForge"]
 
@@ -1335,8 +1270,7 @@ def test_fresh_bootstrap_seeds_extension_blocks(tmp_env: Path, monkeypatch: pyte
 def test_bootstrap_backfills_preexisting_config(tmp_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A config that predates the extension blocks gets them backfilled on the
     next onboard — without clobbering values the user already set."""
-    # Simulate an older config: populated, memory.backend set, but no plugins
-    # / skillForge blocks and a hand-tuned memoryTopK.
+
     tmp_env.write_text(
         json.dumps(
             {
@@ -1350,11 +1284,10 @@ def test_bootstrap_backfills_preexisting_config(tmp_env: Path, monkeypatch: pyte
     onboard_commands._bootstrap_empty_config()
     data = json.loads(tmp_env.read_text())
 
-    # Pre-existing values untouched.
     assert data["providers"]["openai"]["apiKey"] == "sk-keep"
     assert data["memory"]["backend"] is None
     assert data["memory"]["memoryTopK"] == 20
-    # Missing blocks / keys backfilled.
+
     assert data["memory"]["userId"] == "default"
     assert data["plugins"]["config"] == {}
     assert data["skillForge"]["router"] == {"enabled": True}
@@ -1378,14 +1311,13 @@ def test_prompt_channel_fields_gates_skip_on_required(monkeypatch: pytest.Monkey
 
         def ask(self) -> str:
             captured.append((self._label, self._placeholder))
-            return "x"  # non-empty: records the field without triggering back/skip
+            return "x"
 
     monkeypatch.setattr(questionary, "text", lambda label, **kw: _Prompt(label, **kw))
     monkeypatch.setattr(questionary, "password", lambda label, **kw: _Prompt(label, **kw))
 
     onboard_commands._prompt_channel_fields("feishu")
 
-    # promptable order: app_id, app_secret (both required), encrypt_key, verification_token (optional)
     def _ph_text(placeholder: Any) -> Any:
         return placeholder[0][1] if placeholder else None
 
@@ -1397,9 +1329,9 @@ def test_prompt_channel_fields_gates_skip_on_required(monkeypatch: pytest.Monkey
     assert "(optional)" not in app_secret_lbl
     assert "(optional)" in encrypt_lbl
 
-    assert "back" in _ph_text(app_id_ph)  # first field: rewind affordance
-    assert app_secret_ph is None  # required later field: no skip hint
-    assert "skip" in _ph_text(encrypt_ph)  # optional field: skip hint
+    assert "back" in _ph_text(app_id_ph)
+    assert app_secret_ph is None
+    assert "skip" in _ph_text(encrypt_ph)
 
 
 def test_total_steps_is_four() -> None:
@@ -1407,8 +1339,7 @@ def test_total_steps_is_four() -> None:
 
 
 def test_load_raw_config_raises_on_malformed(tmp_env: Path) -> None:
-    # onboard's read gate must not silently treat a malformed config as empty
-    # (which would let it misread state / write over a config with a typo).
+
     from pico.config.loader import ConfigReadError
 
     tmp_env.write_text("{  // comment => invalid JSON\n}", encoding="utf-8")

@@ -2,15 +2,14 @@
 // Copyright (c) 2026 EverMind.
 // See NOTICES.md.
 //
-// Tests for the typed chat-subscribe path (Phase 6 T6.1).
+// 带类型聊天订阅路径的测试。
 //
-// These tests exercise `createChatStream` — a thin factory that bridges
-// `RpcClient.subscribe('turn.subscribe', ...)` events onto the existing
-// `turnController` so the chat UI updates without going through the
-// legacy `TuiRpcClient.gw.on('event', ...)` adapter. They rely on a
-// fake RpcClient surface (just the two methods the chat path needs:
-// `rpc(method, params)` and `subscribe(method, params, handler)`) so we
-// don't have to stand up a unix socket per case.
+// 这些测试覆盖 `createChatStream`：它是轻量工厂，将
+// `RpcClient.subscribe('turn.subscribe', ...)` 事件桥接到现有
+// `turnController`，使聊天界面无需经过旧版 `TuiRpcClient.gw.on('event', ...)`
+// 适配器即可更新。测试使用只包含聊天路径所需两个方法的虚假 RpcClient 接口：
+// `rpc(method, params)` 与 `subscribe(method, params, handler)`，因而无需为每个
+// 用例启动 Unix 套接字。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -110,7 +109,7 @@ describe('createChatStream', () => {
     const stream = createChatStream({ rpcClient: fake, sessionKey: 'tui:default' })
     await stream.attach()
 
-    // Simulate user submit.
+    // 模拟用户提交。
     const sendResult = await stream.send('hello')
     expect(sendResult).toEqual({ turn_id: 'turn-1', accepted: true })
     expect(fake.__sendCalls[0]).toMatchObject({
@@ -120,16 +119,15 @@ describe('createChatStream', () => {
     expect((fake.__sendCalls[0]!.params as TurnSendParams).submission_id).toEqual(expect.any(String))
     expect(fake.__subParams).toEqual({ session_key: 'tui:default' } satisfies TurnSubscribeParams)
 
-    // Drive the event stream.
+    // 驱动事件流。
     fake.__pushEvent({ type: 'message.start', payload: { turn_id: 'turn-1' } })
     expect(getUiState().busy).toBe(true)
 
     for (const text of ['Hel', 'lo, ', 'wor', 'ld', '!']) {
       fake.__pushEvent({ type: 'token.delta', payload: { text } })
     }
-    // After 5 deltas the cumulative buffer should be the joined text. The
-    // controller stores raw deltas in `bufRef`; we assert via that internal
-    // accumulator since the visible-stream patch is timer-scheduled.
+    // 五个增量后，累计缓冲区应为拼接文本。控制器将原始增量存入 `bufRef`；可见
+    // 流补丁由定时器调度，因此这里通过内部累加器断言。
     expect(turnController.bufRef).toBe('Hello, world!')
 
     fake.__pushEvent({
@@ -148,12 +146,12 @@ describe('createChatStream', () => {
       }
     })
 
-    // Turn closed: busy flag released, bufRef cleared.
+    // 轮次关闭后应释放 busy 标记并清空 bufRef。
     expect(getUiState().busy).toBe(false)
     expect(turnController.bufRef).toBe('')
 
-    // Usage from message.complete is merged into ui state so the status bar's
-    // context gauge and cost reflect the turn (not frozen at the boot baseline).
+    // message.complete 中的用量会合并到界面状态，使状态栏上下文仪表与成本反映
+    // 当前轮次，而不是停留在启动基线。
     const usage = getUiState().usage
     expect(usage.context_used).toBe(8378)
     expect(usage.context_max).toBe(1048576)
@@ -198,9 +196,8 @@ describe('createChatStream', () => {
       payload: { code: -32800, message: 'cancelled by client', reason: 'cancelled_by_client' }
     })
 
-    // Input prompt restored: not busy, status reset to 'ready' (or
-    // 'interrupted' cooldown — either is acceptable as long as it's not
-    // a stuck 'running').
+    // 输入提示恢复后不再忙碌，状态重置为 'ready'，或处于 'interrupted' 冷却；
+    // 只要没有卡在 'running'，两者均可接受。
     const ui = getUiState()
     expect(ui.busy).toBe(false)
     expect(ui.status === 'ready' || ui.status === 'interrupted').toBe(true)
@@ -243,14 +240,14 @@ describe('createChatStream', () => {
       type: 'tool.start',
       payload: { tool_call_id: 'tc-1', name: 'shell.exec', arguments: { command: 'ls' } }
     })
-    // After tool.start the active tool list contains the started tool.
+    // tool.start 后，活动工具列表包含已启动工具。
     expect(getTurnState().tools.some(t => t.name === 'shell.exec')).toBe(true)
 
     fake.__pushEvent({
       type: 'tool.complete',
       payload: { tool_call_id: 'tc-1', result_preview: 'a b c', truncated: false }
     })
-    // After tool.complete the active tool is removed.
+    // tool.complete 后，活动工具被移除。
     expect(getTurnState().tools.some(t => t.id === 'tc-1')).toBe(false)
   })
 
@@ -275,9 +272,7 @@ describe('createChatStream', () => {
       }
     })
 
-    expect(getTurnState().streamPendingTools).toEqual([
-      expect.stringMatching(/Error: file not found.*✗$/)
-    ])
+    expect(getTurnState().streamPendingTools).toEqual([expect.stringMatching(/Error: file not found.*✗$/)])
   })
 
   it('surfaces non-cancellation errors and restores input prompt', async () => {
@@ -300,8 +295,7 @@ describe('createChatStream', () => {
     expect(sysCalls.some(m => m.includes('model not available'))).toBe(true)
     const ui = getUiState()
     expect(ui.busy).toBe(false)
-    // Status should reflect an error state — startsWith('error') or
-    // 'ready' if the controller has settled. The contract is "not stuck busy".
+    // 状态应反映错误，或在控制器稳定后为 'ready'；约定的核心是不能卡在忙碌状态。
     expect(ui.status).not.toBe('running…')
   })
 
@@ -313,7 +307,7 @@ describe('createChatStream', () => {
     fake.__pushEvent({ type: 'message.start', payload: { turn_id: 'turn-1' } })
 
     await expect(stream.send('second')).rejects.toThrow(/turn.*in.*progress|active/i)
-    // Only the initial turn.send should have hit the wire.
+    // 只有首次 turn.send 应写入线路。
     const sendCount = fake.__sendCalls.filter(c => c.method === 'turn.send').length
     expect(sendCount).toBe(1)
   })

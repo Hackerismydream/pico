@@ -13,30 +13,27 @@ from questionary import Style
 
 PICO_STYLE = Style(
     [
-        # Leading "?" glyph + the question text.
+        # 开头的 "?" 符号和问题文本。
         ("qmark", "fg:#fbe23f bold"),
         ("question", "bold"),
-        # The committed answer echoed after a prompt resolves.
+        # 提示结束后回显的已提交答案。
         ("answer", "fg:#fbe23f bold"),
-        # The "❯" pointer and the row it sits on (hover state).
+        # "❯" 指针及其所在行（悬停状态）。
         ("pointer", "fg:#fbe23f bold"),
-        # Active row: same text color as the other rows, only bold — the yellow
-        # "❯" pointer is the sole selection cue, so every option reads in one
-        # consistent color. noreverse: prompt_toolkit's base style reverse-
-        # highlights the active row, which would otherwise paint a solid block.
+        # 活动行：文本颜色与其他行相同，仅加粗；黄色 "❯" 指针是唯一选择提示，使所有选项
+        # 颜色一致。noreverse 用于阻止 prompt_toolkit 基础样式反色高亮活动行，否则会画出实心色块。
         ("highlighted", "fg:#FFF5EA bold noreverse"),
-        # A previously selected value (e.g. checkbox); noreverse for the same
-        # reason — show selection via the gold color, not a background block.
+        # 先前选中的值（如复选框）；同理使用 noreverse，以金色而非背景色块表示选中。
         ("selected", "fg:#c8a900 noreverse"),
-        # Faint rule between option groups.
+        # 选项组之间的淡色分隔线。
         ("separator", "fg:#444444"),
-        # The "(Use arrow keys)" style hint after the question.
+        # 问题后的 "(Use arrow keys)" 样式提示。
         ("instruction", "fg:#6c6c6c italic"),
-        # Non-selectable rows.
+        # 不可选择的行。
         ("disabled", "fg:#585858 italic"),
-        # Inline validation error toolbar.
+        # 行内校验错误工具栏。
         ("validation-toolbar", "fg:#ff5f5f bold"),
-        # Free-text input the user is typing.
+        # 用户正在输入的自由文本。
         ("text", "fg:#FFF5EA"),
     ]
 )

@@ -39,21 +39,21 @@ console = Console()
 
 
 # ---------------------------------------------------------------------------
-# Module-level state (interactive REPL only)
+# 模块级状态（仅交互式 REPL）
 # ---------------------------------------------------------------------------
 
 EXIT_COMMANDS = {"exit", "quit", "/exit", "/quit", ":q"}
 
 # ---------------------------------------------------------------------------
-# CLI input: prompt_toolkit for editing, paste, history, and display
+# CLI 输入：prompt_toolkit 负责编辑、粘贴、历史和显示
 # ---------------------------------------------------------------------------
 
 _PROMPT_SESSION: PromptSession | None = None
-_SAVED_TERM_ATTRS = None  # original termios settings, restored on exit
+_SAVED_TERM_ATTRS = None  # 原始 termios 设置，退出时恢复
 
 
 # ---------------------------------------------------------------------------
-# Helpers (private to this module)
+# 辅助方法（模块私有）
 # ---------------------------------------------------------------------------
 
 
@@ -79,7 +79,7 @@ def _init_prompt_session() -> None:
     """Create the prompt_toolkit session with persistent file history."""
     global _PROMPT_SESSION, _SAVED_TERM_ATTRS
 
-    # Save terminal state so we can restore it on exit
+    # 保存终端状态，以便退出时恢复。
     try:
         import termios
 
@@ -95,7 +95,7 @@ def _init_prompt_session() -> None:
     _PROMPT_SESSION = PromptSession(
         history=FileHistory(str(history_file)),
         enable_open_in_editor=False,
-        multiline=False,  # Enter submits (single line mode)
+        multiline=False,  # 单行模式下按 Enter 提交
     )
 
 
@@ -125,10 +125,8 @@ async def _read_interactive_input_async() -> str:
     if _PROMPT_SESSION is None:
         raise RuntimeError("Call _init_prompt_session() first")
     try:
-        # raw=True passes ANSI escape sequences through verbatim. Without
-        # this, background Cron coroutines that
-        # print rich-styled output while the user sits at this prompt get
-        # their ESC bytes mangled — visible as ?[36m...?[0m garbage.
+        # raw=True 会原样传递 ANSI 转义序列。否则，当用户停留在提示符时，后台 Cron 协程输出
+        # Rich 样式内容会破坏 ESC 字节，显示成 ?[36m...?[0m 乱码。
         with patch_stdout(raw=True):
             return await _PROMPT_SESSION.prompt_async(
                 HTML("<b fg='ansiblue'>You:</b> "),
@@ -138,7 +136,7 @@ async def _read_interactive_input_async() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Registration
+# 注册
 # ---------------------------------------------------------------------------
 
 
@@ -169,10 +167,8 @@ def register(app: typer.Typer) -> None:
         if sum((session_id is not None, continue_, resume is not None)) > 1:
             raise typer.BadParameter("--session, --continue and --resume are mutually exclusive")
 
-        # Startup gate: when the required config (a provider key + default
-        # model) is missing, run the onboarding wizard first. Only on an
-        # interactive TTY — scripted one-shots (`-m`) and non-TTY pipes must
-        # fail loudly later rather than block on prompts.
+        # 启动门：缺少必要配置（提供商密钥和默认模型）时先运行引导向导。仅限交互式 TTY；
+        # 脚本单次调用（`-m`）和非 TTY 管道应在后续明确失败，而不是阻塞在提示上。
         from pico.cli.onboard_commands import _is_config_populated
 
         if message is None and _stdout_isatty() and not _is_config_populated():
@@ -189,10 +185,8 @@ def register(app: typer.Typer) -> None:
         from pico.proactive_engine.schedulers.cron.service import CronService
         from pico.session.manager import SessionManager, new_chat_id
 
-        # load_runtime_config must run FIRST: it calls set_config_path() so
-        # that subsequent load_pico_config() reads from --config, not the
-        # default ~/.pico/config.json. Otherwise skill_forge from --config is
-        # silently ignored.
+        # load_runtime_config 必须最先运行：它调用 set_config_path()，使之后的 load_pico_config()
+        # 从 --config 而非默认 ~/.pico/config.json 读取。否则 --config 中的 skill_forge 会被静默忽略。
         config = load_runtime_config(config, workspace)
         paths = resolve_foreground_paths(config, workspace=workspace)
         ec_config = load_pico_config()
@@ -202,7 +196,7 @@ def register(app: typer.Typer) -> None:
         provider = make_provider(config)
         session_manager = SessionManager(paths.state)
 
-        # New-session-by-default: independent one-shots don't bleed into each other.
+        # 默认新建会话，避免独立的单次调用相互污染。
         if resume is not None:
             from pico.cli.session_commands import resolve_session
 
@@ -220,10 +214,8 @@ def register(app: typer.Typer) -> None:
 
             session_id = resolve_session_cross_channel(session_manager, session_id)
 
-        # Create cron service (callback set below once the agent exists).
-        # allowed_channels={"cli"} prevents this REPL from claiming reminders
-        # created in a messaging Channel; those should be delivered by the
-        # gateway which has the real channel adapters wired up.
+        # 创建 cron 服务（智能体就绪后在下方设置回调）。allowed_channels={"cli"} 防止该 REPL
+        # 领取消息渠道中创建的提醒；这些提醒应由已连接真实渠道适配器的网关投递。
         cron_store_path = get_cron_dir() / "jobs.json"
         cron = CronService(cron_store_path, allowed_channels={"cli"})
 
@@ -242,30 +234,27 @@ def register(app: typer.Typer) -> None:
             paths=paths,
         )
         agent_loop = runtime.agent_loop
-        # REPL has no real ChannelManager — provide a minimal shim that
-        # reports "cli" as the sole enabled channel so cli reminders take
-        # the pass-through path (deliver to REPL stdout via the Spine outlet).
+        # REPL 没有真实 ChannelManager——提供最小垫片，仅报告 "cli" 已启用，使 CLI 提醒走
+        # 直通路径（经 Spine 出口投递到 REPL 标准输出）。
         from types import SimpleNamespace
 
         cli_shim = SimpleNamespace(enabled_channels=["cli"])
-        # cron.on_job is wired inside run_interactive once the spine scheduler
-        # exists — cron reminders submit CRON turns through it.
+        # spine 调度器就绪后，run_interactive 内才连接 cron.on_job；cron 提醒通过它提交 CRON 轮次。
 
-        # Show spinner when logs are off (no output to miss); skip when logs are on
+        # 日志关闭时显示转圈动画（不会遮掉输出）；日志开启时跳过。
         def _thinking_ctx():
             if logs:
                 from contextlib import nullcontext
 
                 return nullcontext()
-            # Animated spinner is safe to use with prompt_toolkit input handling
+            # 动画转圈可安全配合 prompt_toolkit 输入处理使用。
             return console.status("[dim]Pico is thinking...[/dim]", spinner="dots")
 
         if message:
-            # Single message mode — one USER turn through spine (submit -> lane ->
-            # run_turn -> hub -> CliOutlet), with the legacy cli/direct defaults
-            # (channel="cli", chat_id="direct", session_key=session_id). Progress
-            # renders via the CliOutlet, gated by the same two config flags the bus
-            # path honored (send_progress / send_tool_hints).
+            # 单消息模式——一个 USER 轮次通过 spine（submit -> lane -> run_turn -> hub ->
+            # CliOutlet），并使用旧有 cli/direct 默认值（channel="cli"、chat_id="direct"、
+            # session_key=session_id）。进度由 CliOutlet 渲染，并受总线路径沿用的两个配置开关
+            # （send_progress / send_tool_hints）控制。
             from pico.cli._repl_spine import build_repl
             from pico.spine import ChatType, Origin, Source, TurnRequest
 
@@ -273,8 +262,8 @@ def register(app: typer.Typer) -> None:
                 teardown = None
                 try:
                     await runtime.start_memory_backend()
-                    # Build inside the running loop: Scheduler pins its home loop in
-                    # __init__, so build_repl must not run in the sync prologue.
+                    # 在运行中的事件循环内构建：Scheduler 会在 __init__ 中固定所属循环，因此
+                    # build_repl 不能在同步序言中运行。
                     ch = agent_loop.channels_config
                     scheduler, hub, teardown = build_repl(
                         agent_loop,
@@ -285,8 +274,8 @@ def register(app: typer.Typer) -> None:
                         send_progress=bool(ch.send_progress) if ch else False,
                         send_tool_hints=bool(ch.send_tool_hints) if ch else False,
                     )
-                    # A one-shot spawn rarely finishes before the hard-exit below (same
-                    # as the bus path), but wire submit for parity with REPL/TUI.
+                    # 单次 spawn 很少能在下方硬退出前完成（与总线路径相同），但仍连接 submit，
+                    # 使行为与 REPL/TUI 一致。
                     agent_loop.subagents.set_submit(scheduler.submit)
                     with _thinking_ctx():
                         handle = scheduler.submit(
@@ -303,7 +292,7 @@ def register(app: typer.Typer) -> None:
                             )
                         )
                         outcome = await handle.result()
-                    await hub.wait_idle("cli")  # render barrier: CliOutlet caught up
+                    await hub.wait_idle("cli")  # 渲染屏障：等待 CliOutlet 追上
                     return outcome is not None
                 finally:
                     try:
@@ -314,13 +303,12 @@ def register(app: typer.Typer) -> None:
 
             if not asyncio.run(run_once()):
                 raise typer.Exit(1)
-            # Native runtimes loaded by the agent loop (lancedb's Rust/tokio
-            # thread, torch) segfault during interpreter finalization. The exit
-            # chokepoint in pico.cli.commands.run hard-exits past finalization
-            # when that hazard is live, so this path just returns normally.
+            # 智能体循环加载的原生运行时（lancedb 的 Rust/tokio 线程、torch）会在解释器收尾时
+            # 段错误。该风险存在时，pico.cli.commands.run 的退出汇合点会硬退出、跳过收尾，
+            # 因此此路径只需正常返回。
         else:
-            # Interactive mode — user turns run through spine (submit -> lane ->
-            # hub -> CliOutlet); Cron turns use the same spine and hub.
+            # 交互模式——用户轮次通过 spine（submit -> lane -> hub -> CliOutlet）运行；
+            # Cron 轮次使用同一 spine 和 hub。
             from pico.cli._repl_spine import build_repl, run_repl_loop
 
             _init_prompt_session()
@@ -339,11 +327,10 @@ def register(app: typer.Typer) -> None:
 
             signal.signal(signal.SIGINT, _handle_signal)
             signal.signal(signal.SIGTERM, _handle_signal)
-            # SIGHUP is not available on Windows
+            # Windows 不支持 SIGHUP。
             if hasattr(signal, "SIGHUP"):
                 signal.signal(signal.SIGHUP, _handle_signal)
-            # Ignore SIGPIPE to prevent silent process termination when writing to closed pipes
-            # SIGPIPE is not available on Windows
+            # 忽略 SIGPIPE，防止写入已关闭管道时进程静默终止；Windows 不支持 SIGPIPE。
             if hasattr(signal, "SIGPIPE"):
                 signal.signal(signal.SIGPIPE, signal.SIG_IGN)
 
@@ -352,11 +339,9 @@ def register(app: typer.Typer) -> None:
                 teardown = None
                 try:
                     await runtime.start_memory_backend()
-                    # Build the spine before starting cron: cron jobs submit CRON
-                    # turns through this scheduler, and on_job must be wired
-                    # before cron.start() so an immediately-firing job has its
-                    # callback. Scheduler pins its home loop here (run_interactive is
-                    # async) — it must not move to the sync prologue.
+                    # 启动 cron 前先构建 spine：cron 任务通过该调度器提交 CRON 轮次，且 on_job 必须在
+                    # cron.start() 前连接，确保立即触发的任务已有回调。Scheduler 在此固定所属事件循环
+                    # （run_interactive 为异步）；不能移到同步序言。
                     _ch = agent_loop.channels_config
                     scheduler, hub, teardown = build_repl(
                         agent_loop,
@@ -367,10 +352,9 @@ def register(app: typer.Typer) -> None:
                         send_progress=bool(_ch.send_progress) if _ch else False,
                         send_tool_hints=bool(_ch.send_tool_hints) if _ch else False,
                     )
-                    # Subagent result re-injection submits a SUBAGENT-origin turn.
+                    # 子智能体结果回注会提交来源为 SUBAGENT 的轮次。
                     agent_loop.subagents.set_submit(scheduler.submit)
-                    # Cron reminders run as CRON-origin turns through the spine
-                    # scheduler and are delivered by the hub -> CliOutlet.
+                    # Cron 提醒以来源为 CRON 的轮次通过 spine 调度器运行，并由 hub -> CliOutlet 投递。
                     cron.on_job = make_on_cron_job(
                         hub,
                         submit=scheduler.submit,
@@ -378,14 +362,11 @@ def register(app: typer.Typer) -> None:
                         session_manager=session_manager,
                         default_channel="cli",
                     )
-                    # Start cron so scheduled reminders ("remind me in 1 minute")
-                    # actually fire — previously the REPL created a CronService but
-                    # never started its tick loop, so jobs just sat in jobs.json.
+                    # 启动 cron，使已调度提醒（“一分钟后提醒我”）真正触发。过去 REPL 虽创建 CronService，
+                    # 却未启动其 tick 循环，任务只会停留在 jobs.json 中。
                     await cron.start()
 
-                    # The keep-alive starts only after synchronous composition
-                    # succeeds. Yield once so stop() cannot run before run() has
-                    # established its running state.
+                    # 仅在同步装配成功后启动保活任务。先让出一次执行权，避免 stop() 在 run() 建立运行状态前执行。
                     runtime_task = asyncio.create_task(agent_loop.run())
                     await asyncio.sleep(0)
 

@@ -63,9 +63,8 @@ def acquire(now: float):
     payload = _lock_path()
     anchor = payload.with_name(payload.name + ".lck")
     anchor.parent.mkdir(parents=True, exist_ok=True)
-    # Lock a separate anchor file, not the payload itself: on Windows the lock
-    # is mandatory, so locking the payload would block doctor's read-back of the
-    # owner pid. The anchor carries the lock; the payload stays readable.
+    # 锁定独立的锚点文件，而非载荷本身：Windows 上锁是强制的，若锁定载荷会阻止 doctor
+    # 回读所有者进程 ID。锚点承载锁，载荷保持可读。
     fd = anchor.open("a+")
     try:
         portalocker.lock(fd, portalocker.LOCK_EX | portalocker.LOCK_NB)

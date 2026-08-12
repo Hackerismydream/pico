@@ -66,8 +66,7 @@ def evidence_root(tmp_path, monkeypatch) -> Path:
     monkeypatch.setenv("PICO_TRACING_DIR", str(root / "traces"))
     monkeypatch.setattr(delivery_mod, "_RETRY_BASE_DELAY", 0)
     _spans._store = None
-    # Published beside the basetemp so a caller that chose --basetemp finds this
-    # run's root without having to guess pytest's directory naming.
+
     (root.parent / MANIFEST_FILENAME).write_text(
         json.dumps(
             {
@@ -237,8 +236,6 @@ async def test_turn_evidence_scenario(evidence_root: Path) -> None:
         encoding="utf-8",
     )
 
-    # Self-check: the scenario must actually have produced every artifact the
-    # verifier joins, otherwise a silently empty run would look like a pass.
     assert (evidence_root / SPANS_RELPATH).exists()
     assert list((evidence_root / TELEMETRY_DIRNAME).glob("usage-*.jsonl"))
     assert list((evidence_root / TELEMETRY_DIRNAME).glob("call-efficiency-*.jsonl"))

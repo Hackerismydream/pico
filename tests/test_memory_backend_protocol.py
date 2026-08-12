@@ -9,7 +9,7 @@ import pytest
 from pico.memory_engine import Memory, MemoryBackend
 
 # ---------------------------------------------------------------------------
-# Memory dataclass
+
 # ---------------------------------------------------------------------------
 
 
@@ -35,8 +35,7 @@ class TestMemoryDataclass:
             m.text = "y"  # type: ignore[misc]
 
     def test_metadata_default_is_independent_per_instance(self) -> None:
-        # Catches the classic mutable-default footgun: ``field(default_factory=dict)``
-        # rather than ``= {}`` in the dataclass body.
+
         a = Memory(text="a")
         b = Memory(text="b")
         a.metadata["key"] = "value"
@@ -44,7 +43,7 @@ class TestMemoryDataclass:
 
 
 # ---------------------------------------------------------------------------
-# Protocol shape
+
 # ---------------------------------------------------------------------------
 
 
@@ -88,13 +87,12 @@ class TestProtocolRuntimeCheck:
         assert isinstance(_CompleteBackend(), MemoryBackend)
 
     def test_incomplete_backend_fails_protocol(self) -> None:
-        # @runtime_checkable Protocols check attribute presence —
-        # a missing method must reject.
+
         assert not isinstance(_IncompleteBackend(), MemoryBackend)
 
 
 # ---------------------------------------------------------------------------
-# Behavioral surface — exercises every method
+
 # ---------------------------------------------------------------------------
 
 
@@ -123,13 +121,13 @@ class TestBackendCallable:
     async def test_lifecycle(self, backend) -> None:
         await backend.start()
         await backend.stop()
-        # Idempotent — second cycle must not raise.
+
         await backend.start()
         await backend.stop()
 
 
 # ---------------------------------------------------------------------------
-# Documentation-level contract: empty recall is valid
+
 # ---------------------------------------------------------------------------
 
 

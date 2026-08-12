@@ -126,14 +126,10 @@ class PairedTwoSigmaGate:
             fired_tasks=fired,
             z_threshold=self.z_threshold,
         )
-        # The reported score is ALWAYS the full-train mean over the fixed
-        # denominator; the paired stats may be narrowed to Gate-b's fired
-        # subset, and a subset mean leaking out as "the score" would poison
-        # beat_vanilla / parent selection / the journal curve with a number
-        # that has a different denominator (review round-2 P0-4). Promotion is
-        # the dual condition: the (possibly subset) paired verdict holds AND
-        # the full-train mean does not regress the control — the fired subset
-        # may claim credit, but never at the expense of the whole set.
+        # 报告分数始终是固定分母上的完整训练均值；配对统计可收窄到门控 b 的触发子集，但若把
+        # 子集均值泄漏为“分数”，就会用不同分母的数字污染 beat_vanilla、父节点选择和日志曲线
+        # （评审第 2 轮 P0-4）。晋升需同时满足：可能基于子集的配对结论成立，且完整训练均值
+        # 不低于对照组。触发子集可以获得功劳，但绝不能以整个集合为代价。
         full_mean = train_mean(confirm, ctx.train_task_ids)
         control_full_mean = train_mean(ctx.baseline.evals, ctx.train_task_ids)
         promoted = gate.promoted and full_mean >= control_full_mean
@@ -203,8 +199,7 @@ class FocusedFisherGate:
         node_id = ctx.node.node_id
         focused = ctx.focused_task_ids
         sentinels = ctx.sentinel_task_ids
-        # One eval over focused (the WHY subset) + sentinels (stable-pass controls),
-        # so the regression guard costs no extra run.
+        # 对聚焦集合（WHY 子集）和哨兵（稳定通过对照）只做一次评测，因此退化防护无需额外运行。
         probe_ids = list(dict.fromkeys(list(focused) + list(sentinels)))
         cand_probe = ctx.eval(ctx.node, probe_ids, self.k, f"{node_id}_focused") if probe_ids else {}
         stats: dict = {}
@@ -233,11 +228,9 @@ class FocusedFisherGate:
                 foc_v=foc_v,
             )
 
-        # Sentinel regression guard (SOP §2 ⑤a), stratified: stable-pass
-        # controls never flake under the baseline, so any drop beyond one flaky
-        # trial is signal; borderline controls flip by nature, so their verdict
-        # uses a trial-level Fisher test (worse direction) instead of the mean
-        # guard — the mean guard on flaky tasks would fire on noise.
+        # 分层的哨兵退化防护（SOP 第 2 节第 5a 项）：稳定通过对照在基线下不会波动，因此超过
+        # 一次波动试验的下降就是信号；边界对照天然会翻转，故其结论使用试验级 Fisher 检验
+        # （变差方向）而非均值防护，否则均值防护会在波动任务的噪声上触发。
         if sentinels:
             base = ctx.baseline.evals
 
@@ -281,9 +274,8 @@ class FocusedFisherGate:
                         verdict=EvaluationVerdict.rejected,
                     )
 
-        # Wide-pass cull: only a probe that is SIGNIFICANTLY worse than the
-        # baseline on the WHY subset is pruned without a full run. Slightly-low
-        # or indistinguishable probes advance (SOP: slightly-below does not eliminate).
+        # 宽松通过裁剪：只有在 WHY 子集上显著差于基线的探针才会不经完整运行直接裁掉。
+        # 略低或无法区分的探针继续前进；SOP 规定略低不能淘汰。
         if focused and stats["foc_c"] < stats["foc_v"] and stats["fisher_p_worse"] < self.alpha:
             stats["pruned_significantly_worse"] = True
             return CandidateOutcome(

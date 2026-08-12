@@ -13,8 +13,8 @@ from pico.sandbox import DirectExecutor, SandboxExecutor
 class ExecTool(Tool):
     """Tool to execute shell commands."""
 
-    # Backstop above the 600s internal exec cap (``_MAX_TIMEOUT``); the
-    # executor's own timeout fires first, this only catches a wedged executor.
+    # 高于 exec 内部 600 秒上限（``_MAX_TIMEOUT``）的兜底值；执行器自身超时会先触发，
+    # 此值只用于捕获完全卡死的执行器。
     timeout_seconds = 660.0
 
     def __init__(
@@ -30,15 +30,15 @@ class ExecTool(Tool):
         self.timeout = timeout
         self.working_dir = working_dir
         self.deny_patterns = deny_patterns or [
-            r"\brm\s+-[rf]{1,2}\b",  # rm -r, rm -rf, rm -fr
-            r"\bdel\s+/[fq]\b",  # del /f, del /q
-            r"\brmdir\s+/s\b",  # rmdir /s
-            r"(?:^|[;&|]\s*)format\b",  # format (as standalone command only)
-            r"\b(mkfs|diskpart)\b",  # disk operations
-            r"\bdd\s+if=",  # dd
-            r">\s*/dev/sd",  # write to disk
-            r"\b(shutdown|reboot|poweroff)\b",  # system power
-            r":\(\)\s*\{.*\};\s*:",  # fork bomb
+            r"\brm\s+-[rf]{1,2}\b",  # 匹配 rm -r、rm -rf、rm -fr
+            r"\bdel\s+/[fq]\b",  # 匹配 del /f、del /q
+            r"\brmdir\s+/s\b",  # 匹配 rmdir /s
+            r"(?:^|[;&|]\s*)format\b",  # format（仅作为独立命令时）
+            r"\b(mkfs|diskpart)\b",  # 磁盘操作
+            r"\bdd\s+if=",  # 匹配 dd
+            r">\s*/dev/sd",  # 写入磁盘
+            r"\b(shutdown|reboot|poweroff)\b",  # 系统电源
+            r":\(\)\s*\{.*\};\s*:",  # fork 炸弹
         ]
         self.allow_patterns = allow_patterns or []
         self.restrict_to_workspace = restrict_to_workspace
@@ -92,30 +92,29 @@ class ExecTool(Tool):
         cwd = working_dir or self.working_dir or os.getcwd()
 
         if not self._executor.is_sandboxed:
-            # Non-sandboxed: full guard — deny-list patterns AND workspace restriction.
+            # 非沙箱模式：完整保护，同时应用拒绝列表模式和工作区限制。
             guard_error = self._guard_command(command, cwd)
             if guard_error:
                 return guard_error
         elif self.restrict_to_workspace:
-            # Sandboxed: skip the deny-list (microVM provides real isolation), but still
-            # enforce workspace restriction so operator-set boundaries are respected.
+            # 沙箱模式：微型虚拟机已提供真隔离，因此跳过拒绝列表；仍强制工作区限制，
+            # 以遵守操作者设定的边界。
             workspace_error = self._check_workspace_restriction(command, cwd)
             if workspace_error:
                 return workspace_error
 
-        # Use `is None` check — `timeout or default` would treat timeout=0 as falsy.
+        # 使用 `is None` 检查，因为 `timeout or default` 会将 timeout=0 误视为假值。
         effective_timeout = min(self.timeout if timeout is None else timeout, self._MAX_TIMEOUT)
 
         env: dict[str, str] | None = None
         if self.path_append:
             if self._executor.is_sandboxed:
-                # Inject path inside the VM via command wrapper; never pass os.environ
-                # to a sandboxed executor — it would leak host credentials into the VM.
+                # 通过命令包装在虚拟机内注入路径；绝不向沙箱执行器传入 os.environ，
+                # 否则会将宿主机凭据泄漏到虚拟机。
                 command = f'export PATH="$PATH:{shlex.quote(self.path_append)}" && {command}'
             else:
-                # Pass ONLY the PATH override. Copying os.environ here would hand
-                # the full host environment to DirectExecutor and defeat its
-                # baseline-allowlist hygiene; the executor supplies the rest.
+                # 只传入 PATH 覆盖值。此处复制 os.environ 会把完整宿主机环境交给 DirectExecutor，
+                # 破坏其基线白名单隔离；其余变量由执行器提供。
                 base_path = os.environ.get("PATH", "")
                 env = {"PATH": base_path + os.pathsep + self.path_append}
 

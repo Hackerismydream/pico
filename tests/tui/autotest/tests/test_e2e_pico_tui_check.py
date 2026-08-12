@@ -12,6 +12,5 @@ import pytest
 @pytest.mark.e2e
 def test_tui_check_exits_clean(harness):
     harness.spawn("uv run pico --check")
-    # --check is a print-then-exit mode; expect natural exit within 20s
-    # (Node child cold-load + Python parent typer dispatch)
+
     assert harness.expect_exit(0, timeout=20.0), f"`pico --check` did not exit 0 in 20s; screen=\n{harness.screen()}"

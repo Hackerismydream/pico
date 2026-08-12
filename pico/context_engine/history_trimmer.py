@@ -29,11 +29,11 @@ from typing import Any, Callable
 from pico.providers.base import LLMProvider
 from pico.utils.helpers import estimate_prompt_tokens_chain
 
-# Provider-safe message keys. Anything else on a session message
-# (timestamps, internal ids, manifest annotations) is dropped before
-# the dict reaches the LLM. reasoning_content / thinking_blocks must survive
-# so multi-turn reasoning contracts (e.g. DeepSeek thinking mode) hold; the
-# provider gate strips thinking_blocks for non-Anthropic targets downstream.
+# Provider 安全的消息字段。会话消息上的其他字段
+# （时间戳、内部 ID、清单标注）会在此前丢弃
+# 必须在字典到达 LLM 前移除。reasoning_content / thinking_blocks 必须保留，
+# 才能维持多 Turn 推理契约（如 DeepSeek thinking mode）；下游 Provider 门禁
+# 会针对非 Anthropic 目标移除 thinking_blocks。
 _ALLOWED_KEYS = {
     "role",
     "content",
@@ -81,7 +81,7 @@ class HistoryTrimmer:
         self.context_window_tokens = context_window_tokens
 
     # ------------------------------------------------------------------
-    # Pure history-shaping helpers (no token estimation / no I/O)
+    # 纯历史整形辅助函数（不估算 token，也不执行 I/O）
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -167,7 +167,7 @@ class HistoryTrimmer:
         return groups
 
     # ------------------------------------------------------------------
-    # Budget-driven trimming
+    # 预算驱动的裁剪
     # ------------------------------------------------------------------
 
     def trim(

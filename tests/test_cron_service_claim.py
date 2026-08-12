@@ -47,9 +47,6 @@ async def test_gateway_does_not_claim_tui_job(tmp_path: Path) -> None:
     store = tmp_path / "jobs.json"
     job_id = _add_due_tui_job(store)
 
-    # Gateway-style service (IM-only allow-list) must skip the "tui" job — its
-    # channel is non-empty, so it is filtered by allowed_channels, not treated as
-    # a legacy any-process job.
     fired = await _fired_ids({"weixin"}, store)
     assert job_id not in fired
 

@@ -33,7 +33,7 @@ def workspace():
 
 
 # --------------------------------------------------------------------------- #
-# Loop-level: max_iterations reached -> synthesized answer delivered           #
+
 # --------------------------------------------------------------------------- #
 
 
@@ -84,9 +84,6 @@ def _make_agent(workspace: Path, provider: LLMProvider) -> AgentLoop:
         model="stub",
         max_iterations=2,
         restrict_to_workspace=True,
-        # Exhaustion always synthesizes now, checkpoint or not; checkpoint only
-        # adds the recovery snapshot on top. Disable it here so the test stays
-        # focused on the synthesize branch without a shadow-git dependency.
         runtime_config=RuntimeConfig(checkpoint=CheckpointConfig(policy="never")),
     )
 
@@ -106,10 +103,10 @@ async def test_exhaustion_delivers_synthesized_answer(workspace):
     )
 
     assert out is not None
-    # Synthesis text is delivered, not the canned apology.
+
     assert out[0] == "Partial summary: did A and B; C is still pending."
     assert "maximum number of tool call iterations" not in out[0]
-    # Exactly one tools-disabled synthesis call, after the budget was spent.
+
     assert provider.synth_calls == 1
     assert provider.tool_iterations == 2
 
@@ -132,16 +129,15 @@ async def test_synthesized_reply_lands_in_history(workspace):
 
     assert outcome.status == "interrupted"
     assert final == "Partial summary: did A and B; C is still pending."
-    # The last message is the synthesized assistant reply, ready to persist.
+
     assert messages[-1]["role"] == "assistant"
     assert messages[-1]["content"] == final
-    # The injected synthesis prompt stays local to the helper — it must not
-    # leak into the persisted history.
+
     assert not any("used up the tool-calling budget" in (m.get("content") or "") for m in messages)
 
 
 # --------------------------------------------------------------------------- #
-# Unit-level: _synthesize_final_on_exhaustion behavior                         #
+
 # --------------------------------------------------------------------------- #
 
 
@@ -183,10 +179,10 @@ async def test_synthesis_withholds_tools_and_threads_fallback_chain():
     assert result == "wrapped up"
     assert len(provider.calls) == 1
     call = provider.calls[0]
-    assert call["tools"] is None  # no tools -> no ask_user/tool at the cliff
+    assert call["tools"] is None
     assert call["model"] == "primary"
     assert call["fallback_models"] == ["backup"]
-    # The synthesis nudge is appended as a trailing user turn.
+
     assert call["messages"][-1]["role"] == "user"
     assert call["messages"][-1]["content"] == _MAX_ITER_SYNTHESIS_PROMPT
 

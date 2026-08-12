@@ -273,7 +273,7 @@ function setLang(lang) {
   try {
     localStorage.setItem('tracing:lang', lang);
   } catch {
-    /* ignore persistence failures (private mode, etc.) */
+      /* 忽略持久化失败，例如隐私模式。 */
   }
   state.detailsRenderSignature = null;
   applyStaticI18n();
@@ -630,8 +630,8 @@ function currentTrace() {
 }
 
 function jumpToTraceByTraceId(traceId, spanId) {
-  // Navigate to another trace (subagent run ↔ parent turn) by its traceId.
-  // The subagent trace lives in the same session, so search current session first.
+// 按 traceId 跳转到另一条追踪（子智能体运行 ↔ 父轮次）。子智能体追踪位于同一会话，
+// 因此优先搜索当前会话。
   if (!traceId) return false;
   const ordered = currentSession()
     ? [currentSession(), ...allSessions().filter((s) => s !== currentSession())]
@@ -649,9 +649,8 @@ function jumpToTraceByTraceId(traceId, spanId) {
   return false;
 }
 
-// ── Content search (fuzzy locate across node inputs/outputs) ────────────────
-// Server-side /api/search covers span attributes + full artifact text; here we
-// render the hit list, navigate to the hit span, and highlight matched terms.
+// ── 内容搜索（跨节点输入/输出模糊定位）────────────────────────────────────
+// 服务端 /api/search 覆盖跨度属性和产物全文；此处渲染命中列表、跳转到命中跨度并高亮匹配词。
 
 function contentSearchTerms() {
   const query = state.search.trim();
@@ -1209,9 +1208,8 @@ function renderModelInputCard(span, artifacts) {
   if (span.name !== 'llm.call') return '';
   const inp = artifactByLabel(artifacts, 'Model Input')?.parsed;
   if (!inp) return '';
-  // Show the ACTUAL request sent to the model — tools + the raw messages list
-  // (inp.messages is the ground truth), not a system/history split. Model /
-  // provider / token usage already live in the top hero block, so not repeated.
+  // 展示实际发送给模型的请求：工具加原始消息列表，inp.messages 是权威值，而非拆分后的系统/
+  // 历史。模型、提供商和令牌用量已在顶部主信息块中展示，不再重复。
   const messages = Array.isArray(inp.messages) ? inp.messages : [];
   const tools = Array.isArray(inp.tools) ? inp.tools : [];
   const note = `${messages.length} Messages${tools.length ? ` · ${tools.length} Tools` : ''}`;
@@ -1237,8 +1235,8 @@ function renderModelInputCard(span, artifacts) {
     </article>`;
 }
 
-// One message exactly as sent to the model: role header + content (string or
-// content blocks) + any tool_calls, mirroring the provider payload.
+  // 单条消息按发送给模型的原样展示：角色标题、字符串或内容块，以及所有 tool_calls，
+  // 与提供商载荷一致。
 function renderRequestMessage(m) {
   if (!m || typeof m !== 'object') return String(m);
   const role = m.role || '?';
@@ -1307,10 +1305,9 @@ function renderModelOutputCard(span, artifacts) {
   const llmOutput = artifactByLabel(artifacts, 'Model Output')?.parsed;
   if (!llmOutput) return '';
 
-  // OpenClaw dialect: assistantTexts / lastAssistant. Pico dialect: output/content
-  // + a top-level tool_calls array. A tool-calling turn often has empty text and
-  // carries everything in tool_calls, so we must render tool_calls too or the card
-  // collapses to "(no assistant output)" and drops the arguments entirely.
+  // OpenClaw 方言使用 assistantTexts / lastAssistant；Pico 方言使用 output/content 加顶层
+  // tool_calls 数组。工具调用轮次的文本常为空，全部内容在 tool_calls 中，因此必须同时渲染，
+  // 否则卡片会收缩成“无助手输出”并彻底丢掉参数。
   const assistantTexts = Array.isArray(llmOutput.assistantTexts) ? llmOutput.assistantTexts : [];
   const finalMessage =
     assistantContentText(llmOutput.lastAssistant) ||
@@ -1319,8 +1316,8 @@ function renderModelOutputCard(span, artifacts) {
     assistantTexts[assistantTexts.length - 1] ||
     '';
 
-  // Normalize Pico's flat {id,name,arguments} into the {function:{name,arguments}}
-  // shape messageBodyText renders (also tolerate the already-nested OpenAI shape).
+    // 将 Pico 的扁平 {id,name,arguments} 规范化为 messageBodyText 渲染的
+    // {function:{name,arguments}} 结构，同时兼容已嵌套的 OpenAI 结构。
   const toolCalls = (Array.isArray(llmOutput.tool_calls) ? llmOutput.tool_calls : []).map((tc) => ({
     function: {
       name: (tc && (tc.name ?? tc.function?.name)) || '?',
@@ -1354,9 +1351,7 @@ function renderModelOutputCard(span, artifacts) {
   ]
     .filter(Boolean)
     .join(' · ');
-  // Reasoning precedes the answer chronologically (the model thinks, then
-  // responds), so render it above the body — collapsed, since it is long and
-  // diagnostic.
+    // 推理在时间上先于答案（模型先思考再响应），因此折叠后渲染在正文上方；其内容较长且用于诊断。
   return `
     <article class="content-card wide-card">
       <header><h4>Model Output</h4>${note ? `<span class="card-note">${escapeHtml(note)}</span>` : ''}</header>
@@ -1433,12 +1428,9 @@ function renderSubagentCallCard(span, artifacts) {
   const task = attrs['subagent.task'] || attrs['subagent.label'] || '';
   const dispatchInput = task || '';
   const dispatchOutput = toolOutput?.result ?? toolOutput?.output ?? null;
-  // Pico persists the subagent's final return ON the span itself - the
-  // `Subagent Result` artifact ({task, result}) plus the `subagent.result_preview`
-  // attribute — NOT as a separate child session (the openclaw model just below).
-  // Without this, the card only checked the child-session / spawn-tool paths,
-  // found nothing for Pico, and fell back to the empty-result placeholder
-  // even though the result was right there.
+  // Pico 把子智能体最终返回持久化在跨度本身：`Subagent Result` 产物（{task, result}）加
+  // `subagent.result_preview` 属性，而不是像下方 OpenClaw 模型那样存为独立子会话。若不处理，
+  // 卡片只检查子会话/spawn 工具路径，在 Pico 中找不到内容并回退到空结果占位，尽管结果就在跨度上。
   const subagentResult = artifactByLabel(artifacts, 'Subagent Result')?.parsed;
   const resultText = subagentResult?.result ?? attrs['subagent.result_preview'] ?? null;
   const childSession = findSessionByIdentity(
@@ -1451,8 +1443,7 @@ function renderSubagentCallCard(span, artifacts) {
     ? 'child session final output'
     : (resultText ? 'subagent result artifact' : 'spawn accepted payload');
 
-  // Forward link: Pico runs the subagent as its OWN trace; this dispatch
-  // node only summarizes it. Offer a jump into that trace's full tree.
+  // 前向链接：Pico 将子智能体作为独立追踪运行，当前分发节点仅作摘要；提供跳转到完整追踪树的入口。
   const subTraceId = attrs['subagent.trace_id'] || null;
   const jumpCard = subTraceId
     ? `
@@ -1486,7 +1477,7 @@ function renderSubagentRunCard(span) {
   const parentTraceId = attrs['subagent.parent_trace_id'] || null;
   const parentSpanId = attrs['subagent.parent_span_id'] || null;
   const task = attrs['subagent.task'] || attrs['subagent.label'] || '';
-  // Back link: this trace is one subagent run; return to the turn that spawned it.
+  // 返回链接：当前追踪是一次子智能体运行，返回启动它的轮次。
   const backCard = parentTraceId
     ? `
     <article class="content-card wide-card">
@@ -2133,10 +2124,9 @@ function renderSkillReadCard(trace, span, artifacts) {
   const skillReadArtifact = artifactByLabel(artifacts, 'Skill Read');
   const readContent = artifactByLabel(artifacts, 'Read Content');
   const readRequest = artifactByLabel(artifacts, 'Read Request');
-  // Pico's read_file→skill.read carries content/params on the re-typed tool
-  // span's own Tool Input/Output artifacts (+ skill.result_preview), not the
-  // openclaw Skill Read / Read Content / Read Request artifacts. Fall back to
-  // Pico's so the card isn't empty.
+  // Pico 的 read_file→skill.read 把内容/参数放在重新标型工具跨度自身的 Tool Input/Output
+  // 产物和 skill.result_preview 中，而非 OpenClaw 的 Skill Read / Read Content / Read Request
+  // 产物。需回退到 Pico 数据，避免卡片为空。
   const toolInput = artifactByLabel(artifacts, 'Tool Input');
   const toolOutput = artifactByLabel(artifacts, 'Tool Output');
   const readInputValue = {
@@ -2144,8 +2134,7 @@ function renderSkillReadCard(trace, span, artifacts) {
     path: attrs['skill.path'] || evidence.path || '-',
     resolvedPath: attrs['skill.resolved_path'] || skillReadArtifact?.parsed?.resolvedFilePath || '-',
     source: attrs['skill.source'] || evidence.source || '-',
-    // Content-driven distinction: a materialized scripts bundle => the agent
-    // pulled runnable files; absent => it only loaded the instruction body.
+  // 按内容区分：存在已实体化脚本包表示智能体拉取了可运行文件；不存在表示只加载了指令正文。
     scriptsDir: attrs['skill.scripts_dir'] || '(instructions only)',
     request: readRequest?.parsed?.params ?? toolInput?.parsed?.params ?? null
   };
@@ -2212,8 +2201,7 @@ function renderSessionTurnCard(trace, span) {
   const duration = trace?.durationMs != null ? formatDuration(trace.durationMs) : (span.durationMs != null ? formatDuration(span.durationMs) : '-');
   const trigger = triggerLabel(span.trigger || attrs['trigger']);
   const agent = span.agentId || 'agent';
-  // "Loaded this turn": tools / plugin backend+tools / skills, captured on the
-  // turn span by the plugin. Omit the whole block for old traces that predate it.
+  // “本轮已加载”：插件在轮次跨度上捕获的工具、插件后端及工具、技能。早于该字段的旧追踪省略整块。
   const tools = Array.isArray(attrs['turn.tools']) ? attrs['turn.tools'] : [];
   const pluginBackend = attrs['turn.plugin.backend'] || null;
   const pluginTools = Array.isArray(attrs['turn.plugin.tools']) ? attrs['turn.plugin.tools'] : [];
@@ -2257,12 +2245,10 @@ function renderSessionTurnCard(trace, span) {
     </article>`;
 }
 
-// ── Descriptor-driven node rendering (see TRACING_STANDARD.md) ──────────────
-// The body of a node's detail is rendered from its descriptor: either a
-// `custom:<id>` whole-body renderer, or declarative `panels`. Unknown types fall
-// back to top-level input/output (or an attribute dump). Pico's own rich cards
-// are registered here as custom renderers, so dispatch is data-driven with zero
-// regression, and any provider's node type renders without viewer code changes.
+// ── 描述符驱动的节点渲染（见 TRACING_STANDARD.md）─────────────────────────
+// 节点详情正文由描述符渲染：使用 `custom:<id>` 整体渲染器或声明式 `panels`。未知类型回退到
+// 顶层输入/输出或属性转储。Pico 自身富卡片在此注册为自定义渲染器，使分发由数据驱动且无回归，
+// 任何提供商的节点类型都无需修改查看器代码即可渲染。
 
 const CUSTOM_RENDERERS = {
   sessionTurn: (span, trace) => renderSessionTurnCard(trace, span),
@@ -2290,7 +2276,7 @@ function applyTemplate(tmpl, obj) {
   });
 }
 
-// resolve top-level input/output payload: artifact if referenced, else preview.
+  // 解析顶层输入/输出载荷：有引用时使用产物，否则使用预览。
 function topLevelPayload(io, artifacts) {
   if (!io) return undefined;
   if (io.artifact_path) {
@@ -2300,7 +2286,7 @@ function topLevelPayload(io, artifacts) {
   return io.preview;
 }
 
-// resolve a panel `source` to a value: input | output | attr:x | artifact:prefix.
+  // 将面板 `source` 解析为值：input、output、attr:x 或 artifact:prefix。
 function resolveSource(span, source, pick, artifacts) {
   if (!source) return undefined;
   let value;
@@ -2428,10 +2414,8 @@ function renderContentLegacy(span, trace, artifacts) {
     hiddenArtifactLabels.add('Skill Read');
     hiddenArtifactLabels.add('Read Request');
     hiddenArtifactLabels.add('Read Content');
-    // Pico's read_file→skill.read is a re-typed tool call: its Tool
-    // Input/Output ARE the skill's input/output, now consumed by
-    // renderSkillReadCard. Hide them so they don't double-render as
-    // separate Tool cards alongside the Skill cards.
+  // Pico 的 read_file→skill.read 是重新标型的工具调用，其 Tool Input/Output 就是技能输入/输出，
+  // 现由 renderSkillReadCard 消费。隐藏它们，避免在技能卡片旁重复渲染为独立工具卡片。
     hiddenArtifactLabels.add('Tool Input');
     hiddenArtifactLabels.add('Tool Output');
   }
@@ -2503,7 +2487,7 @@ function renderContentLegacy(span, trace, artifacts) {
   `;
 }
 
-// Memory nodes as Input and Output cards, mirroring the llm/tool cards.
+  // 将记忆节点渲染为输入和输出卡片，与 LLM/工具卡片保持一致。
 function renderMemoryCard(span, artifacts) {
   if (span.name === 'memory.recall') return renderMemoryRecallCard(span, artifacts);
   if (span.name === 'memory.store') return renderMemoryStoreCard(span, artifacts);
@@ -2519,17 +2503,16 @@ function memoryIoCard(title, note, bodyHtml) {
     </article>`;
 }
 
-// All memory bodies render as a single structured-pre text block — identical
-// styling/wrapping/alignment to the llm/tool cards (no bespoke list/flex markup).
+  // 所有记忆正文渲染为单个 structured-pre 文本块，与 LLM/工具卡片的样式、换行和对齐完全一致，
+  // 不使用专用列表或 Flex 标记。
 function preBody(text) {
   const t = text == null ? '' : String(text);
   return `<pre class="structured-pre">${escapeHtml(t.length ? t : '(empty)')}</pre>`;
 }
 
-// Shared role-colored message list — the `messages` body renderer. Used by any
-// node whose input/output is a chat message array (llm.call, memory.store).
-// content: string OR content-block list; assistant tool_calls appended; the
-// system message (reliably huge boilerplate) collapses by default.
+// 共用的角色着色消息列表，即 `messages` 正文渲染器。用于输入/输出为聊天消息数组的任何节点，
+// 如 llm.call、memory.store。content 可为字符串或内容块列表；追加助手 tool_calls；通常很长且
+// 模板化的系统消息默认折叠。
 function messageBodyText(m) {
   let body = '';
   const c = m && m.content;

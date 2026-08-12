@@ -59,11 +59,11 @@ class Dispatcher:
         Per spec, parse errors and frames without a recoverable `id` still
         return a response with `id: null`; callers may choose to drop those.
         """
-        # ----- Frame validation -----------------------------------------------------
+        # ----- 帧校验 -----------------------------------------------------
         if not isinstance(frame, dict):
             return _err_frame(None, PARSE_ERROR, "parse_error", data={"reason": "frame is not an object"})
 
-        frame_id = frame.get("id")  # may be None for notification frames
+        frame_id = frame.get("id")  # 通知帧的 ID 可以为 None
 
         if frame.get("jsonrpc") != "2.0":
             return _err_frame(
@@ -93,12 +93,12 @@ class Dispatcher:
                 data={"reason": "params must be an object"},
             )
 
-        # ----- Method routing -------------------------------------------------------
+        # ----- 方法路由 -------------------------------------------------------
         handler = self._handlers.get(method)
         if handler is None:
             return _err_frame(frame_id, METHOD_NOT_FOUND, "method_not_found", data={"method": method})
 
-        # ----- Dispatch -------------------------------------------------------------
+        # ----- 分派 -------------------------------------------------------------
         try:
             result = await handler(params)
         except RpcError as exc:
@@ -112,8 +112,8 @@ class Dispatcher:
                 err_payload["data"] = {"detail": exc.detail}
             return {"jsonrpc": "2.0", "id": frame_id, "error": err_payload}
         except SystemExit as exc:
-            # Click/Typer can leak SystemExit even with standalone_mode=False;
-            # treat as internal error rather than crashing the dispatcher.
+            # 即使 standalone_mode=False，Click/Typer 仍可能泄漏 SystemExit；
+            # 将其视为内部错误，不让分派器崩溃。
             tb_tail = _truncate_traceback(traceback.format_exc())
             logger.warning("tui_rpc: SystemExit in handler {}: code={}", method, exc.code)
             return _err_frame(
@@ -132,7 +132,7 @@ class Dispatcher:
                 data={"traceback_tail": tb_tail},
             )
 
-        # ----- Result validation ---------------------------------------------------
+        # ----- 结果校验 ---------------------------------------------------
         if not isinstance(result, dict):
             logger.error("tui_rpc: handler {} returned non-dict result", method)
             return _err_frame(

@@ -19,10 +19,8 @@ const buildOverlayState = (): OverlayState => ({
 
 export const $overlayState = atom<OverlayState>(buildOverlayState())
 
-export const $isBlocked = computed(
-  $overlayState,
-  ({ agents, clarify, confirm, modelPicker, pager, picker }) =>
-    Boolean(agents || clarify || confirm || modelPicker || pager || picker)
+export const $isBlocked = computed($overlayState, ({ agents, clarify, confirm, modelPicker, pager, picker }) =>
+  Boolean(agents || clarify || confirm || modelPicker || pager || picker)
 )
 
 export const getOverlayState = () => $overlayState.get()
@@ -30,16 +28,14 @@ export const getOverlayState = () => $overlayState.get()
 export const patchOverlayState = (next: Partial<OverlayState> | ((state: OverlayState) => OverlayState)) =>
   $overlayState.set(typeof next === 'function' ? next($overlayState.get()) : { ...$overlayState.get(), ...next })
 
-/** Full reset — used by session/turn teardown and tests. */
+/** 完整重置，供会话或轮次拆除以及测试使用。 */
 export const resetOverlayState = () => $overlayState.set(buildOverlayState())
 
 /**
- * Soft reset: drop flow-scoped overlays (clarify / confirm / pager) but
- * preserve user-toggled ones — agents dashboard, model
- * picker and session picker. Those are opened deliberately and
- * shouldn't vanish when a turn ends.  Called from turnController.idle() on
- * every turn completion / interrupt; the old "reset everything" behaviour
- * silently closed /agents the moment delegation finished.
+ * 软重置：移除流程范围的浮层（clarify、confirm、pager），但保留用户主动切换的
+ * 智能体仪表板、模型选择器和会话选择器。它们由用户明确打开，不应在轮次结束时
+ * 消失。每次轮次完成或中断时由 turnController.idle() 调用；旧版“全部重置”行为
+ * 会在委派完成瞬间静默关闭 /agents。
  */
 export const resetFlowOverlays = () =>
   $overlayState.set({

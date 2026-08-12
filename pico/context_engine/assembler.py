@@ -60,8 +60,8 @@ class ContextAssembler(ContextEngine):
 
     @property
     def owns_compaction(self) -> bool:
-        # The Curator lane archives history itself, so AgentLoop hands it
-        # the full append-only log and skips the host MemoryConsolidator.
+        # Curator 路径自行归档历史，因此 AgentLoop 向其传入完整的追加式日志，
+        # 并跳过 Host 的 MemoryConsolidator。
         return True
 
     def replace_model(self, model: str) -> None:
@@ -88,7 +88,7 @@ class ContextAssembler(ContextEngine):
             budget=budget,
         )
 
-        # ── Phase A — independent segment builders, concurrent ──────
+        # ── 阶段 A——相互独立的片段构建器，并发执行 ──────
         a_segs = await asyncio.gather(*[b.build(ctx) for b in self._phase_a])
         meta: dict[str, Any] = {}
         prefix_parts: list[str] = []
@@ -102,7 +102,7 @@ class ContextAssembler(ContextEngine):
 
         user_msg = self._build_user(ctx)
 
-        # ── Phase B — prefix-dependent builders (Curator), serial ───
+        # ── 阶段 B——依赖前缀的构建器（Curator），串行执行 ───
         ctx_b = replace(
             ctx,
             prefix=AssembledPrefix(
@@ -139,7 +139,7 @@ class ContextAssembler(ContextEngine):
         outcome: dict[str, Any],
         usage: dict[str, int] | None = None,
     ) -> None:
-        # Delegate to any builder that keeps per-turn bookkeeping (Curator).
+        # 委托给需要维护每 Turn 账目的 builder（例如 Curator）。
         for builder in self._builders:
             hook = getattr(builder, "after_turn", None)
             if hook is not None:

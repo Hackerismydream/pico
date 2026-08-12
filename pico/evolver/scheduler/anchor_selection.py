@@ -53,7 +53,7 @@ class AnchorTask:
     """One picked anchor task with the ledger stats that placed it."""
 
     task_id: str
-    role: str  # "sentinel" | "icebreaker" | "borderline"
+    role: str  # "sentinel" | "icebreaker" | "borderline" 三种角色
     pass_rate: float
     variance: float
 
@@ -156,8 +156,8 @@ def select_anchor(
         if missing > 0:
             shortfalls[role] = missing
 
-    # sentinels / icebreakers carry no within-task variance (p in {0, 1});
-    # order them by affinity (icebreakers, round 2+) then task_id for determinism.
+    # 哨兵/破冰任务没有任务内方差（p 属于 {0, 1}）；先按亲和度排序（第 2 轮起的破冰任务），
+    # 再按任务 ID 排序以确保确定性。
     _record(
         "sentinel",
         by_bucket[StabilityBucket.STABLE_PASS],
@@ -170,7 +170,7 @@ def select_anchor(
         n_icebreaker,
         key=lambda s: (-affinity.get(s.task_id, 0.0), s.task_id),
     )
-    # borderline tasks are the discriminators: rank by variance desc, then id.
+    # 边界任务用于区分候选项：先按方差降序，再按 ID 排序。
     borderline_pool = [stab for bucket in _BORDERLINE_BUCKETS for stab in by_bucket[bucket]]
     _record(
         "borderline",

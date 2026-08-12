@@ -152,8 +152,6 @@ def test_file_sink_does_not_dump_local_variable_values(tmp_logs: Path) -> None:
     log_path = redirect_loguru_to_file("gateway.log", file_level="DEBUG")
     api_token = "SECRET-TOKEN-9z9z9z"
     try:
-        # api_token is referenced on the raising line, so diagnose=True WOULD
-        # annotate it with its value; the exception message itself is "boom".
         raise RuntimeError(api_token[:0] or "boom")
     except RuntimeError:
         logger.exception("processing failed")
@@ -182,7 +180,7 @@ def test_terminal_sink_does_not_dump_local_variable_values(tmp_logs: Path, capsy
 
 
 # ---------------------------------------------------------------------------
-# Root-logger TTY StreamHandler stripping
+
 # ---------------------------------------------------------------------------
 
 
@@ -221,7 +219,7 @@ def test_strip_tty_stream_handlers_keeps_root_non_tty_handler(tmp_logs: Path) ->
 
 
 # ---------------------------------------------------------------------------
-# redirect_terminal_fds_to_file — fd-level stdout/stderr capture
+
 # ---------------------------------------------------------------------------
 
 
@@ -242,9 +240,8 @@ def test_redirect_terminal_fds_captures_print_and_raw_fd_write(tmp_path, capfd) 
 
     with capfd.disabled():
         with redirect_terminal_fds_to_file(target):
-            # Real print() through sys.stdout — this is the structlog PrintLogger path.
             print("print-leak-line", flush=True)
-            # Raw fd write — exercises the os.write path directly.
+
             os.write(1, b"raw-fd-write\n")
 
     content = target.read_bytes()
@@ -266,7 +263,7 @@ def test_redirect_terminal_fds_restores_fd1_after_exit(tmp_path, capfd) -> None:
     with capfd.disabled():
         with redirect_terminal_fds_to_file(target):
             pass
-        # After exit: write a marker — it should NOT appear in the file.
+
         os.write(1, marker_after)
 
     content = target.read_bytes() if target.exists() else b""

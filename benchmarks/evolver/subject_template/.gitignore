@@ -1,5 +1,4 @@
-# Importing the bench plugin out of this checkout writes bytecode next to the
-# source; without this the subject counts as dirty after every run and the
-# setup script refuses to reuse it.
+# 从该检出导入基准插件会在源码旁写入字节码；若不忽略，目标在每次运行后都会被
+# 视为脏工作树，安装脚本将拒绝复用。
 __pycache__/
 *.py[cod]

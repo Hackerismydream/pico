@@ -50,7 +50,7 @@ describe('looksLikeDroppedPath', () => {
   })
 
   it('rejects short slash-like strings without path structure', () => {
-    // No second '/' or '.' → not a plausible file path
+    // 没有第二个 '/' 或 '.'，不像可信的文件路径。
     expect(looksLikeDroppedPath('/help')).toBe(false)
     expect(looksLikeDroppedPath('/model sonnet')).toBe(false)
     expect(looksLikeDroppedPath('/api')).toBe(false)
@@ -59,6 +59,6 @@ describe('looksLikeDroppedPath', () => {
   it('accepts absolute paths with directory separators or extensions', () => {
     expect(looksLikeDroppedPath('/usr/bin/test')).toBe(true)
     expect(looksLikeDroppedPath('/tmp/file.txt')).toBe(true)
-    expect(looksLikeDroppedPath('/etc/hosts')).toBe(true) // has second /
+    expect(looksLikeDroppedPath('/etc/hosts')).toBe(true) // 含第二个 /。
   })
 })

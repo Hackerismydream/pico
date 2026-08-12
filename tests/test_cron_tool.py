@@ -24,15 +24,14 @@ def _tool() -> tuple[CronTool, MagicMock]:
 async def test_add_every_with_tz_is_tolerated_and_dropped() -> None:
     tool, cron = _tool()
     result = await tool.execute(action="add", message="drink water", every_seconds=60, tz="Asia/Shanghai")
-    assert result.startswith("Created job")  # not an error
+    assert result.startswith("Created job")
     schedule = cron.add_job.call_args.kwargs["schedule"]
     assert schedule.kind == "every"
-    assert getattr(schedule, "tz", None) is None  # tz dropped — meaningless for every
+    assert getattr(schedule, "tz", None) is None
 
 
 async def test_add_naive_at_with_tz_anchors_to_that_zone() -> None:
-    # A1: a naive `at` + tz means "that wall-clock time in tz" — the stored at_ms
-    # must match the tz, not the host's local zone.
+
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -46,7 +45,7 @@ async def test_add_naive_at_with_tz_anchors_to_that_zone() -> None:
 
 
 async def test_add_offset_aware_at_ignores_tz_param() -> None:
-    # An offset-aware string already carries its zone; the tz param is ignored.
+
     from datetime import datetime
 
     tool, cron = _tool()
@@ -57,8 +56,7 @@ async def test_add_offset_aware_at_ignores_tz_param() -> None:
 
 
 async def test_non_runnable_schedule_surfaces_service_error() -> None:
-    # The service rejects a non-runnable schedule with ValueError; the tool
-    # translates it to an "Error: ..." string so the agent can retry.
+
     tool, cron = _tool()
     cron.add_job.side_effect = ValueError("at time is in the past")
     result = await tool.execute(action="add", message="late", at="2020-01-01T00:00:00")

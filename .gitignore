@@ -3,10 +3,10 @@
 .env
 node_modules/
 ui-tui/node_modules
-# Generated architecture/diagram SVGs at repo root (not source)
+# 仓库根目录生成的架构图与流程图 SVG（非源码）。
 /*.svg
 
-# Engineering working notes — plan + process records, never committed
+# 工程工作笔记：计划与过程记录，永不提交。
 revice_notes/
 *.pyc
 dist/
@@ -40,18 +40,18 @@ logs/
 .DS_Store
 .claude/
 tmp.sh
-# Pico workspace state is never project content
+# Pico 工作区状态永远不属于项目内容。
 .pico/
 
-# SkillForge dense retrieval cache (auto-built per-deployment, never tracked)
+# SkillForge 稠密检索缓存（每次部署自动构建，永不跟踪）。
 .skill_index/
 .cache/skill_index/
 
-# Eval run artifacts (benchmark products — reproducible via runners, no need to track)
+# 评测运行产物（可通过执行器复现的基准产物，无需跟踪）。
 benchmarks/clawbench/results/
 benchmarks/pinchbench/benchmark.log
 benchmarks/pinchbench/results/*.json
 
-# Disposable small-real Evolution Run subject (materialized from
-# benchmarks/evolver/subject_template/ by scripts/setup_small_real_subject.py)
+# 一次性小型真实演化运行目标，由 scripts/setup_small_real_subject.py 从
+# benchmarks/evolver/subject_template/ 生成。
 benchmarks/evolver/subject/

@@ -33,7 +33,7 @@ describe('TodoPanel', () => {
   it('shows a completed / total count (R10)', () => {
     const frame = frameOf(<TodoPanel t={DEFAULT_THEME} todos={mixed} />)
 
-    // Only `completed` counts toward done; the four-item list has exactly one.
+    // 只有 `completed` 计入完成数；四项列表中恰好有一项。
     expect(frame).toContain('(1/4)')
   })
 
@@ -54,7 +54,7 @@ describe('TodoPanel', () => {
     const collapsed = frameOf(<TodoPanel collapsed t={DEFAULT_THEME} todos={mixed} />)
     const expanded = frameOf(<TodoPanel collapsed={false} t={DEFAULT_THEME} todos={mixed} />)
 
-    // The header + count survive in both states; only the rows toggle.
+    // 标题和计数在两种状态下都保留，只有各行切换显示。
     expect(collapsed).toContain('Todo')
     expect(collapsed).toContain('(1/4)')
     expect(collapsed).not.toContain('done item')

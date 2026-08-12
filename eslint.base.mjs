@@ -1,10 +1,8 @@
-// Shared flat-config base for the repo's TypeScript/Node packages (no React).
+// 仓库 TypeScript/Node 包共享的扁平配置基线，不包含 React。
 //
-// This file lives at the repo root, which has no node_modules. ESM resolves a
-// module's bare imports from the module's own location upward, so a root file
-// importing 'eslint-plugin-*' would fail to resolve. To avoid that, the base is
-// a factory: each package imports its own plugins (resolved from that package's
-// node_modules) and passes them in. The base never imports a plugin itself.
+// 本文件位于没有 node_modules 的仓库根目录。ESM 从模块自身位置向上解析裸导入，
+// 因此根文件导入 'eslint-plugin-*' 会解析失败。为避免这一点，基线采用工厂形式：
+// 每个包从自身 node_modules 解析并导入插件，再将其传入；基线本身不导入插件。
 
 export default function base({ js, tsPlugin, tsParser, unusedImports, perfectionist }) {
   return [

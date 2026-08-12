@@ -6,17 +6,13 @@
 import { describe, expect, it } from 'vitest'
 
 import { findStableBoundary } from '../components/streamingMarkdown.js'
-// We test the pure boundary logic by rendering the component's ref
-// behaviour through repeated calls. Since React isn't being rendered here,
-// we reach into the module to test findStableBoundary via its exported
-// behaviour — but the pure helper isn't exported. So test the component's
-// observable output: pass sequential text values and verify the stable
-// prefix never retreats.
+// 通过重复调用渲染组件引用行为来测试纯边界逻辑。这里未渲染 React，而纯辅助函数
+// findStableBoundary 又未导出，因此改测组件的可观察输出：依次传入文本值，并验证
+// 稳定前缀永不后退。
 //
-// Strategy: mount StreamingMd in isolation and observe which <Md>
-// instances it renders (by text prop). Without a DOM renderer that's
-// heavy, so we validate the helper behaviour by directly invoking the
-// fence/boundary logic via a re-exported surface.
+// 策略：独立挂载 StreamingMd，并通过 text 属性观察它渲染了哪些 <Md> 实例。
+// 在没有 DOM 渲染器时成本较高，因此通过重新导出的接口直接调用围栏和边界逻辑，
+// 验证辅助函数行为。
 import { DEFAULT_THEME } from '../theme.js'
 
 describe('findStableBoundary', () => {
@@ -29,7 +25,7 @@ describe('findStableBoundary', () => {
   })
 
   it('splits after the last blank line separator', () => {
-    // 'first\n\nsecond\n\nthird' → last blank = before 'third'
+    // 'first\n\nsecond\n\nthird' 的最后一个空行为 'third' 之前。
     const text = 'first paragraph\n\nsecond paragraph\n\nthird'
     const idx = findStableBoundary(text)
 
@@ -38,7 +34,7 @@ describe('findStableBoundary', () => {
   })
 
   it('refuses to split inside an open fenced block', () => {
-    // Fence opens, contains a blank line inside the code, no close yet.
+    // 围栏已打开且代码内部含空行，但尚未闭合。
     const text = '```ts\nfn();\n\nmore code here'
 
     expect(findStableBoundary(text)).toBe(-1)
@@ -61,8 +57,8 @@ describe('findStableBoundary', () => {
   })
 
   it('walks backwards through nested fence boundaries safely', () => {
-    // Two closed fences + narration + one new open fence. The only legal
-    // split is before the open fence, not between the closed ones.
+    // 两个闭合围栏加叙述文本后又打开一个新围栏；唯一合法切分点在新围栏之前，
+    // 不能位于两个已闭合围栏之间。
     const text = '```js\na\n```\n\nmid text\n\n```python\nstill open'
     const idx = findStableBoundary(text)
 
@@ -74,8 +70,7 @@ describe('findStableBoundary', () => {
   })
 
   it('refuses to split inside an open $$ math block', () => {
-    // Display math has been opened but not closed; the only blank line
-    // sits inside the open block, so there's no safe boundary yet.
+    // 展示数学块已打开但未闭合，唯一空行位于开放块内部，因此尚无安全边界。
     const text = '$$\nx + y\n\nmore math'
 
     expect(findStableBoundary(text)).toBe(-1)
@@ -90,8 +85,7 @@ describe('findStableBoundary', () => {
   })
 
   it('splits before an open $$ block but not inside', () => {
-    // Mirror of the existing fenced-code test: prose, then an unclosed
-    // math block. The only safe boundary is the blank line BEFORE `$$`.
+    // 与现有围栏代码测试对称：正文后接未闭合数学块，唯一安全边界是 `$$` 前的空行。
     const text = 'intro paragraph\n\n$$\nx + y\n\nmore'
     const idx = findStableBoundary(text)
 
@@ -100,8 +94,7 @@ describe('findStableBoundary', () => {
   })
 
   it('treats single-line $$x$$ as zero net toggle', () => {
-    // `$$x = y$$` opens AND closes on one line, so the stable boundary
-    // after it is allowed.
+    // `$$x = y$$` 在同一行打开并闭合，因此允许在其后建立稳定边界。
     const text = 'intro\n\n$$x = y$$\n\nnarration'
     const idx = findStableBoundary(text)
 
@@ -118,9 +111,8 @@ describe('findStableBoundary', () => {
 
 describe('streaming theme assumption', () => {
   it('theme is exportable (component import sanity check)', () => {
-    // Sanity that the theme we pass doesn't change shape. Component import
-    // already happens above — this is a smoke test that the module graph
-    // for streamingMarkdown wires up without cycles.
+    // 基线确认传入主题的结构不变。组件已在上方导入；此冒烟测试验证
+    // streamingMarkdown 的模块图连接后没有循环依赖。
     expect(DEFAULT_THEME.color.accent).toBeTruthy()
   })
 })

@@ -46,7 +46,7 @@ class FakeAgentLoop:
                 "conversation": req.conversation,
             }
         )
-        # The REPL wires stream=False, so run_turn emits the reply as one Text.
+
         await emit(Text(content=self.reply, source=req.source))
         return TurnOutcome(usage=Usage(0, 0, 0), explicit_reply=True)
 
@@ -65,9 +65,6 @@ def _collect():
     return events, emit
 
 
-# --- AgentTurnRunner (the native runner; REPL uses stream=False) ---
-
-
 async def test_runner_delegates_to_run_turn_with_stream_false():
     loop = FakeAgentLoop("hi there")
     runner = AgentTurnRunner(loop, stream=False)
@@ -75,7 +72,7 @@ async def test_runner_delegates_to_run_turn_with_stream_false():
     req = TurnRequest(origin=Origin.USER, source=src, text="hi", conversation="cli:c1")
     events, emit = _collect()
     outcome = await runner.run(req, emit, lambda: [])
-    # The REPL runner passes stream=False so run_turn emits a Text, not StreamDelta.
+
     assert loop.calls == [{"text": "hi", "stream": False, "conversation": "cli:c1"}]
     assert len(events) == 1 and isinstance(events[0], Text)
     assert events[0].content == "hi there" and events[0].source is src
@@ -87,10 +84,7 @@ async def test_runner_stream_flag_is_forwarded():
     runner = AgentTurnRunner(loop, stream=True)
     events, emit = _collect()
     await runner.run(TurnRequest(origin=Origin.USER, source=_src(), text="hi", conversation="cli:c1"), emit, lambda: [])
-    assert loop.calls[0]["stream"] is True  # build_tui would pass True; build_repl False
-
-
-# --- CliOutlet ---
+    assert loop.calls[0]["stream"] is True
 
 
 async def test_cli_outlet_renders_text():
@@ -103,10 +97,10 @@ async def test_cli_outlet_renders_text():
 async def test_cli_outlet_eats_non_text():
     rendered: list[str] = []
     outlet = CliOutlet("cli", rendered.append)
-    # No render_notice (interactive REPL): both Notice kinds eaten, status quo.
+
     await outlet.deliver(Notice(kind=NoticeKind.PROGRESS))
     await outlet.deliver(Notice(kind=NoticeKind.TOOL_HINT))
-    assert rendered == []  # eaten, not rendered
+    assert rendered == []
 
 
 async def test_cli_outlet_surfaces_failed_tool_completion():
@@ -123,9 +117,6 @@ async def test_cli_outlet_surfaces_failed_tool_completion():
     )
 
     assert errors == ["Tool failed: Error: permission denied"]
-
-
-# --- CliOutlet progress rendering (-m path): the two-gate parity ---
 
 
 def _notice_outlet(*, send_progress: bool, send_tool_hints: bool):
@@ -147,20 +138,18 @@ async def test_cli_outlet_renders_progress_when_send_progress_on():
 
 
 async def test_cli_outlet_default_config_does_not_leak_tool_hints():
-    # The over-show regression the fork guards against: with the default config
-    # (send_progress=True, send_tool_hints=False), progress shows but tool-hint
-    # text (read_file(...)) must NOT — exactly as the bus path did.
+
     notices, outlet = _notice_outlet(send_progress=True, send_tool_hints=False)
     await outlet.deliver(Notice(kind=NoticeKind.PROGRESS, detail="thinking"))
     await outlet.deliver(Notice(kind=NoticeKind.TOOL_HINT, detail='read_file("x")'))
-    assert notices == ["thinking"]  # tool-hint suppressed by send_tool_hints=False
+    assert notices == ["thinking"]
 
 
 async def test_cli_outlet_renders_tool_hint_when_send_tool_hints_on():
     notices, outlet = _notice_outlet(send_progress=False, send_tool_hints=True)
     await outlet.deliver(Notice(kind=NoticeKind.PROGRESS, detail="thinking"))
     await outlet.deliver(Notice(kind=NoticeKind.TOOL_HINT, detail='read_file("x")'))
-    assert notices == ['read_file("x")']  # progress suppressed, tool-hint shown
+    assert notices == ['read_file("x")']
 
 
 async def test_cli_outlet_renders_reasoning_as_progress():
@@ -170,17 +159,14 @@ async def test_cli_outlet_renders_reasoning_as_progress():
 
 
 async def test_cli_outlet_eats_reasoning_without_progress():
-    # No render_notice (interactive REPL before wiring) -> eaten, status quo.
+
     rendered: list[str] = []
     await CliOutlet("cli", rendered.append).deliver(Reasoning(content="searching..."))
     assert rendered == []
-    # render_notice set but send_progress off -> also eaten.
+
     notices, outlet = _notice_outlet(send_progress=False, send_tool_hints=False)
     await outlet.deliver(Reasoning(content="searching..."))
     assert notices == []
-
-
-# --- make_hub_sink ---
 
 
 class FakeHub:
@@ -198,18 +184,13 @@ async def test_sink_routes_deliverables_and_drops_lifecycle():
     await sink(TurnStarted())
     await sink(TurnFailed(error="e", cancelled=False))
     await sink(TurnEnded(usage=Usage(0, 0, 0), latency_ms=1.0, explicit_reply=False))
-    assert len(hub.dispatched) == 1  # the three lifecycle events dropped (no source -> never to _enqueue)
+    assert len(hub.dispatched) == 1
     assert isinstance(hub.dispatched[0], Text)
-
-
-# --- run_repl_loop: real scheduler + hub + CliOutlet, only the edges faked ---
-# (per the reviewers' rule: faking the spine path would make the R1 ordering test
-#  pass trivially; the result()->render race only exists on the real async path.)
 
 
 class _EchoLoop:
     async def run_turn(self, req, emit, drain, *, stream) -> TurnOutcome:
-        # REPL wires stream=False; run_turn emits the reply as one Text.
+
         await emit(Text(content=f"reply<{req.text}>", source=req.source))
         return TurnOutcome(usage=Usage(0, 0, 0), explicit_reply=True)
 
@@ -284,7 +265,7 @@ async def test_repl_loop_renders_each_reply_before_the_next_prompt():
         on_exit=lambda: events.append("exit"),
     )
     await teardown()
-    # both inputs processed (no drop) and each reply rendered before the next prompt
+
     assert events == [
         "prompt",
         "render:reply<a>",
@@ -300,8 +281,7 @@ async def test_repl_loop_handles_empty_reply_without_hanging():
 
     class EmptyLoop:
         async def run_turn(self, req, emit, drain, *, stream) -> TurnOutcome:
-            # An empty reply emits no Text (run_turn skips empty content); the loop
-            # must still not hang — wait_idle returns since no queue was built.
+
             return TurnOutcome(usage=Usage(0, 0, 0), explicit_reply=False)
 
     scheduler, hub, teardown = build_repl(EmptyLoop(), "cli", lambda t: events.append(f"render:{t!r}"))
@@ -317,7 +297,7 @@ async def test_repl_loop_handles_empty_reply_without_hanging():
         on_exit=lambda: events.append("exit"),
     )
     await teardown()
-    assert events == ["prompt", "prompt", "exit"]  # empty reply renders nothing, loop did not hang
+    assert events == ["prompt", "prompt", "exit"]
 
 
 async def test_repl_loop_ctrl_c_mid_turn_exits_cleanly():
@@ -325,7 +305,7 @@ async def test_repl_loop_ctrl_c_mid_turn_exits_cleanly():
 
     class _BoomHandle:
         async def result(self):
-            raise KeyboardInterrupt  # Ctrl-C lands while the turn is running
+            raise KeyboardInterrupt
 
     await run_repl_loop(
         read_input=_make_reader(events, ["hi", "exit"]),
@@ -338,7 +318,7 @@ async def test_repl_loop_ctrl_c_mid_turn_exits_cleanly():
         thinking=nullcontext,
         on_exit=lambda: events.append("clean-exit"),
     )
-    assert events == ["prompt", "clean-exit"]  # mid-turn Ctrl-C -> clean exit, not an uncaught traceback
+    assert events == ["prompt", "clean-exit"]
 
 
 async def test_repl_loop_slash_command_does_not_submit():
@@ -350,26 +330,24 @@ async def test_repl_loop_slash_command_does_not_submit():
         channel="cli",
         chat_id="c",
         is_exit=lambda c: c == "exit",
-        handle_slash=lambda c: True,  # claimed as a slash command
+        handle_slash=lambda c: True,
         thinking=nullcontext,
         on_exit=lambda: None,
     )
-    assert submitted == []  # a handled slash command is not submitted as a turn
+    assert submitted == []
 
 
 async def test_build_repl_teardown_leaves_no_pending_tasks():
-    # The two bugs were both in teardown/interrupt; guard it: after a real turn,
-    # scheduler.shutdown() + hub.aclose() must stop every task build_repl/submit
-    # spawned (lane worker, reaper, outlet worker) — no "Task destroyed pending".
+
     baseline = asyncio.all_tasks()
     scheduler, hub, teardown = build_repl(_EchoLoop(), "cli", lambda t: None)
     handle = scheduler.submit(TurnRequest(origin=Origin.USER, source=_src(), text="hi", conversation="cli:c1"))
     await handle.result()
     await hub.wait_idle("cli")
     spawned = asyncio.all_tasks() - baseline - {asyncio.current_task()}
-    assert any(not t.done() for t in spawned)  # live spine tasks exist before teardown
-    await teardown()  # the same teardown production runs in its finally
-    assert all(t.done() for t in spawned)  # teardown stopped every one
+    assert any(not t.done() for t in spawned)
+    await teardown()
+    assert all(t.done() for t in spawned)
 
 
 def _make_reader(events, inputs):

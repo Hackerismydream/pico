@@ -39,17 +39,15 @@ describe('ensureEmojiPresentation', () => {
   })
 
   it('injects VS16 before ZWJ so text-default bases participate in emoji sequences', () => {
-    // ❤ + ZWJ + 🔥 → ❤️‍🔥 (heart on fire).  Without VS16 between the heart
-    // and the ZWJ, terminals render the heart in text/monochrome form and
-    // the ZWJ ligature can fail to form.
+    // ❤ + ZWJ + 🔥 会变成 ❤️‍🔥（燃烧的心）。若心形与 ZWJ 之间没有 VS16，
+    // 终端会以文本或单色形式渲染心形，ZWJ 连字也可能无法形成。
     const heartFire = '\u2764\u200d\ud83d\udd25'
 
     expect(ensureEmojiPresentation(heartFire)).toBe(`\u2764\uFE0F\u200d\ud83d\udd25`)
   })
 
   it('leaves explicit text-presentation selector (VS15) alone', () => {
-    // `❤︎` (U+2764 + U+FE0E) asks for text presentation — injecting VS16
-    // would create an invalid double-variation sequence.
+    // `❤︎`（U+2764 + U+FE0E）要求文本呈现；注入 VS16 会产生无效的双变体序列。
     const explicitText = '\u2764\ufe0e'
 
     expect(ensureEmojiPresentation(explicitText)).toBe(explicitText)
@@ -58,8 +56,7 @@ describe('ensureEmojiPresentation', () => {
   it('returns the original reference when no change is needed', () => {
     const already = `⚠${VS16} ℹ${VS16} ❤${VS16}`
 
-    // Reference equality — the lazy allocator should short-circuit to the
-    // input when nothing needed injection.
+    // 验证引用相等：无需注入时，延迟分配器应直接返回输入。
     expect(ensureEmojiPresentation(already)).toBe(already)
   })
 

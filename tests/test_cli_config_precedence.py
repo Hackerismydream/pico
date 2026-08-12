@@ -69,9 +69,6 @@ def isolated_config_state(tmp_path: Path, monkeypatch):
     return fake_home
 
 
-# ── Contract test (loader-level) ──────────────────────────────────────
-
-
 def test_load_pico_config_reads_from_set_config_path(
     isolated_config_state: Path,
     tmp_path: Path,
@@ -85,7 +82,7 @@ def test_load_pico_config_reads_from_set_config_path(
     ``Path.home() / ".pico" / "config.json"`` directly), the CLI's
     ``--config`` flag becomes a no-op for extension blocks again.
     """
-    # Default global → summary
+
     global_cfg = isolated_config_state / ".pico" / "config.json"
     _write_json(
         global_cfg,
@@ -97,7 +94,6 @@ def test_load_pico_config_reads_from_set_config_path(
         ),
     )
 
-    # Custom override → full_body
     custom_cfg = tmp_path / "custom-config.json"
     _write_json(
         custom_cfg,
@@ -113,14 +109,12 @@ def test_load_pico_config_reads_from_set_config_path(
     from pico.config import loader
     from pico.config.pico import load_pico_config
 
-    # Pre-condition: no override → reads global (summary)
     cfg_before = load_pico_config()
     assert cfg_before.skill_forge.injection_mode == "summary", (
         "Without set_config_path, load_pico_config must read the "
         "default ~/.pico/config.json (which we stubbed to summary)."
     )
 
-    # Action: set_config_path → reads custom (full_body)
     loader.set_config_path(custom_cfg)
     cfg_after = load_pico_config()
     assert cfg_after.skill_forge.injection_mode == "full_body", (
@@ -130,9 +124,6 @@ def test_load_pico_config_reads_from_set_config_path(
         f"This means either set_config_path is not honored, or "
         f"load_pico_config reads from a hardcoded path."
     )
-
-
-# ── CLI integration test (the actual regression) ──────────────────────
 
 
 class _CaptureAndStop(Exception):
@@ -165,7 +156,7 @@ def test_cli_subcommand_loads_extension_blocks_from_custom_config(
     If the order regresses, the captured value will be 'summary' and
     the assertion fails with a pointer to the bug.
     """
-    # 1. Global config → summary (should be IGNORED when --config is passed)
+
     global_cfg = isolated_config_state / ".pico" / "config.json"
     _write_json(
         global_cfg,
@@ -177,7 +168,6 @@ def test_cli_subcommand_loads_extension_blocks_from_custom_config(
         ),
     )
 
-    # 2. Custom --config → full_body (should WIN)
     custom_cfg = tmp_path / "custom-config.json"
     _write_json(
         custom_cfg,
@@ -190,7 +180,6 @@ def test_cli_subcommand_loads_extension_blocks_from_custom_config(
         ),
     )
 
-    # 3. Patch load_pico_config to capture + short-circuit
     captured: dict = {}
     import pico.config.pico as ec_module
 
@@ -202,7 +191,6 @@ def test_cli_subcommand_loads_extension_blocks_from_custom_config(
 
     monkeypatch.setattr(ec_module, "load_pico_config", capture_and_stop)
 
-    # 4. Invoke
     from pico.cli.commands import app
 
     runner = CliRunner()
@@ -221,7 +209,6 @@ def test_cli_subcommand_loads_extension_blocks_from_custom_config(
         cmd = ["gateway", "--config", str(custom_cfg), "--workspace", str(tmp_path / "ws"), "--port", "0"]
     result = runner.invoke(app, cmd, catch_exceptions=True)
 
-    # 5. Verify
     assert "ec_config" in captured, (
         f"load_pico_config was never invoked by `pico {subcommand}`. "
         f"This means the prologue diverged from the documented pattern "

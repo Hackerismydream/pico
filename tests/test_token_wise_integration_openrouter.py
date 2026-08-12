@@ -38,14 +38,9 @@ from pico.token_wise.registry import StrategyRegistry
 REPORT_PATH = Path(__file__).resolve().parent.parent / "pico" / "token_wise" / "EXPERIMENT_REPORT.md"
 MODEL = "anthropic/claude-sonnet-4-5"
 TURNS = 6
-COST_GUARD_USD = 0.50  # hard cap; abort if we go over
+COST_GUARD_USD = 0.50
 
-# OpenRouter routes Anthropic requests across multiple backends by default.
-# Without affinity, each call lands on a fresh instance and the prompt cache
-# is never reused (verified empirically: cache_write fires every call but
-# cache_read stays 0). Pinning to the Anthropic backend restores normal
-# cache semantics. This is OpenRouter-specific; direct Anthropic API users
-# don't need it.
+
 _OPENROUTER_PIN = {"provider": {"order": ["Anthropic"], "allow_fallbacks": False}}
 
 pytestmark = pytest.mark.real_llm
@@ -113,7 +108,7 @@ def _long_system_prompt() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Data structures
+
 # ---------------------------------------------------------------------------
 
 
@@ -157,7 +152,7 @@ class VariantResult:
 
 
 # ---------------------------------------------------------------------------
-# Variant runner
+
 # ---------------------------------------------------------------------------
 
 
@@ -195,7 +190,6 @@ async def _run_variant(
     for turn_idx, q in enumerate(user_questions, 1):
         messages = messages + [{"role": "user", "content": q}]
 
-        # Cost guard: never exceed the hard cap.
         if sum(cost_so_far.values()) > COST_GUARD_USD:
             pytest.fail(f"Cost guard tripped at ${sum(cost_so_far.values()):.4f} (cap=${COST_GUARD_USD}). Aborting.")
 
@@ -204,14 +198,12 @@ async def _run_variant(
         if resp.finish_reason == "error":
             pytest.fail(f"Variant {name} turn {turn_idx} failed: {resp.content}")
 
-        # Build the snapshot through the same code path the real agent loop uses,
-        # so the test catches any extraction/pricing bugs end-to-end.
         snap = _build_snapshot(resp, MODEL, name)
 
         result.turns.append(
             TurnResult(
                 turn=turn_idx,
-                prompt_tokens=snap.input_tokens,  # fresh-only after normalization
+                prompt_tokens=snap.input_tokens,
                 completion_tokens=snap.output_tokens,
                 cache_read_tokens=snap.cache_read_tokens,
                 cache_write_tokens=snap.cache_write_tokens,
@@ -222,17 +214,15 @@ async def _run_variant(
         )
         cost_so_far[name] = result.total_cost
 
-        # Notify strategies (so UsageTracker captures stats for V3).
         await registry.after_llm_call({"usage": resp.usage}, snap)
 
-        # Append assistant reply to history so the next turn shares the prefix.
         messages = messages + [{"role": "assistant", "content": resp.content or ""}]
 
     return result
 
 
 # ---------------------------------------------------------------------------
-# Report writer
+
 # ---------------------------------------------------------------------------
 
 
@@ -336,7 +326,7 @@ def _write_report(variants: list[VariantResult], baseline_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# The experiment
+
 # ---------------------------------------------------------------------------
 
 
@@ -344,8 +334,7 @@ def _write_report(variants: list[VariantResult], baseline_name: str) -> str:
 async def test_ablation_experiment(api_key: str, tmp_path: Path):
     """Run V1/V2/V3 against the same workload, write a report, assert savings."""
     sys_prompt = _long_system_prompt()
-    # Workload designed to grow the conversation history each turn so the
-    # extra V3 breakpoints (mid, before-last) can pay off vs V2's system-only.
+
     questions = [
         "Reply with only the word OK.",
         "Now reply with only the word YES.",
@@ -358,7 +347,6 @@ async def test_ablation_experiment(api_key: str, tmp_path: Path):
 
     cost_so_far: dict[str, float] = {}
 
-    # V1 — baseline: no cache at all.
     v1_registry = StrategyRegistry([])
     v1 = await _run_variant(
         name="V1_baseline",
@@ -371,10 +359,8 @@ async def test_ablation_experiment(api_key: str, tmp_path: Path):
         cost_so_far=cost_so_far,
     )
 
-    # Brief pause so the cache write from V2 (if any) doesn't bleed into V3.
     await asyncio.sleep(2)
 
-    # V2 — provider's built-in 2-breakpoint cache, no TokenWise.
     v2_registry = StrategyRegistry([])
     v2 = await _run_variant(
         name="V2_provider_auto",
@@ -389,7 +375,6 @@ async def test_ablation_experiment(api_key: str, tmp_path: Path):
 
     await asyncio.sleep(2)
 
-    # V3 — TokenWise CacheOptimizer + UsageTracker (the actual product).
     cfg = TokenWiseConfig(enabled=True, cache_optimization=True, usage_tracking=True, max_cache_breakpoints=4)
     v3_registry = install_from_config(cfg, telemetry_dir=tmp_path)
     v3 = await _run_variant(
@@ -403,7 +388,6 @@ async def test_ablation_experiment(api_key: str, tmp_path: Path):
         cost_so_far=cost_so_far,
     )
 
-    # Sanity: UsageTracker recorded V3's calls and persisted them.
     tracker = v3_registry.get("usage_tracker")
     assert tracker is not None
     snap = tracker.snapshot("V3_tokenwise")
@@ -414,46 +398,36 @@ async def test_ablation_experiment(api_key: str, tmp_path: Path):
     rows = [r for r in files[0].read_text().splitlines() if r.strip()]
     assert len(rows) == TURNS, f"expected {TURNS} jsonl rows, got {len(rows)}"
 
-    # Write the report.
     body = _write_report([v1, v2, v3], baseline_name="V1_baseline")
     print(f"\nReport written to: {REPORT_PATH}\n")
     print(body)
 
-    # ---- Assertions on the experiment outcome ----
-    # V1 should have no cache hits at all (no markers placed).
     assert v1.total_cache_read == 0, "V1 baseline must have zero cache reads"
     assert v1.total_cache_write == 0, "V1 baseline must have zero cache writes"
-    # V2 + V3 must reuse a cache. (cache_write may be 0 if the prefix was
-    # already cached by a previous variant in this run — both V2 and V3 use
-    # the same system prompt, so V3 inherits V2's warm cache. The existence
-    # of cache_read > 0 is the real proof the system works.)
+
     assert v2.total_cache_read > 0, (
         f"V2 (provider auto-cache) had no cache hits; system_prompt cache "
         f"may not have been created. v2.turns={v2.turns}"
     )
     assert v3.total_cache_read > 0, f"V3 had no cache hits across {TURNS} turns. v3.turns={v3.turns}"
-    # Note: cache_write may legitimately be 0 if a previous test run already
-    # populated Anthropic's ephemeral cache for this exact prefix (5-min TTL).
-    # The presence of cache_read > 0 is the real proof the system works end-to-end.
 
-    # The big claim: V3 must save cost vs no-cache baseline.
     assert v3.total_cost < v1.total_cost, (
         f"V3 (${v3.total_cost:.6f}) is not cheaper than V1 baseline "
         f"(${v1.total_cost:.6f}); caching is providing no savings."
     )
-    # Quantify minimum savings — be conservative for stable CI.
+
     v3_savings_pct = (1 - v3.total_cost / v1.total_cost) * 100
     assert v3_savings_pct >= 50, (
         f"V3 saved only {v3_savings_pct:.1f}% vs V1; expected >= 50% on this "
         f"workload (long stable system prompt should yield 70-90% savings)."
     )
-    # V2 should also save vs baseline (provider auto-cache works, just not as well).
+
     v2_savings_pct = (1 - v2.total_cost / v1.total_cost) * 100
     assert v2_savings_pct > 0, (
         f"V2 (provider auto-cache) showed no savings vs V1 (${v2.total_cost:.6f} vs ${v1.total_cost:.6f})"
     )
-    # V3 should be at least as good as V2 (more breakpoints can only help).
-    assert v3.total_cost <= v2.total_cost * 1.05, (  # 5% tolerance for noise
+
+    assert v3.total_cost <= v2.total_cost * 1.05, (
         f"V3 (${v3.total_cost:.6f}) noticeably more expensive than V2 "
         f"(${v2.total_cost:.6f}); TokenWise CacheOptimizer is regressing vs "
         f"the simpler provider auto-cache."

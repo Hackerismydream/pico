@@ -29,7 +29,7 @@ describe('isSectionName', () => {
     expect(isSectionName('subagents')).toBe(true)
     expect(isSectionName('activity')).toBe(true)
 
-    expect(isSectionName('Thinking')).toBe(false) // case-sensitive on purpose
+    expect(isSectionName('Thinking')).toBe(false) // 有意区分大小写。
     expect(isSectionName('bogus')).toBe(false)
     expect(isSectionName('')).toBe(false)
     expect(isSectionName(7)).toBe(false)
@@ -110,9 +110,8 @@ describe('sectionMode', () => {
   })
 
   it('lets per-section overrides escape the global hidden mode', () => {
-    // Regression for the case where global details_mode: hidden used to
-    // short-circuit the entire accordion and prevent overrides from
-    // surfacing — `sections.tools: expanded` must still resolve to expanded.
+    // 回归场景：全局 details_mode: hidden 曾使整个手风琴短路，阻止覆盖设置生效；
+    // `sections.tools: expanded` 仍必须解析为展开。
     expect(sectionMode('subagents', 'hidden', { subagents: 'expanded' })).toBe('expanded')
     expect(sectionMode('thinking', 'hidden', { thinking: 'collapsed' })).toBe('collapsed')
     expect(sectionMode('activity', 'hidden', { activity: 'expanded' })).toBe('expanded')

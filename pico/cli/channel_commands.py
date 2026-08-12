@@ -37,7 +37,7 @@ console = Console()
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# 辅助方法
 # ---------------------------------------------------------------------------
 
 
@@ -175,7 +175,7 @@ def _parse_channel_flags(extra_args: list[str], channel_name: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Public entry-point
+# 公共入口
 # ---------------------------------------------------------------------------
 
 
@@ -187,7 +187,7 @@ def _register_config_commands(channels_app: typer.Typer) -> None:
     ``@command`` decorator silently appends to ``registered_commands``, so a
     second call shadows the first set with duplicates.
     """
-    # `pico channels` (no subcommand) should print help, not "Missing command".
+    # `pico channels`（无子命令）应打印帮助，而不是 "Missing command"。
     channels_app.info.no_args_is_help = True
 
     base_help = channels_app.info.help or "Manage channels"
@@ -402,7 +402,7 @@ __all__ = ["channels_app"]
 
 
 # ---------------------------------------------------------------------------
-# channels_app: top-level Typer group for `pico channels ...`
+# channels_app：`pico channels ...` 的顶层 Typer 命令组
 # ---------------------------------------------------------------------------
 
 channels_app = typer.Typer(help="Manage channels")

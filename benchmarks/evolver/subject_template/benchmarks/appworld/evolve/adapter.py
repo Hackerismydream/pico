@@ -109,10 +109,9 @@ def score_trials(
                 timeout=timeout,
             )
         except subprocess.TimeoutExpired:
-            # The subject module is deterministic stdlib text handling, so a
-            # timeout means the candidate hangs. That is a failed candidate, not
-            # a failed measurement: marking it infra would let it be re-run
-            # forever and turn a bad candidate into an unmeasurable run.
+            # 目标模块是确定性的标准库文本处理，因此超时表示候选挂起。这是候选失败，
+            # 而不是测量失败；若标记为基础设施故障，会允许无限重跑，把坏候选变成
+            # 无法测量的运行。
             for tid, i in pending:
                 if not (out_dir / f"{tid}_k{i}.json").is_file():
                     _write_marker(out_dir, tid, i, infra=None, detail=f"grading timed out after {timeout:.0f}s")

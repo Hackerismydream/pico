@@ -26,7 +26,7 @@ from pico.tui_rpc.methods.system import (
 )
 
 # ---------------------------------------------------------------------------
-# system.* handler tests (direct calls, no dispatcher)
+
 # ---------------------------------------------------------------------------
 
 
@@ -58,7 +58,7 @@ async def test_ping_returns_server_time():
     after = int(time.time() * 1000)
     assert result["pong"] is True
     assert isinstance(result["server_time_ms"], int)
-    # Should be within the window we measured
+
     assert before - 1000 <= result["server_time_ms"] <= after + 1000
 
 
@@ -71,7 +71,7 @@ async def test_version_returns_three_fields():
 
 
 # ---------------------------------------------------------------------------
-# Dispatcher framing / error mapping
+
 # ---------------------------------------------------------------------------
 
 
@@ -107,7 +107,7 @@ async def test_dispatcher_unknown_method():
     }
     resp = await d.dispatch(frame)
     assert "error" in resp
-    assert resp["error"]["code"] == -32601  # method_not_found
+    assert resp["error"]["code"] == -32601
     assert resp["id"] == 2
 
 
@@ -121,7 +121,7 @@ async def test_dispatcher_invalid_jsonrpc_version():
     }
     resp = await d.dispatch(frame)
     assert "error" in resp
-    assert resp["error"]["code"] == -32600  # invalid_request
+    assert resp["error"]["code"] == -32600
 
 
 async def test_dispatcher_missing_method_field():
@@ -142,7 +142,7 @@ async def test_dispatcher_validation_error_maps_to_32011():
     }
     resp = await d.dispatch(frame)
     assert "error" in resp
-    assert resp["error"]["code"] == -32011  # config_validation_error
+    assert resp["error"]["code"] == -32011
     assert resp["error"]["message"] == "config_validation_error"
 
 
@@ -156,8 +156,8 @@ async def test_dispatcher_internal_error_maps_to_32603():
     frame = {"jsonrpc": "2.0", "id": 6, "method": "test.boom", "params": {}}
     resp = await d.dispatch(frame)
     assert "error" in resp
-    assert resp["error"]["code"] == -32603  # internal_error
-    # Traceback tail should be included for debuggability
+    assert resp["error"]["code"] == -32603
+
     assert "data" in resp["error"]
     assert "traceback_tail" in resp["error"]["data"]
 

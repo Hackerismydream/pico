@@ -26,10 +26,8 @@ from enum import Enum, auto
 
 from pico.providers.base import LLMResponse
 
-# In-content thinking markers. Some models (Ollama, certain Qwen gateways) put
-# the reasoning in ``content`` as <think>…</think> rather than in the structured
-# reasoning_content field, so a content scan is required — checking only the
-# structured fields would miss them.
+# 内容中的思考标记。部分模型网关将推理以 <think>…</think> 形式放入 ``content``，
+# 而不是结构化 reasoning_content 字段，因此必须扫描内容；只检查结构化字段会漏掉它们。
 _THINK_TAG_RE = re.compile(r"<think>|<thinking>|<reasoning>", re.IGNORECASE)
 
 POST_TOOL_NUDGE = (
@@ -41,10 +39,10 @@ POST_TOOL_NUDGE = (
 class RecoveryAction(Enum):
     """What the loop should do about an empty assistant response."""
 
-    COMPLETE = auto()  # visible text present, or budgets spent → finish the turn
-    PREFILL = auto()  # thinking-only → re-feed reasoning, re-request
-    NUDGE = auto()  # post-tool empty → inject (empty) + user nudge, re-request
-    RETRY = auto()  # plain empty → re-request as-is
+    COMPLETE = auto()  # 存在可见文本或预算耗尽 → 结束 Turn
+    PREFILL = auto()  # 只有思考内容 → 回填推理后重试
+    NUDGE = auto()  # 工具后空响应 → 注入空响应和用户提示后重试
+    RETRY = auto()  # 普通空响应 → 原样重试
 
 
 @dataclass(frozen=True)
@@ -106,18 +104,16 @@ def classify_empty_response(
 
     thinking = has_thinking(response)
 
-    # thinking-only prefill — the model reasoned but produced no body.
+    # 只有思考的预填充：模型已推理，但没有生成正文。
     if thinking and prefill_retries < limits.thinking_prefill_max_retries:
         return RecoveryAction.PREFILL
 
-    # post-tool empty nudge — exclude thinking-only (handled above).
+    # 工具后空响应提示：排除只有思考的情况，因为上方已处理。
     if prev_had_tool_calls and not thinking and nudges_done < limits.post_tool_empty_max_nudges:
         return RecoveryAction.NUDGE
 
-    # Fallback plain retry. The ``prefill_exhausted`` clause is load-bearing:
-    # some models (e.g. mimo-v2-pro via OpenRouter) always populate a reasoning
-    # field, so gating retry on ``not thinking`` alone would permanently block
-    # retries for every reasoning model once prefill is spent.
+    # 兜底的普通重试。``prefill_exhausted`` 条件至关重要：部分模型始终填充推理字段，
+    # 如果只在 ``not thinking`` 时允许重试，预填充用尽后所有推理模型都会被永久阻止重试。
     prefill_exhausted = thinking and prefill_retries >= limits.thinking_prefill_max_retries
     if empty_retries < limits.empty_content_max_retries and (not thinking or prefill_exhausted):
         return RecoveryAction.RETRY

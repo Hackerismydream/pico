@@ -219,14 +219,13 @@ class EvalFn(Protocol):
     ) -> dict[str, TaskEval]: ...
 
 
-# round-scoped trajectory feed for diagnosis:
-# (round_index, parent) -> [(trajectory_id, task_description, trajectory_text), ...]
+# 诊断使用的轮次级轨迹输入：
+# （轮次索引，父节点）-> [(轨迹 ID，任务描述，轨迹文本), ...]
 TrajectorySource = Callable[[int, "HarnessNode"], list[tuple[str, str, str]]]
 
-# Pre-scoring environment health precheck (SOP §0 Gate0, before any scoring). Raises when
-# the environment is dirty (sandbox down / network unroutable / verifier can't
-# emit results) so a run does not score against a broken box. Bench-specific —
-# each bench validates what it needs; left None when a bench has none wired.
+# 评分前的环境健康预检（SOP 第 0 节门控 0，在任何评分之前）。环境脏污（沙箱停机、网络不可
+# 路由、验证器无法输出结果）时抛错，避免在损坏环境上评分。该检查因基准而异；每个基准验证
+# 自身所需条件，未接入检查时保留为 None。
 PrecheckFn = Callable[[], None]
 
 

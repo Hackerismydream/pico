@@ -3,18 +3,18 @@
 // Modifications Copyright (c) 2026 EverMind.
 // See NOTICES.md and LICENSES/MIT-hermes-agent.txt.
 
-// Perf instrumentation for the full render pipeline.
+// 完整渲染流水线的性能检测。
 //
-//   PerfPane (React.Profiler)  → per-pane commit times
-//   logFrameEvent (ink.onFrame) → yoga / renderer / diff / optimize / write
-//                                 phases + yoga counters + scroll fast-path
+//   PerfPane（React.Profiler）  → 各面板提交耗时
+//   logFrameEvent（ink.onFrame）→ yoga、renderer、diff、optimize、write
+//                                 各阶段，以及 yoga 计数器和滚动快速路径
 //
-// Both gate on PICO_DEV_PERF=1 and dump JSON-lines (default ~/.pico/perf.log,
-// override PICO_DEV_PERF_LOG). Tagged { src: 'react' | 'frame' } for jq.
-// PICO_DEV_PERF_MS (default 2) skips sub-ms idle frames; set 0 to capture all.
+// 两者均由 PICO_DEV_PERF=1 启用，并输出 JSON Lines（默认 ~/.pico/perf.log，
+// 可用 PICO_DEV_PERF_LOG 覆盖）。通过 { src: 'react' | 'frame' } 标记供 jq
+// 使用。PICO_DEV_PERF_MS 默认为 2，会跳过低于阈值的空闲帧；设为 0 可全部捕获。
 //
-// Zero cost when unset: PerfPane returns children directly, logFrameEvent is
-// undefined so ink doesn't pay the timing cost.
+// 未启用时没有额外成本：PerfPane 直接返回子节点，logFrameEvent 为 undefined，
+// 因而 Ink 不承担计时开销。
 
 import type { FrameEvent } from '@hermes/ink'
 
@@ -38,14 +38,14 @@ const writeRow = (row: Record<string, unknown>) => {
     try {
       mkdirSync(dirname(LOG_PATH), { recursive: true })
     } catch {
-      // Best-effort — never crash the TUI to log a sample.
+      // 尽力而为，不能因记录样本而使 TUI 崩溃。
     }
   }
 
   try {
     appendFileSync(LOG_PATH, `${JSON.stringify(row)}\n`)
   } catch {
-    /* best-effort */
+    /* 尽力而为。 */
   }
 }
 
@@ -88,7 +88,7 @@ export const logFrameEvent = ENABLED
 
       writeRow({
         durationMs: round2(event.durationMs),
-        // Cumulative counters — consumers diff pairs to get per-frame deltas.
+        // 这是累计计数器，消费者需对相邻值求差得到每帧增量。
         fastPath: { ...scrollFastPathStats, declined: { ...scrollFastPathStats.declined } },
         flickers: event.flickers.length ? event.flickers : undefined,
         phases: event.phases

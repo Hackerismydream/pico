@@ -39,11 +39,11 @@ class Candidate:
     preflight.
     """
 
-    files: dict[str, bytes]  # full new bytes for each edited repo-rel path
-    why: str  # the WHY this candidate targets
-    focused_task_ids: list[str] = field(default_factory=list)  # WHY's evidence subset
-    summary: str = ""  # the editor's one-line "what I changed"
-    deletions: list[str] = field(default_factory=list)  # repo-rel paths removed
+    files: dict[str, bytes]  # 各编辑后仓库相对路径的完整新字节。
+    why: str  # 此候选针对的 WHY。
+    focused_task_ids: list[str] = field(default_factory=list)  # WHY 的证据子集。
+    summary: str = ""  # 编辑器对改动内容的单行摘要。
+    deletions: list[str] = field(default_factory=list)  # 已删除的仓库相对路径。
     has_beacon: bool = False
     activation_spec: dict | None = None
     label: CandidateLabel | None = None

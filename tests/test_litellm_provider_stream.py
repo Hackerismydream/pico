@@ -25,8 +25,6 @@ from pico.call_efficiency import CallEfficiency
 from pico.providers.base import LLMResponse, StreamDelta
 from pico.providers.litellm_provider import LiteLLMProvider
 
-# ---------- Test doubles modelling OpenAI ChatCompletionChunk shape ----------
-
 
 @dataclass
 class _FakeDelta:
@@ -59,12 +57,8 @@ async def _fake_stream(chunks: list[_FakeChunk]):
 
 
 def _make_provider() -> LiteLLMProvider:
-    # api_key kept truthy so the kwargs path that forwards it is exercised,
-    # but no real network is touched — acompletion is patched.
+
     return LiteLLMProvider(api_key="test-key", default_model="openai/gpt-4o")
-
-
-# ----------------------------- Tests ---------------------------------------
 
 
 @pytest.mark.asyncio
@@ -93,10 +87,9 @@ async def test_chat_stream_yields_stream_deltas_in_order(monkeypatch: pytest.Mon
 
     assert [d.content for d in out] == ["Hel", "lo", " world"]
     assert all(isinstance(d, StreamDelta) for d in out)
-    # stream=True must be forwarded to LiteLLM
+
     assert captured_kwargs.get("stream") is True
-    # Usage must be requested explicitly — OpenAI-compatible providers omit the
-    # trailing usage chunk otherwise, leaving cost / context tracking at zero.
+
     assert captured_kwargs.get("stream_options") == {"include_usage": True}
 
 
@@ -134,7 +127,7 @@ def test_normalize_stream_chunk_openai_shape_default() -> None:
 def test_normalize_stream_chunk_returns_none_for_empty_payload() -> None:
     """Chunks with no content/tool_calls/usage return None — chat_stream skips them."""
     provider = _make_provider()
-    # delta.content is None AND no tool_calls AND no usage — pure stop-marker chunk
+
     chunk = _FakeChunk(choices=[_FakeChoice(delta=_FakeDelta(content=None), finish_reason="stop")])
     assert provider._normalize_stream_chunk(chunk) is None
 
@@ -287,7 +280,7 @@ async def test_chat_stream_signature_parity_with_chat(monkeypatch: pytest.Monkey
     assert captured["reasoning_effort"] == "medium"
     assert captured["tool_choice"] == "auto"
     assert captured["tools"] == tools
-    # model should be resolved (openai/gpt-4o-mini already has prefix → stays the same)
+
     assert "gpt-4o-mini" in captured["model"]
 
 

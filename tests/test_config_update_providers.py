@@ -33,7 +33,7 @@ def _read(path: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# set_provider_fields
+
 # ---------------------------------------------------------------------------
 
 
@@ -122,7 +122,7 @@ def test_set_camelcase_round_trip(cfg_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# get_provider_config
+
 # ---------------------------------------------------------------------------
 
 
@@ -171,7 +171,7 @@ def test_gemini_api_key_list_plaintext_with_redact_false(cfg_path: Path) -> None
 
 
 # ---------------------------------------------------------------------------
-# reset_provider
+
 # ---------------------------------------------------------------------------
 
 
@@ -212,7 +212,7 @@ def test_reset_oauth_idempotent_when_no_token_file(
 
 
 # ---------------------------------------------------------------------------
-# list_providers
+
 # ---------------------------------------------------------------------------
 
 
@@ -235,7 +235,7 @@ def test_list_reports_every_provider_with_correct_status(cfg_path: Path) -> None
 
 
 # ---------------------------------------------------------------------------
-# provider_field_specs
+
 # ---------------------------------------------------------------------------
 
 
@@ -251,7 +251,7 @@ def test_gemini_api_key_list_is_secret_via_workaround() -> None:
 
 
 # ---------------------------------------------------------------------------
-# test_provider — httpx.MockTransport (no real network)
+
 # ---------------------------------------------------------------------------
 
 
@@ -413,8 +413,6 @@ def test_test_provider_oauth_reads_token_from_oauth_cli_kit(
         seen["auth"] = request.headers.get("Authorization")
         return httpx.Response(200, json={"data": [{"id": "m1"}]})
 
-    # openai_codex has default_api_base set; github_copilot doesn't — pick
-    # the former so the request can resolve a URL without extra setup.
     result = probe_provider(
         "openai_codex",
         config_path=cfg_path,
@@ -438,7 +436,7 @@ def test_test_provider_oauth_missing_token_returns_oauth_token_missing(
 
 
 # ---------------------------------------------------------------------------
-# Manual model catalog (add_provider_model / remove_provider_model)
+
 # ---------------------------------------------------------------------------
 
 
@@ -489,11 +487,11 @@ def test_add_provider_model_unknown_provider_raises(cfg_path: Path) -> None:
 
 
 def test_malformed_config_refuses_write_and_preserves_file(cfg_path: Path) -> None:
-    # REGRESSION: a present-but-unparseable config must NOT be clobbered.
+
     from pico.config.loader import ConfigReadError
 
     original = '{\n  "providers": {"openai": {"apiKey": "sk-o"}},\n  // comment => invalid JSON\n}\n'
     cfg_path.write_text(original, encoding="utf-8")
     with pytest.raises(ConfigReadError):
         set_provider_fields("openai", {"api_key": "sk-x"}, config_path=cfg_path)
-    assert cfg_path.read_text(encoding="utf-8") == original  # untouched
+    assert cfg_path.read_text(encoding="utf-8") == original

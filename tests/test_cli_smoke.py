@@ -81,9 +81,6 @@ def test_root_help_does_not_crash() -> None:
         assert cmd in r.stdout, f"missing command in root --help: {cmd}"
 
 
-# Subcommand --help coverage (depth 2): catches missing imports inside
-# subcommand-group modules.
-
 CHANNEL_SUBCOMMANDS = [
     "status",
     "login",
@@ -116,9 +113,6 @@ def test_skills_subcommand_help_does_not_crash(subcmd: str) -> None:
     assert r.exception is None
 
 
-# Read-only command bodies that don't need network / LLM:
-
-
 def test_status_command_body_does_not_crash(tmp_config: Path) -> None:
     """``pico status`` reads config + prints rows without crashing."""
     r = runner.invoke(app, ["status"])
@@ -140,8 +134,6 @@ def test_cron_list_body_does_not_crash(tmp_config: Path) -> None:
     assert r.exit_code == 0
 
 
-# Full set of top-level commands + subcommand groups registered on the root
-# app. ``sandbox`` remains callable as an advanced, hidden command.
 REGISTERED_COMMAND_NAMES = {
     "channels",
     "cron",

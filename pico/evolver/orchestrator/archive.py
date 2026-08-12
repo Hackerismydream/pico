@@ -116,15 +116,13 @@ class RecombinantCandidate:
     focused_task_ids: list[str] = field(default_factory=list)
     summary: str = ""
     deletions: list[str] = field(default_factory=list)
-    # Inherited from the elite's bytes: a beacon-carrying mechanism keeps its
-    # Gate-b attribution when re-stacked (the code is byte-identical).
+    # 从精英字节继承：携带信标的机制重新叠加后仍保留门控 b 归因，因为代码字节完全相同。
     has_beacon: bool = False
 
 
-# Path -> lever heuristics for the mechanical WHERE binding (paper App. A:
-# the four levers over the harness's edit surfaces). Module-level so a bench
-# with an exotic layout can monkeypatch/extend; unknowns default to runtime
-# (a code edit is a control-flow change until proven otherwise).
+# 路径到杠杆的启发式映射，用于机械绑定 WHERE（论文附录 A：评测框架编辑表面的四类杠杆）。
+# 保持模块级，便于布局特殊的基准动态修改或扩展；未知项默认归为运行时，因为在证明相反前，
+# 代码编辑都视为控制流变更。
 _KNOWLEDGE_MARKERS = ("skills/", "skill/", "memory")
 _CONFIG_SUFFIXES = (".yaml", ".yml", ".json", ".toml", ".ini", ".cfg")
 _PROMPT_SUFFIXES = (".md", ".txt", ".prompt")
@@ -238,7 +236,7 @@ class GsmeArchive:
         self._pairings: dict[str, dict[str, str]] = {}
         self._load()
 
-    # ---- observation -------------------------------------------------------
+    # ---- 观察 -------------------------------------------------------------
 
     def consider(
         self,
@@ -269,8 +267,8 @@ class GsmeArchive:
                 "files": sorted(set(pmeta.get("files", [])) | set(changed) | set(deleted)),
             }
 
-        # Navigation bar (paper Alg. 1): an accepted full-train confirm beat
-        # VANILLA. Invalid, rejected, or vanilla-losing outcomes never enter.
+        # 导航条（论文算法 1）：已接受的完整训练确认必须超过原始版本。无效、被拒绝或输给原始
+        # 版本的结果绝不进入。
         if not outcome.promoted or not outcome.confirm_evals or outcome.score <= vanilla_train_mean:
             return
         prev = self._cells.get(key)
@@ -294,7 +292,7 @@ class GsmeArchive:
     def record_pairing(self, parent_id: str, elite_node_id: str, status: str) -> None:
         self._pairings.setdefault(parent_id, {})[elite_node_id] = status
 
-    # ---- recombination proposals -------------------------------------------
+    # ---- 重组提案 ---------------------------------------------------------
 
     def eligible_elites(self, parent_id: str, *, limit: int = 1) -> list[CellElite]:
         """Elites worth stacking onto ``parent_id``, best score first.
@@ -325,7 +323,7 @@ class GsmeArchive:
                 break
         return out
 
-    # ---- reporting ----------------------------------------------------------
+    # ---- 报告 -------------------------------------------------------------
 
     def summary_text(self) -> str:
         """One line per cell elite — injectable into a design prompt so the
@@ -346,7 +344,7 @@ class GsmeArchive:
     def cells(self) -> dict[str, CellElite]:
         return dict(self._cells)
 
-    # ---- persistence ---------------------------------------------------------
+    # ---- 持久化 ------------------------------------------------------------
 
     def save(self) -> None:
         """Persist to ``path`` (best-effort, atomic tmp+rename)."""

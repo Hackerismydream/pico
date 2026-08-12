@@ -60,7 +60,7 @@ class AfterIterationHook(AgentHook):
                 final_response=final_response,
                 messages=ctx.messages,
             )
-        except Exception as exc:  # noqa: BLE001 — defensive; judge already handles its own
+        except Exception as exc:  # noqa: BLE001 — 防御性处理；judge 已自行处理内部错误
             logger.debug(
                 "EvalAfterIterationHook judge error %s: %s",
                 type(exc).__name__,
@@ -106,7 +106,7 @@ class AfterIterationHook(AgentHook):
                 content = m.get("content")
                 if isinstance(content, str):
                     user_goal = content
-        # Walk the response chain from the latest non-tool assistant message.
+        # 从最新一条非工具 assistant 消息开始遍历响应链。
         for m in reversed(messages):
             if not isinstance(m, dict):
                 continue

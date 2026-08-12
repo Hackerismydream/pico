@@ -39,7 +39,7 @@ from pico.evolver.orchestrator.nodes.taxonomy import (
 )
 from pico.evolver.tree.node import HarnessNode
 
-# The hand-derived 7 AppWorld WHY classes (verbatim) + one escape hatch.
+# 手工归纳的七类 AppWorld WHY（保持原文）及一个逃生类别。
 WHY_CLASSES = {
     "W1_empty_response_stall": "Agent emits an empty / no-tool-call turn and stops early — no real work done.",
     "W2_no_finalize": "Agent does work but NEVER calls apis.supervisor.complete_task (or only says 'done' in prose) — nothing submitted.",
@@ -51,7 +51,7 @@ WHY_CLASSES = {
     "other": "None of the above — provide a short sub-name.",
 }
 
-# AppWorld patch surface (WHERE a fix would go).
+# AppWorld 补丁表面，即修复应落入的位置。
 WHERE_CLASSES = {
     "appworld_prompt": "benchmarks/appworld/agent_cli.py APPWORLD_PROMPT (the agent instruction text).",
     "exec_tool": "benchmarks/appworld/tool.py AppWorldExecuteTool (execution / error-recovery behaviour).",

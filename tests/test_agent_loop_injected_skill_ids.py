@@ -78,7 +78,7 @@ def test_collect_dedupes_when_selected_overlaps_always() -> None:
 def test_collect_skips_metas_without_id() -> None:
     """Defensive: a malformed SkillMeta-like object without ``id`` is
     silently dropped rather than crashing the agent loop."""
-    broken = SimpleNamespace(name="broken")  # no .id attribute
+    broken = SimpleNamespace(name="broken")
     out = _bind(
         selector_metas=[broken, _meta("alpha")],
         always_metas=[],

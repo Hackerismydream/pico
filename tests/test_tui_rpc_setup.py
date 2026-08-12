@@ -38,7 +38,7 @@ async def test_setup_status_provider_configured_true(fake_home: Path) -> None:
 
 
 async def test_setup_status_provider_without_model_returns_false(fake_home: Path) -> None:
-    # A provider but no default model can't drive a turn → not configured.
+
     cfg_dir = fake_home / ".pico"
     cfg_dir.mkdir()
     (cfg_dir / "config.json").write_text(json.dumps({"agents": {"defaults": {"provider": "anthropic"}}}))
@@ -47,7 +47,7 @@ async def test_setup_status_provider_without_model_returns_false(fake_home: Path
 
 
 async def test_setup_status_missing_config_falls_back_true(fake_home: Path) -> None:
-    # No file at all → v0.1 fallback true (don't block hermes UI startup).
+
     result = await setup_status({})
     assert result == {"provider_configured": True}
 

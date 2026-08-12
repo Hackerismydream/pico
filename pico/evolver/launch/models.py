@@ -49,8 +49,7 @@ def make_pico_call_fn(
     )
 
     def call(messages: list) -> str:
-        # Sync bridge: each call owns a private event loop, so this is safe
-        # from the loop's worker threads (parallel taxonomy induction).
+        # 同步桥：每次调用拥有私有事件循环，因此可从循环的工作线程安全调用，用于并行分类归纳。
         resp = asyncio.run(
             provider.chat_with_retry(
                 messages,
@@ -70,8 +69,7 @@ def build_call_fn(spec: dict, *, role: str = "?") -> CallFn:
     try:
         return _build_call_fn(spec)
     except TypeError as exc:
-        # An unknown/missing kwarg in the provider factory is a config typo,
-        # not a programming error — surface it as the readable kind.
+        # 提供商工厂中未知或缺失的关键字参数属于配置拼写错误，而非编程错误；应以可读形式展示。
         raise ValueError(f"models.{role}: {exc}") from exc
     except ValueError as exc:
         raise ValueError(f"models.{role}: {exc}") from exc
@@ -141,7 +139,7 @@ def describe_models(models_cfg: dict) -> dict:
         ):
             try:
                 out[role]["model"] = _pico_default_model()
-            except Exception:  # noqa: BLE001 — description is best-effort
+            except Exception:  # noqa: BLE001 — 描述仅尽力生成
                 out[role]["model"] = "<pico default>"
     return out
 

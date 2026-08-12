@@ -123,8 +123,8 @@ describe('hotnessBucket + peakHotness', () => {
     expect(hotnessBucket(0, 10, 4)).toBe(0)
     expect(hotnessBucket(10, 10, 4)).toBe(3)
     expect(hotnessBucket(5, 10, 4)).toBe(2)
-    expect(hotnessBucket(100, 10, 4)).toBe(3) // clamped
-    expect(hotnessBucket(5, 0, 4)).toBe(0) // guard against divide-by-zero
+    expect(hotnessBucket(100, 10, 4)).toBe(3) // 已限制到上界。
+    expect(hotnessBucket(5, 0, 4)).toBe(0) // 防止除以零。
   })
 })
 

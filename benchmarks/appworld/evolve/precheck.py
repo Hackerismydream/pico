@@ -81,12 +81,11 @@ def _endpoint_problem(
 ) -> Optional[str]:
     import time
 
-    import httpx  # lazy, same as the driver transport
+    import httpx  # 延迟导入，与驱动传输层一致。
 
     url = api_base.rstrip("/") + "/chat/completions"
-    # Real-generation probe: ask for a ~300-token completion and judge decode
-    # throughput. On reasoning models the budget fills with thinking tokens,
-    # which is fine — usage.completion_tokens still measures decode speed.
+    # 真实生成探针：请求约 300 token 的补全并判断解码吞吐量。推理模型可能用思考
+    # token 填满预算，这没有问题，usage.completion_tokens 仍能衡量解码速度。
     body = {
         "model": model,
         "messages": [{"role": "user", "content": "Explain how TCP congestion control works, in about 300 words."}],
@@ -125,8 +124,8 @@ def make_appworld_precheck(
     aw: AppWorldConfig,
     *,
     check_endpoint: bool = True,
-    # 300 tokens in <25s (the SOP health bar) is 12 tok/s; the healthy band
-    # observed on the shared subject backend is 12-33 tok/s.
+    # SOP 健康线为 25 秒内生成 300 token，即 12 tok/s；共享目标后端观察到的健康
+    # 区间为 12 到 33 tok/s。
     endpoint_timeout: float = 60.0,
     min_tok_per_s: float = 12.0,
 ) -> PrecheckFn:

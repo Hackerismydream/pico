@@ -159,7 +159,7 @@ class TestEndpointProblem:
         assert "empty generation" in problem
 
     def test_slow_decode_trips_the_throughput_floor(self, monkeypatch):
-        # 300 tokens in 30s = 10 tok/s, below the 12 tok/s SOP health bar.
+
         problem = _probe(monkeypatch, post=lambda *a, **k: _response(), seconds_per_call=30.0)
         assert "degraded" in problem and "tok/s floor" in problem
 

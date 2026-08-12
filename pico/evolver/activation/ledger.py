@@ -66,8 +66,8 @@ def activation_beacon(node_id: str, site: str = "", **detail: object) -> None:
         d["site"] = site
     ActivationLedger(workspace).record(kind="beacon", source=node_id, detail=d)
 
+    # ---- 逐任务收集（门控 b 回读侧）-------------------------------------------
 
-# ---- per-task collection (the Gate-b read-back side) -------------------------
 
 BEACONS_DIRNAME = "beacons"
 ENABLED_MARKER = ".enabled"

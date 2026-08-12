@@ -52,7 +52,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional, Union
 
 # ---------------------------------------------------------------------------
-# Event model
+# 事件模型
 # ---------------------------------------------------------------------------
 
 
@@ -71,7 +71,7 @@ class Event:
     empty content → L1, ``length`` → L2 (max_tokens config issue).
     """
 
-    event_type: str  # "metadata" | "system" | "user" | "assistant" | "tool" | "other"
+    event_type: str  # 取值："metadata" | "system" | "user" | "assistant" | "tool" | "other"
     content: Optional[str] = None
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     tool_name: Optional[str] = None
@@ -94,9 +94,8 @@ def _parse_event(obj: dict[str, Any]) -> Event:
     role = obj.get("role")
     if role in ("system", "user", "assistant", "tool"):
         content = obj.get("content")
-        # Some scorer/litellm rows put content as a list of blocks
-        # (multimodal); we flatten to a single string for compression
-        # purposes (we don't compress images).
+        # 一些 scorer/litellm 行把内容存为块列表（多模态）；压缩时将其展平为单个字符串，
+        # 但不压缩图片。
         if isinstance(content, list):
             parts = []
             for part in content:
@@ -107,11 +106,9 @@ def _parse_event(obj: dict[str, Any]) -> Event:
             content = "\n".join(parts) if parts else None
         elif content is not None and not isinstance(content, str):
             content = str(content)
-        # finish_reason only meaningful on assistant rows (per OpenAI/LiteLLM
-        # shape); for other roles we leave it None even if the field is
-        # present in raw. We tolerate both a top-level key (scorer
-        # session.jsonl flattens it) and a nested ``choices[0].finish_reason``
-        # (raw LiteLLM response shape some adapters preserve).
+            # 按 OpenAI/LiteLLM 结构，finish_reason 仅对助手行有意义；其他角色即使原始数据中
+            # 存在该字段也保留为 None。兼容顶层键（scorer 的 session.jsonl 会展平它）以及
+            # 嵌套的 ``choices[0].finish_reason``（某些适配器保留的原始 LiteLLM 响应结构）。
         finish_reason: Optional[str] = None
         if role == "assistant":
             fr = obj.get("finish_reason")
@@ -161,7 +158,7 @@ def load_session_jsonl(path: Union[str, Path]) -> list[Event]:
 
 
 # ---------------------------------------------------------------------------
-# Config
+# 配置
 # ---------------------------------------------------------------------------
 
 
@@ -175,17 +172,17 @@ class CompressorConfig:
     even the "compressed" output is still small relative to context).
     """
 
-    target_tokens: int = 10000  # not a hard cap, soft target
-    tool_args_chars: int = 200  # truncate tool call args at this length
-    tool_result_head_chars: int = 200  # keep first N chars of long tool results
-    tool_result_tail_chars: int = 200  # keep last N chars of long tool results
-    user_message_max_chars: int = 4000  # task description rarely needs more
-    repetition_run_threshold: int = 3  # collapse a run of ≥N identical calls
+    target_tokens: int = 10000  # 软目标，而非硬上限
+    tool_args_chars: int = 200  # 工具调用参数超过该长度时截断
+    tool_result_head_chars: int = 200  # 长工具结果保留开头 N 个字符
+    tool_result_tail_chars: int = 200  # 长工具结果保留结尾 N 个字符
+    user_message_max_chars: int = 4000  # 任务描述通常不需要更长
+    repetition_run_threshold: int = 3  # 连续至少 N 个相同调用时折叠
     detect_anomalies: bool = True
 
 
 # ---------------------------------------------------------------------------
-# Anomaly markers (used by both compression body + final summary)
+# 异常标记（压缩正文和最终总结共用）
 # ---------------------------------------------------------------------------
 
 
@@ -214,7 +211,7 @@ def _matches_any(text: str, patterns: list[re.Pattern]) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Compressor
+# 压缩器
 # ---------------------------------------------------------------------------
 
 
@@ -236,11 +233,11 @@ class TrajectoryCompressor:
         cfg = self._cfg
 
         out: list[str] = []
-        # Header — we'll fill turn / anomaly counts at the end
+        # 标题——最后再填入轮次和异常计数。
         header_placeholder_idx = len(out)
-        out.append("")  # placeholder for header
+        out.append("")  # 标题占位符
 
-        # Task description: take the first non-metadata user message
+        # 任务描述：取第一条非元数据用户消息。
         task = self._find_task_description(events_list)
         if task:
             out.append("--- TASK ---")
@@ -249,7 +246,7 @@ class TrajectoryCompressor:
                 truncated += f"\n... [truncated, {len(task) - cfg.user_message_max_chars} more chars]"
             out.append(truncated)
 
-        # Turns (assistant + tool_result pairs)
+        # 轮次（助手消息与工具结果配对）
         out.append("\n--- TURNS ---")
         turn_idx = 0
         empty_content_count = 0
@@ -260,10 +257,8 @@ class TrajectoryCompressor:
                 i += 1
                 continue
             turn_idx += 1
-            # Empty content detection — L1 signal. ``finish_reason`` is
-            # the discriminator between L1 (stop / content_filter) and
-            # L2 (length budget too small for the model) — see Fix A1
-            # in judge prompt.
+            # 空内容检测——L1 信号。``finish_reason`` 用于区分 L1（stop/content_filter）和
+            # L2（长度预算对模型过小）；参见评判提示中的修复 A1。
             fr_tag = f", finish_reason={ev.finish_reason}" if ev.finish_reason else ""
             asst_text = (ev.content or "").strip()
             if not asst_text and not ev.tool_calls:
@@ -276,19 +271,15 @@ class TrajectoryCompressor:
             if asst_text:
                 out.append(self._indent(asst_text, "  "))
             elif ev.tool_calls:
-                # Tool-using turn without narrative text is NORMAL agent
-                # behaviour (model chose to act instead of explain), NOT
-                # an empty-content anomaly. Do NOT increment empty_content
-                # _count — the L1 trigger must reserve for completely
-                # silent turns (no content AND no tool_calls), matching
-                # EmptyResponseAlertHook.is_empty_response.
+                # 使用工具但没有叙述文本是正常智能体行为（模型选择行动而非解释），不是空内容异常。
+                # 不要增加 empty_content_count；L1 触发器必须只用于完全静默的轮次（既无内容也无
+                # tool_calls），与 EmptyResponseAlertHook.is_empty_response 保持一致。
                 out.append(f"  [tool-only turn, no narrative{fr_tag}]")
-            # Find immediately-following tool calls + results, with
-            # collapse of identical runs.
+            # 查找紧随其后的工具调用和结果，并折叠连续相同调用。
             i += 1
             i = self._emit_tool_section(events_list, i, out, ev)
 
-        # Anomaly summary
+        # 异常总结
         anomaly_block = []
         if cfg.detect_anomalies:
             anomaly_block = self._compute_anomaly_summary(events_list, empty_content_count)
@@ -296,7 +287,7 @@ class TrajectoryCompressor:
                 out.append("\n--- ANOMALIES DETECTED ---")
                 out.extend(anomaly_block)
 
-        # Final summary line up top, now that we know turn count
+        # 已知轮次数后，在顶部补上最终总结行。
         out[header_placeholder_idx] = (
             f"=== TRAJECTORY SUMMARY ===\n"
             f"Total turns: {turn_idx} | Empty-content turns: {empty_content_count} "
@@ -305,7 +296,7 @@ class TrajectoryCompressor:
 
         return "\n".join(out)
 
-    # -- helpers ------------------------------------------------------------
+    # -- 辅助方法 -----------------------------------------------------------
 
     def _find_task_description(self, events: list[Event]) -> Optional[str]:
         """Pick the first non-empty user-message content as the task text."""
@@ -339,12 +330,12 @@ class TrajectoryCompressor:
         i = start_idx
 
         if not assistant.tool_calls:
-            # No tool calls promised — skip any stray tool events (rare)
+            # 未声明工具调用——跳过游离的工具事件（少见）。
             while i < len(events) and events[i].event_type == "tool":
                 i += 1
             return i
 
-        # Emit each tool call with truncated args
+        # 输出每次工具调用，并截断参数。
         for tc in assistant.tool_calls:
             fn = tc.get("function") or {}
             name = fn.get("name", "?")
@@ -356,7 +347,7 @@ class TrajectoryCompressor:
                 args_trunc += f" [...truncated {len(args_raw) - cfg.tool_args_chars} chars]"
             out.append(f"  → call {name}({args_trunc})")
 
-        # Now consume the corresponding tool-result events
+        # 接着消费对应的工具结果事件。
         while i < len(events) and events[i].event_type == "tool":
             result = events[i].content or ""
             out.append(f"  ← result: {self._summarize_tool_result(result)}")
@@ -390,10 +381,9 @@ class TrajectoryCompressor:
         cfg = self._cfg
         out: list[str] = []
 
-        # 1. Empty content ratio (key L1 vs L2 signal). finish_reason
-        # breakdown disambiguates: ``stop`` = true L1 (model silent),
-        # ``length`` = L2 (max_tokens budget too small for this model —
-        # reasoning model burned budget without producing output).
+        # 1. 空内容比例（区分 L1 与 L2 的关键信号）。finish_reason 分布可消除歧义：
+        # ``stop`` 表示真正的 L1（模型静默），``length`` 表示 L2（max_tokens 预算对模型过小，
+        # 推理模型耗尽预算却未产生输出）。
         n_asst = sum(1 for e in events if e.event_type == "assistant")
         if n_asst > 0 and empty_content_count > 0:
             pct = empty_content_count / n_asst * 100
@@ -413,7 +403,7 @@ class TrajectoryCompressor:
                 f" L2 if finish_reason=length dominates (max_tokens budget too small)"
             )
 
-        # 2. Syntax / docker / network errors in tool outputs
+        # 2. 工具输出中的语法、Docker 或网络错误。
         syntax_errs = 0
         docker_errs = 0
         net_errs = 0
@@ -433,7 +423,7 @@ class TrajectoryCompressor:
         if net_errs:
             out.append(f"  [HIGH] {net_errs} tool result(s) contained network errors — L1 signal")
 
-        # 3. Tool call repetition density
+        # 3. 工具调用重复密度。
         tool_call_sigs: list[tuple[str, str]] = []
         for ev in events:
             if ev.event_type != "assistant":
@@ -461,7 +451,7 @@ class TrajectoryCompressor:
 
 
 # ---------------------------------------------------------------------------
-# Quick token-estimate helper
+# 快速令牌估算辅助方法
 # ---------------------------------------------------------------------------
 
 

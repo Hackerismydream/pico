@@ -117,7 +117,7 @@ class WebFetchTool(Tool):
         """Resolve API key at call time so env/config changes are picked up."""
         return self._init_api_key or os.environ.get("JINA_API_KEY", "")
 
-    async def execute(self, url: str, extractMode: str = "markdown", maxChars: int | None = None, **kwargs: Any) -> str:  # noqa: N803  (LLM tool schema uses camelCase)
+    async def execute(self, url: str, extractMode: str = "markdown", maxChars: int | None = None, **kwargs: Any) -> str:  # noqa: N803  （LLM 工具模式使用驼峰命名）
         max_chars = maxChars or self.max_chars
         is_valid, error_msg = validate_url_target(url)
         if not is_valid:
@@ -131,8 +131,8 @@ class WebFetchTool(Tool):
 
         try:
             logger.debug("WebFetch: {}", "proxy enabled" if self.proxy else "direct connection")
-            # Reader's current X-Base contract reports the snapshot href in JSON data.url.
-            # Pico validates it only as a content-return gate; Reader has already fetched it.
+            # Reader 当前的 X-Base 合约在 JSON data.url 中返回快照链接。Reader 已完成抓取，
+            # Pico 只将验证用作返回内容的门禁。
             headers = {"Accept": "application/json", "X-Base": "final"}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"

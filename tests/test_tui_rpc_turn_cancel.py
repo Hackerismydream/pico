@@ -89,9 +89,6 @@ def _collect_events(send_frame_capture: AsyncMock) -> list[dict]:
     return events
 
 
-# --- Cancel an active turn ---
-
-
 async def test_turn_cancel_active_turn_returns_cancelled_true(
     emitter: SubscriptionEmitter,
 ) -> None:
@@ -144,7 +141,7 @@ async def test_turn_cancel_emits_error_event_with_cancelled_by_client_reason(
         turn_ids=turn_ids,
         submission_ids=submission_ids,
     )
-    await asyncio.sleep(0.05)  # let the coalescer flush
+    await asyncio.sleep(0.05)
 
     cancelled_events = [
         e
@@ -179,15 +176,9 @@ async def test_turn_cancel_keeps_subscription_open_for_next_turn(
     )
 
 
-# --- Params validation ---
-
-
 async def test_turn_cancel_rejects_missing_session_key(emitter: SubscriptionEmitter) -> None:
     with pytest.raises(Exception):  # noqa: BLE001
         await turn_cancel({}, emitter=emitter)
-
-
-# --- End-to-end via Dispatcher ---
 
 
 async def test_turn_cancel_dispatches_via_dispatcher_with_no_active_turn(

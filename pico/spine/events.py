@@ -32,7 +32,7 @@ class ToolPhase(StrEnum):
     COMPLETE = "complete"
 
 
-# Lifecycle events — emitted by the worker, never by a runner.
+# lifecycle event 由 worker 发出，runner 不得发出。
 
 
 @dataclass(frozen=True)
@@ -59,7 +59,7 @@ class TurnEnded:
     tool_failures: int = 0
 
 
-# Deliverable events — emitted by the runner, routed to outlets.
+# 可投递 event 由 runner 发出，并路由到 Outlet。
 
 
 @dataclass(frozen=True)
@@ -118,6 +118,6 @@ class Notice:
 
 
 RunnerEvent = ToolEvent | Text | MediaOut | StreamDelta | Reasoning | Notice
-# Same union, named for its delivery role: what the hub routes and an Outlet renders.
+# 同一个 union，按投递职责命名：hub 路由、Outlet 渲染的内容。
 Deliverable = RunnerEvent
 TurnEvent = TurnStarted | TurnFailed | TurnEnded | RunnerEvent

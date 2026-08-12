@@ -34,11 +34,10 @@ import sqlite3
 import sys
 from pathlib import Path
 
-# ── Storage paths ──────────────────────────────────────────────────────────────
+# ── 存储路径 ─────────────────────────────────────────────────────────────────
 
-# Resolved boxlite runtime home. Set once by main() from the --home-dir CLI flag,
-# the BOXLITE_HOME env var, or the boxlite default (~/.boxlite). All DB / image
-# helpers and Boxlite() runtime constructors read it from here.
+# 解析后的 boxlite 运行时主目录。main() 根据 --home-dir CLI 参数、BOXLITE_HOME 环境变量或
+# boxlite 默认值（~/.boxlite）设置一次。所有数据库/镜像辅助方法和 Boxlite() 构造器均从此读取。
 _HOME: Path = Path(os.environ.get("BOXLITE_HOME", Path.home() / ".boxlite"))
 
 
@@ -82,7 +81,7 @@ def _runtime():
     return rt
 
 
-# ── Image name helpers ─────────────────────────────────────────────────────────
+# ── 镜像名称辅助方法 ─────────────────────────────────────────────────────────
 
 
 def _canonical(image: str) -> str:
@@ -95,13 +94,13 @@ def _canonical(image: str) -> str:
     """
     name_part = image.split(":")[0]
     first_component = name_part.split("/")[0]
-    # Already has a registry domain (contains a dot or is "localhost")
+    # 已包含注册表域名，即含点号或为 "localhost"。
     if "." in first_component or first_component == "localhost":
         return image
-    # Has an org but no registry → docker.io
+    # 有组织名但无注册表时使用 docker.io。
     if "/" in name_part:
         return f"docker.io/{image}"
-    # Plain name like "ubuntu:22.04" → docker.io/library
+    # "ubuntu:22.04" 之类的裸名称映射到 docker.io/library。
     return f"docker.io/library/{image}"
 
 
@@ -119,7 +118,7 @@ def _match_reference(reference: str, user_input: str) -> bool:
     return reference == canon or reference == user_input or _short(reference) == user_input
 
 
-# ── Registry credentials ───────────────────────────────────────────────────────
+# ── 注册表凭据 ───────────────────────────────────────────────────────────────
 
 
 def _registry_auth_key(image: str) -> str:
@@ -134,7 +133,7 @@ def _registry_auth_key(image: str) -> str:
     first = name_part.split("/")[0]
     if first in ("docker.io", "index.docker.io") or ("." not in first and ":" not in first and first != "localhost"):
         return "https://index.docker.io/v1/"
-    return first  # e.g. "ghcr.io", "registry.example.com:5000"
+    return first  # 例如 "ghcr.io"、"registry.example.com:5000"
 
 
 def _store_registry_credentials(registry_key: str, username: str, password: str) -> None:
@@ -157,7 +156,7 @@ def _store_registry_credentials(registry_key: str, username: str, password: str)
     config_path.write_text(json.dumps(config, indent=2) + "\n")
 
 
-# ── SQLite helpers ─────────────────────────────────────────────────────────────
+# ── SQLite 辅助方法 ──────────────────────────────────────────────────────────
 
 
 def _open_db() -> sqlite3.Connection:
@@ -193,7 +192,7 @@ def _boxes_using_image(canonical_ref: str) -> list[dict]:
             cfg = json.loads(row["json"])
         except (json.JSONDecodeError, TypeError):
             continue
-        # box_config stores the image as options.rootfs.Image (short or canonical form)
+        # box_config 将镜像存为 options.rootfs.Image，可为短格式或规范格式。
         stored = cfg.get("options", {}).get("rootfs", {}).get("Image", "")
         if stored == canonical_ref or stored == short or _canonical(stored) == canonical_ref:
             result.append(dict(row))
@@ -207,14 +206,14 @@ def _delete_image_from_db(canonical_ref: str) -> int:
         return cur.rowcount
 
 
-# ── Orphaned file GC ───────────────────────────────────────────────────────────
+# ── 孤儿文件垃圾回收 ─────────────────────────────────────────────────────────
 
 
 def _gc_image_files(removed_row: dict) -> None:
     """Remove files for the deleted image that are no longer referenced by any remaining image."""
     remaining = _image_rows()
 
-    # Collect all digests still referenced (manifest + config + layers)
+    # 收集清单、配置和各层仍引用的全部摘要。
     still_needed: set[str] = set()
     for row in remaining:
         still_needed.add(row["manifest_digest"].removeprefix("sha256:"))
@@ -243,7 +242,7 @@ def _gc_image_files(removed_row: dict) -> None:
             _safe_unlink(images / "layers" / f"sha256-{layer_hex}.tar.gz")
 
 
-# ── Image size ─────────────────────────────────────────────────────────────────
+# ── 镜像大小 ─────────────────────────────────────────────────────────────────
 
 
 def _layer_sizes_bytes(row: dict) -> int:
@@ -260,7 +259,7 @@ def _layer_sizes_bytes(row: dict) -> int:
     return total
 
 
-# ── Image subcommands ──────────────────────────────────────────────────────────
+# ── 镜像子命令 ───────────────────────────────────────────────────────────────
 
 
 async def image_pull(
@@ -268,7 +267,7 @@ async def image_pull(
     username: str | None = None,
     password: str | None = None,
 ) -> None:
-    # Credential resolution: CLI args > env vars
+    # 凭据解析优先级：CLI 参数高于环境变量。
     username = username or os.environ.get("BOXLITE_REGISTRY_USERNAME")
     password = password or os.environ.get("BOXLITE_REGISTRY_PASSWORD")
     if bool(username) != bool(password):
@@ -282,9 +281,8 @@ async def image_pull(
     import boxlite
 
     print(f"Pulling {image} ...")
-    # SimpleBox without runtime= falls back to Boxlite.default() (~/.boxlite),
-    # which would silently ignore --home-dir. Bind it to the active runtime
-    # so the pull lands in the home dir the user asked for.
+    # 未传 runtime= 的 SimpleBox 会回退到 Boxlite.default()（~/.boxlite），静默忽略
+    # --home-dir。将其绑定到当前运行时，使拉取结果落入用户指定的主目录。
     async with boxlite.SimpleBox(
         image=image,
         cpus=1,
@@ -345,11 +343,11 @@ def image_rm(image: str, force: bool) -> None:
             print(f"Warning: no DB row deleted for {_short(canonical)}", file=sys.stderr)
 
 
-# ── VM subcommands ─────────────────────────────────────────────────────────────
+# ── VM 子命令 ────────────────────────────────────────────────────────────────
 
 
 def _state_str(state: object) -> str:
-    # BoxStateInfo has a .status str field ("running", "stopped", "created", ...)
+    # BoxStateInfo 有 .status 字符串字段，取值如 "running"、"stopped"、"created"。
     status = getattr(state, "status", None)
     if status:
         return status.capitalize()
@@ -425,7 +423,7 @@ async def vm_stop(id_or_name: str) -> None:
 async def vm_rm(id_or_name: str, force: bool) -> None:
     rt = _runtime()
     if force:
-        # Try to stop first; ignore errors (box may already be stopped)
+        # 先尝试停止；忽略错误，因为 box 可能已停止。
         try:
             box = await rt.get(id_or_name)
             await box.stop()
@@ -457,8 +455,7 @@ async def vm_shell(id_or_name: str, shell: str) -> None:
     old_attrs = termios.tcgetattr(fd)
     loop = asyncio.get_running_loop()
     stop = asyncio.Event()
-    # Default to 1 so a setup-time failure (box.exec, resize_tty, …) still
-    # propagates a non-zero exit even though `result` was never bound.
+    # 默认为 1，使设置期失败（box.exec、resize_tty 等）即使从未绑定 `result`，仍传播非零退出码。
     exit_code = 1
 
     try:
@@ -537,7 +534,7 @@ async def vm_shell(id_or_name: str, shell: str) -> None:
     sys.exit(exit_code)
 
 
-# ── CLI wiring ─────────────────────────────────────────────────────────────────
+# ── CLI 接线 ─────────────────────────────────────────────────────────────────
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -556,7 +553,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="resource", required=True)
 
-    # ── image ──
+    # ── 镜像 ──
     img = sub.add_parser("image", help="OCI image management")
     img_sub = img.add_subparsers(dest="action", required=True)
 
@@ -582,7 +579,7 @@ def _build_parser() -> argparse.ArgumentParser:
     rm_p.add_argument("image", help="Image reference to remove")
     rm_p.add_argument("--force", action="store_true", help="Remove even if VMs reference it")
 
-    # ── vm ──
+    # ── 虚拟机 ──
     vm = sub.add_parser("vm", help="VM management")
     vm_sub = vm.add_subparsers(dest="action", required=True)
 

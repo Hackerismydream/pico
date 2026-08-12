@@ -110,7 +110,7 @@ def resolve_session_cross_channel(manager: SessionManager, value: str) -> str:
     return f"{_CLI_CHANNEL}:{value}"
 
 
-# ── create ────────────────────────────────────────────────────────────
+# ── 创建 ──────────────────────────────────────────────────────────────
 
 
 @session_app.command("create")
@@ -141,7 +141,7 @@ def session_create(
         console.print(f"[dim]  (lazy — materialises on first use: pico run --session {key})[/dim]")
 
 
-# ── list ──────────────────────────────────────────────────────────────
+# ── 列表 ──────────────────────────────────────────────────────────────
 
 
 @session_app.command("list")
@@ -191,7 +191,7 @@ def session_list(
     console.print(table)
 
 
-# ── resume ────────────────────────────────────────────────────────────
+# ── 恢复 ──────────────────────────────────────────────────────────────
 
 
 @session_app.command("resume")
@@ -209,7 +209,7 @@ def session_resume(
     console.print(f"[dim]  Use with: pico run --session {key}[/dim]")
 
 
-# ── delete ────────────────────────────────────────────────────────────
+# ── 删除 ──────────────────────────────────────────────────────────────
 
 
 @session_app.command("delete")
@@ -231,7 +231,7 @@ def session_delete(
         raise typer.Exit(code=1)
 
 
-# ── fork ──────────────────────────────────────────────────────────────
+# ── 分叉 ──────────────────────────────────────────────────────────────
 
 
 @session_app.command("fork")
@@ -257,7 +257,7 @@ def session_fork(
     console.print(f"[dim]  (forked from {_bare_id(key)}; use: pico run --session {child.key})[/dim]")
 
 
-# ── export ────────────────────────────────────────────────────────────
+# ── 导出 ──────────────────────────────────────────────────────────────
 
 
 @session_app.command("export")

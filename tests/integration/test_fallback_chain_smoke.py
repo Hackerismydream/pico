@@ -81,12 +81,12 @@ def _router_with_models(fallback_model: str | None = None) -> ModelRouter:
     }
 
     router = ModelRouter(api_key="test", profile="balanced", fallback_model=fallback_model)
-    router._data = data  # skip cache.load (network)
+    router._data = data
 
     async def _fake_classify(_prompt: str) -> ClassificationResult:
         return ClassificationResult(category="tool_use", similarity=1.0)
 
-    router._classifier.classify = _fake_classify  # skip embedding API
+    router._classifier.classify = _fake_classify
     return router
 
 
@@ -94,7 +94,7 @@ def _router_with_models(fallback_model: str | None = None) -> ModelRouter:
 async def test_routed_chain_recovers_on_first_fallback():
     router = _router_with_models()
     primary, fallbacks = await router.select_model_chain("what's the weather?")
-    # Real selector ranking, not hand-fed.
+
     assert primary == "anthropic/model-a"
     assert fallbacks == ["openai/model-b", "google/model-c"]
 
@@ -108,7 +108,7 @@ async def test_routed_chain_recovers_on_first_fallback():
 
     assert resp.finish_reason == "stop"
     assert resp.content == "answer from openai/model-b"
-    # primary exhausts its ladder (3 + 1), then the first fallback succeeds.
+
     assert provider.calls == ["anthropic/model-a"] * 4 + ["openai/model-b"]
 
 
@@ -116,7 +116,7 @@ async def test_routed_chain_recovers_on_first_fallback():
 async def test_routed_chain_walks_to_second_fallback_with_configured_tail():
     router = _router_with_models(fallback_model="meta/default-fallback")
     primary, fallbacks = await router.select_model_chain("weather please")
-    # Configured fallback_model appended as the last-resort tail.
+
     assert primary == "anthropic/model-a"
     assert fallbacks == ["openai/model-b", "google/model-c", "meta/default-fallback"]
 

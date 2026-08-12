@@ -28,15 +28,14 @@ import typer
 from pico.cli._log_file import _strip_tty_stream_handlers, redirect_loguru_to_file, redirect_terminal_fds_to_file
 from pico.product import get_product_home
 
-# Path to the ui-tui/ source tree, relative to this file:
-# pico/cli/tui_commands.py -> ../../../ui-tui/. Only the `--dev` path (tsx from
-# source) needs this; it requires src/ + node_modules and is absent from wheels.
+# 相对于本文件的 ui-tui/ 源码树路径：
+# pico/cli/tui_commands.py -> ../../../ui-tui/。仅 `--dev` 路径（从源码运行 tsx）需要它；
+# 该路径依赖 src/ 和 node_modules，wheel 中不存在。
 _UI_TUI_DIR = Path(__file__).resolve().parent.parent.parent / "ui-tui"
 
-# Packaged location of the prebuilt, self-contained bundle inside an installed
-# wheel: pico/cli/tui_commands.py -> ../ui-tui/dist/entry.js (i.e.
-# pico/ui-tui/dist/entry.js). pyproject force-includes ui-tui/dist here so a
-# `uv tool install` ships the TUI without a source checkout.
+# 已安装 wheel 内预构建、自包含包的位置：pico/cli/tui_commands.py ->
+# ../ui-tui/dist/entry.js（即 pico/ui-tui/dist/entry.js）。pyproject 会强制把
+# ui-tui/dist 包含到这里，使 `uv tool install` 无需源码检出也能附带 TUI。
 _PACKAGED_DIST_ENTRY = Path(__file__).resolve().parent.parent / "ui-tui" / "dist" / "entry.js"
 
 _MIN_NODE_VERSION = (22, 0, 0)
@@ -70,33 +69,28 @@ def find_node() -> Tuple[Optional[str], Optional[Tuple[int, int, int]]]:
 
     Returns (path, version_tuple) or (None, None) if not found.
     """
-    # Priority 1: PICO_NODE env var — explicit override, NO fallback.
-    # When the user sets PICO_NODE they are forcing a specific binary;
-    # if it is missing or unusable we must NOT silently fall back to
-    # venv/PATH (that would mask misconfiguration).
+    # 优先级 1：PICO_NODE 环境变量——显式覆盖，不回退。用户设置 PICO_NODE 即表示强制
+    # 使用指定二进制；若它缺失或不可用，绝不能静默回退到虚拟环境或 PATH，否则会掩盖错误配置。
     candidates: list[str] = []
     if env_node := os.environ.get("PICO_NODE"):
         candidates.append(env_node)
     else:
-        # Priority 2: active venv
+        # 优先级 2：当前虚拟环境
         if venv := os.environ.get("VIRTUAL_ENV"):
             if sys.platform == "win32":
                 candidates.append(str(Path(venv) / "Scripts" / "node.exe"))
             else:
                 candidates.append(str(Path(venv) / "bin" / "node"))
 
-        # Priority 3: PATH
+        # 优先级 3：PATH
         if path_node := shutil.which("node"):
             candidates.append(path_node)
 
-        # Priority 4: Pico-managed private runtime installed by the one-line
-        # installer into ~/.pico/runtime/. This is the zero-config fallback so
-        # a user who has no system Node still gets a working `pico` after
-        # the installer provisioned a private Node here. Glob to tolerate the
-        # versioned dir name. The on-disk layout differs by OS: POSIX tarballs
-        # nest the binary under bin/ (node-v22.x.y-darwin-arm64/bin/node) while
-        # the Windows zip puts node.exe at the top level
-        # (node-v22.x.y-win-x64/node.exe) — install.ps1 provisions the latter.
+        # 优先级 4：一行安装器安装到 ~/.pico/runtime/ 的 Pico 私有运行时。这是零配置回退，
+        # 即使用户没有系统 Node，安装器在此配置私有 Node 后仍可正常运行 `pico`。使用 glob
+        # 以兼容带版本号的目录名。磁盘布局因操作系统而异：POSIX 压缩包把二进制放在 bin/
+        # 下（node-v22.x.y-darwin-arm64/bin/node），Windows zip 则把 node.exe 放在顶层
+        # （node-v22.x.y-win-x64/node.exe）；install.ps1 配置的是后者。
         runtime_root = get_product_home() / "runtime"
         if runtime_root.is_dir():
             if sys.platform == "win32":
@@ -163,7 +157,7 @@ def run_subprocess(
     try:
         return proc.wait()
     except KeyboardInterrupt:
-        # Already forwarded above; wait briefly for graceful exit.
+        # 上方已转发信号；短暂等待优雅退出。
         try:
             return proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
@@ -172,20 +166,17 @@ def run_subprocess(
 
 
 # ---------------------------------------------------------------------------
-# RPC handshake + asyncio server loop
+# RPC 握手与 asyncio 服务器循环
 # ---------------------------------------------------------------------------
 
-# Handshake budget: spec 5.1 — Node must send `system.hello` within 5 s of
-# spawn or the parent aborts with exit 3.
+# 握手时限：规范 5.1——Node 必须在启动后 5 秒内发送 `system.hello`，否则父进程以状态 3 中止。
 _RPC_HANDSHAKE_TIMEOUT_S: float = 5.0
 _RPC_HANDSHAKE_EXIT_CODE: int = 3
 
-# The Node child connects to the TCP loopback address exported in
-# PICO_RPC_SOCKET and authenticates with the PICO_RPC_TOKEN shared secret.
-# Loopback is reachable by any local process, so the token preserves the trust
-# boundary before the server dispatches any request.
+# Node 子进程连接 PICO_RPC_SOCKET 导出的 TCP 回环地址，并使用 PICO_RPC_TOKEN 共享密钥
+# 认证。任何本地进程都能访问回环地址，因此服务器分发请求前需由令牌维持信任边界。
 _RPC_SOCKET_ENV: str = "PICO_RPC_SOCKET"
-_RPC_TOKEN_ENV: str = "PICO_RPC_TOKEN"  # noqa: S105 -- env var name, not a secret
+_RPC_TOKEN_ENV: str = "PICO_RPC_TOKEN"  # noqa: S105 -- 这是环境变量名，不是密钥值
 
 
 def _suppress_noisy_watchers() -> None:
@@ -203,12 +194,11 @@ def _drop_watcher_spam(record: dict) -> bool:
     return "rust notify timeout" not in record["message"]
 
 
-# Narrow exception classes that represent recoverable init-time crashes —
-# kwargs drift after AgentLoop ctor refactor, attribute path drift after
-# config schema rename, ImportError on optional extras, missing config file,
-# Pydantic ValidationError. All are surfaced as -32603 ``internal_error``
-# with ``data.reason="tui_init_crash"`` so the UI can distinguish them from a
-# legitimate -32008 ``model_not_available`` (no provider configured).
+# 这里只收窄到表示可恢复初始化崩溃的异常类型：AgentLoop 构造器重构后的 kwargs 漂移、
+# 配置模式重命名后的属性路径漂移、可选依赖的 ImportError、配置文件缺失和 Pydantic
+# ValidationError。它们统一暴露为 -32603 ``internal_error``，并携带
+# ``data.reason="tui_init_crash"``，让 UI 能与正常的 -32008 ``model_not_available``
+# （未配置提供商）区分开。
 _TUI_INIT_CRASH_TYPES: tuple[type[BaseException], ...] = (
     TypeError,
     AttributeError,
@@ -308,9 +298,8 @@ def _build_tui_runtime():
         if isinstance(registered_cron_tool, CronTool):
             registered_cron_tool.set_context("tui", "default")
 
-        # cron.on_job is wired in _run_rpc_server_until_done once the spine
-        # scheduler exists: a reminder runs as a CRON turn through the
-        # scheduler and its reply is fanned out as a cron.delivered event.
+        # spine 调度器就绪后，_run_rpc_server_until_done 才连接 cron.on_job：提醒以 CRON
+        # 轮次通过调度器运行，其回复再扇出为 cron.delivered 事件。
 
         return runtime
     except PluginNotFoundError as e:
@@ -378,8 +367,7 @@ async def _run_rpc_server_until_done(
     Returns True if handshake succeeded (system.hello was received within the
     deadline); False if it timed out.
     """
-    # Lazy import: keeps tui_commands importable without pulling tui_rpc on
-    # users who never touch the TUI (e.g. CLI-only workflows).
+    # 延迟导入：从不使用 TUI 的用户（例如纯 CLI 工作流）导入 tui_commands 时无需加载 tui_rpc。
     from pico.tui_rpc.confirm_broker import ConfirmBroker
     from pico.tui_rpc.dispatcher import Dispatcher
     from pico.tui_rpc.methods import register_aligned_methods_except_system
@@ -403,20 +391,16 @@ async def _run_rpc_server_until_done(
         return result
 
     dispatcher = Dispatcher()
-    # Server is constructed before umbrella registration so the
-    # SubscriptionEmitter can bind its send_frame method as the notification
-    # sink. serve_forever() is still started LAST (after all handlers are
-    # registered) — RpcServer.send_frame raises until serve_forever has set
-    # up the write transport, but emitter only emits after a subscribe call,
-    # which can only happen post-handshake / post-serve.
+    # 服务器在总注册前构建，使 SubscriptionEmitter 能把其 send_frame 方法绑定为通知出口。
+    # serve_forever() 仍最后启动（所有处理器注册后）；在它建立写传输前，RpcServer.send_frame
+    # 会抛错，但发射器只会在订阅调用后发射，而订阅只能发生在握手和服务启动之后。
     server = RpcServer(dispatcher=dispatcher, sock=conn, auth_token=auth_token)
     emitter = SubscriptionEmitter(send_frame=server.send_frame)
-    # ConfirmBroker shares the same send_frame sink so runtime confirmations
-    # can emit confirm.request and await confirm.respond. cancel_all() in the
-    # finally block resolves pending confirmations when the connection drops.
+    # ConfirmBroker 共用同一 send_frame 出口，使运行时确认可以发出 confirm.request 并等待
+    # confirm.respond。连接断开时，finally 中的 cancel_all() 会解决所有待处理确认。
     confirm_broker = ConfirmBroker(send_frame=server.send_frame)
-    # QuestionBroker shares the same send_frame sink: the ask_user tool emits a
-    # clarify.request and awaits clarify.respond, mirroring ConfirmBroker.
+    # QuestionBroker 共用同一 send_frame 出口：ask_user 工具发出 clarify.request 并等待
+    # clarify.respond，与 ConfirmBroker 的行为对称。
     question_broker = QuestionBroker(send_frame=server.send_frame)
 
     from pico.cli._runtime_host import TuiRuntimeHost
@@ -578,8 +562,7 @@ async def _run_rpc_server_until_done(
         await runtime_host.close()
 
     try:
-        # Wrap system.hello to latch the handshake event; the umbrella below
-        # registers the retained conversational RPC surface.
+        # 包装 system.hello 以锁存握手事件；下方总入口注册保留的会话 RPC 接口。
         dispatcher.register("system.hello", hello_then_signal)
         dispatcher.register("system.ping", system_ping)
         dispatcher.register("system.version", system_version)
@@ -596,8 +579,7 @@ async def _run_rpc_server_until_done(
 
         from pico.config.paths import get_logs_dir
 
-        # The child already inherited the terminal. Keep Runtime startup and
-        # teardown inside this redirect so backend logging cannot corrupt it.
+        # 子进程已继承终端。将运行时启动和清理置于此次重定向内，避免后端日志破坏终端画面。
         with redirect_terminal_fds_to_file(get_logs_dir() / "tui.log"):
             _strip_tty_stream_handlers()
             serve_task = asyncio.create_task(server.serve_forever())
@@ -605,7 +587,7 @@ async def _run_rpc_server_until_done(
             runtime_services_task = asyncio.create_task(_start_runtime_services())
 
             try:
-                # Wait until EITHER handshake completes OR deadline expires OR child exits.
+                # 等待握手完成、超时或子进程退出，任一发生即结束等待。
                 done, pending = await asyncio.wait(
                     {
                         asyncio.create_task(handshake_done.wait()),
@@ -616,7 +598,7 @@ async def _run_rpc_server_until_done(
                 )
                 for t in pending:
                     t.cancel()
-                # Drain cancelled tasks to suppress warnings.
+                # 等待已取消任务收尾，避免产生警告。
                 for t in pending:
                     try:
                         await t
@@ -625,7 +607,7 @@ async def _run_rpc_server_until_done(
 
                 if not handshake_done.is_set():
                     return False
-                # Continue serving until child exits.
+                # 持续服务直到子进程退出。
                 await proc_done.wait()
                 return True
             finally:
@@ -758,9 +740,8 @@ def run_subprocess_with_rpc(
     async def _main() -> bool:
         _loop_holder["loop"] = asyncio.get_running_loop()
 
-        # Wait for child to connect within the handshake deadline. We race
-        # `accept` against `proc.wait()` so an early-exiting child returns
-        # immediately instead of stalling for the full 5 s.
+        # 在握手时限内等待子进程连接。让 `accept` 与 `proc.wait()` 竞速，使提前退出的
+        # 子进程立即返回，而不是停满 5 秒。
         accept_task = asyncio.create_task(_accept_with_timeout(server_sock, _RPC_HANDSHAKE_TIMEOUT_S))
         proc_done_task = asyncio.create_task(proc_done.wait())
         done, pending = await asyncio.wait(
@@ -783,10 +764,9 @@ def run_subprocess_with_rpc(
             return False
         _conn_holder["conn"] = conn
 
-        # Hand the connected socket object straight to RpcServer. We do NOT
-        # os.dup the fd (unsupported on Windows) — connect_accepted_socket takes
-        # ownership of this one socket and closes it on teardown, so the outer
-        # cleanup must not double-close it.
+        # 将已连接的套接字对象直接交给 RpcServer。不要对文件描述符调用 os.dup
+        # （Windows 不支持）；connect_accepted_socket 会取得该套接字所有权并在清理时关闭，
+        # 因此外层清理不得重复关闭。
         _flags["handed_off"] = True
         return await _run_rpc_server_until_done(conn, auth_token, _RPC_HANDSHAKE_TIMEOUT_S, proc_done)
 
@@ -797,15 +777,14 @@ def run_subprocess_with_rpc(
     try:
         handshake_ok = asyncio.run(_main())
     finally:
-        # 1) Close the accepted conn only if it was never handed to RpcServer.
-        # Once handed off, the server owns it (connect_accepted_socket) and
-        # closes it on teardown; double-closing here would race that.
+        # 1）仅当接收的连接从未交给 RpcServer 时才关闭。移交后服务器通过
+        # connect_accepted_socket 拥有它并在清理时关闭；此处重复关闭会产生竞态。
         if "conn" in _conn_holder and not _flags["handed_off"]:
             try:
                 _conn_holder["conn"].close()
             except OSError:
                 pass
-        # 2) Close the listening socket.
+        # 2）关闭监听套接字。
         try:
             server_sock.close()
         except OSError:
@@ -861,9 +840,8 @@ def launch_tui(
     preview_colors: bool = False,
 ) -> None:
     """Launch Pico native TUI."""
-    # Startup gate: launch the onboarding wizard first when the required
-    # config (a provider key + default model) is missing. Skipped for the
-    # no-TTY diagnostic spawns (--check / --print-colors / --preview-colors).
+    # 启动门：缺少必要配置（提供商密钥和默认模型）时先启动引导向导。无 TTY 的诊断启动
+    # （--check / --print-colors / --preview-colors）会跳过。
     if not (check or print_colors or preview_colors) and _stdout_isatty():
         from pico.cli.onboard_commands import (
             _is_config_populated,
@@ -884,43 +862,36 @@ def launch_tui(
         )
         raise typer.Exit(code=1)
 
-    # `--dev` runs tsx from the source tree, so it requires the ui-tui/ checkout.
-    # The production path resolves a packaged or source-built bundle separately
-    # (see resolve_dist_entry), so it must NOT hard-require the source tree —
-    # a wheel install legitimately has no ui-tui/ source directory.
+    # `--dev` 从源码树运行 tsx，因此需要 ui-tui/ 检出。生产路径会单独解析打包或源码构建的
+    # bundle（见 resolve_dist_entry），绝不能硬性依赖源码树；wheel 安装本就没有 ui-tui/ 源码目录。
     if dev and not _UI_TUI_DIR.exists():
         print(f"✗ TUI 源码缺失（--dev 需要源码树）：{_UI_TUI_DIR}", file=sys.stderr)
         raise typer.Exit(code=2)
 
-    # Color override flows to the child via env (entry.tsx -> colorTier.ts).
-    # Only set it when --color was passed so a shell-level PICO_TUI_COLOR
-    # isn't clobbered by the "auto" default.
+    # 颜色覆盖通过环境变量传给子进程（entry.tsx -> colorTier.ts）。仅在传入 --color 时设置，
+    # 避免 "auto" 默认值覆盖 shell 层的 PICO_TUI_COLOR。
     if color is not None:
         os.environ["PICO_TUI_COLOR"] = color
 
-    # `--check` is a smoke test: tell the child to boot, prove runtime init,
-    # then exit 0 (no Ink render, no interactive TTY). The child reads
-    # PICO_TUI_CHECK from the environment it inherits from this process.
-    # See ui-tui/src/entry.tsx for the matching handler.
+    # `--check` 是冒烟测试：让子进程启动并证明运行时初始化成功，然后以 0 退出
+    # （不渲染 Ink，也不需要交互 TTY）。子进程从继承的环境中读取 PICO_TUI_CHECK；
+    # 对应处理器见 ui-tui/src/entry.tsx。
     if check:
         os.environ["PICO_TUI_CHECK"] = "1"
 
-    # `--print-colors` / `--preview-colors` are no-IPC diagnostics: the child
-    # dumps the resolved palette (swatches / in-context) and exits. Like
-    # --check they skip the RPC handshake.
+    # `--print-colors` / `--preview-colors` 是无 IPC 诊断：子进程输出解析后的调色板
+    # （色块/上下文预览）后退出。它们与 --check 一样跳过 RPC 握手。
     if print_colors:
         os.environ["PICO_TUI_PRINT_COLORS"] = "1"
     if preview_colors:
         os.environ["PICO_TUI_COLOR_PREVIEW"] = "1"
 
-    # --check / --print-colors / --preview-colors are no-RPC, stdio-only spawns.
+    # --check / --print-colors / --preview-colors 都是不使用 RPC、仅使用标准输入输出的启动方式。
     no_rpc = check or print_colors or preview_colors
 
-    # Redirect parent loguru to a file so RPC server logs
-    # logs don't corrupt the Ink reconciler. (Skipped for the no-RPC paths
-    # which exit before Ink renders.) The file is created here at startup and
-    # a normal run/exit only writes INFO lifecycle records, so the path is
-    # surfaced to the user only on an abnormal child exit (see below).
+    # 将父进程 loguru 重定向到文件，避免 RPC 服务器日志破坏 Ink 协调器。无 RPC 路径会在
+    # Ink 渲染前退出，因此跳过此操作。文件在此启动时创建；正常运行/退出只写入 INFO
+    # 生命周期记录，所以仅在子进程异常退出时向用户显示路径（见下方）。
     if not no_rpc:
         _suppress_noisy_watchers()
         log_path = redirect_loguru_to_file(
@@ -930,11 +901,9 @@ def launch_tui(
         )
 
     if dev:
-        # tsx watch via local node_modules.
-        # Derive npx from the validated node_path so PICO_NODE's
-        # version-pin semantics are honored end-to-end. Only fall back to
-        # PATH when the derived path is absent (rare; e.g. operator points
-        # PICO_NODE at a standalone node binary with no sibling npx).
+        # 通过本地 node_modules 运行 tsx。根据已验证的 node_path 推导 npx，使 PICO_NODE 的
+        # 版本固定语义端到端生效。仅当推导路径不存在时才回退到 PATH（少见，例如运维人员
+        # 将 PICO_NODE 指向没有同级 npx 的独立 node 二进制）。
         derived_npx = Path(node_path).parent / "npx"
         if derived_npx.exists():
             npx = str(derived_npx)
@@ -948,14 +917,11 @@ def launch_tui(
                     err=True,
                 )
             npx = fallback or "npx"
-        # Use npx to run tsx (source mode, no build step); npx ships with
-        # node >= 22. `--watch` is intentionally dropped: the interactive path
-        # requires a one-shot RPC handshake (parent accepts a
-        # single socket connection), and a watch-triggered restart would drop
-        # that connection. --check stays on the plain spawn because entry.tsx
-        # short-circuits on PICO_TUI_CHECK before the socket guard, so it
-        # needs no RPC server; the interactive path must open the socket or
-        # entry.tsx exits 2 ("PICO_RPC_SOCKET env var required").
+        # 使用 npx 运行 tsx（源码模式，无构建步骤）；node >= 22 自带 npx。刻意不使用
+        # `--watch`：交互路径要求一次性 RPC 握手（父进程只接受一个套接字连接），监听触发的
+        # 重启会断开连接。--check 保持普通启动，因为 entry.tsx 会在套接字防护前根据
+        # PICO_TUI_CHECK 短路，无需 RPC 服务器；交互路径必须打开套接字，否则 entry.tsx
+        # 以状态 2 退出（"PICO_RPC_SOCKET env var required"）。
         tsx_args = ["tsx", "src/entry.tsx"]
         if no_rpc:
             exit_code = run_subprocess(npx, tsx_args, cwd=_UI_TUI_DIR)
@@ -971,19 +937,16 @@ def launch_tui(
                 file=sys.stderr,
             )
             raise typer.Exit(code=2)
-        # The self-contained bundle needs no node_modules; run it from its own
-        # directory so any relative resource resolution stays well-defined.
+        # 自包含 bundle 不需要 node_modules；从其所在目录运行，确保相对资源解析有明确基准。
         dist_cwd = dist_entry.parent
-        # `--check` smoke path keeps the simple stdio-only spawn so the
-        # bootstrap-era tests (which don't speak JSON-RPC) still pass; the
-        # interactive run path opens the RPC socket and enforces handshake.
+        # `--check` 冒烟路径保留简单的纯标准输入输出启动，使不支持 JSON-RPC 的早期引导测试
+        # 仍能通过；交互运行路径则打开 RPC 套接字并强制握手。
         if no_rpc:
             exit_code = run_subprocess(node_path, [str(dist_entry)], cwd=dist_cwd)
         else:
             exit_code = run_subprocess_with_rpc(node_path, [str(dist_entry)], cwd=dist_cwd)
 
-    # tui.log stays silent on a clean run; surface it only when the child
-    # exited abnormally (see _is_abnormal_child_exit).
+            # 正常运行时 tui.log 保持静默；仅在子进程异常退出时显示（见 _is_abnormal_child_exit）。
     if not no_rpc and _is_abnormal_child_exit(exit_code):
         typer.echo(f"📝 TUI logs → {log_path} (exit {exit_code})", err=True)
 

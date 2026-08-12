@@ -27,7 +27,7 @@ import { StreamingMd } from './streamingMarkdown.js'
 import { ToolTrail } from './thinking.js'
 import { TodoPanel } from './todoPanel.js'
 
-// Collapse threshold for long system messages (system prompt etc.)
+// 较长系统消息（如系统提示词）的折叠阈值。
 const SYSTEM_COLLAPSE_CHARS = 400
 
 export const MessageLine = memo(function MessageLine({
@@ -42,19 +42,17 @@ export const MessageLine = memo(function MessageLine({
   t,
   tools = []
 }: MessageLineProps) {
-  // Per-section overrides win over the global mode, so resolve each section
-  // we might consume here once and gate visibility on the *content-bearing*
-  // sections only — never on the global mode.  A `trail` message feeds Tool
-  // calls + Activity; an assistant message with thinking/tools metadata
-  // feeds Thinking + Tool calls.  Gating on every section would let
-  // `thinking` (expanded by default) keep an empty wrapper alive when only
-  // `tools` is hidden — exactly the empty-Box bug Copilot caught.
+  // 分区级设置优先于全局模式，因此只解析一次这里可能使用的各分区，并且仅按
+  // 实际承载内容的分区控制可见性，不能依赖全局模式。`trail` 消息向工具调用和
+  // 活动区提供内容；带 thinking/tools 元数据的助手消息向思考区和工具调用区
+  // 提供内容。若对所有分区统一设门槛，默认展开的 `thinking` 会在仅隐藏
+  // `tools` 时保留空壳，这正是此前出现空 Box 的原因。
   const thinkingMode = sectionMode('thinking', detailsMode, sections, detailsModeCommandOverride)
   const toolsMode = sectionMode('tools', detailsMode, sections, detailsModeCommandOverride)
   const activityMode = sectionMode('activity', detailsMode, sections, detailsModeCommandOverride)
   const thinking = msg.thinking?.trim() ?? ''
 
-  // Collapse toggle for long system messages
+  // 较长系统消息的折叠开关。
   const systemIsLong = msg.role === 'system' && msg.text.length > SYSTEM_COLLAPSE_CHARS
   const [systemOpen, setSystemOpen] = useState(false)
 
@@ -119,9 +117,9 @@ export const MessageLine = memo(function MessageLine({
       return <Text color={t.color.muted}>{msg.text}</Text>
     }
 
-    // ── Collapsible long system message (system prompt, AGENTS.md, etc.) ──
-    // MUST come before the hasAnsi check — system messages from the backend
-    // contain Rich markup escape codes that would otherwise hit <Ansi> full render.
+    // ── 可折叠的较长系统消息（系统提示词、AGENTS.md 等）──
+    // 必须先于 hasAnsi 检查：后端系统消息含有 Rich 标记转义码，否则会进入
+    // <Ansi> 的完整渲染路径。
     if (systemIsLong) {
       const firstLine = (msg.text.split('\n')[0] ?? '').trim().slice(0, 120) || '(system message)'
 
@@ -146,9 +144,8 @@ export const MessageLine = memo(function MessageLine({
 
     if (msg.role === 'assistant') {
       return isStreaming ? (
-        // Incremental markdown: split at the last stable block boundary so
-        // only the in-flight tail re-tokenizes per delta. See
-        // streamingMarkdown.tsx for the cost model.
+        // 增量 Markdown 在最后一个稳定块边界切分，因此每次增量仅重新词法分析
+        // 尚未完成的尾部；成本模型见 streamingMarkdown.tsx。
         <StreamingMd compact={compact} t={t} text={boundedLiveRenderText(msg.text)} />
       ) : (
         <Md compact={compact} t={t} text={limitHistoryRender ? boundedHistoryRenderText(msg.text) : msg.text} />
@@ -172,9 +169,8 @@ export const MessageLine = memo(function MessageLine({
     return <Text {...(body ? { color: body } : {})}>{msg.text}</Text>
   })()
 
-  // Diff segments (emitted by pushInlineDiffSegment between narration
-  // segments) need a blank line on both sides so the patch doesn't butt up
-  // against the prose around it.
+  // pushInlineDiffSegment 在叙述片段之间产生的差异片段两侧都需要空行，
+  // 避免补丁紧贴前后的正文。
   const isDiffSegment = msg.kind === 'diff'
 
   return (

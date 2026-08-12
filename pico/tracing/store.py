@@ -71,7 +71,7 @@ class TraceStore:
         self.archive_dir = self.logs_dir / "archive"
         self.max_bytes = max_bytes or int(os.environ.get("TRACE_LOG_MAX_BYTES", DEFAULT_MAX_BYTES))
 
-    # -- paths -------------------------------------------------------------
+    # -- 路径 --------------------------------------------------------------
 
     def _ensure(self, path: Path) -> Path:
         path.mkdir(parents=True, exist_ok=True)
@@ -80,7 +80,7 @@ class TraceStore:
     def _active_log(self, kind: str) -> Path:
         return self._ensure(self.logs_dir) / _KIND_FILES[kind]
 
-    # -- append + rotation -------------------------------------------------
+    # -- 追加与轮换 --------------------------------------------------------
 
     def _rotate_if_needed(self, kind: str, next_text: str) -> Path:
         path = self._active_log(kind)
@@ -117,7 +117,7 @@ class TraceStore:
         except OSError:
             pass
 
-    # -- artifacts ---------------------------------------------------------
+    # -- 产物 --------------------------------------------------------------
 
     def persist_artifact(
         self,

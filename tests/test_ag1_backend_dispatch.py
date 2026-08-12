@@ -22,7 +22,7 @@ from pico.spine.message import ChatType, Media, Source
 from pico.spine.turn import Origin, TurnRequest
 
 # ---------------------------------------------------------------------------
-# Stubs
+
 # ---------------------------------------------------------------------------
 
 
@@ -88,7 +88,7 @@ def _make_loop(workspace: Path, *, backend=None, provider=None) -> AgentLoop:
 
 
 # ---------------------------------------------------------------------------
-# Constructor wiring
+
 # ---------------------------------------------------------------------------
 
 
@@ -104,14 +104,14 @@ class TestConstructorWiring:
 
 
 # ---------------------------------------------------------------------------
-# _dispatch_backend_store
+
 # ---------------------------------------------------------------------------
 
 
 class TestDispatcher:
     async def test_no_backend_is_noop(self, tmp_path: Path) -> None:
         agent = _make_loop(tmp_path, backend=None)
-        # Should not raise; just returns silently.
+
         await agent._dispatch_backend_store(
             "session-1",
             [{"role": "user", "content": "hi"}],
@@ -124,7 +124,7 @@ class TestDispatcher:
         b = _FakeBackend()
         agent = _make_loop(tmp_path, backend=b)
         await agent._dispatch_backend_store("session-1", [])
-        # Adapter never invoked when slice is empty.
+
         assert b.store_calls == []
 
     async def test_calls_backend_store_with_full_slice(
@@ -248,7 +248,7 @@ async def test_turn_artifacts_are_sanitized_after_live_multimodal_model_input(
 
 
 # ---------------------------------------------------------------------------
-# Legacy compatibility — pre-AG-1 callsites still pass
+
 # ---------------------------------------------------------------------------
 
 

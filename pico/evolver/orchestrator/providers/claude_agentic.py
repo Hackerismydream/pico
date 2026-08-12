@@ -37,7 +37,7 @@ def claude_cli_available(claude_bin: str = "claude") -> bool:
         return False
     try:
         r = subprocess.run([claude_bin, "--version"], capture_output=True, text=True, timeout=20)
-    except Exception:  # noqa: BLE001 — any probe failure means "not usable"
+    except Exception:  # noqa: BLE001 — 任意探测失败都表示不可用
         return False
     return r.returncode == 0
 

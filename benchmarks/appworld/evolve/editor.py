@@ -22,10 +22,9 @@ from benchmarks.appworld.evolve.sandbox import Sandbox
 from pico.evolver.orchestrator.config import Budget
 from pico.evolver.tree.node import HarnessNode
 
-# WHY fixability weight: the taxonomy itself flags W6/W7 as capability-ceiling /
-# noise, yet they're usually the MOST common failures, so a raw-count WHY
-# selection wastes every round on them. Down-weight so the budget flows to the
-# fixable levers (W2/W3/W4/W5) once the obvious ones are explored.
+# WHY 可修复性权重：分类本身将 W6/W7 标为能力上限或噪音，但它们通常又是最常见
+# 失败，因此按原始数量选择 WHY 会把每轮都浪费在它们上。降权后，在探索明显项后
+# 预算会流向可修复杠杆 W2/W3/W4/W5。
 WHY_FIX_WEIGHT = {
     "W6_action_state_mismatch": 0.25,
     "W7_borderline_flaky": 0.1,
@@ -253,7 +252,7 @@ def driver_select_whys(
                 {"role": "user", "content": user},
             ]
         )
-    except Exception:  # noqa: BLE001 — selection must never kill the round
+    except Exception:  # noqa: BLE001 — 选择过程绝不能中止本轮
         return [], {}
     s = raw.strip()
     if "```" in s:
@@ -461,10 +460,9 @@ def bash_edit_candidate(
         turns_left = max_turns - _turn - 1
         try:
             raw = call_fn(convo)
-        except Exception as exc:  # noqa: BLE001 — a driver error skips this candidate
-            # Surface WHY in the summary slot: a silent empty return made a
-            # dead driver indistinguishable from "designed nothing" (an entire
-            # smoke round produced zero candidates with no trace, 2026-07-09).
+        except Exception as exc:  # noqa: BLE001 — 驱动出错时跳过该候选项
+            # 在摘要槽显示 WHY：静默空返回会使失效驱动与“没有设计任何内容”无法区分；
+            # 曾有一整轮冒烟运行零候选且无追踪。
             return None, [], f"driver error: {exc}"[:300]
         obj = _loose_json(raw)
         act = (obj or {}).get("action")
@@ -489,9 +487,8 @@ def bash_edit_candidate(
         else:
             fb = 'Respond with ONE JSON action: {"action":"bash"|"write_file"|"read_trajectory"|"done", ...}'
         edited = _has_edit()
-        # Only bash read-only turns count toward the force: read_trajectory is
-        # evidence-gathering the PROTOCOL itself mandates (2-3 reads), so
-        # counting it punished drivers for following the protocol.
+        # 只有 Bash 只读轮次计入强制阈值：read_trajectory 是协议本身要求的证据收集
+        # （读取两到三次），计入会惩罚遵循协议的驱动。
         if edited:
             readonly = 0
         elif act == "bash":
@@ -523,11 +520,9 @@ def bash_edit_candidate(
         and not _has_beacon(changed)
         and any(p.endswith(".py") and _code_changed(sandbox.original(p), b) for p, b in changed.items())
     ):
-        # A code edit without a beacon is unmeasurable by Gate-b (its firing
-        # leaves no per-task record), so it is rejected before any eval spend.
-        # Prompt/config edits are exempt — .md/.yaml by extension, and .py
-        # edits that only touch string constants (the AppWorld prompt lives
-        # inside agent_cli.py); their attribution runs on trajectory presence.
+        # 没有信标的代码编辑无法由 Gate-b 测量，因为触发后不留下逐任务记录，因此在
+        # 花费评测预算前拒绝。提示词和配置编辑例外：包括 .md/.yaml，以及只修改字符串
+        # 常量的 .py（AppWorld 提示词位于 agent_cli.py）；它们按轨迹是否存在归因。
         return None, [], "missing activation_beacon in python edit"
     default = f"edited {sorted(changed)}" + (f", deleted {deleted}" if deleted else "")
     return changed or {}, deleted, (last_summary or default)
@@ -587,8 +582,7 @@ def make_bash_editor_design_fn(
             )
             if not whys:
                 whys = formula
-            # Shadow log: driver choice vs formula choice, so a few rounds of
-            # data can arbitrate which selector earns the default.
+            # 影子日志同时记录驱动选择与公式选择，使数轮数据即可判断哪个选择器应成为默认。
             print(f"[why-select] driver={whys} formula={formula} reasons={why_reasons}", flush=True)
         else:
             whys = formula

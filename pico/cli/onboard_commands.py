@@ -44,21 +44,17 @@ console = Console()
 
 _TOTAL_STEPS = 4
 
-# Sentinel returned by a screen function to ask the runner to go back one
-# screen; ``None`` from a picker means Ctrl+C (exit).
+# 页面函数返回此哨兵，要求运行器退回上一页；选择器返回 ``None`` 表示 Ctrl+C（退出）。
 _BACK = object()
 
-# Unified prompt chrome (display-only): no leading question glyph (drops
-# questionary's default "?"). A single-space qmark is rendered as one blank,
-# which — with questionary's own leading space — puts every prompt line on the
-# same 2-space column as our printed help/status lines, so the left edge stays
-# flush instead of jittering between 1- and 2-space indents. Pointer is a
-# calmer "❯" than questionary's default "»".
+# 统一提示外观（仅影响显示）：去掉开头的提问符号（弃用 questionary 默认的 "?"）。
+# 单空格 qmark 会渲染为一个空白，加上 questionary 自带的前导空格，使所有提示行与
+# 帮助/状态输出一样从第 2 列开始，左边缘保持对齐，不再在一格和两格缩进之间跳动。
+# 指针使用比 questionary 默认 "»" 更平和的 "❯"。
 _QMARK = " "
 _POINTER = "❯"
 
-# UI language, chosen on the wizard's first screen. ``_t`` returns the English
-# or Chinese variant so every later prompt / message stays bilingual.
+# UI 语言在向导第一页选择。``_t`` 返回英文或中文版本，使后续所有提示和消息保持双语。
 _LANG = "en"
 
 
@@ -68,7 +64,7 @@ def _t(en: str, zh: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Curated provider catalogue surfaced in Step 1's picker.
+# 第一步选择器中展示的精选提供商目录。
 # ---------------------------------------------------------------------------
 
 
@@ -132,9 +128,8 @@ def _theme_questionary(questionary: Any) -> None:
     @functools.wraps(_orig_select)
     def _themed_select(*args: Any, **kwargs: Any) -> Any:
         kwargs.setdefault("pointer", _POINTER)
-        # questionary shows "(Use arrow keys)" when instruction is falsy; a
-        # single space is truthy yet visually blank, so it hides that hint
-        # (the step header already prints the controls).
+        # instruction 为假值时，questionary 会显示 "(Use arrow keys)"；单空格为真值但视觉上
+        # 为空，因此可隐藏该提示（步骤标题已显示操作方法）。
         kwargs.setdefault("instruction", " ")
         return _orig_select(*args, **kwargs)
 
@@ -175,8 +170,8 @@ def _pick_language() -> None:
     questionary = _require_questionary()
     from pico.cli._styles import PICO_STYLE
 
-    # Framed like the other screens (bilingual, since no language is chosen yet)
-    # so it reads as the wizard's first step, not a bare floating list.
+    # 与其他页面采用相同框架（此时尚未选择语言，故使用双语），让它看起来是向导的
+    # 第一步，而不是孤立悬浮的列表。
     console.print()
     console.print(
         Panel(
@@ -197,7 +192,7 @@ def _pick_language() -> None:
             questionary.Choice("English", value="en"),
             questionary.Choice("中文(简体)", value="zh"),
         ],
-        default=_LANG,  # preselect the saved language on a re-run
+        default=_LANG,  # 再次运行时预选已保存的语言
         style=PICO_STYLE,
         qmark=_QMARK,
     ).ask()
@@ -207,12 +202,12 @@ def _pick_language() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Shared helpers
+# 共用辅助方法
 # ---------------------------------------------------------------------------
 
 
 def _step_header(n: int, title: str) -> None:
-    # Progress dots: filled for done/current steps, hollow for upcoming ones.
+    # 进度点：已完成和当前步骤为实心，后续步骤为空心。
     dots = " ".join("[#fbe23f]●[/#fbe23f]" if i <= n else "[grey37]○[/grey37]" for i in range(1, _TOTAL_STEPS + 1))
     console.print()
     console.print(
@@ -226,7 +221,7 @@ def _step_header(n: int, title: str) -> None:
             padding=(0, 2),
         )
     )
-    console.print()  # breathing room between the header and the step's prompts
+    console.print()  # 在标题和步骤提示之间留出呼吸空间
 
 
 def _check_tty_or_die(non_interactive: bool) -> None:
@@ -301,8 +296,7 @@ def _handle_existing_config(*, reset: bool, yes: bool, non_interactive: bool) ->
             "[#fbe23f]pico provider set[/#fbe23f] / [#fbe23f]pico channels enable[/#fbe23f]."
         )
         raise typer.Exit(2)
-    # Interactive: fall through to the wizard (per-step "Keep current" handles
-    # the existing config gracefully).
+    # 交互模式：继续进入向导（各步骤的“保留当前值”可妥善处理现有配置）。
 
 
 def _bootstrap_empty_config() -> None:
@@ -324,7 +318,7 @@ def _bootstrap_empty_config() -> None:
 
     path = get_config_path()
     if not path.exists():
-        save_config(load_config())  # writes default Config() to disk
+        save_config(load_config())  # 将默认 Config() 写入磁盘
     _init_extension_block_defaults()
     workspace = get_workspace_path()
     workspace.mkdir(parents=True, exist_ok=True)
@@ -332,7 +326,7 @@ def _bootstrap_empty_config() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Step 1 — provider primitives (reused verbatim from the 3-step wizard)
+# 步骤 1——提供商基础操作（三步向导原样复用）
 # ---------------------------------------------------------------------------
 
 
@@ -439,7 +433,7 @@ def _select_provider() -> Optional[str]:
         style=PICO_STYLE,
         qmark=_QMARK,
     ).ask()
-    return picked  # None on Ctrl+C
+    return picked  # Ctrl+C 时为 None
 
 
 def _prompt_api_key(provider: str, *, allow_back: bool = False) -> Any:
@@ -450,7 +444,7 @@ def _prompt_api_key(provider: str, *, allow_back: bool = False) -> Any:
 
     def _validate(v: str) -> Any:
         if allow_back and v == "":
-            return True  # empty is the back signal, not an error
+            return True  # 空值表示返回，而不是错误
         return (
             True
             if len(v) >= 8
@@ -483,8 +477,7 @@ def _prompt_base_url(default: str = "https://", *, allow_back: bool = False) -> 
     questionary = _require_questionary()
     from pico.cli._styles import PICO_STYLE
 
-    # With back enabled, don't seed a default — an empty field must be reachable
-    # so the user can submit nothing to rewind.
+    # 启用返回时不要预填默认值——必须允许输入框为空，用户才能提交空值退回。
     seed = "" if allow_back else default
 
     def _validate(v: str) -> Any:
@@ -589,10 +582,10 @@ def _run_oauth_login(provider: str) -> bool:
     try:
         handler()
     except typer.Exit as exc:
-        # Handlers signal a failed login with Exit(1); Exit(0) (if any) is success.
+        # 处理器以 Exit(1) 表示登录失败；Exit(0)（若有）表示成功。
         if exc.exit_code:
             return False
-    except Exception as exc:  # network / browser / token errors — recoverable
+    except Exception as exc:  # 网络、浏览器或令牌错误，可恢复
         console.print(
             _t(
                 f"  [yellow]✗ Login didn't complete: {exc}[/yellow]",
@@ -621,12 +614,10 @@ def _verify_provider(provider: str, *, skip_test: bool = False) -> tuple[bool, s
         return True, "valid", result.get("model_ids")
 
     status = result.get("status", "unknown")
-    # Some direct providers (openai / anthropic / deepseek / gemini) ship no
-    # base URL and rely on the SDK's built-in endpoint, so there's nothing to
-    # hit for a GET /v1/models pre-check — the probe reports "not_configured"
-    # because api_base is empty. That's NOT a real auth failure: skip the pre-
-    # check (the test message sent later exercises real connectivity via
-    # litellm) instead of dumping the user into the failure submenu.
+    # 一些直连提供商（openai / anthropic / deepseek / gemini）不提供 base URL，
+    # 而依赖 SDK 内置端点，因此无法通过 GET /v1/models 预检；api_base 为空会让探针
+    # 报告 "not_configured"。这不是真实的认证失败：应跳过预检（稍后发送的测试消息会
+    # 通过 litellm 验证真实连接），而不是把用户带入失败子菜单。
     if status == "not_configured" and "api_base" in (result.get("error") or ""):
         if skip_test:
             console.print(
@@ -776,12 +767,11 @@ def _pick_model(
             ).ask()
 
     if chosen is None:
-        raise typer.Exit(1)  # Ctrl+C
+        raise typer.Exit(1)  # 用户按下 Ctrl+C
     chosen = chosen.strip()
     if not chosen:
-        # Empty submit (e.g. the prefilled default was cleared) falls back to the
-        # default rather than tearing down the wizard. The no-default branch
-        # validates non-empty, so an empty value only reaches here with a default.
+        # 提交空值（例如清除了预填默认值）时回退到默认值，而不是终止向导。无默认值的
+        # 分支会校验非空，因此只有存在默认值时，空值才会到达这里。
         if default_value:
             return default_value
         raise typer.Exit(1)
@@ -817,7 +807,7 @@ def _persist_default_model(model: Optional[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Step 1 — connectivity-failure submenu + test probe
+# 步骤 1——连接失败子菜单与测试探针
 # ---------------------------------------------------------------------------
 
 
@@ -934,7 +924,7 @@ def _run_test_probe(provider: str, *, non_interactive: bool, warnings: list[str]
 
 
 # ---------------------------------------------------------------------------
-# Step 1 — add one provider (used by both first-run and the "add" entry)
+# 步骤 1——添加一个提供商（首次运行和“添加”入口共用）
 # ---------------------------------------------------------------------------
 
 
@@ -955,10 +945,9 @@ def _configure_one_provider(
     """
     from pico.providers.registry import find_by_name
 
-    # Loop so "Switch provider" on a connectivity failure rewinds to the
-    # picker instead of tearing the whole wizard down (keeps steps 2/3/4).
-    # A provider passed by flag is used once; switching then requires the
-    # interactive picker (or, in non-interactive mode, is impossible).
+    # 循环处理连接失败时的“切换提供商”，使其退回选择器而非终止整个向导
+    # （保留步骤 2/3/4）。通过参数传入的提供商只使用一次；之后切换必须使用
+    # 交互选择器（非交互模式下则无法切换）。
     flag_provider = provider
     configured_before = set(_configured_providers())
     while True:
@@ -977,8 +966,7 @@ def _configure_one_provider(
         spec = find_by_name(provider)
         is_oauth = bool(spec and spec.is_oauth)
         is_custom = provider == "custom"
-        # The interactive picker already echoes the chosen provider; only print
-        # an explicit confirmation when it came from --provider (no echo then).
+        # 交互选择器已回显所选提供商；只有来自 --provider 时才显式确认，因为此时没有回显。
         if flag_provider:
             console.print(
                 _t(
@@ -987,9 +975,8 @@ def _configure_one_provider(
                 )
             )
 
-        # Snapshot the stored key before _collect_credentials overwrites it, so a
-        # failed re-configuration of an existing provider can be rolled back to
-        # its prior working key (rather than left holding the just-typed bad one).
+        # 在 _collect_credentials 覆盖前保存现有密钥，使重新配置已有提供商失败时能恢复
+        # 原先可用的密钥，而不是留下刚输入的错误密钥。
         _prev = (_load_raw_config().get("providers") or {}).get(provider) or {}
         old_key = _prev.get("apiKey")
         old_base = _prev.get("apiBase")
@@ -1004,8 +991,7 @@ def _configure_one_provider(
             non_interactive=non_interactive,
         )
         if custom_model is _BACK:
-            # User backed out of the first credential field — rewind to the
-            # provider picker (drop any flag so the picker actually shows).
+            # 用户从第一个凭据字段返回——退回提供商选择器（移除参数，确保选择器会显示）。
             flag_provider = None
             continue
 
@@ -1020,11 +1006,9 @@ def _configure_one_provider(
             defer_first_turn=True,
         )
         if chosen_model is None:
-            # "Switch provider" — re-run the picker (drop the flag so the second
-            # pass prompts rather than reusing the failed flag value). Roll back
-            # the just-written key: clear it if this provider was newly added this
-            # pass, or restore the prior key if we were reconfiguring an existing
-            # one (so a failed edit doesn't clobber a working provider).
+            # “切换提供商”——重新运行选择器（移除参数，让第二轮提示选择，而不是复用失败的
+            # 参数值）。回滚刚写入的密钥：若本轮新添加该提供商则清空；若重新配置已有
+            # 提供商则恢复旧密钥，避免失败的编辑覆盖可用配置。
             if provider not in configured_before:
                 _write_provider_fields(provider, {"api_key": ""})
             elif old_key:
@@ -1058,7 +1042,7 @@ def _collect_credentials(
                 "onboard."
             )
             raise typer.Exit(2)
-        # Loop so a failed login offers retry / back instead of crashing out.
+        # 循环处理失败登录，以提供重试/返回选项，而不是直接退出。
         while True:
             if _run_oauth_login(provider):
                 return None
@@ -1073,9 +1057,8 @@ def _collect_credentials(
                 continue
             return _BACK
 
-    # Pure interactive path (no creds came from flags): prompt field-by-field
-    # with empty-submit = back; backing out of the first field rewinds to the
-    # provider picker.
+            # 纯交互路径（参数未提供凭据）：逐字段提示，提交空值表示返回；从第一个字段
+            # 返回会退回提供商选择器。
     pure_interactive = not non_interactive and not api_key and (not is_custom or (not base_url and not model))
     if pure_interactive:
         prompts: list[Callable[[], Any]] = [lambda: _prompt_api_key(provider, allow_back=True)]
@@ -1161,9 +1144,8 @@ def _resolve_model_with_test(
 
     if is_custom:
         assert custom_model is not None, "custom provider must have model set earlier"
-        # Custom endpoints were previously trusted without a test message — the
-        # highest-typo-risk case. Send the real probe (it builds from the stored
-        # config, so a wrong base_url / model id fails here, not at first chat).
+        # 自定义端点过去未发送测试消息便直接信任，这是最容易输错的场景。发送真实探针
+        # （它根据已保存配置构建，因此错误的 base_url 或模型 ID 会在此处失败，而非首次对话时）。
         _persist_default_model(custom_model)
         if skip_test or defer_first_turn:
             return custom_model
@@ -1174,7 +1156,7 @@ def _resolve_model_with_test(
             if result == "rekey":
                 _write_provider_fields(spec.name, {"api_key": _prompt_api_key(spec.name)})
                 continue
-            return custom_model  # ok / continue
+            return custom_model  # 成功并继续
 
     current = _load_current_default_model()
     while True:
@@ -1193,7 +1175,7 @@ def _resolve_model_with_test(
             return None
         if result == "rekey":
             _write_provider_fields(spec.name, {"api_key": _prompt_api_key(spec.name)})
-            # Re-test the same model with the new key (picker defaults to it).
+            # 使用新密钥重新测试同一模型（选择器默认选中它）。
             current = chosen
             user_model_flag = None
             continue
@@ -1201,11 +1183,11 @@ def _resolve_model_with_test(
             current = chosen
             user_model_flag = None
             continue
-        return chosen  # ok / continue
+        return chosen  # 成功并继续
 
 
 # ---------------------------------------------------------------------------
-# Step 1 — multi-provider entry (existing-config branch: done / add / edit)
+# 步骤 1——多提供商入口（已有配置分支：完成/添加/编辑）
 # ---------------------------------------------------------------------------
 
 
@@ -1276,8 +1258,7 @@ def _manage_existing_providers(*, non_interactive: bool) -> None:
                     continue
             _write_provider_fields(target, {"api_key": ""})
             if was_default_source:
-                # Clear the now-dangling default so step 1's guard forces a
-                # re-pick instead of leaving a model whose provider has no key.
+                # 清除失效的默认值，让步骤 1 的防护强制重新选择，避免留下提供商无密钥的模型。
                 from pico.config.update import set_default_model
 
                 set_default_model("")
@@ -1343,10 +1324,9 @@ def _step1_provider(
             qmark=_QMARK,
         ).ask()
         if action is None:
-            raise typer.Exit(1)  # Ctrl+C exits; never treat it as "done"
+            raise typer.Exit(1)  # Ctrl+C 表示退出，绝不能视为“完成”
         if action == "done":
-            # Step 1 is required: never advance without at least one provider AND
-            # a default model, so deleting every provider can't slip through.
+            # 步骤 1 必填：至少有一个提供商且已设默认模型才能前进，避免删除所有提供商后漏过校验。
             if not (_configured_providers() and _load_current_default_model()):
                 console.print(
                     _t(
@@ -1371,7 +1351,7 @@ def _step1_provider(
 
 
 # ---------------------------------------------------------------------------
-# Step 3 — sandbox / run location
+# 步骤 3——沙箱/运行位置
 # ---------------------------------------------------------------------------
 
 
@@ -1463,7 +1443,7 @@ def _step3_sandbox(*, skip: bool, non_interactive: bool) -> object:
         )
         return None
 
-    # boxlite — probe before committing.
+    # boxlite——提交配置前先探测。
     while True:
         ok, reason = _probe_boxlite()
         if ok:
@@ -1489,7 +1469,7 @@ def _step3_sandbox(*, skip: bool, non_interactive: bool) -> object:
                     "uv tool install --force 'pico-harness\\[channels,sandbox]'[/dim]",
                 )
             )
-        else:  # reason == "error": importable but failed to initialize
+        else:  # reason 为 error：可导入但初始化失败
             console.print(
                 _t(
                     "  [yellow]✗ Sandbox runtime (boxlite) is installed but failed to "
@@ -1522,7 +1502,7 @@ def _step3_sandbox(*, skip: bool, non_interactive: bool) -> object:
 
 
 # ---------------------------------------------------------------------------
-# Step 4 — chat channel (stackable)
+# 步骤 4——聊天渠道（可叠加）
 # ---------------------------------------------------------------------------
 
 
@@ -1533,7 +1513,7 @@ def _enabled_channels() -> list[str]:
     return [name for name, c in channels.items() if isinstance(c, dict) and c.get("enabled")]
 
 
-# Curated order for Pico's retained domestic Channels.
+# Pico 保留的国内渠道按精选顺序排列。
 _CHANNEL_ORDER = (
     "feishu",
     "qq",
@@ -1541,8 +1521,7 @@ _CHANNEL_ORDER = (
 )
 
 
-# Where to obtain each channel's credentials — shown (dim) before the field
-# prompts so the user knows where to fetch the token / keys.
+# 各渠道凭据的获取位置——在字段提示前以淡色显示，让用户知道从哪里获取令牌或密钥。
 _CHANNEL_CRED_HELP: dict[str, tuple[str, str]] = {
     "feishu": (
         "Feishu / Lark Open Platform → your app → Credentials for App ID & App Secret.",
@@ -1590,8 +1569,7 @@ def _prompt_channel_fields(channel: str) -> Any:
         console.print(f"  [red]✗[/red] {exc}")
         raise typer.Exit(1)
 
-    # Pre-scan which credential fields we'll ask for, so we can tell the user
-    # up front what's being configured (and handle the zero-field case).
+    # 预先扫描将要询问的凭据字段，以便提前告知用户正在配置什么，并处理零字段场景。
     promptable = [
         (path, spec)
         for path, spec in specs.items()
@@ -1627,10 +1605,9 @@ def _prompt_channel_fields(channel: str) -> Any:
         description = spec.get("description", "")
         opt_tag = "" if required else _t(" (optional)", " (可选)")
         prompt_label = f"{path}{opt_tag}" + (f" — {description}" if description else "") + ":"
-        # First field's empty submit rewinds to the channel picker; a later
-        # optional field's empty submit skips it; a later required field re-prompts
-        # (empty was previously accepted silently, enabling a half-configured
-        # channel — the write layer treats "required" as a UX marker only).
+        # 第一个字段提交空值会退回渠道选择器；后续可选字段提交空值会跳过；后续必填字段
+        # 则重新提示（过去会静默接受空值，导致启用仅配置一半的渠道——写入层只把
+        # "required" 当作 UX 标记）。
         allow_back = idx == 0
         placeholder = _field_placeholder(allow_back, required)
         while True:
@@ -1647,11 +1624,11 @@ def _prompt_channel_fields(channel: str) -> Any:
                 fields[path] = value
                 break
             if allow_back:
-                return _BACK  # first field empty → back to the channel picker
+                return _BACK  # 第一个字段为空则返回渠道选择器
             if required:
                 console.print(_t(f"  [yellow]{path} is required.[/yellow]", f"  [yellow]{path} 为必填项。[/yellow]"))
-                continue  # re-prompt instead of enabling a channel missing a credential
-            break  # optional field: empty submit skips it
+                continue  # 重新提示，避免启用缺少凭据的渠道
+            break  # 可选字段提交空值时跳过
     return fields
 
 
@@ -1696,9 +1673,8 @@ def _scancode_login(channel: str, *, non_interactive: bool = False) -> None:
     from pico.channels.registry import discover_specs
     from pico.config.update_channels import disable_channel
 
-    # Enable first so the config section exists for the factory to read while we
-    # attempt login. We REVERT this (disable) on any path that doesn't complete
-    # login, so a cancelled / skipped scan never shows up as "connected".
+    # 先启用，使登录尝试期间工厂能读取对应配置段。任何未完成登录的路径都会回滚为禁用，
+    # 因此取消或跳过扫码绝不会显示为“已连接”。
     _enable_channel(channel, {})
 
     specs = discover_specs()
@@ -1708,11 +1684,9 @@ def _scancode_login(channel: str, *, non_interactive: bool = False) -> None:
         console.print(_t(f"  [red]✗ Unknown channel: {channel}[/red]", f"  [red]✗ 未知渠道:{channel}[/red]"))
         return
 
-    # Enabled above so the factory can read the config section during login. ANY
-    # path that doesn't finish login must revert the enable — including Ctrl+C in
-    # a submenu (raises typer.Exit) or mid-scan (KeyboardInterrupt), neither an
-    # ``Exception`` subclass — so wrap the whole flow and disable in ``finally``
-    # unless we actually logged in.
+    # 上方已启用，便于工厂在登录期间读取配置段。任何未完成登录的路径都必须撤销启用，
+    # 包括子菜单中按 Ctrl+C（抛出 typer.Exit）或扫码中断（KeyboardInterrupt）；两者都不是
+    # ``Exception`` 子类，因此需包住整个流程，并在未真正登录时于 ``finally`` 中禁用。
     logged_in = False
     try:
         while True:
@@ -1746,10 +1720,9 @@ def _scancode_login(channel: str, *, non_interactive: bool = False) -> None:
             )
             from loguru import logger as _wiz_logger
 
-            # The wizard silences Pico logs for a clean UI, but a scancode login
-            # emits its QR / link / progress / failure reason through loguru. Re-
-            # enable ONLY this channel's adapter subtree for the login attempt (not
-            # all of Pico, which would dump unrelated noise), then restore quiet.
+            # 向导会静音 Pico 日志以保持 UI 整洁，但扫码登录通过 loguru 输出二维码、链接、进度和
+            # 失败原因。登录尝试期间只重新启用当前渠道的适配器子树（而非整个 Pico，以免输出
+            # 无关噪声），随后恢复静音。
             _login_log_scope = f"pico.channels.adapters.{channel}"
             try:
                 _wiz_logger.enable(_login_log_scope)
@@ -1791,9 +1764,8 @@ def _scancode_login(channel: str, *, non_interactive: bool = False) -> None:
             return
     finally:
         if not logged_in:
-            # Any non-login exit (skip, no-config, submenu Ctrl+C, mid-scan
-            # interrupt) reverts the enable so a cancelled scan never persists as
-            # "connected". The config section is kept for `pico channels login`.
+            # 任何未登录的退出（跳过、无配置、子菜单 Ctrl+C、扫码中断）都会撤销启用，确保取消的
+            # 扫码不会持久化为“已连接”。配置段仍保留，供 `pico channels login` 使用。
             disable_channel(channel)
 
 
@@ -1833,7 +1805,7 @@ def _add_one_channel(*, non_interactive: bool = False) -> None:
             return
         fields = _prompt_channel_fields(channel)
         if fields is _BACK:
-            continue  # backed out of the first field — re-pick a channel
+            continue  # 从第一个字段返回，重新选择渠道
         _enable_channel(channel, fields)
         console.print(_t(f"  [green]✓ {channel} enabled.[/green]", f"  [green]✓ {channel} 已启用。[/green]"))
         return
@@ -1874,7 +1846,7 @@ def _manage_existing_channels() -> None:
         if action == "edit":
             fields = _prompt_channel_fields(target)
             if fields is _BACK:
-                continue  # backed out — return to the manage menu
+                continue  # 返回管理菜单
             if fields:
                 set_channel_fields(target, fields)
             console.print(
@@ -2000,7 +1972,7 @@ def _step4_channel(*, channel: Optional[str], skip: bool, non_interactive: bool)
 
 
 # ---------------------------------------------------------------------------
-# Step 2 — long-term repository Memory and the first Runtime Turn
+# 步骤 2——长期仓库记忆与首次运行时轮次
 # ---------------------------------------------------------------------------
 
 
@@ -2203,7 +2175,7 @@ def _step2_memory(
 
 
 # ---------------------------------------------------------------------------
-# Final summary
+# 最终总结
 # ---------------------------------------------------------------------------
 
 
@@ -2245,7 +2217,7 @@ def _print_next_steps(*, warnings: list[str]) -> None:
             )
         )
 
-    # Recap what was configured (read from disk) so the user has closure.
+    # 从磁盘读取并回顾已完成的配置，让用户获得明确的收尾。
     provs = ", ".join(_provider_label(n).split(" (")[0] for n in _configured_providers()) or "—"
     run_loc = (
         _t("Host (direct)", "本机直接运行")
@@ -2292,7 +2264,7 @@ def _print_next_steps(*, warnings: list[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Wizard runner (screen state machine) + reusable entry point
+# 向导运行器（页面状态机）与可复用入口
 # ---------------------------------------------------------------------------
 
 
@@ -2360,15 +2332,15 @@ def _run_wizard_body(
 ) -> None:
     global _LANG
     _check_tty_or_die(non_interactive)
-    _LANG = _config_language()  # start from the saved language (default "en")
+    _LANG = _config_language()  # 从已保存语言开始（默认为 "en"）
     if not non_interactive:
-        _pick_language()  # may change _LANG (persisted after bootstrap below)
+        _pick_language()  # 可能改变 _LANG（在下方引导完成后持久化）
     _handle_existing_config(reset=reset, yes=yes, non_interactive=non_interactive)
     _bootstrap_empty_config()
     if not non_interactive:
         from pico.config.update import set_language
 
-        set_language(_LANG)  # persist now that config.json exists
+        set_language(_LANG)  # config.json 已存在，现在持久化语言
 
     console.print()
     console.print(
@@ -2392,9 +2364,8 @@ def _run_wizard_body(
 
     warnings: list[str] = []
 
-    # Screen state machine. Each screen returns ``_BACK`` to rewind or anything
-    # else to advance. Step 1 is required; backing out of it from the first
-    # screen is a no-op (there's no earlier screen).
+    # 页面状态机。每个页面返回 ``_BACK`` 表示后退，返回其他值表示前进。步骤 1 必填；
+    # 在首个页面从中后退不会产生效果，因为没有更早的页面。
     screens: list[Callable[[], object]] = [
         lambda: _step1_provider(
             provider=provider,
@@ -2422,13 +2393,10 @@ def _run_wizard_body(
         result = screens[index]()
         if result is _BACK:
             if index == 0:
-                # The language picker ran before the state machine, so Step 1
-                # is the first *numbered* screen but not the first screen the
-                # user saw. Backing out of it returns to the language picker:
-                # re-pick (persisting the choice) and then re-display Step 1 in
-                # the chosen language. Step 1 stays required -- we never skip
-                # past it, which would leave provider/model unwritten and
-                # re-trip the startup gate into an infinite loop.
+                # 语言选择器在状态机前运行，因此步骤 1 是首个带编号页面，却不是用户看到的
+                # 第一个页面。从中后退会回到语言选择器：重新选择并持久化后，再以所选语言
+                # 显示步骤 1。步骤 1 始终必填，绝不能跳过；否则提供商/模型不会写入，启动门
+                # 会再次触发并陷入无限循环。
                 _pick_language()
                 from pico.config.update import set_language
 
@@ -2442,7 +2410,7 @@ def _run_wizard_body(
 
 
 # ---------------------------------------------------------------------------
-# Startup gate - invoked by bare `pico` / `pico run` / TUI entry points
+# 启动门——由裸 `pico`、`pico run` 和 TUI 入口调用
 # ---------------------------------------------------------------------------
 
 
@@ -2461,7 +2429,7 @@ def ensure_configured_or_onboard(*, non_interactive: bool = False) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Typer entry point
+# Typer 入口
 # ---------------------------------------------------------------------------
 
 

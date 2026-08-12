@@ -72,8 +72,7 @@ def test_enabled_registers_meta_tools(workspace) -> None:
 
 
 def test_strategy_registered_first(workspace) -> None:
-    # A pre-existing strategy must end up *after* tool_search (which is inserted
-    # first so it filters tools before any cache-marking strategy runs).
+
     registry = StrategyRegistry([_MarkerStrategy()])
     loop = _make_loop(workspace, ToolSearchConfig(enabled=True), strategies=registry)
     names = [s.name for s in loop.strategies.strategies]
@@ -109,10 +108,7 @@ def test_default_registry_excludes_media_generation_tools(workspace) -> None:
 
 @pytest.mark.asyncio
 async def test_enabled_loop_keeps_interaction_primitives_visible(workspace) -> None:
-    # Above the threshold the strategy compacts the real loop's tool list: the
-    # file/interaction/orchestration primitives (read_file / message / ask_user /
-    # spawn) and the meta-tools keep their schema, while a cataloged domain tool
-    # (web_search) is withheld and reachable only via tool_search.
+
     loop = _make_loop(workspace, ToolSearchConfig(enabled=True, compaction_threshold=5))
     assert loop.tools.has("ask_user") and loop.tools.has("spawn") and loop.tools.has("web_search")
     tools = loop.tools.get_definitions()

@@ -37,37 +37,33 @@ from pathlib import Path
 from typing import Iterable
 
 # ---------------------------------------------------------------------------
-# Immutable pattern list (spec §22.2)
+# 不可变模式列表（规范第 22.2 节）
 # ---------------------------------------------------------------------------
 
 
-# All paths are repo-relative with forward-slash separators.
-# A trailing slash means "this directory and everything inside it".
+# 所有路径均相对于仓库并使用正斜杠分隔；末尾斜杠表示该目录及其全部内容。
 IMMUTABLE_PATTERNS: tuple[str, ...] = (
-    # ── L1 — Self-reference ────────────────────────────────────────────────
+    # ── L1——自指 ─────────────────────────────────────────────────────────
     "pico/evolver/",
-    # ── L2 — Evaluation substrate ──────────────────────────────────────────
+    # ── L2——评测基础设施 ─────────────────────────────────────────────────
     "pico/eval_engine/engine.py",
     "pico/eval_engine/adapter/",
     "pico/eval_engine/judge/",
-    # The AppWorld evolve glue (adapter/eval/diagnose/editor/precheck, plus
-    # grade.py — the /evaluate call, success/infra classification and result
-    # write) scores candidates; it sits INSIDE the designer whitelist tree,
-    # so the guard must carve it out (maps the upstream evaluation/ entry).
+    # AppWorld 演化胶水层（adapter/eval/diagnose/editor/precheck，以及执行 /evaluate 调用、
+    # 成功/基础设施分类和结果写入的 grade.py）负责给候选项评分。它位于设计器白名单树内部，
+    # 因此防护必须把它排除，对应上游 evaluation/ 入口。
     "benchmarks/appworld/evolve/",
-    # The batch scorer orchestrates trials and records runner-level infra;
-    # a candidate that can edit it can reshape its own denominator. The
-    # editable agent surface is agent_cli.py (loop/prompt) and tool.py.
+    # 批量评分器编排试验并记录运行器级基础设施；允许候选项编辑它就等于允许改变自己的分母。
+    # 可编辑的智能体表面是 agent_cli.py（循环/提示）和 tool.py。
     "benchmarks/appworld/batch.py",
-    # ── L3 — Capability contract ───────────────────────────────────────────
+    # ── L3——能力契约 ─────────────────────────────────────────────────────
     "pico/agent/loop/main.py",
     "pico/agent/context/",
     "pico/agent/tools/base.py",
     "pico/agent/tools/registry.py",
     "pico/agent/personalizer/",
     "pico/agent/subagent/",
-    # Pico uses the spine in place of the upstream agent API: the runner is the
-    # bridge every turn goes through, same contract level.
+    # Pico 使用 spine 代替上游智能体 API；运行器是每轮必经的桥梁，属于同一契约层级。
     "pico/agent/spine_runner.py",
     "pico/spine/",
     "pico/providers/",
@@ -76,7 +72,7 @@ IMMUTABLE_PATTERNS: tuple[str, ...] = (
     "pico/context_engine/",
     "pico/sandbox/",
     "pico/security/",
-    # config: schema/loader (.py) are immutable; values (.yaml/.json) mutable
+    # 配置：schema/loader（.py）不可变，值文件（.yaml/.json）可变。
     "pico/config/__init__.py",
     "pico/config/pico.py",
     "pico/config/loader.py",
@@ -85,24 +81,24 @@ IMMUTABLE_PATTERNS: tuple[str, ...] = (
     "pico/config/update.py",
     "pico/config/update_channels.py",
     "pico/config/update_providers.py",
-    # ── L4 — Audit / data integrity ────────────────────────────────────────
+    # ── L4——审计/数据完整性 ──────────────────────────────────────────────
     "pico/eval_engine/hooks/tool_audit_hook.py",
-    # ── L5 — Tests, deps, CI ───────────────────────────────────────────────
+    # ── L5——测试、依赖和 CI ──────────────────────────────────────────────
     "tests/",
     "pyproject.toml",
     "uv.lock",
     ".github/",
-    # ── Core version (spec §22.5) — only humans bump ───────────────────────
+    # ── 核心版本（规范第 22.5 节）——仅人工递增 ───────────────────────────
     "pico/__init__.py",
 )
 
 
-# Carve-outs for paths inside immutable subtrees that should remain mutable.
+# 不可变子树中仍应保持可变的路径例外。
 MUTABLE_OVERRIDES: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# 公共 API
 # ---------------------------------------------------------------------------
 
 
@@ -126,7 +122,7 @@ class UnsafePathError(ImmutablePathError):
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# 内部辅助方法
 # ---------------------------------------------------------------------------
 
 
@@ -192,7 +188,7 @@ def _match(path: str, pattern: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Predicates
+# 谓词
 # ---------------------------------------------------------------------------
 
 

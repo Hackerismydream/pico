@@ -80,7 +80,7 @@ const trimSnips = (snips: PasteSnippet[]): PasteSnippet[] => {
   return out.length === snips.length ? snips : out
 }
 
-/** Insert text at the cursor position, adding spacing to separate from adjacent non-whitespace. */
+/** 在光标位置插入文本，并添加空格将其与相邻非空白字符分开。 */
 function insertAtCursor(value: string, cursor: number, text: string): { cursor: number; value: string } {
   const lead = cursor > 0 && !/\s/.test(value[cursor - 1] ?? '') ? ' ' : ''
   const tail = cursor < value.length && !/\s/.test(value[cursor] ?? '') ? ' ' : ''
@@ -93,10 +93,9 @@ function insertAtCursor(value: string, cursor: number, text: string): { cursor: 
 }
 
 /**
- * Quick client-side heuristic to detect text that looks like a dropped file path.
- * When this returns true the composer sends RPC calls to the server for actual
- * validation. Keep in sync with _detect_file_drop() in cli.py — see that
- * function for the canonical prefix list.
+ * 在客户端快速启发式检测形似拖入文件路径的文本。返回 true 后，编辑框会向
+ * 服务端发送 RPC 做实际验证。须与 cli.py 中的 _detect_file_drop() 保持同步；
+ * 规范前缀列表以该函数为准。
  */
 export function looksLikeDroppedPath(text: string): boolean {
   const trimmed = text.trim()
@@ -105,7 +104,7 @@ export function looksLikeDroppedPath(text: string): boolean {
     return false
   }
 
-  // file:// URIs, relative, home-relative, quoted, and Windows drive paths
+  // file:// URI、相对路径、主目录相对路径、带引号路径以及 Windows 盘符路径。
   if (
     trimmed.startsWith('file://') ||
     trimmed.startsWith('~/') ||
@@ -121,9 +120,8 @@ export function looksLikeDroppedPath(text: string): boolean {
     return true
   }
 
-  // Bare absolute paths (start with /) — require a second '/' or a '.' to avoid
-  // false positives on short strings like "/api" or "/help" which would trigger
-  // unnecessary RPC round-trips.
+  // 对以 / 开头的裸绝对路径，要求再出现一个 / 或一个点，避免把 "/api"、
+  // "/help" 等短字符串误判为路径并触发不必要的 RPC 往返。
   if (trimmed.startsWith('/')) {
     const rest = trimmed.slice(1)
 
@@ -191,12 +189,7 @@ export function useComposerState({
 
       const sid = getUiState().sid
 
-      if (
-        sid &&
-        !getUiState().sessionMutating &&
-        !getUiState().sessionSwitching &&
-        looksLikeDroppedPath(cleanedText)
-      ) {
+      if (sid && !getUiState().sessionMutating && !getUiState().sessionSwitching && looksLikeDroppedPath(cleanedText)) {
         try {
           const attached = await gw.request<ImageAttachResponse>('image.attach', {
             path: cleanedText,
@@ -218,7 +211,7 @@ export function useComposerState({
             return { ...insertAtCursor(value, cursor, remainder), fallbackText: remainder }
           }
         } catch {
-          // Fall through to normal text paste behavior.
+          // 回退到普通文本粘贴行为。
         }
       }
 

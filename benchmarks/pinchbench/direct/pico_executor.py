@@ -20,7 +20,7 @@ from task_loader import Task
 
 logger = logging.getLogger(__name__)
 
-# Default OpenAI-compatible benchmark config.
+# 默认 OpenAI 兼容基准配置。
 DEFAULT_API_KEY = (
     os.environ.get("OPENROUTER_API_KEY") or os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("OPENAI_API_KEY") or ""
 )
@@ -54,12 +54,12 @@ async def _fetch_openrouter_model_ids(api_key: str) -> set[str]:
 
 
 # ---------------------------------------------------------------------------
-# Standard-only ModelRouter (benchmark-only; filters non-standard model IDs)
+# 仅标准模型的 ModelRouter（仅供基准使用，过滤非标准模型标识）。
 # ---------------------------------------------------------------------------
 
-# Legitimate OpenRouter providers use lowercase names (e.g. "anthropic", "z-ai",
-# "minimax").  User-namespace submissions have mixed-case or underscore providers
-# (e.g. "Jobeous_II", "JoePro").  Reject anything that doesn't match.
+# 合法 OpenRouter 供应商使用小写名称，如 "anthropic"、"z-ai"、"minimax"。
+# 用户命名空间提交的供应商名称含大小写混合或下划线，如 "Jobeous_II"、
+# "JoePro"；拒绝不符合规范的项。
 _STANDARD_PROVIDER_RE = re.compile(r"^[a-z][a-z0-9\-\.]*$")
 
 
@@ -92,27 +92,25 @@ class _StandardModelRouter:
         self._valid_ids: set[str] = set()
 
     async def initialize(self) -> None:
-        # Fetch valid OpenRouter model IDs and initialize benchmark data in parallel
+        # 并行获取有效 OpenRouter 模型标识并初始化基准数据。
         self._valid_ids, _ = await asyncio.gather(
             _fetch_openrouter_model_ids(self._api_key),
             self._inner.initialize(),
         )
-        # Filter benchmark data to models actually available on OpenRouter.
-        # Always filter when we have benchmark data; if _valid_ids is empty
-        # (fetch failed), log a warning but still remove non-standard models
-        # by requiring the "provider/model" format without user-prefixes.
+        # 将基准数据过滤为 OpenRouter 上实际可用的模型。只要有基准数据就始终过滤；
+        # 若获取失败导致 _valid_ids 为空，则记录警告，但仍要求不带用户前缀的
+        # "provider/model" 格式，以移除非标准模型。
         if self._inner._data:
             before = len(self._inner._data)
             if self._valid_ids:
-                # Keep models that are both in OpenRouter's live list AND have a
-                # standard lowercase provider name (double-gate against user namespaces).
+                # 仅保留同时位于 OpenRouter 实时列表且供应商名为标准小写的模型，
+                # 对用户命名空间实施双重门禁。
                 self._inner._data = {
                     k: v for k, v in self._inner._data.items() if k in self._valid_ids and _is_standard_model_id(k)
                 }
             else:
-                # Fallback when live fetch failed: require lowercase provider name.
-                # This rejects "Jobeous_II/…", "JoePro/…" etc. even though they
-                # have exactly one "/" segment.
+                # 实时获取失败时回退为要求小写供应商名。即使 "Jobeous_II/…"、
+                # "JoePro/…" 等恰有一个 "/" 分段，也会被拒绝。
                 logger.warning(
                     "OpenRouter model list unavailable; filtering benchmark data "
                     "to standard lowercase-provider 'provider/model' entries only"
@@ -133,7 +131,7 @@ class _StandardModelRouter:
 
 
 # ---------------------------------------------------------------------------
-# Usage-tracking provider wrapper (benchmark-only; does not touch loop.py)
+# 用量跟踪供应商包装器（仅供基准使用，不修改 loop.py）。
 # ---------------------------------------------------------------------------
 
 
@@ -152,8 +150,8 @@ class _UsageTrackingProvider:
             "completion_tokens": 0,
             "total_tokens": 0,
         }
-        self.model_calls: List[str] = []  # ordered list of models called
-        # per-model token breakdown: model -> {prompt_tokens, completion_tokens}
+        self.model_calls: List[str] = []  # 按调用顺序排列的模型列表。
+        # 各模型 token 明细：model -> {prompt_tokens, completion_tokens}。
         self.per_model_usage: Dict[str, Dict[str, int]] = {}
 
     def reset(self) -> None:
@@ -161,24 +159,24 @@ class _UsageTrackingProvider:
         self.model_calls = []
         self.per_model_usage = {}
 
-    # --- intercept the one method that matters ---
+    # --- 拦截唯一关键方法 ---
 
     async def chat_with_retry(self, messages, tools=None, model=None, **kwargs):
         response = await self._inner.chat_with_retry(messages, tools=tools, model=model, **kwargs)
-        # accumulate total usage
+        # 累计总用量。
         for k in self.accumulated:
             self.accumulated[k] += response.usage.get(k, 0)
-        # record which model was actually called
+        # 记录实际调用的模型。
         effective = model or self._inner.get_default_model()
         self.model_calls.append(effective)
-        # accumulate per-model usage
+        # 累计各模型用量。
         if effective not in self.per_model_usage:
             self.per_model_usage[effective] = {"prompt_tokens": 0, "completion_tokens": 0}
         self.per_model_usage[effective]["prompt_tokens"] += response.usage.get("prompt_tokens", 0)
         self.per_model_usage[effective]["completion_tokens"] += response.usage.get("completion_tokens", 0)
         return response
 
-    # --- transparent delegation ---
+    # --- 透明委托 ---
 
     def __getattr__(self, name):
         return getattr(self._inner, name)
@@ -332,16 +330,16 @@ def _estimate_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -
     Falls back to _fallback_pricing for models not yet in LiteLLM's DB.
     Returns None if the model is unknown to both.
     """
-    # Manual fallback pricing ($/token) for models absent from LiteLLM's DB.
-    # Source: OpenRouter model pages (as of 2026-03).
+    # LiteLLM 数据库缺失模型的手工回退定价（美元/token）。来源为截至 2026-03 的
+    # OpenRouter 模型页面。
     _fallback_pricing: Dict[str, tuple[float, float]] = {
-        "z-ai/glm-4.5-air": (0.13e-6, 0.85e-6),  # $0.13/$0.85 per 1M tokens
+        "z-ai/glm-4.5-air": (0.13e-6, 0.85e-6),  # 每百万 token 为 $0.13/$0.85。
     }
 
     try:
         import litellm
 
-        # LiteLLM expects "openrouter/<provider>/<model>" format for OpenRouter models.
+        # LiteLLM 要求 OpenRouter 模型采用 "openrouter/<provider>/<model>" 格式。
         or_model = f"openrouter/{model}" if not model.startswith("openrouter/") else model
         prompt_cost, completion_cost = litellm.cost_per_token(
             model=or_model,
@@ -352,7 +350,7 @@ def _estimate_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -
     except Exception:
         pass
 
-    # Fallback for models not in LiteLLM DB
+    # LiteLLM 数据库中不存在模型时的回退路径。
     base_model = model.removeprefix("openrouter/")
     if base_model in _fallback_pricing:
         p_per_tok, c_per_tok = _fallback_pricing[base_model]
@@ -414,14 +412,14 @@ async def execute_task(
     from pico.config.schema import ExecToolConfig
     from pico.session.manager import SessionManager
 
-    # Prepare workspace
+    # 准备工作区。
     task_workspace = prepare_workspace(task, workspace, assets_dir)
 
-    # Create provider wrapped for usage tracking
+    # 创建带用量跟踪包装的供应商。
     raw_provider = _make_benchmark_provider(model, api_key, api_base, provider_name)
     tracked_provider = _UsageTrackingProvider(raw_provider)
 
-    # Optionally attach EcoClaw-style router (standard OpenRouter models only)
+    # 可选附加 EcoClaw 风格路由器，仅支持标准 OpenRouter 模型。
     router = None
     if routing_profile:
         if provider_name != "openrouter":
@@ -433,30 +431,28 @@ async def execute_task(
     session_mgr = SessionManager(task_workspace)
     session_key = f"bench:{task.task_id}"
 
-    # Load skill_forge config so injection_mode / inject_max / mass_library_db
-    # etc. are honored under benchmark runs. Without this AgentLoop receives
-    # ``skill_forge_config=None`` → SkillService falls back to dataclass
-    # defaults (e.g. injection_mode="summary"), regardless of user config.
+    # 加载 skill_forge 配置，使基准运行遵守 injection_mode、inject_max、
+    # mass_library_db 等设置。否则 AgentLoop 收到 ``skill_forge_config=None``，
+    # SkillService 会忽略用户配置并回退到数据类默认值，如 injection_mode="summary"。
     from pico.config.pico import load_pico_config
 
     _ec_cfg = load_pico_config()
     skill_forge_cfg = getattr(_ec_cfg, "skill_forge", None)
 
     agent = AgentLoop(
-        provider=tracked_provider,  # wrapped provider — transparent to AgentLoop
+        provider=tracked_provider,  # 包装后的供应商，对 AgentLoop 透明。
         workspace=task_workspace,
         model=model,
         max_iterations=40,
         context_window_tokens=65_536,
         exec_config=ExecToolConfig(),
-        restrict_to_workspace=True,  # sandbox for benchmark safety
+        restrict_to_workspace=True,  # 为基准安全限制在工作区沙箱内。
         session_manager=session_mgr,
         router=router,
         skill_forge_config=skill_forge_cfg,
         runtime_config=getattr(_ec_cfg, "runtime", None),
-        # Benchmarks are non-interactive batch runs - opt out of Bug2's
-        # per-turn shadow-git checkpoint (no recovery channel to inject
-        # into, and we don't want ``.pico/shadow.git`` in task workspaces).
+        # 基准是非交互式批量运行，因此禁用 Bug2 的逐轮 shadow-git 检查点；既没有
+        # 可注入恢复信息的渠道，也不希望任务工作区出现 ``.pico/shadow.git``。
         interactive=False,
     )
 
@@ -499,10 +495,10 @@ async def execute_task(
 
     execution_time = time.time() - start_time
 
-    # Collect usage & cost from the tracking wrapper
+    # 从跟踪包装器收集用量与成本。
     usage = dict(tracked_provider.accumulated)
     models_used = list(tracked_provider.model_calls)
-    # Sum cost across all models using their actual per-model token counts
+    # 按各模型实际 token 数量汇总全部模型成本。
     total_cost: float | None = None
     for m, m_usage in tracked_provider.per_model_usage.items():
         partial = _estimate_cost_usd(
@@ -514,7 +510,7 @@ async def execute_task(
             total_cost = (total_cost or 0.0) + partial
     cost_usd = total_cost
 
-    # Extract transcript from session
+    # 从会话中提取记录。
     session = session_mgr.get_or_create(session_key)
     raw_messages = list(session.messages)
     transcript = _session_to_openclaw_transcript(raw_messages)
@@ -547,7 +543,7 @@ async def execute_task(
         "timed_out": timed_out,
         "response": response,
         "raw_messages": raw_messages,
-        # cost fields
+        # 成本字段。
         "usage": usage,
         "cost_usd": cost_usd,
         "models_used": models_used,

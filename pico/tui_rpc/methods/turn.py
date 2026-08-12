@@ -43,13 +43,12 @@ _TURN_FAILED_CODE = -32099
 SchedulerFactory = Callable[[], Awaitable[Scheduler]]
 
 # ---------------------------------------------------------------------------
-# Module-level state
+# 模块级状态
 # ---------------------------------------------------------------------------
 
-# In-flight turn handles keyed by session_key. One turn per session at a time:
-# ``turn.send`` rejects with -32003 when present, ``turn.cancel`` cancels the
-# handle. The build_tui sink clears the slot at each turn's end (via the
-# ``clear_active`` callback), so presence here means in-flight.
+# 以 session_key 为键保存正在执行的 Turn 句柄。每个会话同一时刻只能有一个 Turn：
+# 存在句柄时 ``turn.send`` 以 -32003 拒绝，``turn.cancel`` 则取消该句柄。build_tui sink
+# 会在每个 Turn 结束时通过 ``clear_active`` 回调清空槽位，因此此处存在记录就表示正在执行。
 _active_turns: dict[str, TurnHandle] = {}
 _active_request_keys: dict[str, int] = {}
 
@@ -78,7 +77,7 @@ def clear_active(session_key: str, request_key: int | None = None) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Mockable seams
+# 可模拟边界
 # ---------------------------------------------------------------------------
 
 
@@ -93,7 +92,7 @@ def _resolve_model(parsed: TurnSendParams) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Handlers
+# 处理器
 # ---------------------------------------------------------------------------
 
 
@@ -107,8 +106,8 @@ async def _emit_start_then_error(
     *,
     attachments_discarded: bool = False,
 ) -> None:
-    # message.start first so the front-end has a turn to clear, then the error
-    # clears it (its onError resets turnId) — same shape the old per-turn task used.
+    # 先发 message.start，让前端有可清理的 Turn；随后错误会通过 onError 重置 turnId，
+    # 与旧的单 Turn 任务保持相同形状。
     await emitter.emit(
         session_key,
         {
@@ -156,7 +155,7 @@ async def turn_send(
     try:
         parsed = TurnSendParams.model_validate(params)
     except ValidationError as exc:
-        # Re-raise as-is; dispatcher will catch and emit -32603 internal_error.
+        # 原样重新抛出；分派器会捕获并发出 -32603 internal_error。
         raise exc
 
     if scheduler is None and scheduler_factory is not None:
@@ -165,16 +164,16 @@ async def turn_send(
         except RpcError as exc:
             build_error = exc
 
-    # Fail-fast: model availability before the active-turn slot, so a -32008
-    # reject does not lock the session out of subsequent sends.
+    # 快速失败：在占用活动 Turn 槽位之前检查模型可用性，避免 -32008 拒绝后
+    # 会话无法继续发送请求。
     _resolve_model(parsed)
 
     turn_id = uuid4().hex
     submission_id = parsed.submission_id or uuid4().hex
 
     if scheduler is None:
-        # No agent loop wired (build failed / no provider). Surface per-turn as
-        # the build error's own code, else -32008. No turn runs.
+        # 未连接 Agent Loop（构建失败或无提供商）。对当前 Turn 优先暴露构建错误自身的错误码，
+        # 否则使用 -32008；不执行 Turn。
         attachments_discarded = bool(pending_images(parsed.session_key))
         consume_pending_images(parsed.session_key)
         if emitter is not None:
@@ -215,16 +214,15 @@ async def turn_send(
         ),
         text=parsed.content,
         media=pending_images(parsed.session_key),
-        # conversation == the front-end subscription key, so the runner's stream
-        # and the sink's message.complete reach the right subscription.
+        # conversation 等于前端订阅键，使运行器的流和 sink 的 message.complete
+        # 到达正确订阅。
         conversation=parsed.session_key,
     )
     request_key = id(req)
     try:
         handle = scheduler.submit(req)
     except SchedulerDrainingError:
-        # Server shutting down: surface a turn_failed so the front-end clears its
-        # slot; nothing is bound (no leak).
+        # 服务器正在关闭：发出 turn_failed 让前端清理槽位；此时未绑定任何内容，不会泄漏。
         attachments_discarded = bool(pending_images(parsed.session_key))
         consume_pending_images(parsed.session_key)
         if emitter is not None:
@@ -240,10 +238,9 @@ async def turn_send(
         return {"turn_id": turn_id, "accepted": True}
     consume_pending_images(parsed.session_key)
 
-    # Bind immediately after submit with no await between. The worker is
-    # scheduled but cannot run before these per-request entries exist. Keying by
-    # request identity prevents a preceding system turn on the same conversation
-    # lane from consuming this user turn's correlation.
+    # submit 后立即绑定，中间不出现 await。worker 虽已排程，但在这些按请求存储的记录
+    # 建立前无法运行。以请求身份为键，可防止同一会话通道中的先前系统 Turn
+    # 消费当前用户 Turn 的关联信息。
     if turn_ids is not None:
         turn_ids[request_key] = turn_id
     if submission_ids is not None:
@@ -339,8 +336,8 @@ async def turn_cancel(
             },
         )
 
-    # Drain so the sink has dropped the active-turn slot before returning.
-    # handle.result() returns None on cancellation (does not raise).
+    # 返回前排空，确保 sink 已释放活动 Turn 槽位。
+    # handle.result() 在取消时返回 None，不抛异常。
     await handle.result()
     clear_active(parsed.session_key, request_key)
     if request_key is not None:
@@ -353,7 +350,7 @@ async def turn_cancel(
 
 
 # ---------------------------------------------------------------------------
-# Dispatcher registration
+# 分派器注册
 # ---------------------------------------------------------------------------
 
 

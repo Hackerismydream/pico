@@ -1,9 +1,8 @@
-// Diagnostic color renderers for `pico --print-colors` (flat swatches)
-// and `--preview-colors` (tokens shown in their real UI contexts).
+// `pico --print-colors`（平面色块）与 `--preview-colors`（在真实界面上下文中
+// 展示 token）所用的诊断颜色渲染器。
 //
-// Both use the SAME colorize path the UI uses, so output reflects exactly how
-// the active (or forced via --color) tier renders. Re-run with a different
-// `--color <tier>` to compare tiers.
+// 两者使用与界面完全相同的着色路径，因此输出准确反映当前颜色级别或通过
+// --color 强制指定的级别。可换用不同的 `--color <tier>` 重新运行以比较级别。
 
 import { colorize } from '@hermes/ink'
 
@@ -17,8 +16,8 @@ const TIER_NAMES: Record<number, string> = {
 }
 
 const fg = (s: string, color: string) => colorize(s, color, 'foreground')
-// Background + foreground in one cell — the pairing real components use for
-// completion rows, the status bar, selections, and diff lines.
+// 在一个单元格中组合背景色与前景色，与真实组件中的补全行、状态栏、选择项和
+// 差异行一致。
 const fgbg = (s: string, fgColor: string, bgColor: string) =>
   colorize(colorize(s, bgColor, 'background'), fgColor, 'foreground')
 
@@ -44,8 +43,8 @@ export function renderColorSwatches(theme: Theme, tier: 0 | 1 | 2 | 3): string {
 }
 
 /**
- * Render the tokens in the contexts they're actually used — so the designer
- * sees real fg/bg pairings instead of isolated swatches.
+ * 在 token 实际使用的上下文中渲染，使设计者看到真实的前景色与背景色组合，
+ * 而不是孤立色块。
  */
 export function renderColorPreview(theme: Theme, tier: 0 | 1 | 2 | 3): string {
   const c = theme.color

@@ -24,12 +24,12 @@ import sys
 import textwrap
 from pathlib import Path
 
-# Repo root on sys.path so we can run as a script.
+# 将仓库根目录加入 sys.path，使文件可作为脚本运行。
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT))
 
 
-# Load .env if present (simple key=value loader, no python-dotenv dep).
+# 若存在则加载 .env，使用简单键值加载器，不依赖 python-dotenv。
 def _load_dotenv(path: Path) -> None:
     if not path.exists():
         return
@@ -56,8 +56,7 @@ from pico.memory_engine.skill_local.local_pool import LocalPool
 from pico.memory_engine.skill_local.registry import SkillRegistry
 from pico.providers.litellm_provider import LiteLLMProvider
 
-# Fixture skills — same shape as benchmarks/skill_evals queries, with
-# one having a bundled reference file to exercise refs hydrate.
+# 固件技能与 benchmarks/skill_evals 查询结构相同，其中一个带有捆绑引用文件，用于测试引用水合。
 _SKILLS = [
     (
         "pdf-gen",
@@ -123,8 +122,7 @@ def _build_workspace(tmpdir: Path) -> Path:
             f"---\nname: {name}\ndescription: {desc}\n---\n\n# {name}\n\n{body}\n",
             encoding="utf-8",
         )
-    # For pdf-gen, also create the referenced bundled file so refs hydrate
-    # rewrites it to an absolute path in the prompt.
+    # 对 pdf-gen 还要创建被引用的捆绑文件，使引用水合能在提示中将其改写为绝对路径。
     (skills_root / "pdf-gen" / "references").mkdir()
     (skills_root / "pdf-gen" / "references" / "CONFIG.md").write_text(
         "# PDF Config\n\nFonts, margins, page size.\n",
@@ -132,8 +130,9 @@ def _build_workspace(tmpdir: Path) -> Path:
     )
     return tmpdir
 
+    # 任务用于覆盖三种改写器/门控决策形态：
 
-# Tasks designed to exercise three rewriter / gate decision shapes:
+
 _TASKS = [
     {
         "label": "single-skill-needed",
@@ -192,7 +191,7 @@ async def run_one(builder: SkillsSegmentBuilder, task: dict) -> None:
     else:
         print("  segment text: (empty)")
 
-    # Outcome check
+    # 结果检查
     if task.get("expect_no_retrieval"):
         if seg.meta.get("rewriter_skipped") and not ids:
             print("  ✓ rewriter correctly short-circuited (no retrieval)")

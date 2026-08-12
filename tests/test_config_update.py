@@ -32,7 +32,7 @@ def _read(path: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# set_default_model
+
 # ---------------------------------------------------------------------------
 
 
@@ -83,7 +83,7 @@ def test_set_default_model_creates_nested_structure_when_missing(cfg_path: Path)
 
 
 # ---------------------------------------------------------------------------
-# update_cron_config / reset_cron_config
+
 # ---------------------------------------------------------------------------
 
 
@@ -138,12 +138,12 @@ def test_update_cron_preserves_sibling_sections(cfg_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# set_sandbox_backend
+
 # ---------------------------------------------------------------------------
 
 
 def test_set_sandbox_backend_writes_and_returns_prev(cfg_path: Path) -> None:
-    # sandbox is nested under tools, not at the root.
+
     assert set_sandbox_backend("boxlite", config_path=cfg_path) is None
     assert _read(cfg_path)["tools"]["sandbox"]["backend"] == "boxlite"
     prev = set_sandbox_backend("none", config_path=cfg_path)
@@ -160,8 +160,7 @@ def test_set_sandbox_backend_preserves_siblings(cfg_path: Path) -> None:
 
 
 def test_set_sandbox_backend_survives_reload(cfg_path: Path) -> None:
-    # Regression: a top-level "sandbox" key fails Config's extra=forbid on the
-    # next load. The write must land under tools.sandbox so load_config round-trips.
+
     from pico.config.loader import load_config
 
     set_sandbox_backend("boxlite", config_path=cfg_path)
@@ -170,7 +169,7 @@ def test_set_sandbox_backend_survives_reload(cfg_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# set_memory_backend
+
 # ---------------------------------------------------------------------------
 
 
@@ -191,7 +190,7 @@ def test_set_memory_backend_preserves_siblings(cfg_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# init_extension_block_defaults
+
 # ---------------------------------------------------------------------------
 
 
@@ -212,8 +211,7 @@ def test_init_extension_defaults_seeds_safe_subset(cfg_path: Path) -> None:
 
 
 def test_init_extension_defaults_omits_internal_infra_fields(cfg_path: Path) -> None:
-    # Service endpoints and optional tokens must never be materialized into a
-    # user's plaintext config by onboarding; only the safe subset is written.
+
     init_extension_block_defaults(config_path=cfg_path)
     sf = _read(cfg_path)["skillForge"]
     for leaked in (
@@ -229,17 +227,16 @@ def test_init_extension_defaults_omits_internal_infra_fields(cfg_path: Path) -> 
 
 
 def test_init_extension_defaults_is_idempotent_and_non_clobbering(cfg_path: Path) -> None:
-    # An existing memory.backend (the bootstrap safety pin) and any user-set
-    # value must survive — setdefault only fills what's absent.
+
     cfg_path.write_text(json.dumps({"memory": {"backend": None, "memoryTopK": 20}}))
     init_extension_block_defaults(config_path=cfg_path)
     first = _read(cfg_path)
-    assert first["memory"]["backend"] is None  # not overwritten
-    assert first["memory"]["memoryTopK"] == 20  # user value kept
-    assert first["memory"]["userId"] == "default"  # filled in
+    assert first["memory"]["backend"] is None
+    assert first["memory"]["memoryTopK"] == 20
+    assert first["memory"]["userId"] == "default"
 
     init_extension_block_defaults(config_path=cfg_path)
-    assert _read(cfg_path) == first  # second run is a no-op
+    assert _read(cfg_path) == first
 
 
 def test_init_extension_defaults_round_trips_through_loader(cfg_path: Path) -> None:
@@ -249,16 +246,14 @@ def test_init_extension_defaults_round_trips_through_loader(cfg_path: Path) -> N
     rc = load_pico_config(cfg_path)
     assert rc.memory.memory_top_k == 5
     assert rc.skill_forge.router.top_k == 5
-    # Non-written service fields still resolve to public schema defaults.
+
     assert rc.skill_forge.embedding_url == "http://localhost:1357"
     assert rc.skill_forge.embedding_api_key is None
     assert rc.skill_forge.mass_library_db is None
 
 
 def test_malformed_config_refuses_write_and_preserves_file(cfg_path: Path) -> None:
-    # REGRESSION: update.py is the write path for cron/onboard; a
-    # present-but-unparseable config must NOT be clobbered (the real-machine bug
-    # reproduced via set_sandbox_backend wiping providers).
+
     from pico.config.loader import ConfigReadError
     from pico.config.update import set_default_model, set_language
 
@@ -266,7 +261,7 @@ def test_malformed_config_refuses_write_and_preserves_file(cfg_path: Path) -> No
     cfg_path.write_text(original, encoding="utf-8")
     with pytest.raises(ConfigReadError):
         set_language("zh", config_path=cfg_path)
-    assert cfg_path.read_text(encoding="utf-8") == original  # untouched
+    assert cfg_path.read_text(encoding="utf-8") == original
     with pytest.raises(ConfigReadError):
         set_default_model("openrouter/x", config_path=cfg_path)
     assert cfg_path.read_text(encoding="utf-8") == original
