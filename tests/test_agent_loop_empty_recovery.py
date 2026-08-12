@@ -62,7 +62,7 @@ def _classify(
 
 
 # --------------------------------------------------------------------------- #
-# unit: thinking detection                                                     #
+
 # --------------------------------------------------------------------------- #
 
 
@@ -83,7 +83,7 @@ def test_has_thinking():
 
 
 # --------------------------------------------------------------------------- #
-# unit: classify_empty_response                                                #
+
 # --------------------------------------------------------------------------- #
 
 
@@ -100,19 +100,19 @@ def test_classify_thinking_only_prefills_until_budget():
     resp = LLMResponse(content=None, reasoning_content="hmm")
     assert _classify(resp, "", prefill_retries=0) is RecoveryAction.PREFILL
     assert _classify(resp, "", prefill_retries=1) is RecoveryAction.PREFILL
-    # budget spent → falls through to plain retry (prefill_exhausted clause)
+
     assert _classify(resp, "", prefill_retries=2) is RecoveryAction.RETRY
 
 
 def test_classify_post_tool_empty_nudges():
-    resp = LLMResponse(content=None)  # no thinking
+    resp = LLMResponse(content=None)
     assert _classify(resp, "", prev_had_tool_calls=True, nudges_done=0) is RecoveryAction.NUDGE
-    # nudge budget (default 1) spent → plain retry
+
     assert _classify(resp, "", prev_had_tool_calls=True, nudges_done=1) is RecoveryAction.RETRY
 
 
 def test_classify_thinking_takes_priority_over_nudge():
-    # thinking + post-tool → PREFILL, not NUDGE (they are mutually exclusive)
+
     resp = LLMResponse(content=None, reasoning_content="hmm")
     assert _classify(resp, "", prev_had_tool_calls=True) is RecoveryAction.PREFILL
 
@@ -124,8 +124,8 @@ def test_classify_plain_empty_retries_until_budget():
 
 
 def test_classify_always_reasoning_model_still_retries_after_prefill():
-    # Models that always populate a reasoning field must not be permanently
-    # blocked from plain retry once prefill is exhausted (load-bearing clause).
+
+
     resp = LLMResponse(content=None, reasoning_content="hmm")
     assert _classify(resp, "", prefill_retries=2, empty_retries=0) is RecoveryAction.RETRY
     assert _classify(resp, "", prefill_retries=2, empty_retries=3) is RecoveryAction.COMPLETE
@@ -152,7 +152,7 @@ def test_limits_from_defaults_uses_defaults_for_missing_attrs():
 
 
 # --------------------------------------------------------------------------- #
-# loop: plain empty -> retry -> recover                                        #
+
 # --------------------------------------------------------------------------- #
 
 
@@ -196,16 +196,16 @@ async def test_empty_then_recovers_and_does_not_persist_scaffolding(workspace):
     )
 
     assert out is not None
-    assert out[0] == "real answer"  # recovered, not the canned dud reply
-    assert provider.calls == 3  # 2 empty retries + the recovered call
-    # synthetic scaffolding must not be persisted into session history
+    assert out[0] == "real answer"
+    assert provider.calls == 3
+
     session = agent.sessions.get_or_create("s1")
     for m in session.messages:
         assert not m.get("_recovery_synthetic")
 
 
 # --------------------------------------------------------------------------- #
-# loop: thinking-only -> prefill -> recover                                    #
+
 # --------------------------------------------------------------------------- #
 
 
@@ -228,7 +228,7 @@ class _ThinkingThenAnswerProvider(LLMProvider):
         self.calls += 1
         if self.calls == 1:
             return LLMResponse(content="", reasoning_content="let me think", finish_reason="stop")
-        # the prefill re-feeds the prior reasoning as a synthetic assistant turn
+
         if any(m.get("_recovery_synthetic") for m in messages):
             self.saw_reasoning_replay = True
         return LLMResponse(content="final answer", finish_reason="stop")
@@ -260,7 +260,7 @@ async def test_thinking_only_recovers_via_prefill(workspace):
 
 
 # --------------------------------------------------------------------------- #
-# loop: persistently empty is bounded then falls back                          #
+
 # --------------------------------------------------------------------------- #
 
 
@@ -302,7 +302,7 @@ async def test_persistently_empty_is_bounded_then_falls_back(workspace):
     )
 
     assert out is not None
-    # plain-empty budget -> 1 initial call + N retries, then give up.
+
     assert provider.calls == 1 + limits.empty_content_max_retries
     assert "no response" in out[0].lower()
 
@@ -322,5 +322,5 @@ async def test_recovery_disabled_falls_back_immediately(workspace):
     )
 
     assert out is not None
-    assert provider.calls == 1  # no retries when disabled
+    assert provider.calls == 1
     assert "no response" in out[0].lower()

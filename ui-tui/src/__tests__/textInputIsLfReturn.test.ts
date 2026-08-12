@@ -7,10 +7,9 @@ import { describe, expect, it } from 'vitest'
 
 import { isLfReturn } from '../components/textInput.js'
 
-// LF byte (\n, 0x0a) on raw stdin is treated as ctrl+enter (insert newline)
-// without depending on Kitty/modifyOtherKeys protocol push, which is not
-// honored across many SSH + zellij + VSCode chains. CR byte (\r) remains
-// plain enter (submit). Pasted CRLF must not match (paste path is separate).
+// 原始 stdin 中的 LF 字节（\n，0x0a）视为 Ctrl+Enter（插入换行），无需依赖许多
+// SSH、zellij、VS Code 链路无法支持的 Kitty/modifyOtherKeys 协议推送。CR 字节
+// （\r）仍表示普通回车（提交）；粘贴的 CRLF 不能匹配，因为粘贴走独立路径。
 describe('isLfReturn (ctrl+enter detection via LF byte)', () => {
   it('returns true for bare LF (ctrl+enter / ctrl+j)', () => {
     expect(isLfReturn('\n')).toBe(true)

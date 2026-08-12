@@ -12,7 +12,7 @@ def test_discover_channel_names_lists_adapter_packages():
 
 def test_discover_specs_returns_channel_specs():
     specs = discover_specs()
-    assert specs  # non-empty
+    assert specs
     assert set(specs) <= set(discover_channel_names())
     for spec in specs.values():
         assert isinstance(spec, ChannelSpec)

@@ -165,7 +165,7 @@ def _llm_output_payload(resp: Any) -> Any:
     content = getattr(resp, "content", None)
     return {
         "content": content,
-        "output": content,  # field the shared viewer's model-output card reads
+        "output": content,  # 共享 viewer 的模型输出卡片读取该字段
         "finish_reason": getattr(resp, "finish_reason", None),
         "tool_calls": [
             {"id": getattr(t, "id", None), "name": getattr(t, "name", None), "arguments": getattr(t, "arguments", None)}
@@ -202,7 +202,7 @@ def _skill_read_path(name: str, params: Any) -> str | None:
     return None
 
 
-# Public aliases (the standard's stable attribute/payload builders).
+# 公共别名（标准中稳定的属性/载荷 builder）。
 provider_label = _provider_label
 llm_attrs = _llm_attrs
 llm_input_payload = _llm_input_payload
@@ -215,7 +215,7 @@ SPINE_PROVIDER_FAILED = "provider_failed"
 SPINE_ERROR = "error"
 SPINE_CANCELLED = "cancelled"
 
-# Frozen taxonomy of Turn terminal states; see docs/specs/turn-evidence-correlation.md.
+# 固定的 Turn 终态分类；参见 docs/specs/turn-evidence-correlation.md。
 SPINE_OUTCOMES = (
     SPINE_COMPLETED,
     SPINE_COMPLETED_WITH_TOOL_FAILURE,

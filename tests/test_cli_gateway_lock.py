@@ -46,7 +46,7 @@ def test_acquire_writes_payload(tmp_instance: Path) -> None:
 
 
 def test_second_acquire_raises_already_running(tmp_instance: Path) -> None:
-    held = acquire(now=456.0)  # keep handle alive → lock stays held
+    held = acquire(now=456.0)
     try:
         with pytest.raises(GatewayAlreadyRunningError) as exc:
             acquire(now=789.0)
@@ -58,7 +58,7 @@ def test_second_acquire_raises_already_running(tmp_instance: Path) -> None:
 
 def test_acquire_succeeds_after_previous_released(tmp_instance: Path) -> None:
     first = acquire(now=1.0)
-    first.close()  # release
+    first.close()
     second = acquire(now=2.0)
     second.close()
 

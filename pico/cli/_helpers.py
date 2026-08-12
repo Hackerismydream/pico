@@ -112,12 +112,9 @@ def make_provider(config: Config):
     else:
         from pico.providers.litellm_provider import LiteLLMProvider
 
-        # OpenRouter routes qwen3.x-27B through providers that default to
-        # reasoning mode (e.g. AtlasCloud): every chat completion emits
-        # ~800 chain-of-thought tokens and takes ~30s wall — fatal for
-        # interactive use and for high-volume benchmark runs. The
-        # ``reasoning.enabled=false`` flag is OpenRouter-specific and
-        # forwards through LiteLLM's ``extra_body``.
+# OpenRouter 会把 qwen3.x-27B 路由到默认启用推理模式的提供商（如 AtlasCloud）：每次对话
+# 补全都会产生约 800 个思维链令牌并耗时约 30 秒，这会严重影响交互使用和大规模基准运行。
+# ``reasoning.enabled=false`` 是 OpenRouter 专用参数，通过 LiteLLM 的 ``extra_body`` 转发。
         extra_body = None
         if provider_name == "openrouter" and "qwen" in (model or "").lower():
             extra_body = {"reasoning": {"enabled": False}}

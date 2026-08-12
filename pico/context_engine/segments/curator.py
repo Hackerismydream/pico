@@ -205,7 +205,7 @@ class CuratorSegmentBuilder:
         )
 
     # ------------------------------------------------------------------
-    # Slow path (bounded internal Curator LLM loop)
+    # 慢路径（有界的 Curator 内部 LLM 循环）
     # ------------------------------------------------------------------
 
     @trace.instrument("context.curate", kind="memory", extract=semconv.context_curate)

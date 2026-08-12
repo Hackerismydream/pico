@@ -18,8 +18,6 @@ from pico.memory_engine.consolidate.consolidator import (
     _normalize_confidence,
 )
 
-# ---------- _is_process_only_episode --------------------------------
-
 
 def test_process_only_question_tag_alone_rejected():
     line = "[2026-05-12 14:00] which framework for new dashboard #question"
@@ -52,8 +50,8 @@ def test_episode_without_tags_kept():
 
 
 def test_unparseable_line_kept():
-    # No timestamp prefix — _parse_episode_line returns None.
-    # Guard returns False so we don't drop unrelated freeform input.
+
+
     assert _is_process_only_episode("just a stray string with #habit") is False
 
 
@@ -62,9 +60,9 @@ def test_empty_input_kept():
 
 
 def test_uppercase_tag_not_recognized_as_tag():
-    # ``_TAG_RE`` only matches lowercase kebab-case slugs (system spec).
-    # ``#QUESTION`` thus produces zero parsed tags → guard treats the line
-    # as untagged free-form input and returns False (lets it through).
+
+
+
     line = "[2026-05-12 14:00] uppercase tag test #QUESTION"
     assert _is_process_only_episode(line) is False
 
@@ -74,7 +72,7 @@ def test_multiple_process_tags_only_still_rejected():
     assert _is_process_only_episode(line) is True
 
 
-# ---------- _normalize_confidence -----------------------------------
+
 
 
 def test_confidence_low_valid():
@@ -137,12 +135,12 @@ def test_format_foresight_bullet_keeps_valid_confidence():
     assert "confidence: medium" in bullet
 
 
-# ---------- _foresight_token_set ------------------------------------
+
 
 
 def test_token_set_lowercases_and_drops_short_words():
     tokens = _foresight_token_set("User runs every Saturday morning")
-    # "user" is stopword; "runs" is 4 chars (included).
+
     assert "runs" in tokens
     assert "saturday" in tokens
     assert "morning" in tokens
@@ -156,8 +154,8 @@ def test_token_set_drops_framing_stopwords_and_s_stems():
     assert "continue" not in tokens
     assert "daily" in tokens
     assert "medication" in tokens
-    # ``reminders`` gets s-stemmed to ``reminder`` for plural/singular
-    # collapse (see ``_stem_trailing_s``).
+
+
     assert "reminder" in tokens
     assert "reminders" not in tokens
 
@@ -167,7 +165,7 @@ def test_token_set_empty_for_pure_stopword_text():
     assert tokens == frozenset()
 
 
-# ---------- _is_semantic_duplicate_foresight ------------------------
+
 
 
 def test_semantic_dup_reworded_saturday_run():
@@ -177,19 +175,19 @@ def test_semantic_dup_reworded_saturday_run():
 
 
 def test_semantic_dup_caregiver_medication_cluster():
-    # Real longrun pattern (caregiver-01, day 20 vs day 22): same claim
-    # reworded slightly. With s-stemming and Jaccard ≥ 0.6 the dedup
-    # collapses them.
+
+
+
     new = "User will set daily medication reminders for mom (amlodipine, donepezil, metoprolol) at similar times"
     existing = ["Daily medication reminders for mom (amlodipine, donepezil, metoprolol) - recurring care routine"]
     assert _is_semantic_duplicate_foresight(new, existing) is True
 
 
 def test_semantic_dup_misses_heavy_morphology():
-    # Documented limitation: ``remind`` vs ``reminders`` differ even
-    # after s-stem (remind has no trailing s; reminders → reminder).
-    # Without a real stemmer we accept this false negative; the data
-    # showed near-identical wording dominates the dup cluster anyway.
+
+
+
+
     new = "User will remind mom about daily medications"
     existing = ["Daily medication reminders for mom"]
     assert _is_semantic_duplicate_foresight(new, existing) is False
@@ -213,7 +211,7 @@ def test_semantic_dup_empty_new_returns_false():
 
 
 def test_semantic_dup_blocks_within_batch():
-    # Simulate caller appending duplicates one at a time to existing.
+
     existing: list[str] = []
     first = "User attends weekly boss meetings on Mondays"
     second = "User attends weekly Monday boss meetings"
@@ -222,7 +220,7 @@ def test_semantic_dup_blocks_within_batch():
     assert _is_semantic_duplicate_foresight(second, existing) is True
 
 
-# ---------- _drop_bullets_without_src --------------------------------
+
 
 
 def test_drop_keeps_bullet_with_src_link():
@@ -263,11 +261,11 @@ def test_drop_empty_body_noop():
 
 
 def test_drop_rejects_src_with_wrong_format():
-    # Wrong file name (not episodes.md), wrong bracket style, etc.
+
     body = (
-        "- bullet a (src: episodes.md @ 2026-05-15 19:30)\n"  # parens — wrong
-        "- bullet b [src: notes.md @ 2026-05-15 19:30]\n"  # wrong file
-        "- bullet c [src: episodes.md @ 2026-05-15 19:30]\n"  # correct
+        "- bullet a (src: episodes.md @ 2026-05-15 19:30)\n"
+        "- bullet b [src: notes.md @ 2026-05-15 19:30]\n"
+        "- bullet c [src: episodes.md @ 2026-05-15 19:30]\n"
     )
     cleaned, n_dropped = _drop_bullets_without_src(body)
     assert "bullet a" not in cleaned
@@ -276,11 +274,11 @@ def test_drop_rejects_src_with_wrong_format():
     assert n_dropped == 2
 
 
-# ---------- module-level constants snapshot --------------------------
+
 
 
 def test_process_tags_constant():
-    # Stored without leading '#' since ``_TAG_RE`` strips it on parse.
+
     assert _PROCESS_TAGS == frozenset({"question", "habit", "answer"})
 
 

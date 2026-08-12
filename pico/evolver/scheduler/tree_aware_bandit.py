@@ -141,7 +141,7 @@ class TreeAwareTaskScheduler:
         self._rng = random.Random(rng_seed)
         self._nodes: dict[str, _NodeInfo] = {}
 
-    # ────────────────────────── tree topology ──────────────────────────
+    # ────────────────────────── 树拓扑 ───────────────────────────
 
     def add_node(self, node_id: str, parent_id: Optional[str]) -> None:
         """Register a node in the evolution tree.
@@ -205,7 +205,7 @@ class TreeAwareTaskScheduler:
             d += 1
         return result
 
-    # ────────────────────────── scoring ──────────────────────────
+    # ────────────────────────── 评分 ─────────────────────────────
 
     def _weight(self, distance: int) -> float:
         """Ancestry kernel ``exp(-λ × distance)``."""
@@ -278,7 +278,7 @@ class TreeAwareTaskScheduler:
         jitter = self._rng.random() * 1e-9
         return var + bonus + jitter
 
-    # ────────────────────────── selection API ──────────────────────────
+    # ────────────────────────── 选择 API ─────────────────────────
 
     def choose(
         self,
@@ -349,7 +349,7 @@ class TreeAwareTaskScheduler:
         pool_set: set[str] = set(pool)
         if not pool_set:
             return []
-        # Restrict to tasks the scheduler actually knows about
+        # 限制为调度器实际已知的任务。
         registered = set(self._task_ids)
         valid_pool = pool_set & registered
         if not valid_pool:
@@ -361,7 +361,7 @@ class TreeAwareTaskScheduler:
         scored.sort(reverse=True)
         return [t for _, t in scored[:K]]
 
-    # ────────────────────────── introspection ──────────────────────────
+    # ────────────────────────── 内省 ─────────────────────────────
 
     def n_nodes(self) -> int:
         return len(self._nodes)

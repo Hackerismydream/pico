@@ -12,8 +12,6 @@ from pico.providers.base import LLMProvider
 from pico.providers.common_models import common_models_for
 from pico.providers.registry import PROVIDERS, find_by_name
 
-# The Confluence "Providers" page claims 19 providers. This pins the current
-# registry so any drift (add/remove a ProviderSpec) is caught here.
 EXPECTED_PROVIDER_NAMES = {
     "custom",
     "azure_openai",
@@ -51,9 +49,9 @@ def test_provider_names_are_unique() -> None:
     assert len(names) == len(set(names))
 
 
-# Direct providers seeded in the model picker (issue #100). Each must expose a
-# non-empty default_model drawn from its curated shortlist, so the onboarding
-# fallback and the picker stay in sync and no provider defaults to empty.
+
+
+
 _SEEDED_DIRECT_PROVIDERS = [
     "deepseek",
     "openai",
@@ -74,7 +72,7 @@ def test_seeded_provider_default_model_in_shortlist(slug: str) -> None:
 
 def _concrete_provider_subclasses() -> set[type]:
     """All non-abstract LLMProvider subclasses defined in pico.providers."""
-    # Import each backend module so its subclass is registered on LLMProvider.
+
     import pico.providers.azure_openai_provider  # noqa: F401
     import pico.providers.custom_provider  # noqa: F401
     import pico.providers.lazy  # noqa: F401
@@ -95,8 +93,8 @@ def _concrete_provider_subclasses() -> set[type]:
 
 
 def test_exactly_six_concrete_backend_classes() -> None:
-    # The lazy and per-model wrappers join four concrete request providers.
-    # This asserts class existence only.
+
+
     from pico.providers.azure_openai_provider import AzureOpenAIProvider
     from pico.providers.custom_provider import CustomProvider
     from pico.providers.lazy import LazyProvider

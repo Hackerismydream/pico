@@ -98,7 +98,7 @@ def select_model(
     profile_name: RoutingProfileName,
 ) -> SelectionResult:
     """Return primary + 2 fallback models for the given category and profile."""
-    # Filter valid models
+    # 过滤有效模型。
     models = [m for m in benchmark_data.values() if m.cost is not None and m.cost > 0 and "/" in m.model]
     if not models:
         raise ValueError("No eligible models in benchmark data")
@@ -116,7 +116,7 @@ def select_model(
         reverse=True,
     )
     if not scored:
-        # All models lack task-specific data — fall back to overall-score ranking
+        # 所有模型都缺少任务专项数据，回退到总分排序。
         logger.warning(
             "No models have task-specific data for '{}'; falling back to overall-score ranking",
             task_id,

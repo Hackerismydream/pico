@@ -5,17 +5,13 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-// `theme.js` reads `process.env` at module-load to compute DEFAULT_THEME,
-// and `fromSkin` closes over DEFAULT_THEME.  A developer shell with
-// PICO_TUI_THEME=light (or PICO_TUI_BACKGROUND set to something
-// bright) would flip the base and turn these assertions into a local-
-// only failure.  We sterilize the relevant env vars + dynamically
-// import the module fresh so EVERY symbol that closes over the env
-// (DEFAULT_THEME, DARK_THEME, LIGHT_THEME, fromSkin) is loaded against
-// a known-empty environment.
+// `theme.js` 在模块加载时读取 `process.env` 计算 DEFAULT_THEME，而 `fromSkin`
+// 会闭包捕获 DEFAULT_THEME。若开发者 shell 设置 PICO_TUI_THEME=light，或将
+// PICO_TUI_BACKGROUND 设为亮色，基准主题会翻转，使这些断言只在本地失败。
+// 因此先清理相关环境变量，再动态导入全新模块，确保所有闭包捕获环境的符号
+// （DEFAULT_THEME、DARK_THEME、LIGHT_THEME、fromSkin）都基于已知的空环境加载。
 //
-// `detectLightMode` takes env as an explicit arg, so it's safe to import
-// statically — but we stay consistent and dynamic-import it too.
+// `detectLightMode` 显式接收 env，静态导入也安全；为保持一致仍采用动态导入。
 const RELEVANT_ENV = [
   'PICO_TUI_LIGHT',
   'PICO_TUI_THEME',
@@ -85,9 +81,9 @@ describe('LIGHT_THEME', () => {
 })
 
 describe('brand yellow ramp (title-gradient-table.md)', () => {
-  // Truecolor order is [.50,.100,.300,.500,.600,.700,.900,.950,.990] — the
-  // extra .600 puts .700 at index 5 and .900 at index 6. The 256 tier keeps the
-  // 8-stop set ([.50,.100,.300,.500,.700,.900,.950,.990]) with .700 at index 4.
+  // 真彩色顺序为 [.50,.100,.300,.500,.600,.700,.900,.950,.990]，额外的 .600
+  // 使 .700 位于索引 5、.900 位于索引 6。256 色级别保留八阶集合
+  // [.50,.100,.300,.500,.700,.900,.950,.990]，其中 .700 位于索引 4。
   it('keeps the documented dark title bands', async () => {
     const { DARK_THEME } = await importThemeWithCleanEnv()
 
@@ -116,7 +112,7 @@ describe('brand yellow ramp (title-gradient-table.md)', () => {
     const dark = resolveTheme('dark', 2).yellow
     const light = resolveTheme('light', 2).yellow
 
-    // 256 is the 8-stop set: .50/.300/.500/.700/.900 → indices 0/2/3/4/5.
+    // 256 色采用八阶集合：.50/.300/.500/.700/.900 对应索引 0/2/3/4/5。
     expect([dark[0], dark[2], dark[3], dark[4], dark[5]]).toEqual([
       'ansi256(229)',
       'ansi256(228)',
@@ -124,7 +120,7 @@ describe('brand yellow ramp (title-gradient-table.md)', () => {
       'ansi256(178)',
       'ansi256(94)'
     ])
-    // yellow.300 and yellow.500 must not collapse onto the same 256 index.
+    // yellow.300 与 yellow.500 不能折叠到同一个 256 色索引。
     expect(dark[2]).not.toBe(dark[3])
     expect([light[0], light[2], light[3], light[4], light[5]]).toEqual([
       'ansi256(222)',
@@ -149,7 +145,7 @@ describe('cursorColorHex (OSC 12 hardware cursor)', () => {
   it('returns a truecolor hex even when the theme tier is 256/16 (default dark)', async () => {
     const { cursorColorHex, resolveTheme } = await importThemeWithCleanEnv()
 
-    // tiers 1/2 store ansi indices, but OSC 12 needs an RGB color.
+    // 第 1/2 级保存 ANSI 索引，但 OSC 12 需要 RGB 颜色。
     expect(cursorColorHex(resolveTheme('dark', 3))).toBe('#c8c8c8')
     expect(cursorColorHex(resolveTheme('dark', 2))).toBe('#c8c8c8')
     expect(cursorColorHex(resolveTheme('dark', 1))).toBe('#c8c8c8')
@@ -182,8 +178,8 @@ describe('detectLightMode', () => {
   it('stays dark on Apple Terminal when no stronger signal is present', async () => {
     const { detectLightMode } = await importThemeWithCleanEnv()
 
-    // TERM_PROGRAM alone is no longer a light signal: Terminal.app ships both
-    // light and dark profiles and emits no COLORFGBG, so it defaults to dark.
+    // TERM_PROGRAM 本身不再表示亮色：Terminal.app 同时提供明暗配置且不发送
+    // COLORFGBG，因此默认按暗色处理。
     expect(detectLightMode({ TERM_PROGRAM: 'Apple_Terminal' })).toBe(false)
   })
 
@@ -209,14 +205,13 @@ describe('detectLightMode', () => {
 
   it('falls through on malformed COLORFGBG with empty/non-numeric trailing field', async () => {
     const { detectLightMode } = await importThemeWithCleanEnv()
-    // `Number('')` is 0, so `'15;'` would have been read as bg=0
-    // (authoritative dark) and incorrectly blocked TERM_PROGRAM.
-    // The strict /^\d+$/ guard makes these fall through instead.
+    // `Number('')` 为 0，因此 `'15;'` 曾会被读成 bg=0（确定暗色）并错误阻止
+    // TERM_PROGRAM。严格的 /^\d+$/ 保护会让这类值改走回退路径。
     const allowList = new Set(['Apple_Terminal'])
 
     expect(detectLightMode({ COLORFGBG: '15;', TERM_PROGRAM: 'Apple_Terminal' }, allowList)).toBe(true)
     expect(detectLightMode({ COLORFGBG: 'default;default', TERM_PROGRAM: 'Apple_Terminal' }, allowList)).toBe(true)
-    // Without an allow-list match, fall-through still defaults to dark.
+    // 未匹配允许列表时，回退路径仍默认为暗色。
     expect(detectLightMode({ COLORFGBG: '15;' })).toBe(false)
   })
 
@@ -241,35 +236,33 @@ describe('detectLightMode', () => {
     expect(detectLightMode({ PICO_TUI_BACKGROUND: '#ffffff' })).toBe(true)
     expect(detectLightMode({ PICO_TUI_BACKGROUND: '#000000' })).toBe(false)
     expect(detectLightMode({ PICO_TUI_BACKGROUND: '#1e1e1e' })).toBe(false)
-    // Three-char hex normalises like CSS.
+    // 三位十六进制颜色按 CSS 规则归一化。
     expect(detectLightMode({ PICO_TUI_BACKGROUND: '#fff' })).toBe(true)
-    // Garbage falls through to the default-dark path.
+    // 无效内容回退到默认暗色路径。
     expect(detectLightMode({ PICO_TUI_BACKGROUND: 'not-a-colour' })).toBe(false)
   })
 
   it('rejects partially-invalid hex instead of silently truncating', async () => {
     const { detectLightMode } = await importThemeWithCleanEnv()
-    // `parseInt('fffgff'.slice(2,4), 16)` would return 15 — the strict
-    // regex must reject these inputs so they fall through to default-
-    // dark instead of producing a false-positive light reading.
+    // `parseInt('fffgff'.slice(2,4), 16)` 会返回 15，因此严格正则必须拒绝这类
+    // 输入，使其回退到默认暗色，而不是产生误报的亮色判断。
     expect(detectLightMode({ PICO_TUI_BACKGROUND: '#fffgff' })).toBe(false)
     expect(detectLightMode({ PICO_TUI_BACKGROUND: 'ffggff' })).toBe(false)
     expect(detectLightMode({ PICO_TUI_BACKGROUND: '#xyz' })).toBe(false)
-    // Wrong length also rejected (no implicit padding/truncation).
+    // 长度错误同样应被拒绝，不能隐式补齐或截断。
     expect(detectLightMode({ PICO_TUI_BACKGROUND: '#fffff' })).toBe(false)
     expect(detectLightMode({ PICO_TUI_BACKGROUND: '#fffffff' })).toBe(false)
   })
 
   it('treats COLORFGBG as authoritative when present so it dominates the TERM_PROGRAM allow-list', async () => {
     const { detectLightMode } = await importThemeWithCleanEnv()
-    // Injecting the allow-list keeps this precedence rule explicit even if
-    // production defaults change.
+    // 显式注入允许列表，使生产默认值变化后此优先级规则仍清晰可见。
     const allowList = new Set(['Apple_Terminal'])
 
-    // Sanity: the allow-list alone WOULD turn this terminal light.
+    // 基线确认：仅允许列表本身会把该终端判断为亮色。
     expect(detectLightMode({ TERM_PROGRAM: 'Apple_Terminal' }, allowList)).toBe(true)
 
-    // Dark COLORFGBG must beat the allow-list.
+    // 暗色 COLORFGBG 必须优先于允许列表。
     expect(detectLightMode({ COLORFGBG: '15;0', TERM_PROGRAM: 'Apple_Terminal' }, allowList)).toBe(false)
   })
 })
@@ -304,8 +297,7 @@ describe('applyDetectedBackground (OSC 11 reply)', () => {
   it('lets an explicit PICO_TUI_THEME override the measured background', async () => {
     const { applyDetectedBackground, currentScheme } = await importThemeWithEnv({ PICO_TUI_THEME: 'dark' })
 
-    // Bright measured bg, but the explicit dark override wins (precedence is
-    // reused from detectLightMode).
+    // 实测背景为亮色，但显式暗色覆盖优先；这里复用 detectLightMode 的优先级。
     expect(applyDetectedBackground('rgb:ffff/ffff/ffff')).toEqual({ changed: false, scheme: 'dark' })
     expect(currentScheme()).toBe('dark')
   })
@@ -319,10 +311,8 @@ describe('applyDetectedBackground (OSC 11 reply)', () => {
 })
 
 describe('fromSkin', () => {
-  // `fromSkin` closes over DEFAULT_THEME (which is env-derived), so we
-  // must dynamic-import it after sterilizing env — otherwise an ambient
-  // PICO_TUI_THEME=light would flip the base palette and make these
-  // assertions order-dependent on the developer's shell.
+  // `fromSkin` 闭包捕获由环境派生的 DEFAULT_THEME，因此必须清理环境后再动态导入；
+  // 否则外部 PICO_TUI_THEME=light 会翻转基准调色板，使断言结果依赖开发者 shell。
 
   it('overrides banner colors', async () => {
     const { fromSkin } = await importThemeWithCleanEnv()

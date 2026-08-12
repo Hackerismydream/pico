@@ -77,7 +77,7 @@ class TestParseUserMdSections:
 
 class TestScoreSectionRelevance:
     def test_heading_match_weighs_more_than_body(self):
-        # 1 heading token match (3x) vs 1 body token match (1x).
+
         s_heading = _score_section_relevance(
             "tell me about habits",
             "## Habits",
@@ -94,13 +94,13 @@ class TestScoreSectionRelevance:
         assert _score_section_relevance("", "## Foo", "body") == 0.0
 
     def test_chinese_tokens_match_as_runs(self):
-        # "怎么写" is one multi-char token; should match itself in body.
+
         score = _score_section_relevance(
             "mutex 怎么写",
             "## Random",
             "mutex 怎么写 看这里",
         )
-        assert score >= 2  # both 'mutex' and '怎么写' overlap
+        assert score >= 2
 
 
 class TestGetMemoryContextSelective:
@@ -112,7 +112,7 @@ class TestGetMemoryContextSelective:
 
     def test_no_message_falls_back_to_full_dump(self, store: MemoryStore):
         out = store.get_memory_context()
-        # All H2 headings present in the full-dump branch.
+
         for heading in ("## Projects", "## Habits", "## Preferences", "## Notes"):
             assert heading in out
 
@@ -126,9 +126,9 @@ class TestGetMemoryContextSelective:
             current_message="Project B 的 mutex 怎么写？",
         )
         assert "## Projects" in out
-        # Notes always included as catchall.
+
         assert "## Notes" in out
-        # Irrelevant sections are excluded.
+
         assert "## Habits" not in out
         assert "## Preferences" not in out
 
@@ -138,15 +138,15 @@ class TestGetMemoryContextSelective:
         )
         assert "## Habits" in out
         assert "## Notes" in out
-        # Projects shouldn't dominate purely on length.
+
         assert "## Projects" not in out
 
     def test_query_that_matches_nothing_still_returns_notes(
         self,
         store: MemoryStore,
     ):
-        # All scores near zero; top-K picks something, but Notes always wins
-        # the catchall slot.
+
+
         out = store.get_memory_context(
             current_message="xyzabc unrelated query 12345",
         )
@@ -154,5 +154,5 @@ class TestGetMemoryContextSelective:
 
     def test_empty_user_md_returns_empty(self, tmp_path: Path):
         s = MemoryStore(tmp_path)
-        # Don't write anything.
+
         assert s.get_memory_context(current_message="anything") == ""

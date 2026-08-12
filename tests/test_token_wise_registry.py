@@ -19,7 +19,7 @@ class _RecordingBefore(TokenStrategy):
         return self._tag
 
     async def before_llm_call(self, messages, tools, model):
-        # Append a sentinel message so we can read execution order from the chain.
+
         messages = messages + [{"role": "system", "content": f"tag:{self._tag}"}]
         return messages, tools, model
 
@@ -63,7 +63,7 @@ async def test_empty_registry_is_pass_through():
     assert msgs == [{"role": "user", "content": "hi"}]
     assert tools is None
     assert model == "m"
-    await reg.after_llm_call({}, _snap())  # must not raise
+    await reg.after_llm_call({}, _snap())
 
 
 async def test_before_hooks_run_in_registration_order():
@@ -104,9 +104,9 @@ async def test_after_hook_failure_is_swallowed_other_strategies_still_run():
             _RecordingAfter("after_boom", sink),
         ]
     )
-    # Should NOT raise.
+
     await reg.after_llm_call({}, _snap())
-    # Both surrounding hooks still fired.
+
     assert sink == ["before_boom", "after_boom"]
 
 

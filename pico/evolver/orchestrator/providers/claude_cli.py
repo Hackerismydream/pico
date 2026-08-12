@@ -129,7 +129,7 @@ def make_claude_call_fn(
         for attempt in range(len(retry_delays) + 1):
             try:
                 return _once(system, prompt)
-            except Exception as exc:  # noqa: BLE001 — retry, then surface loudly
+            except Exception as exc:  # noqa: BLE001 — 重试后明确暴露错误
                 last = exc
                 if attempt >= len(retry_delays):
                     break

@@ -24,7 +24,6 @@ from pico.token_wise import pricing
 from pico.token_wise.base import TokenStrategy
 from pico.token_wise.registry import StrategyRegistry
 
-# The real fetch, captured before conftest's autouse guard stubs it to {}.
 _REAL_FETCH = pricing._fetch_openrouter_models
 
 

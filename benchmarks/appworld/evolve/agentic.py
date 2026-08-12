@@ -59,8 +59,7 @@ def _task_states(runs_root: Path, exp: str, k: int) -> dict[str, dict]:
             fails = (r.get("evaluation") or {}).get("failures") or []
             if fails:
                 req = str(fails[0].get("requirement", ""))[:80]
-                # The trace tail carries the class-defining detail the
-                # requirement lacks (e.g. '<<not_given>>' = nothing submitted)
+# 追踪尾部携带需求中缺失、用于区分类别的细节，例如 '<<not_given>>' 表示未提交。
                 trace = str(fails[0].get("trace", "")).strip().splitlines()
                 tail = trace[-1][:80] if trace else ""
                 st["sig"] = f"{req} | {tail}" if tail else req
@@ -208,7 +207,7 @@ def make_agentic_diagnose_fn(
             try:
                 git_ops.create_worktree(repo_root, harness, parent.git_commit_sha)
                 made_worktree = True
-            except Exception:  # noqa: BLE001 — analysis degrades, doesn't die
+            except Exception:  # noqa: BLE001 — 分析可降级，但不能崩溃
                 pass
         try:
             user = (
@@ -242,9 +241,8 @@ def make_agentic_diagnose_fn(
         try:
             obj = json.loads(blob)
         except json.JSONDecodeError:
-            # Two observed damage modes: a Python-style dict (single quotes),
-            # and a final message cut mid-array by the output length cap —
-            # salvage what was generated rather than discarding the session.
+    # 已观察到两种损坏模式：使用单引号的 Python 风格字典，以及因输出长度限制而
+    # 在数组中途截断的最终消息。应尽量挽救已生成内容，而不是丢弃整个会话。
             import ast
 
             try:

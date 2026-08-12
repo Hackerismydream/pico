@@ -1,4 +1,4 @@
-// FPS counter overlay (PICO_TUI_FPS=1). Zero-cost when disabled.
+// FPS 计数浮层（PICO_TUI_FPS=1），禁用时没有额外开销。
 
 import { Text } from '@hermes/ink'
 import { useStore } from '@nanostores/react'
@@ -22,7 +22,7 @@ export function FpsOverlay({ t }: { t: Theme }) {
 function FpsOverlayInner({ t }: { t: Theme }) {
   const { fps, lastDurationMs, totalFrames } = useStore($fpsState)
 
-  // Zero-pad widths so digit churn doesn't jitter the corner.
+  // 用零补齐宽度，避免数字变化导致角落抖动。
   return (
     <Text color={fpsColor(fps, t)}>
       {fps.toFixed(1).padStart(5)}fps · {lastDurationMs.toFixed(1).padStart(5)}ms · #{totalFrames}

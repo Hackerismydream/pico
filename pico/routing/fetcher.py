@@ -18,7 +18,7 @@ API_BASE = "https://api.pinchbench.com/api"
 FETCH_CONCURRENCY = 5
 FETCH_TIMEOUT_S = 30.0
 
-# type alias
+# 类型别名
 BenchmarkData = dict[str, ModelBenchmark]
 
 
@@ -115,8 +115,8 @@ async def build_benchmark_data() -> BenchmarkData:
         )
         data[entry["model"]] = benchmark
 
-    # Deduplicate: if multiple entries map to same model ID, keep higher cost
-    seen: dict[str, str] = {}  # normalized_id → original model key
+    # 去重：多个条目映射到同一模型 ID 时保留成本更高者。
+    seen: dict[str, str] = {}  # normalized_id → 原始模型键
     for model_id, benchmark in list(data.items()):
         norm = model_id.lower()
         if norm in seen:

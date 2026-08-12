@@ -1,28 +1,28 @@
 /* ============================================================================
-   Tracing Dashboard — design system
-   Flat, border-driven dark theme for observability. One accent, semantic
-   status colors, a strict spacing / radius / type scale. No gradient chrome.
+   追踪仪表板设计系统
+   面向可观测性的扁平、边框驱动暗色主题。采用单一强调色、语义状态色以及严格的
+   间距、圆角和字体刻度，不使用渐变装饰。
    ========================================================================== */
 
 :root {
-  /* surfaces (flat, incrementally lighter) */
+  /* 表面色（扁平并逐级变亮） */
   --bg: #0a0d12;
   --surface-1: #11151c;
   --surface-2: #161b23;
   --surface-3: #1d2430;
   --surface-inset: #0c0f15;
 
-  /* borders */
+  /* 边框 */
   --border: #232a36;
   --border-strong: #313a49;
 
-  /* text */
+  /* 文本 */
   --text: #e9edf3;
   --text-soft: #b0b9c8;
   --text-muted: #7c8698;
   --text-faint: #5a6474;
 
-  /* accent + status */
+  /* 强调色与状态色 */
   --accent: #6ea8fe;
   --accent-bg: rgba(110, 168, 254, 0.12);
   --accent-border: rgba(110, 168, 254, 0.4);
@@ -35,7 +35,7 @@
   --purple: #c08cf7;
   --teal: #3fd6c4;
 
-  /* spacing scale */
+  /* 间距刻度 */
   --sp-1: 4px;
   --sp-2: 6px;
   --sp-3: 8px;
@@ -45,14 +45,14 @@
   --sp-7: 20px;
   --sp-8: 24px;
 
-  /* radius scale */
+  /* 圆角刻度 */
   --r-sm: 6px;
   --r-md: 8px;
   --r-lg: 10px;
   --r-xl: 12px;
   --r-pill: 999px;
 
-  /* type scale */
+  /* 字体刻度 */
   --fs-xs: 10px;
   --fs-sm: 11px;
   --fs-md: 12px;
@@ -90,7 +90,7 @@ body {
   min-height: 100vh;
 }
 
-/* ── app header ─────────────────────────────────────────────────────────── */
+/* ── 应用标题栏 ─────────────────────────────────────────────────────────── */
 .app-header {
   display: flex;
   align-items: center;
@@ -208,7 +208,7 @@ body {
   color: var(--accent);
 }
 
-/* ── workspace tabs ─────────────────────────────────────────────────────── */
+/* ── 工作区标签页 ─────────────────────────────────────────────────────── */
 .workspace-tabs {
   display: flex;
   align-items: stretch;
@@ -247,7 +247,7 @@ body {
   opacity: 0.5;
 }
 
-/* ── shell layout ───────────────────────────────────────────────────────── */
+/* ── 外壳布局 ───────────────────────────────────────────────────────── */
 .shell {
   display: grid;
   grid-template-columns: 236px minmax(280px, 340px) minmax(380px, 1fr);
@@ -286,7 +286,7 @@ body.app-view-api .scene-api {
   border-radius: var(--r-xl);
 }
 
-/* ── pane head ──────────────────────────────────────────────────────────── */
+/* ── 面板标题 ──────────────────────────────────────────────────────────── */
 .pane-head {
   flex: 0 0 auto;
   display: flex;
@@ -326,7 +326,7 @@ body.app-view-api .scene-api {
   color: var(--text-muted);
 }
 
-/* ── shared controls: buttons / tabs ────────────────────────────────────── */
+/* ── 共享控件：按钮与标签页 ────────────────────────────────────── */
 .ghost-button,
 .tab,
 .session-card,
@@ -382,7 +382,7 @@ body.app-view-api .scene-api {
   color: var(--text);
 }
 
-/* ── controls / form fields ─────────────────────────────────────────────── */
+/* ── 控件与表单字段 ─────────────────────────────────────────────── */
 .controls {
   flex: 0 0 auto;
   display: grid;
@@ -437,7 +437,7 @@ body.app-view-api .api-only {
   box-shadow: var(--focus-ring);
 }
 
-/* ── scroll regions ─────────────────────────────────────────────────────── */
+/* ── 滚动区域 ─────────────────────────────────────────────────────── */
 .session-list,
 .trace-list,
 .details-body {
@@ -458,7 +458,7 @@ body.app-view-api .api-only {
   padding: var(--sp-3);
 }
 
-/* ── session cards ──────────────────────────────────────────────────────── */
+/* ── 会话卡片 ──────────────────────────────────────────────────────── */
 .session-card {
   appearance: none;
   width: 100%;
@@ -534,7 +534,7 @@ body.app-view-api .api-only {
   line-height: 1.35;
 }
 
-/* ── pills / chips (shared) ─────────────────────────────────────────────── */
+/* ── 共享标签与胶囊 ─────────────────────────────────────────────── */
 .session-pill,
 .trace-pill,
 .summary-chip,
@@ -603,7 +603,7 @@ body.app-view-api .api-only {
   flex-wrap: wrap;
 }
 
-/* ── trace list: groups ─────────────────────────────────────────────────── */
+/* ── 追踪列表：分组 ─────────────────────────────────────────────────── */
 .trace-group {
   overflow: hidden;
   margin-bottom: var(--sp-3);
@@ -643,7 +643,7 @@ body.app-view-api .api-only {
   border-bottom: 1px solid var(--border);
 }
 
-/* ── trace tree ─────────────────────────────────────────────────────────── */
+/* ── 追踪树 ─────────────────────────────────────────────────────────── */
 .trace-tree {
   position: relative;
   display: grid;
@@ -659,7 +659,7 @@ body.app-view-api .api-only {
   border: 1px dashed var(--border);
 }
 
-/* ── span node ──────────────────────────────────────────────────────────── */
+/* ── 跨度节点 ──────────────────────────────────────────────────────────── */
 .span-node {
   --node-accent: var(--accent);
   appearance: none;
@@ -685,9 +685,8 @@ body.app-view-api .api-only {
   background: var(--node-accent);
 }
 
-/* Standard span kinds: model (default accent) / tool / subagent / skill /
-   memory / plugin / session. Legacy underscore forms kept as aliases so
-   pre-rename traces still render with their accent. */
+/* 标准跨度类型包括 model（默认强调色）、tool、subagent、skill、memory、plugin、
+   session。保留下划线旧形式作为别名，使重命名前的追踪仍能按强调色渲染。 */
 .span-node[data-kind="tool"],
 .span-node[data-kind="tool_call"] {
   --node-accent: var(--warning);
@@ -802,9 +801,8 @@ body.app-view-api .api-only {
   min-width: 0;
 }
 
-/* Subtitle row holds a single text node (e.g. the turn's user query); render it
-   as a block so it fills the grid cell and truncates with an ellipsis instead
-   of wrapping or forcing the node wider than its column. */
+/* 副标题行只包含一个文本节点（如轮次的用户查询）；将其渲染为块，使其填满网格
+   单元并以省略号截断，而不是换行或迫使节点宽于所在列。 */
 .span-node-subtitle {
   display: block;
 }
@@ -830,7 +828,7 @@ body.app-view-api .api-only {
   margin-left: 30px;
 }
 
-/* ── details: cards & panels ────────────────────────────────────────────── */
+/* ── 详情：卡片与面板 ────────────────────────────────────────────── */
 .detail-grid,
 .content-stack {
   display: grid;
@@ -877,7 +875,7 @@ body.app-view-api .api-only {
   grid-column: 1 / -1;
 }
 
-/* the two model cards use the accent/teal edge as a functional cue */
+/* 两个模型卡片使用强调色或青绿色边缘作为功能提示 */
 .content-card-model-input {
   border-color: var(--accent-border);
 }
@@ -886,7 +884,7 @@ body.app-view-api .api-only {
   border-color: rgba(63, 214, 196, 0.32);
 }
 
-/* ── metadata grid ──────────────────────────────────────────────────────── */
+/* ── 元数据网格 ──────────────────────────────────────────────────────── */
 .metadata-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -919,7 +917,7 @@ body.app-view-api .api-only {
   word-break: break-word;
 }
 
-/* ── events list ────────────────────────────────────────────────────────── */
+/* ── 事件列表 ────────────────────────────────────────────────────────── */
 .events-list {
   padding: var(--sp-3);
 }
@@ -949,7 +947,7 @@ body.app-view-api .api-only {
   font-weight: 600;
 }
 
-/* ── hero / metrics rows ────────────────────────────────────────────────── */
+/* ── 主图区与指标行 ────────────────────────────────────────────────── */
 .hero-metrics {
   display: flex;
   gap: var(--sp-1);
@@ -963,7 +961,7 @@ body.app-view-api .api-only {
   font-size: var(--fs-xs);
 }
 
-/* ── structured value / pre (shared data renderer) ──────────────────────── */
+/* ── 结构化值与预格式文本（共享数据渲染器） ──────────────────────── */
 .structured-list {
   display: grid;
   gap: var(--sp-2);
@@ -1006,7 +1004,7 @@ body.app-view-api .api-only {
   word-break: break-word;
 }
 
-/* ── message list (llm.call / memory.store input+output) ────────────────── */
+/* ── 消息列表（llm.call / memory.store 输入与输出） ────────────────── */
 .msg-list {
   display: flex;
   flex-direction: column;
@@ -1077,7 +1075,7 @@ body.app-view-api .api-only {
   color: var(--text-muted);
 }
 
-/* ── model panels ───────────────────────────────────────────────────────── */
+/* ── 模型面板 ───────────────────────────────────────────────────────── */
 .model-input-layout,
 .evidence-stack,
 .overview-stack {
@@ -1108,7 +1106,7 @@ body.app-view-api .api-only {
   font-size: var(--fs-md);
 }
 
-/* ── collapsible details (shared marker) ────────────────────────────────── */
+/* ── 可折叠详情（共享标记） ────────────────────────────────── */
 .model-diagnostic-details,
 .project-context-details,
 .skill-summary-details {
@@ -1228,7 +1226,7 @@ html[data-lang="zh"] .skill-summary-details[open] summary::after {
   padding: var(--sp-4);
 }
 
-/* ── history / project-context items ────────────────────────────────────── */
+/* ── 历史记录与项目上下文项 ────────────────────────────────────── */
 .project-context-list,
 .history-list {
   display: grid;
@@ -1317,7 +1315,7 @@ html[data-lang="zh"] .skill-summary-details[open] summary::after {
   word-break: break-word;
 }
 
-/* ── system prompt breakdown ────────────────────────────────────────────── */
+/* ── 系统提示词分解 ────────────────────────────────────────────── */
 .system-prompt-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1367,7 +1365,7 @@ html[data-lang="zh"] .skill-summary-details[open] summary::after {
   line-height: 1.45;
 }
 
-/* ── overview / evidence / skill summary ────────────────────────────────── */
+/* ── 概览、证据与技能摘要 ────────────────────────────────── */
 .overview-row,
 .evidence-card {
   display: grid;
@@ -1482,7 +1480,7 @@ html[data-lang="zh"] .skill-summary-details[open] summary::after {
   padding: var(--sp-3) var(--sp-4);
 }
 
-/* ── raw / code blocks ──────────────────────────────────────────────────── */
+/* ── 原始内容与代码块 ──────────────────────────────────────────────────── */
 .content-card pre,
 .raw-view pre {
   margin: 0;
@@ -1512,7 +1510,7 @@ html[data-lang="zh"] .skill-summary-details[open] summary::after {
   background: var(--surface-inset);
 }
 
-/* ── subagent cross-trace jump ──────────────────────────────────────────── */
+/* ── 子智能体跨追踪跳转 ──────────────────────────────────────────── */
 .jump-link {
   margin: var(--sp-4);
   width: calc(100% - var(--sp-8));
@@ -1534,7 +1532,7 @@ html[data-lang="zh"] .skill-summary-details[open] summary::after {
 }
 
 /* ========================================================================== */
-/* API dashboard                                                              */
+/* API 仪表板                                                              */
 /* ========================================================================== */
 .api-dashboard {
   display: grid;
@@ -1622,7 +1620,7 @@ html[data-lang="zh"] .skill-summary-details[open] summary::after {
   align-content: start;
 }
 
-/* ── toolbar / scope ────────────────────────────────────────────────────── */
+/* ── 工具栏与范围 ────────────────────────────────────────────────────── */
 .api-toolbar {
   display: flex;
   align-items: center;
@@ -1726,7 +1724,7 @@ html[data-lang="zh"] .skill-summary-details[open] summary::after {
   font-size: var(--fs-md);
 }
 
-/* ── section headings ───────────────────────────────────────────────────── */
+/* ── 分区标题 ───────────────────────────────────────────────────── */
 .api-panel-head {
   display: flex;
   align-items: flex-start;
@@ -1758,7 +1756,7 @@ html[data-lang="zh"] .skill-summary-details[open] summary::after {
   line-height: 1.4;
 }
 
-/* ── stat cards ─────────────────────────────────────────────────────────── */
+/* ── 统计卡片 ─────────────────────────────────────────────────────────── */
 .api-overview {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1803,7 +1801,7 @@ html[data-lang="zh"] .skill-summary-details[open] summary::after {
   color: var(--warning);
 }
 
-/* ── tables ─────────────────────────────────────────────────────────────── */
+/* ── 表格 ─────────────────────────────────────────────────────────────── */
 .api-table-wrap {
   overflow: auto;
   border: 1px solid var(--border);
@@ -1888,7 +1886,7 @@ html[data-lang="zh"] .skill-summary-details[open] summary::after {
 }
 
 /* ========================================================================== */
-/* content search                                                             */
+/* 内容搜索                                                             */
 /* ========================================================================== */
 .content-search-results {
   max-height: 40vh;
@@ -1957,7 +1955,7 @@ mark.content-hit-mark {
 }
 
 /* ========================================================================== */
-/* empty state                                                                */
+/* 空状态                                                                */
 /* ========================================================================== */
 .empty-state {
   display: grid;
@@ -1982,7 +1980,7 @@ mark.content-hit-mark {
 }
 
 /* ========================================================================== */
-/* scrollbars                                                                 */
+/* 滚动条                                                                 */
 /* ========================================================================== */
 .session-list::-webkit-scrollbar,
 .trace-list::-webkit-scrollbar,
@@ -2034,7 +2032,7 @@ mark.content-hit-mark {
 }
 
 /* ========================================================================== */
-/* responsive                                                                 */
+/* 响应式布局                                                                 */
 /* ========================================================================== */
 @media (max-width: 1320px) {
   .shell {

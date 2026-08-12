@@ -1,20 +1,17 @@
-// Pico TUI RPC — production JSON-RPC 2.0 client.
+// Pico TUI RPC——生产用 JSON-RPC 2.0 客户端。
 //
-// Transport: TCP loopback (cross-platform — Windows has no usable AF_UNIX).
-// The Python parent listens on 127.0.0.1:<ephemeral>; the Node child connects
-// via `net.createConnection({host, port})`, sends PICO_RPC_TOKEN as the first
-// line (the parent validates it before any dispatch), then speaks JSON frames.
-// A unix-socket path is still accepted for legacy setups. Bare FD inheritance
-// (pass_fds=(3,4)) was rejected — Node can't reliably wrap inherited pipe FDs.
+// 传输使用跨平台 TCP 回环，因为 Windows 没有可用 AF_UNIX。Python 父进程监听
+// 127.0.0.1:<临时端口>；Node 子进程通过 `net.createConnection({host, port})` 连接，首行发送
+// PICO_RPC_TOKEN（父进程在分发前校验），随后传输 JSON 帧。旧配置仍接受 Unix 套接字路径。
+// 不采用裸文件描述符继承 pass_fds=(3,4)，因为 Node 无法可靠包装继承的管道文件描述符。
 //
-// Framing: newline-delimited UTF-8 JSON (specs §2.5). Each frame is
-// `JSON.stringify(obj) + '\n'`. Single frame limit: 1 MiB.
+// 帧格式为换行分隔的 UTF-8 JSON（规范第 2.5 节）。每帧为 `JSON.stringify(obj) + '\n'`，
+// 单帧上限 1 MiB。
 //
-// Writes are serialized through a `writeQueue` (single-writer model) so
-// concurrent `rpc()` / `subscribe()` calls never interleave bytes.
+// 写入通过 `writeQueue` 串行化（单写者模型），使并发 `rpc()` / `subscribe()` 调用绝不交错字节。
 //
-// Error mapping: incoming JSON-RPC error frames are converted to typed
-// `RpcError` subclasses via `errors.ts::rpcErrorFromFrame`.
+// 错误映射：传入 JSON-RPC 错误帧通过 `errors.ts::rpcErrorFromFrame` 转为带类型的
+// `RpcError` 子类。
 
 import type { Socket } from 'node:net'
 
@@ -26,7 +23,7 @@ import { rpcErrorFromFrame } from './errors.js'
 import { isJsonRpcError } from './generated.js'
 import { SubscriptionRegistry } from './subscriptions.js'
 
-const MAX_FRAME_BYTES = 1024 * 1024 // 1 MiB (specs §2.5)
+const MAX_FRAME_BYTES = 1024 * 1024 // 1 MiB（规范第 2.5 节）
 
 type Pending = {
   resolve: (value: unknown) => void
@@ -34,16 +31,14 @@ type Pending = {
 }
 
 export interface RpcClientOptions {
-  /** RPC target: "host:port" (TCP loopback) or a unix socket path. Defaults to env `PICO_RPC_SOCKET`. */
+  /** RPC 目标："host:port"（TCP 回环）或 Unix 套接字路径，默认读取 `PICO_RPC_SOCKET`。 */
   socketPath?: string
-  /** Optional logger for non-fatal protocol oddities. Defaults to stderr. */
+  /** 用于非致命协议异常的可选日志器，默认写入 stderr。 */
   warn?: (msg: string) => void
   /**
-   * Sink for server-initiated notifications whose method is NOT `event`
-   * (the subscription-stream envelope). The confirm round-trip
-   * (`confirm.request`) arrives this way — a first-class top-level method,
-   * not a per-subscription stream event. When omitted, such notifications
-   * are logged as unknown and dropped.
+   * 接收服务端主动发起且方法不是 `event`（订阅流信封）的通知。确认往返
+   * `confirm.request` 会通过此路径到达，它是一等顶层方法，而不是每个订阅的
+   * 流事件。省略时，此类通知会按未知通知记录并丢弃。
    */
   onNotification?: (method: string, params: unknown) => void
 }
@@ -70,9 +65,8 @@ export class RpcClient {
     this.warn = opts.warn ?? (m => process.stderr.write(`[rpc-client] ${m}\n`))
     this.onNotification = opts.onNotification
 
-    // Cross-platform transport: the parent exports either a TCP-loopback
-    // "host:port" (current Python parent; works on Windows too) or, for legacy
-    // setups, a unix socket path. A trailing ":<digits>" disambiguates TCP.
+  // 跨平台传输：父进程导出 TCP 回环 "host:port"（当前 Python 父进程，Windows 也支持），
+  // 旧配置则可导出 Unix 套接字路径。尾部 ":<数字>" 用于识别 TCP。
     const tcp = /^(.+):(\d+)$/.exec(target)
     if (tcp) {
       this.socket = createConnection({ host: tcp[1], port: Number(tcp[2]) })
@@ -81,15 +75,14 @@ export class RpcClient {
     }
     this.socket.setEncoding('utf-8')
 
-    // Shared secret the parent validates as the first line before any frame
-    // (the loopback port is reachable by any local process, so this gates it).
+    // 父进程在所有帧前校验首行共享密钥；任何本地进程都能访问回环端口，因此需要该门控。
     const authToken = process.env.PICO_RPC_TOKEN
 
     this.connectPromise = new Promise<void>((resolve, reject) => {
       const onConnect = () => {
         this.connected = true
         this.socket.off('error', onError)
-        // Must be the very first bytes on the wire, ahead of any RPC frame.
+    // 必须是线路上的首批字节，先于所有 RPC 帧。
         if (authToken) {
           this.socket.write(authToken + '\n')
         }
@@ -107,7 +100,7 @@ export class RpcClient {
       const text = typeof chunk === 'string' ? chunk : chunk.toString('utf-8')
       this.readBuffer += text
       if (this.readBuffer.length > MAX_FRAME_BYTES * 2) {
-        // Defensive: if peer is flooding without newlines, abort rather than OOM.
+        // 防御性处理：对端持续发送无换行数据时中止，避免内存溢出。
         this.warn(
           `incoming read buffer exceeded ${MAX_FRAME_BYTES * 2} bytes without ` + 'newline — closing connection'
         )
@@ -121,7 +114,7 @@ export class RpcClient {
     this.socket.on('error', err => this.failAll(err))
   }
 
-  /** Awaitable handle that resolves once the socket connection is established. */
+  /** 套接字连接建立后完成的可等待句柄。 */
   ready(): Promise<void> {
     return this.connectPromise
   }
@@ -156,7 +149,7 @@ export class RpcClient {
     }
     const obj = frame as Record<string, unknown>
 
-    // Notification frame (no `id`, has `method`)
+      // 通知帧：没有 `id`，包含 `method`。
     if (obj.id === undefined && typeof obj.method === 'string') {
       if (obj.method === 'event') {
         const params = obj.params as EventNotificationParams<unknown> | undefined
@@ -166,8 +159,7 @@ export class RpcClient {
           this.warn('event notification missing subscription_id/event')
         }
       } else if (this.onNotification) {
-        // First-class top-level notifications (e.g. confirm.request) are not
-        // subscription-stream events; hand them to the consumer's sink.
+        // confirm.request 等一等顶层通知不是订阅流事件，应交给使用方出口。
         this.onNotification(obj.method, obj.params)
       } else {
         this.warn(`unknown notification method: ${obj.method}`)
@@ -175,7 +167,7 @@ export class RpcClient {
       return
     }
 
-    // Response frame (has `id`)
+      // 响应帧：包含 `id`。
     const resp = frame as JsonRpcResponse<unknown>
     const id = resp.id
     if (typeof id !== 'number' && typeof id !== 'string') {
@@ -212,8 +204,7 @@ export class RpcClient {
     if (frame.length > MAX_FRAME_BYTES) {
       throw new Error(`rpc-client: outgoing frame ${frame.length} bytes exceeds ${MAX_FRAME_BYTES} limit`)
     }
-    // Serialize all writes — even when the socket itself is happy with
-    // concurrent writes, we don't want two frames interleaved on the wire.
+    // 串行化全部写入。即使套接字本身支持并发写入，也不能让两帧在线路上交错。
     const prev = this.writeQueue
     this.writeQueue = (async () => {
       await prev
@@ -227,7 +218,7 @@ export class RpcClient {
     return this.writeQueue
   }
 
-  /** Invoke a JSON-RPC method and await the typed result. */
+  /** 调用 JSON-RPC 方法并等待带类型的结果。 */
   async rpc<R = unknown, P = unknown>(method: string, params: P): Promise<R> {
     if (this.closed) {
       throw new Error('rpc-client: closed')
@@ -251,12 +242,11 @@ export class RpcClient {
   }
 
   /**
-   * Subscribe to a server-push stream (e.g. `turn.subscribe`).
+   * 订阅服务端推送流，例如 `turn.subscribe`。
    *
-   * The server returns a `{subscription_id}` result; this method registers
-   * the handler against that id and returns an `unsubscribe()` thunk that
-   * both calls the paired server method (if `unsubscribeMethod` is given)
-   * and detaches the handler locally.
+   * 服务端返回 `{subscription_id}`；本方法为该标识注册处理器，并返回
+   * `unsubscribe()` 延迟函数。若提供 `unsubscribeMethod`，该函数会调用配对的
+   * 服务端方法，同时在本地解除处理器。
    */
   async subscribe<E = unknown, P = unknown, R extends { subscription_id: string } = { subscription_id: string }>(
     method: string,
@@ -279,17 +269,17 @@ export class RpcClient {
     return { subscription_id: subscriptionId, unsubscribe }
   }
 
-  /** Number of pending requests (mainly for tests). */
+  /** 待处理请求数量，主要供测试使用。 */
   pendingCount(): number {
     return this.pending.size
   }
 
-  /** Number of active subscriptions (mainly for tests). */
+  /** 活动订阅数量，主要供测试使用。 */
   subscriptionCount(): number {
     return this.registry.size()
   }
 
-  /** Tear down the socket and reject every pending promise. */
+  /** 拆除套接字并拒绝所有待处理的 Promise。 */
   close(): void {
     this.failAll(new Error('rpc-client: closed by caller'))
     try {

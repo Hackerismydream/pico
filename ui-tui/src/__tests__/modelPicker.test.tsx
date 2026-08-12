@@ -26,9 +26,8 @@ const waitForFrame = async (h: Pick<Harness, 'frame'>, text: string) => {
 
 const ESC_RE = new RegExp(String.fromCharCode(27), 'g')
 
-// ink emits cursor-forward moves (CSI nC) in place of spaces for alignment, so
-// strip every CSI sequence and collapse whitespace into single spaces before
-// matching on screen text.
+// Ink 会发出光标前移（CSI nC）代替空格来对齐，因此匹配屏幕文本前先去除所有
+// CSI 序列，并将连续空白折叠为单个空格。
 const normalize = (raw: string) =>
   raw
     .replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;?<>=]*[a-zA-Z]`, 'g'), ' ')
@@ -144,7 +143,7 @@ describe('ModelPicker', () => {
     const h = mount([anthropic, custom])
     await delay(60)
 
-    // Move to the custom provider (index 1) and enter the key stage.
+    // 移到索引 1 的自定义供应商并进入密钥阶段。
     await h.type(DOWN)
     await h.type(ENTER)
 
@@ -153,7 +152,7 @@ describe('ModelPicker', () => {
     expect(keyFrame).toContain('API key')
     expect(keyFrame).toContain('API base (required)')
 
-    // Type a key, advance to api_base via Enter, then submit with empty base.
+    // 输入密钥，按回车移到 api_base，再以空 base 提交。
     await h.type('sk-test')
     await h.type(ENTER)
     await h.type(ENTER)
@@ -161,7 +160,7 @@ describe('ModelPicker', () => {
     expect(h.frame()).toContain('API base URL is required')
     expect(h.gw.request).not.toHaveBeenCalledWith('model.save_key', expect.anything())
 
-    // Fill the base and submit — save_key carries api_base.
+    // 填写 base 后提交，save_key 会携带 api_base。
     await h.type('https://api.example.com')
     await h.type(ENTER)
 
@@ -183,7 +182,7 @@ describe('ModelPicker', () => {
 
     await h.type(ENTER)
 
-    // Still on the provider stage — no key prompt was opened.
+    // 此时仍在供应商阶段，未打开密钥提示。
     expect(h.frame()).not.toContain('Configure OAuth Vendor')
     expect(h.gw.request).not.toHaveBeenCalledWith('model.save_key', expect.anything())
 
@@ -200,11 +199,11 @@ describe('ModelPicker', () => {
     })
     await delay(60)
 
-    // Enter the authenticated anthropic provider's model stage.
+    // 进入已认证 Anthropic 供应商的模型阶段。
     await h.type(ENTER)
     await waitForFrame(h, 'step 2/2')
 
-    // 'a' opens the add-model sub-input.
+    // 按 'a' 打开添加模型的子输入框。
     await h.type('a')
     expect(h.frame()).toContain('Type the full model id')
 
@@ -234,7 +233,7 @@ describe('ModelPicker', () => {
     await waitForFrame(h, 'step 2/2')
     expect(h.frame()).toContain('claude-sonnet-4-6')
 
-    // Delete the highlighted (first) model.
+    // 删除高亮的第一个模型。
     await h.type('d')
 
     expect(h.gw.request).toHaveBeenCalledWith(

@@ -72,7 +72,7 @@ def test_topic_tag_dedup_updates_message_in_place(svc):
     )
     assert j2.payload.message == "new message"
     assert j2.schedule.expr == "30 13 * * *"
-    # Same job, updated in place
+
     assert j1.id == j2.id
 
 
@@ -107,12 +107,12 @@ def test_topic_tag_dedup_skipped_when_no_tag(svc):
     )
     j2 = _add(
         svc,
-        "stretch reminder",  # identical message → message-equal dedup
-        CronSchedule(kind="cron", expr="30 14 * * *"),  # different time
+        "stretch reminder",
+        CronSchedule(kind="cron", expr="30 14 * * *"),
         topic_tag=None,
     )
-    # Message-equal dedup should still catch this, but the path matters —
-    # this test pins that no-tag is a legitimate fallthrough.
+
+
     assert j1.id == j2.id
 
 
@@ -142,17 +142,17 @@ def test_topic_tag_dedup_at_kind_also_dedups(svc):
     j1 = _add(
         svc,
         "OKR review reminder",
-        CronSchedule(kind="cron", expr="0 9 * * 1"),  # weekly Monday
+        CronSchedule(kind="cron", expr="0 9 * * 1"),
         topic_tag="okr_quarterly",
     )
     j2 = _add(
         svc,
         "OKR review reminder (urgent)",
-        CronSchedule(kind="at", at_ms=int(1e15)),  # one-shot far-future
+        CronSchedule(kind="at", at_ms=int(1e15)),
         topic_tag="okr_quarterly",
     )
     assert j1.id == j2.id
-    # The latter add updates schedule kind too — so j2 should now be ``at``.
+
     refreshed = svc.list_jobs()
     assert len(refreshed) == 1
     assert refreshed[0].schedule.kind == "at"

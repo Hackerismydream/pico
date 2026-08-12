@@ -23,9 +23,8 @@ const buildUiState = (): UiState => ({
   sessionMutating: false,
   sessionSwitching: false,
   showCost: false,
-  // Default ON so reasoning models (deepseek-v4-pro / qwen /
-  // o-series) show their thinking stream out of the box instead of leaving
-  // the user staring at a silent screen for 1-4 min. Toggle via /thinking.
+  // 默认开启，使推理模型（deepseek-v4-pro、qwen、o-series）开箱即显示思考流，
+  // 避免用户面对无响应界面等待 1 到 4 分钟；可通过 /thinking 切换。
   showReasoning: true,
   sid: null,
   status: 'starting pico…',
@@ -47,8 +46,7 @@ export const patchUiState = (next: Partial<UiState> | ((state: UiState) => UiSta
 
 export const resetUiState = () => $uiState.set(buildUiState())
 
-// Last skin pushed by the gateway, retained so a late terminal-background
-// probe can rebuild the theme under the corrected light/dark scheme.
+// 保留网关最后推送的皮肤，使延迟返回的终端背景探测能按纠正后的明暗模式重建主题。
 let lastSkin: GatewaySkin | null = null
 
 const buildSkinTheme = (s: GatewaySkin) =>
@@ -67,10 +65,9 @@ export const applySkinTheme = (s: GatewaySkin) => {
 }
 
 /**
- * Fold an OSC 11 background-color reply into the theme. When it flips the
- * detected light/dark scheme, rebuild the active theme — from the last skin
- * if one has arrived, else the curated per-scheme palette — so the whole UI
- * re-themes. No-ops when the scheme is unchanged or the reply is unparseable.
+ * 将 OSC 11 背景色响应纳入主题。若它改变探测到的明暗模式，则用最近到达的皮肤
+ * 重建活动主题；尚无皮肤时使用按模式精选的调色板，使整个界面同步换色。模式
+ * 未变化或响应无法解析时不执行操作。
  */
 export const applyTerminalBackground = (oscData: string) => {
   const res = applyDetectedBackground(oscData)

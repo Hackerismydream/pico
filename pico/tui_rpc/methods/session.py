@@ -50,9 +50,8 @@ if TYPE_CHECKING:
 AgentLoopFactory = Callable[[], "AgentLoop | None"]
 
 
-# Cache the package version once at module load — importlib.metadata.version
-# walks site-packages dist-info on every call. system._pico_version()
-# already guards PackageNotFoundError for source-checkout environments.
+# 模块加载时只缓存一次包版本，因为 importlib.metadata.version 每次调用都会扫描
+# site-packages 的 dist-info。system._pico_version() 已兼容源码检出环境中的 PackageNotFoundError。
 _PICO_VERSION = _pico_version()
 
 

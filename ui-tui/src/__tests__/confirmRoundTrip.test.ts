@@ -109,7 +109,7 @@ describe('confirm round-trip', () => {
     })
 
     it('resets the status off "confirm needed" after answering', async () => {
-      // Reproduce the live flow: confirm.request sets status, the answer must clear it.
+      // 复现实时流程：confirm.request 设置状态，回答必须清除该状态。
       const onEvent = createGatewayEventHandler(buildCtx([]))
       onEvent({
         payload: { default: false, prompt: 'Continue?', request_id: 'r1' },
@@ -220,7 +220,7 @@ describe('confirm round-trip', () => {
         expect(remaining).toBe(0)
         expect(cancelled).toBe(true)
 
-        // Interval is cleared — no further ticks fire.
+        // 定时器已清除，不再触发后续节拍。
         vi.advanceTimersByTime(5000)
         expect(remaining).toBe(0)
       } finally {
@@ -246,7 +246,7 @@ describe('confirm round-trip', () => {
         vi.advanceTimersByTime(3000)
         expect(remaining).toBe(27)
 
-        // Any non-answer key suspends → clear the interval.
+        // 任意非回答按键都会暂停流程，因此清除定时器。
         clearInterval(interval)
 
         vi.advanceTimersByTime(60_000)

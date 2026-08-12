@@ -99,10 +99,8 @@ def empty_failure_map() -> dict:
 
 def add_failure_mode(fm: dict, trajectory_id: str, mode: dict) -> None:
     why, where = mode["why"], mode["where"]
-    # Dominant-weighted: co-occurring secondary symptoms (near-universal on
-    # failing runs) at full weight would drown the causal mode in the
-    # distribution the WHY selection ranks on. Modes without the flag (legacy
-    # callers) keep the old full weight.
+        # 主导模式加权：失败运行中几乎普遍共现的次要症状若按全权重计入，会在 WHY 选择排序的
+        # 分布中淹没因果模式。没有该标志的模式（旧调用方）保留原全权重。
     weight = 1.0 if mode.get("dominant", True) else 0.5
     fm["why_distribution"][why] = fm["why_distribution"].get(why, 0) + weight
     cell = fm["cells"].setdefault(f"{where}::{why}", {"candidates": []})
@@ -142,8 +140,7 @@ def _parse_modes(raw: str, taxonomy: TaxonomySpec) -> list[dict] | None:
     modes = [coerce_mode(x, taxonomy) for x in items if isinstance(x, dict)]
     if not modes:
         return None
-    # Exactly one dominant mode: keep the first flagged one; when the model
-    # marked none, the ordering rule ("dominant first") makes index 0 it.
+    # 必须恰有一个主导模式：保留第一个带标志者；模型未标记时，按“主导优先”的排序规则取索引 0。
     first = next((i for i, m in enumerate(modes) if m["dominant"]), 0)
     for i, m in enumerate(modes):
         m["dominant"] = i == first
@@ -215,7 +212,7 @@ def classify_failures(
     return fm
 
 
-# ---- open-ended taxonomy induction (map-reduce; only for a new benchmark) ----
+# ---- 开放式分类归纳（map-reduce，仅用于新基准）-----------------------------
 
 
 def _parse_reports(raw: str) -> list[dict] | None:
@@ -296,7 +293,7 @@ def _pack_reports(reports: list[dict], *, budget: int) -> str:
     (the trailing marker names how many were left out).
     """
     parts: list[str] = []
-    size = 2  # brackets
+    size = 2  # 方括号
     dropped = 0
     for r in reports:
         s = json.dumps(r)
@@ -364,9 +361,8 @@ def induce_taxonomy(
     if taxonomy is None:
         raise TaxonomyInductionError(f"taxonomy reduce failed after {retries + 1} attempts; last error: {last_exc!r}")
 
-    # The seed carries the stage-1 report content (failure_point / harness_fixes)
-    # into its cells, so a round-1 design step can consume it directly — the
-    # trajectories were just judged, re-judging them would only re-spend the driver.
+    # 种子把阶段 1 报告内容（failure_point / harness_fixes）带入单元，使第 1 轮设计步骤可直接
+    # 使用；这些轨迹刚刚已评判，重复评判只会再次消耗驱动器。
     seed = empty_failure_map()
     modes_by_tid = {r["trajectory_id"]: r["modes"] for r in reports}
     for a in assignments:

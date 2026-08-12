@@ -10,8 +10,8 @@ const KIND_FILES = {
 };
 
 function getStateDir() {
-  // Generic across frameworks: TRACING_STATE_DIR wins (set from --state-dir
-  // by the entry scripts), then the legacy OpenClaw var, then ~/.openclaw.
+// 跨框架通用：优先使用入口脚本根据 --state-dir 设置的 TRACING_STATE_DIR，
+// 其次使用旧 OpenClaw 变量，最后使用 ~/.openclaw。
   return (
     process.env.TRACING_STATE_DIR ||
     process.env.OPENCLAW_STATE_DIR ||

@@ -97,7 +97,7 @@ def _tool_then_final(tool_name: str, result: str = "ok"):
 
 
 # ---------------------------------------------------------------------------
-# REQ-6: tool.start before execute, tool.complete after, real tool_call_id.
+
 # ---------------------------------------------------------------------------
 
 
@@ -146,7 +146,7 @@ async def test_tool_complete_truncated_flag(workspace) -> None:
 
 
 # ---------------------------------------------------------------------------
-# REQ-8: N+1 tool variants — each registered tool + plain text.
+
 # ---------------------------------------------------------------------------
 
 
@@ -185,8 +185,8 @@ async def test_n_plus_1_plain_text_emits_no_tool_events(workspace) -> None:
 
 
 # ---------------------------------------------------------------------------
-# MessageTool callbacks are observable for accounting, while run_turn suppresses
-# their general ToolEvents so the TUI's synthetic completion stays single-source.
+
+
 # ---------------------------------------------------------------------------
 
 

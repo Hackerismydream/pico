@@ -47,7 +47,7 @@ def test_provider_login_unknown_provider_exits_1() -> None:
     r = runner.invoke(app, ["provider", "login", "no-such-provider"])
     assert r.exit_code == 1
     assert "Unknown OAuth provider" in r.stdout
-    # At least one real OAuth provider listed
+
     assert "openai-codex" in r.stdout or "github-copilot" in r.stdout
 
 
@@ -124,7 +124,7 @@ def test_provider_login_github_copilot_success(monkeypatch: pytest.MonkeyPatch) 
     """github-copilot login triggers an acompletion → mock it returning OK."""
 
     async def fake_acompletion(**_):
-        return None  # device-flow path: a successful call means auth completed
+        return None
 
     import litellm
 
@@ -360,11 +360,11 @@ def test_test_command_unknown_provider_exits_1(tmp_config: Path) -> None:
 
 
 def test_provider_set_refuses_malformed_config_and_preserves_file(tmp_config: Path) -> None:
-    # REGRESSION: provider set must not clobber a malformed config. ConfigReadError
-    # is not a RuntimeError, so it bypasses the command's `except RuntimeError`
-    # (which is for OAuth-refusal) and is handled uniformly at the CLI entrypoint.
+
+
+
     original = '{\n  "providers": {"openai": {"apiKey": "sk-o"}},\n  // comment => invalid JSON\n}\n'
     tmp_config.write_text(original, encoding="utf-8")
     result = runner.invoke(app, ["provider", "set", "openrouter", "--api-key", "sk-x"])
     assert result.exit_code != 0
-    assert tmp_config.read_text(encoding="utf-8") == original  # NOT clobbered
+    assert tmp_config.read_text(encoding="utf-8") == original

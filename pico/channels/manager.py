@@ -153,8 +153,8 @@ class ChannelManager:
         async def wait_idle() -> None:
             await asyncio.gather(*(intake.wait_idle() for intake in intakes))
 
-        # Caller cancellation must not cancel the barrier waiter: admitted
-        # publishes are cancelled and observed idle before cancellation escapes.
+        # 调用方取消时不得同时取消屏障等待者：先取消已接纳的 publish，
+        # 并确认系统进入 idle，之后才向上传播取消。
         drain = asyncio.create_task(wait_idle())
         try:
             await asyncio.wait_for(asyncio.shield(drain), timeout=_INTAKE_DRAIN_TIMEOUT_S)
@@ -180,8 +180,8 @@ class ChannelManager:
             raise cancellation
 
     async def _stop_channel(self, name: str, channel: Channel) -> None:
-        # wait_for can exceed its timeout while waiting for an inner coroutine
-        # that suppresses cancellation; a separate task keeps this deadline hard.
+        # 若内部协程吞掉取消，wait_for 可能超过自身超时；独立任务用于严格
+        # 执行该截止时间。
         task = asyncio.create_task(channel.stop())
         try:
             done, _pending = await asyncio.wait({task}, timeout=_CHANNEL_STOP_TIMEOUT_S)

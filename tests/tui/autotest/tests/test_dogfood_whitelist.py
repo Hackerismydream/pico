@@ -35,9 +35,9 @@ def test_dogfood_slash_command(harness, slash, expected):
     assert harness.wait(expected, timeout=10.0), (
         f"slash /{slash} did not produce expected output (regex={expected!r}); screen=\n{harness.screen()}"
     )
-    # Escape dismisses any open overlay/panel (per Pico TUI footer hint
-    # "Esc/q close"); the subsequent Ctrl+C exits. press() raises BackendError
-    # if session already exited inline — that's the inline-exit path and fine.
+
+
+
     for key in ("escape", "ctrl+c"):
         try:
             harness.press(key)

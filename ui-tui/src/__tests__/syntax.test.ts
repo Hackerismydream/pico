@@ -26,8 +26,8 @@ describe('syntax highlighter', () => {
     const tokens = highlightLine(`const x = 'hi' + 42`, 'ts', t)
     const colors = tokens.map(tok => tok[0])
 
-    expect(colors).toContain(t.color.info) // const
-    expect(colors).toContain(t.color.path) // 'hi'
+    expect(colors).toContain(t.color.info) // const 关键字。
+    expect(colors).toContain(t.color.path) // 字符串 'hi'。
     expect(colors).toContain(t.color.text) // 42
   })
 

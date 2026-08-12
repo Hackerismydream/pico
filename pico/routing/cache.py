@@ -21,7 +21,7 @@ from pico.routing.fetcher import BenchmarkData, build_benchmark_data
 from pico.routing.types import ModelBenchmark, ModelTaskScore
 
 CACHE_VERSION = 1
-CACHE_TTL_S = 6 * 60 * 60  # 6 hours
+CACHE_TTL_S = 6 * 60 * 60  # 6 小时
 _SNAPSHOT_PATH = Path(__file__).parent / "snapshot.json"
 
 
@@ -115,11 +115,11 @@ class BenchmarkCache:
 
     async def load(self) -> BenchmarkData:
         """Return benchmark data, fetching/refreshing as needed."""
-        # 1. In-memory hit
+        # 1. 命中内存缓存。
         if self._data is not None:
             return self._data
 
-        # 2. Try disk cache
+        # 2. 尝试磁盘缓存。
         cached = self._load_from_disk()
         if cached:
             data, fetched_at = cached
@@ -129,7 +129,7 @@ class BenchmarkCache:
                 self._schedule_background_refresh()
                 return self._data
 
-            # Stale — try API first
+            # 缓存已过期，优先尝试 API。
             try:
                 return await self._do_refresh()
             except Exception:
@@ -137,11 +137,11 @@ class BenchmarkCache:
                 self._data = data
                 return self._data
 
-        # 3. No cache — try API
+        # 3. 未命中缓存，尝试 API。
         try:
             return await self._do_refresh()
         except Exception:
-            # 4. Fallback to snapshot
+        # 4. 回退到快照。
             logger.warning("API unavailable, falling back to snapshot.json")
             self._data = _load_snapshot()
             return self._data

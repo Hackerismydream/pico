@@ -22,9 +22,8 @@ if TYPE_CHECKING:
 class ContextBuilder:
     """Builds the context (system prompt + messages) for the agent."""
 
-    # L4 pillar layout — agent identity/behavior live under agent_memory;
-    # user.md is omitted here because MemoryStore already injects it into
-    # the ``# Memory`` block (avoids loading the same file twice).
+    # L4 支柱布局：Agent 身份和行为位于 agent_memory 下。此处省略 user.md，因为
+    # MemoryStore 已将它注入 ``# Memory`` 块，避免重复加载同一文件。
     BOOTSTRAP_FILES = [
         "agent_memory/profile/soul.md",
         "agent_memory/profile/agent.md",
@@ -51,11 +50,8 @@ class ContextBuilder:
             llm_provider=llm_provider,
             start_watcher=start_watcher,
         )
-        # Optional fake-clock injection for benchmark harnesses (longrun).
-        # When provided, runtime "Current Time:" injected to LLM prompt
-        # reads from this callable instead of real wall-clock — without
-        # which the LLM gets time-confused during 30-day fake-clock sims
-        # (sees real wall 12:25 while sim fake_now is 22:05).
+        # 为长时基准提供可选伪时钟注入。提供后，LLM 提示词中的 ``Current Time:`` 从此处读取，
+        # 而非使用真实墙上时钟，避免 30 天伪时钟模拟中混淆真实时间与模拟时间。
         self._now_fn = now_fn or datetime.now
 
     def build_system_prompt(
@@ -103,30 +99,20 @@ class ContextBuilder:
             if always_content:
                 parts.append(f"# Active Skills\n\n{always_content}")
 
-        # ``# Skills`` summary (estimation only — the real per-turn
-        # ``# Skills`` segment is rendered by SkillsSegmentBuilder from
-        # the SkillForgeRouter's hits).
-        # If a selector has chosen top-K, render only those; otherwise the
-        # full directory (legacy behavior). Empty list is treated as "no
-        # selection", so Phase A's stub selector does not accidentally hide
-        # all skills.
+        # ``# Skills`` 摘要只用于估算；真正的单 Turn 分段由 SkillsSegmentBuilder 根据
+        # SkillForgeRouter 命中结果渲染。如果已选出 top-K，只渲染这些 Skill；否则渲染完整目录。
+        # 空列表视为“未选择”，避免 A 阶段占位选择器意外隐藏全部 Skill。
         only = selected_skills if selected_skills else None
 
-        # Two injection modes (config: skill_forge.injection_mode):
-        # - "summary"   (default): XML directory + read-tool instruction.
-        #                Cheap on tokens, but eval shows agents often skip
-        #                the read step.
-        # - "full_body" (OpenSpace style): inline up to inject_max skills'
-        #                full body. Higher token cost; guarantees the model
-        #                sees the procedures.
+        # 两种注入模式："summary"（默认）使用 XML 目录和读取工具指令，令牌成本低，
+        # 但 Agent 经常跳过读取；"full_body" 内联最多 inject_max 个完整正文，成本更高，
+        # 但可保证模型看到操作流程。
         cfg = getattr(self.skills, "_config", None)
         mode = getattr(cfg, "injection_mode", "summary") if cfg else "summary"
         if mode == "full_body" and only:
             inject_max = getattr(cfg, "inject_max", 2) if cfg else 2
-            # Telemetry: log which skills were injected to
-            # <workspace>/skill_injections.jsonl for offline analysis
-            # (used by claweval / PinchBench A/B to attribute scores to
-            # specific skills the agent saw inline).
+            # 将已注入的 Skill 记录到 <workspace>/skill_injections.jsonl 供离线分析，
+            # claweval 和 PinchBench A/B 用它将分数归因到 Agent 实际看到的具体 Skill。
             try:
                 import json as _json
                 import time as _time
@@ -155,7 +141,7 @@ class ContextBuilder:
                         + "\n"
                     )
             except Exception:
-                pass  # never break agent on telemetry failure
+                pass  # 遥测失败绝不应中断 Agent
             ctx = self.skills.load_skills_for_context(
                 only,
                 max_inject=inject_max,
@@ -249,8 +235,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
             file_path = self.state / filename
             if file_path.exists():
                 content = file_path.read_text(encoding="utf-8")
-                # Use basename for the section heading so L4 paths like
-                # ``agent_memory/profile/soul.md`` render as ``## SOUL.md``.
+                # 分节标题使用基名，使 ``agent_memory/profile/soul.md`` 这类 L4 路径渲染为 ``## SOUL.md``。
                 heading = Path(filename).name
                 parts.append(f"## {heading}\n\n{content}")
 
@@ -270,8 +255,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         runtime_ctx = self._build_runtime_context(channel, chat_id)
         user_content = self._build_user_content(current_message, media)
 
-        # Merge runtime context and user content into a single user message
-        # to avoid consecutive same-role messages that some providers reject.
+        # 将运行时上下文与用户内容合并为单条用户消息，避免部分提供商拒绝连续同角色消息。
         if isinstance(user_content, str):
             merged = f"{runtime_ctx}\n\n{user_content}"
         else:
@@ -300,7 +284,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
             if not p.is_file():
                 continue
             raw = p.read_bytes()
-            # Detect real MIME type from magic bytes; fallback to filename guess
+            # 先根据魔数字节检测真实 MIME 类型，失败时再根据文件名猜测
             mime = detect_image_mime(raw) or mimetypes.guess_type(path)[0]
             if not mime or not mime.startswith("image/"):
                 continue

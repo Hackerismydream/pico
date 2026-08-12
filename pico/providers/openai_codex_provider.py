@@ -161,7 +161,7 @@ def _convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[st
             continue
 
         if role == "assistant":
-            # Handle text first.
+            # 先处理文本。
             if isinstance(content, str) and content:
                 input_items.append(
                     {
@@ -172,7 +172,7 @@ def _convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[st
                         "id": f"msg_{idx}",
                     }
                 )
-            # Then handle tool calls.
+            # 再处理工具调用。
             for tool_call in msg.get("tool_calls", []) or []:
                 fn = tool_call.get("function") or {}
                 call_id, item_id = _split_tool_call_id(tool_call.get("id"))

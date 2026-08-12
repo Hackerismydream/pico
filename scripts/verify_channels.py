@@ -19,8 +19,7 @@ from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# V-C0: every deterministic Channel contract file. Adding a deterministic
-# Channel test file means adding it here, or the gate silently stops covering it.
+# V-C0：全部确定性渠道契约文件。新增确定性渠道测试文件时必须在此登记，否则门会静默失去覆盖。
 _CONTRACT_TESTS = (
     "tests/test_auth_allowlist.py",
     "tests/test_channels_base.py",
@@ -44,9 +43,8 @@ _CONTRACT_TESTS = (
     "tests/test_verify_live_feishu.py",
 )
 
-# V-S0: the deterministic Channel security and isolation bundle. Three claims,
-# each pinned by named tests rather than a whole-file sweep, so a rename or a
-# deletion fails the gate instead of quietly shrinking it.
+# V-S0：确定性渠道安全与隔离测试包。三个声明分别由具名测试固定，而非整文件扫描，使重命名或
+# 删除会让门失败，而不是悄悄缩小范围。
 _SDK_LAZINESS_TESTS = (
     "tests/test_channels_feishu.py::test_feishu_spec_import_is_cheap",
     "tests/test_channels_qq.py::test_qq_spec_import_is_cheap",
@@ -174,8 +172,8 @@ def main() -> int:
         checks[name] = _run_check(name, tests, output_root)
 
     status = "passed" if all(check["status"] == "passed" for check in checks.values()) else "failed"
-    # v2: v1 carried one "deterministic" check; v2 renames it to "contract" and
-    # adds "security", a breaking shape change under the schema versioning rule.
+# v2：v1 只有一个 "deterministic" 检查；v2 将其重命名为 "contract" 并增加 "security"，
+# 按模式版本规则属于破坏性结构变更。
     report = {
         "checks": checks,
         "gate": "V-C0",

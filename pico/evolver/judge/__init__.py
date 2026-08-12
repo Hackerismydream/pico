@@ -47,25 +47,25 @@ from .schema import (
 )
 
 __all__ = [
-    # Enums
+    # 枚举
     "ActionKind",
     "IssueType",
     "PatchWhere",
     "PatchWhy",
-    # Dataclasses
+    # 数据类
     "JudgeAction",
     "JudgeResult",
     "ProposedComponent",
-    # Prompt building
+    # 提示构建
     "JUDGE_SYSTEM_PROMPT",
     "JUDGE_USER_TEMPLATE",
     "WHERE_DESCRIPTIONS",
     "WHY_DESCRIPTIONS",
     "build_judge_messages",
-    # Parsing
+    # 解析
     "JudgeParseError",
     "parse_judge_output",
-    # LLM client (B3)
+    # LLM 客户端（B3）
     "JudgeLLM",
     "JudgeLLMBackend",
     "JudgeLLMConfig",

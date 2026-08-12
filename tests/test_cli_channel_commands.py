@@ -154,8 +154,8 @@ def test_channels_group_help_and_bare_command_are_available() -> None:
     assert result.exit_code == 0, result.stdout
     assert "channels list" in result.stdout
 
-    # click >= 8.2: a group invoked without a subcommand prints help but
-    # exits 2 (usage error) instead of 0.
+
+
     result = runner.invoke(app, ["channels"])
     assert result.exit_code == 2, result.stdout
     assert "list" in result.stdout

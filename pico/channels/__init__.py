@@ -14,8 +14,8 @@ from pico.channels.contract import (
 )
 from pico.channels.manager import ChannelManager
 
-# Public surface = the contract types adapters implement. Validation helpers
-# (capability_violations) live in channels.contract.
+# 公共接口即适配器实现的契约类型。校验辅助函数
+# （capability_violations）位于 channels.contract。
 __all__ = [
     "Capabilities",
     "Channel",

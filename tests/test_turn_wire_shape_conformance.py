@@ -124,7 +124,7 @@ async def test_subagent_delivery_uses_a_typed_uncorrelated_event() -> None:
     _assert_event_validates(events[0])
 
 
-# --- message.complete payload shape (B1 regression guard) ---
+
 
 
 async def test_message_complete_payload_has_turn_id_and_usage_only() -> None:
@@ -163,7 +163,7 @@ async def test_message_complete_payload_has_turn_id_and_usage_only() -> None:
         turn_ids[id(req)] = "t1"
         submission_ids[id(req)] = "submission-1"
         await scheduler.submit(req).result()
-        await asyncio.sleep(0.1)  # let the coalescer flush
+        await asyncio.sleep(0.1)
     finally:
         await teardown()
 
@@ -174,11 +174,11 @@ async def test_message_complete_payload_has_turn_id_and_usage_only() -> None:
     payload = completions[0]["payload"]
     assert set(payload) == {"submission_id", "turn_id", "usage"}
     assert payload["submission_id"] == "submission-1"
-    assert "content" not in payload  # B1: must not leak
-    _assert_event_validates(completions[0])  # Pydantic accepts
+    assert "content" not in payload
+    _assert_event_validates(completions[0])
 
 
-# --- error event shape — no ``detail`` field (B2 regression guard) ---
+
 
 
 async def test_overflow_error_event_payload_shape() -> None:
@@ -188,7 +188,7 @@ async def test_overflow_error_event_payload_shape() -> None:
     emitter = SubscriptionEmitter(send_frame=send_frame)
 
     sub_id = await emitter.register("tui:default")
-    # Force overflow by pushing beyond queue capacity without yielding.
+
     from pico.tui_rpc.subscriptions import QUEUE_CAPACITY
 
     for i in range(QUEUE_CAPACITY + 50):
@@ -205,10 +205,10 @@ async def test_overflow_error_event_payload_shape() -> None:
     assert set(err["payload"]) <= {"code", "message", "reason"}, (
         f"error payload must only contain {{code, message, reason?}}; got {set(err['payload'])}"
     )
-    assert "detail" not in err["payload"]  # B2: must not leak
-    _assert_event_validates(err)  # Pydantic accepts
+    assert "detail" not in err["payload"]
+    _assert_event_validates(err)
 
-    # Smoke: sub got closed after overflow.
+
     assert sub_id not in emitter._by_id
 
 

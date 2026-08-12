@@ -44,7 +44,7 @@ def populated_sessions(tmp_path: Path) -> SessionManager:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# is_ephemeral_channel
+
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -66,7 +66,7 @@ def test_is_ephemeral_empty_enabled_set():
 
 
 # ─────────────────────────────────────────────────────────────────────
-# resolve_cron_delivery — pass-through for non-ephemeral
+
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -76,7 +76,7 @@ def test_non_ephemeral_passthrough(populated_sessions):
     targets, warnings = resolve_cron_delivery(
         channel="telegram",
         chat_id="6608552652",
-        forward_channels=["*"],  # irrelevant for non-ephemeral
+        forward_channels=["*"],
         enabled_channels={"telegram", "feishu"},
         session_manager=populated_sessions,
     )
@@ -97,7 +97,7 @@ def test_non_ephemeral_ignores_forward_channels(populated_sessions):
 
 
 # ─────────────────────────────────────────────────────────────────────
-# resolve_cron_delivery — ephemeral broadcast
+
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -158,7 +158,7 @@ def test_tui_treated_same_as_cli(populated_sessions):
 
 
 # ─────────────────────────────────────────────────────────────────────
-# resolve_cron_delivery — edge cases (warnings, no delivery)
+
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -191,7 +191,7 @@ def test_ephemeral_no_overlap_warns(populated_sessions):
 def test_ephemeral_skip_when_no_session(tmp_path: Path):
     """When SessionManager has no session for a forward target, that target
     is skipped with a warning — other targets still deliver."""
-    # Sessions dir has only telegram, no feishu
+
     sessions = tmp_path / "sessions"
     (sessions / "telegram").mkdir(parents=True)
     (sessions / "telegram" / "6608552652.jsonl").write_text(
@@ -207,7 +207,7 @@ def test_ephemeral_skip_when_no_session(tmp_path: Path):
         enabled_channels={"telegram", "feishu"},
         session_manager=session_mgr,
     )
-    # telegram delivers, feishu skipped
+
     by_channel = {t.channel: t.chat_id for t in targets}
     assert by_channel == {"telegram": "6608552652"}
     assert any("feishu" in w and "no recent session" in w for w in warnings)
@@ -228,7 +228,7 @@ def test_ephemeral_no_session_manager_skips_everything(tmp_path: Path):
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Minted tui chat_id fan-out invariant
+
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -258,8 +258,8 @@ def test_cron_fanout_to_tui_resolves_minted_chat_id(tmp_path: Path):
     """
     older_id = "20260610_100000_aaa111"
     newer_id = "20260610_120000_bbb222"
-    # Seed the newer session FIRST so file mtime order contradicts
-    # updated_at order — pins that recency follows updated_at, not mtime.
+
+
     _seed_minted_tui(tmp_path, newer_id, "2026-06-10T12:00:00")
     _seed_minted_tui(tmp_path, older_id, "2026-06-10T10:00:00")
 

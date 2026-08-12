@@ -37,20 +37,20 @@ class AssembledContext:
     """
 
     messages: list[dict[str, Any]]
-    system_prompt_addition: str | None = None  # Injected summary / working-state
-    include_indices: list[int] | None = None  # Which session msg indices survived
-    metadata: dict[str, Any] = field(default_factory=dict)  # Debug / telemetry
+    system_prompt_addition: str | None = None  # 注入的摘要和工作状态
+    include_indices: list[int] | None = None  # 保留下来的会话消息索引
+    metadata: dict[str, Any] = field(default_factory=dict)  # 调试和遥测
 
 
 @dataclass
 class TokenBudget:
     """Token budget breakdown for one turn."""
 
-    context_length: int  # Model's context window
-    reserved_output: int  # Reserved for completion
-    reserved_tools: int  # Tool schemas + results in prompt
-    reserved_system: int  # System prompt overhead
-    available_history: int  # What's left for session history + archive injection
+    context_length: int  # 模型上下文窗口
+    reserved_output: int  # 为补全预留
+    reserved_tools: int  # 提示词中的工具模式和结果
+    reserved_system: int  # 系统提示词开销
+    available_history: int  # 为会话历史和归档注入留下的余额
 
     @property
     def total_reserved(self) -> int:

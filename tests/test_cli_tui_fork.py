@@ -28,7 +28,7 @@ def test_ui_tui_dir_resolves_under_repo_root():
     """Sanity: the launcher's _UI_TUI_DIR points to the vendored ui-tui tree."""
     assert _UI_TUI_DIR.name == "ui-tui"
     assert (_UI_TUI_DIR / "package.json").exists(), f"After fork, ui-tui/package.json should exist at {_UI_TUI_DIR}"
-    # Post-fork sanity — vendored hermes-ink package present.
+
     assert (_UI_TUI_DIR / "packages" / "hermes-ink" / "package.json").exists(), (
         "Vendored @hermes/ink package must be present after fork."
     )
@@ -191,7 +191,7 @@ def test_check_sets_pico_tui_check_env_var(monkeypatch):
     captured_env: dict[str, str] = {}
 
     def fake_run_subprocess(*_a, **_kw):
-        # Snapshot env at call time.
+
         import os as _os
 
         captured_env.update(_os.environ)

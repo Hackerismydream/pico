@@ -75,8 +75,7 @@ export function SessionPicker({ activeSid, gw, onCancel, onDeleteActive, onSelec
     setDeleting(true)
 
     if (onDeleteActive && activeSid === target.id) {
-      // The fallback switches session and closes the picker, so this
-      // component unmounts — skip the local list bookkeeping entirely.
+      // 回退路径会切换会话并关闭选择器，导致本组件卸载，因此直接跳过本地列表记账。
       onDeleteActive(target.id).catch((e: unknown) => {
         setErr(rpcErrorMessage(e))
         setDeleting(false)

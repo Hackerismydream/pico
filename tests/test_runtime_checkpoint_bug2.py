@@ -30,7 +30,7 @@ def workspace():
 
 
 # ---------------------------------------------------------------------------
-# CheckpointService unit
+
 # ---------------------------------------------------------------------------
 
 
@@ -42,7 +42,7 @@ async def test_checkpoint_commits_then_noops_when_unchanged(workspace):
     assert cid is not None
     assert "a.py" in changed
 
-    # Nothing changed since the last snapshot → no new commit.
+
     cid2, changed2 = await svc.commit_turn("turn 2")
     assert cid2 is None
     assert changed2 == []
@@ -86,7 +86,7 @@ def _git_count(cwd: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Loop-level: max-iter interrupted vs baseline
+
 # ---------------------------------------------------------------------------
 
 
@@ -144,13 +144,13 @@ async def test_max_iter_interrupted_with_checkpoint(workspace):
         [{"role": "user", "content": "go"}],
     )
     assert outcome.status == "interrupted"
-    # Checkpoint-on no longer short-circuits to a fixed "iteration limit"
-    # notice: exhaustion always runs the synthesis wrap-up (here the stub
-    # cannot produce content, so it lands on the static fallback). The
-    # checkpoint metadata below — not the reply text — is what marks the turn
-    # interrupted and recoverable.
+
+
+
+
+
     assert "maximum number of tool call iterations" in (final or "")
-    # The turn's edits were snapshotted and offered for recovery.
+
     assert outcome.checkpoint_id is not None
     assert "a.py" in outcome.edited_files
 
@@ -160,29 +160,29 @@ async def test_max_iter_baseline_preserved_when_disabled(workspace):
     final, _used, _msgs, outcome = await agent._run_agent_loop(
         [{"role": "user", "content": "go"}],
     )
-    # Status is reported (harmless metadata) but behavior is baseline:
-    # original message text, no checkpoint.
+
+
     assert outcome.status == "interrupted"
     assert "maximum number of tool call iterations" in (final or "")
     assert outcome.checkpoint_id is None
     assert outcome.edited_files == []
 
 
-# --- I3/I4: the soul cases — "half-done work must not pollute memory" --------
 
 
-# Note: tests that spied on ``_trigger_local_extraction`` were removed when the
-# embedded extraction path was retired by feature/integrate-everos (Phase B-1).
-# The Bug2 axiom "interrupted turn != completed turn" now lives in two places
-# preserved by this merge:
-#   1. Shadow-git snapshot is taken regardless (see test_max_iter_snapshot...)
-#   2. ``outcome.status`` distinguishes interrupted vs completed for any caller
-#      that wants to gate downstream actions on it (the new after-turn
-#      pipeline at the caller level can choose to honor this — out of scope
-#      for Bug2 itself).
 
 
-# --- I5/I6: completed and error terminal states ------------------------------
+
+
+
+
+
+
+
+
+
+
+
 
 
 class _WriteThenStopProvider(LLMProvider):
@@ -253,9 +253,9 @@ async def test_completed_status_and_snapshot(workspace):
     )
     assert outcome.status == "completed"
     assert "all done" in (final or "")
-    # The completed turn's edit was snapshotted...
+
     assert outcome.checkpoint_id is not None
-    # ...but edited_files is only surfaced for interrupted turns (recovery).
+
     assert outcome.edited_files == []
 
 
@@ -276,7 +276,7 @@ async def test_error_status(workspace):
 
 
 # ---------------------------------------------------------------------------
-# Recovery prompt injection
+
 # ---------------------------------------------------------------------------
 
 
@@ -292,7 +292,7 @@ def test_recovery_block_injected_into_next_user_message(workspace):
     assert "a.py" in injected and "b.py" in injected
     assert "abc123" in injected
     assert "continue please" in injected
-    # Consumed exactly once.
+
     assert "sess" not in agent._pending_recovery
 
 
@@ -303,7 +303,7 @@ def test_recovery_block_noop_without_pending(workspace):
     assert messages[-1]["content"] == "hello"
 
 
-# --- U6/U8/U9: edge coverage -------------------------------------------------
+
 
 
 async def test_checkpoint_captures_deletion(workspace):
@@ -337,7 +337,7 @@ def test_recovery_block_injects_into_list_content(workspace):
     assert isinstance(content, list)
     assert content[0]["type"] == "text"
     assert "interrupted" in content[0]["text"].lower()
-    # original blocks preserved after the injected one
+
     assert content[1]["text"] == "hi"
 
 
@@ -349,10 +349,10 @@ def test_recovery_block_kept_when_last_not_user(workspace):
     messages = [{"role": "assistant", "content": "x"}]
     agent._inject_recovery_block("s", messages)
     assert messages[-1]["content"] == "x"
-    assert "s" in agent._pending_recovery  # not consumed
+    assert "s" in agent._pending_recovery
 
 
-# --- E1/E2: cross-turn recovery through real assembly ------------------------
+
 
 
 async def test_recovery_flows_interrupt_to_next_assembly(workspace):
@@ -362,7 +362,7 @@ async def test_recovery_flows_interrupt_to_next_assembly(workspace):
     agent = _loop_agent(workspace, checkpoint_enabled=True)
     key = "tui:default"
 
-    # Turn 1 — force a max-iter interruption, then stash like the caller.
+
     _f, _u, _m, outcome = await agent._run_agent_loop(
         [{"role": "user", "content": "go"}],
     )
@@ -370,7 +370,7 @@ async def test_recovery_flows_interrupt_to_next_assembly(workspace):
     agent._stash_recovery(key, outcome)
     assert key in agent._pending_recovery
 
-    # Turn 2 — real assembly must carry the recovery notice.
+
     session = agent.sessions.get_or_create(key)
     messages = await agent._assemble_context_messages(
         session=session,
@@ -412,7 +412,7 @@ async def test_recovery_consumed_once(workspace):
     assert "interrupted" not in (t2 if isinstance(t2, str) else str(t2)).lower()
 
 
-# --- F1: robustness — checkpoint must degrade, never crash the turn ----------
+
 
 
 async def test_checkpoint_degrades_when_git_missing(workspace, monkeypatch):
@@ -444,4 +444,4 @@ async def test_loop_survives_checkpoint_failure(workspace, monkeypatch):
         [{"role": "user", "content": "go"}],
     )
     assert outcome.status == "interrupted"
-    assert outcome.checkpoint_id is None  # commit failed, but no crash
+    assert outcome.checkpoint_id is None

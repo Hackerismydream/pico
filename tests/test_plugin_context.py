@@ -37,8 +37,8 @@ class TestPluginContext:
             services=ServiceLocator(workspace=tmp_path),
         )
         assert isinstance(ctx.logger, logging.Logger)
-        # Default name lands under the pico.plugin namespace so
-        # plugin output is grep-able alongside host output.
+
+
         assert ctx.logger.name.startswith("pico.plugin")
 
     def test_explicit_logger(self, tmp_path: Path) -> None:

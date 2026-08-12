@@ -51,7 +51,7 @@ def _suppress_info_logs() -> None:
     mute_subsystem_logs_unless_debug()
 
 
-# ── helpers ───────────────────────────────────────────────────────────
+# ── 辅助方法 ──────────────────────────────────────────────────────────
 
 
 def _open_service() -> CronService:
@@ -164,7 +164,7 @@ def _parse_duration(value: str) -> int:
     return total
 
 
-# ── list ──────────────────────────────────────────────────────────────
+# ── 列表 ──────────────────────────────────────────────────────────────
 
 
 @cron_app.command("list")
@@ -188,7 +188,7 @@ def cron_list(
     status = service.status()
     jobs = service.list_jobs(include_disabled=all_)
 
-    # Service-level banner (folds the standalone `cron status` cmd)
+    # 服务级横幅（合并原独立的 `cron status` 命令）。
     enabled_count = sum(1 for j in service.list_jobs(include_disabled=True) if j.enabled)
     total_count = status["jobs"]
     next_wake_ms = status.get("next_wake_at_ms")
@@ -249,7 +249,7 @@ def cron_list(
     console.print(table)
 
 
-# ── show ──────────────────────────────────────────────────────────────
+# ── 查看 ──────────────────────────────────────────────────────────────
 
 
 @cron_app.command("get")
@@ -278,7 +278,7 @@ def cron_get(
     table.add_row("delete_after_run", str(job.delete_after_run))
     table.add_row("silent_fire_limit", str(job.silent_fire_limit) if job.silent_fire_limit else "-")
 
-    # Payload
+    # 载荷
     table.add_row("─ Payload ─", "")
     table.add_row("kind", job.payload.kind)
     table.add_row("channel", job.payload.channel or "-")
@@ -290,7 +290,7 @@ def cron_get(
         (job.payload.message[:200] + ("…" if len(job.payload.message) > 200 else "")) if job.payload.message else "-",
     )
 
-    # State
+    # 状态
     table.add_row("─ State ─", "")
     table.add_row("next_run_at", _format_next_run(job))
     table.add_row(
@@ -324,7 +324,7 @@ def cron_get(
     console.print(table)
 
 
-# ── remove ────────────────────────────────────────────────────────────
+# ── 删除 ──────────────────────────────────────────────────────────────
 
 
 @cron_app.command("delete")
@@ -357,7 +357,7 @@ def cron_delete(
         raise typer.Exit(code=1)
 
 
-# ── enable / disable ──────────────────────────────────────────────────
+# ── 启用/禁用 ─────────────────────────────────────────────────────────
 
 
 @cron_app.command("enable")
@@ -412,7 +412,7 @@ def cron_disable(
         raise typer.Exit(code=1)
 
 
-# ── run ───────────────────────────────────────────────────────────────
+# ── 运行 ──────────────────────────────────────────────────────────────
 
 
 @cron_app.command("run")
@@ -455,30 +455,21 @@ def cron_run(
         console.print(f"[red]Job {job.id} is disabled — pass --force to run anyway.[/red]")
         raise typer.Exit(code=1)
 
-    # Gateway-running detection (best-effort heuristic). Surface BEFORE
-    # the state-mutation confirm so it's part of the user's decision
-    # context — they should know the test-fire might race a real
-    # gateway claim before they say "y".
+    # 网关运行检测（尽力而为的启发式）。在状态变更确认前展示，使其进入用户决策上下文；
+    # 用户回答 "y" 前应知道测试触发可能与真实网关领取发生竞态。
     #
-    # Two signals, OR'd, because each on its own has gaps:
+    # 两个信号取或，因为单独使用任何一个都有盲区：
     #
-    #   1. Active claim within the gateway freshness window —
-    #      precise: "gateway is currently mid-run on some job". Misses
-    #      idle gateway between ticks. Distinct from CronService's own
-    #      ``_CLAIM_TTL_MS = 30 * 60 * 1000`` (30min, the time before
-    #      a stale claim becomes forcibly releasable). We use a much
-    #      tighter 60s window because we want to know if a *live*
-    #      gateway is here right now — not whether some crashed peer
-    #      left an orphan claim 25 minutes ago.
+    #   1. 网关新鲜度窗口内的活跃领取——精确表示“网关当前正在运行某个任务”，但会漏掉 tick
+    #      间隙中的空闲网关。它不同于 CronService 自身的 ``_CLAIM_TTL_MS = 30 * 60 * 1000``
+    #      （30 分钟，即陈旧领取可被强制释放前的时长）。这里采用严格得多的 60 秒窗口，
+    #      因为要判断此刻是否有存活网关，而不是某个崩溃对端是否在 25 分钟前留下孤儿领取。
     #
-    #   2. jobs.json mtime within the same window — broader: catches
-    #      recent claim acquire/release writes even after the claim
-    #      column was cleared. False-positives after our own
-    #      cron add / remove / disable, but those still warrant the
-    #      warning ("you might be racing yourself" is honest).
+    #   2. 同一窗口内的 jobs.json 修改时间——范围更广：即使领取列已清空，也能捕获最近的领取/
+    #      释放写入。自身执行 cron add/remove/disable 后会出现假阳性，但此时警告仍有意义，
+    #      因为确实可能与自己产生竞态。
     #
-    # Neither signal catches a gateway sleeping for an hour between
-    # widely-spaced jobs without an explicit Gateway presence protocol.
+    # 若没有显式网关在线协议，两个信号都无法发现因任务间隔很长而休眠一小时的网关。
     from time import time as _time
 
     gateway_freshness_s = 60
@@ -501,9 +492,7 @@ def cron_run(
             f"test-fire won't execute.[/yellow]"
         )
 
-    # State-mutation confirm: spell out what changes for THIS job kind so
-    # the user can't claim they were misled by a "DRY-RUN" label that
-    # didn't actually mean dry-run.
+    # 状态变更确认：明确说明当前任务类型会发生什么变化，避免 "DRY-RUN" 标签并非真正干跑而误导用户。
     is_one_shot = job.schedule.kind == "at"
     will_delete = is_one_shot and job.delete_after_run
     will_disable = is_one_shot and not job.delete_after_run
@@ -551,8 +540,7 @@ def cron_run(
             f"{job.id[:6]}` for current state.[/yellow]"
         )
     else:
-        # Closing message reflects what *actually* happened: delivery
-        # was stubbed, but state moved forward.
+    # 收尾消息反映实际发生的情况：投递被替换为桩，但状态已向前推进。
         if will_delete:
             tail = "Job has been REMOVED from the store."
         elif will_disable:
@@ -569,7 +557,7 @@ def cron_run(
         console.print(f"[dim](message delivery was stubbed — user did not see the reminder. {tail})[/dim]")
 
 
-# ── add ───────────────────────────────────────────────────────────────
+# ── 添加 ──────────────────────────────────────────────────────────────
 
 
 @cron_app.command("add")
@@ -631,7 +619,7 @@ def cron_add(
     trigger time according to ``cron.forward_channels`` — see
     ``pico cron config get`` for current routing.
     """
-    # Validate schedule: exactly one of the three
+    # 校验调度方式：三者必须且只能选择一个。
     schedule_flags = [
         ("--cron", cron),
         ("--at", at_iso),
@@ -645,13 +633,11 @@ def cron_add(
             console.print(f"[red]Pass exactly one of --cron / --at / --every (got {set_flags})[/red]")
         raise typer.Exit(code=2)
 
-    # Build CronSchedule
+    # 构建 CronSchedule。
     if cron:
-        # Validate cron expression syntax up-front. Without this, a typo
-        # like `--cron "0 9 * *"` (missing field) silently creates a
-        # job whose _compute_next_run swallows the exception and returns
-        # None — the job would then never fire. Fail-fast at the CLI
-        # boundary instead.
+        # 提前校验 cron 表达式语法。否则 `--cron "0 9 * *"`（缺少字段）之类的拼写错误会
+        # 静默创建任务，_compute_next_run 吞掉异常并返回 None，导致任务永不触发。
+        # 应在 CLI 边界快速失败。
         try:
             from croniter import croniter
 
@@ -659,7 +645,7 @@ def cron_add(
         except Exception as exc:
             console.print(f"[red]Invalid cron expression {cron!r}: {exc}[/red]")
             raise typer.Exit(code=2)
-        # Validate timezone if provided
+    # 若提供时区则进行校验。
         if tz:
             try:
                 from zoneinfo import ZoneInfo
@@ -676,9 +662,8 @@ def cron_add(
         except ValueError:
             console.print(f"[red]Invalid ISO datetime: {at_iso!r} (expected YYYY-MM-DDTHH:MM:SS)[/red]")
             raise typer.Exit(code=2)
-        # A naive `at` + tz means "that wall-clock time in tz"; anchor it so
-        # .timestamp() does not fall back to the host's local zone. An
-        # offset-aware string carries its own zone, so tz is ignored.
+        # 无时区 `at` 加 tz 表示“该时区的当地时间”；需将其锚定，避免 .timestamp() 回退到
+        # 主机本地时区。带偏移的字符串自带时区，因此忽略 tz。
         if dt.tzinfo is None and tz:
             try:
                 from zoneinfo import ZoneInfo
@@ -711,15 +696,13 @@ def cron_add(
             delete_after_run=delete_after,
         )
     except ValueError as exc:
-        # The service rejects a non-runnable schedule (at in the past,
-        # every <= 0, invalid cron expr) rather than storing a job that
-        # silently never fires.
+        # 服务拒绝不可运行的调度（at 已过期、every <= 0、cron 表达式无效），而不是存储后永不触发。
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=2)
     console.print(f"[green]✓[/green] Created job '{job.name}' (id: {job.id})")
 
 
-# ── config (cron section read/write) ──────────────────────────────────
+# ── 配置（cron 段读写）────────────────────────────────────────────────
 
 
 cron_config_app = typer.Typer(
@@ -842,7 +825,7 @@ def cron_config_set(
         console.print("[red]Must specify at least one flag, e.g. --forward-channels / --default-timezone.[/red]")
         raise typer.Exit(1)
 
-    # Parse all first so a bad value never half-writes.
+    # 先解析全部值，避免无效值造成写入一半的状态。
     parsed_updates: list[tuple[str, Any, dict[str, Any]]] = []
     for key, raw in raw_updates:
         handler = _KEY_HANDLERS[key]

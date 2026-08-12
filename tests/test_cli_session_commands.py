@@ -54,7 +54,7 @@ def two_sessions(manager: SessionManager, workspace: Path, monkeypatch) -> list[
     return [chat_id_a, chat_id_b]
 
 
-# ── help ──────────────────────────────────────────────────────────────
+
 
 
 def test_session_help_works() -> None:
@@ -118,7 +118,7 @@ def test_session_delete_help() -> None:
     assert r.exit_code == 0
 
 
-# ── create ────────────────────────────────────────────────────────────
+
 
 
 def test_create_prints_id(patched_workspace: Path) -> None:
@@ -154,7 +154,7 @@ def test_create_with_title_output_contains_id(patched_workspace: Path) -> None:
     assert any("_" in line for line in r.stdout.splitlines())
 
 
-# ── list ──────────────────────────────────────────────────────────────
+
 
 
 def test_list_empty_cli_channel(patched_workspace: Path) -> None:
@@ -193,7 +193,7 @@ def test_list_all_includes_other_channels(
     assert other_cid in r.stdout, "--all must include sessions from other channels"
 
 
-# ── resume ────────────────────────────────────────────────────────────
+
 
 
 def test_resume_full_id(two_sessions: list[str], patched_workspace: Path) -> None:
@@ -248,7 +248,7 @@ def test_resume_exact_match_wins_over_prefix(patched_workspace: Path, manager: S
     assert first_line == f"cli:{short_cid}"
 
 
-# ── resolve_session_cross_channel ─────────────────────────────────────
+
 
 
 def _seed(manager: SessionManager, key: str) -> None:
@@ -308,7 +308,7 @@ def test_cross_channel_unknown_bare_falls_back_to_cli(
     assert resolve_session_cross_channel(manager, "nope000") == "cli:nope000"
 
 
-# ── delete ────────────────────────────────────────────────────────────
+
 
 
 def test_delete_by_bare_id(two_sessions: list[str], patched_workspace: Path, manager: SessionManager) -> None:
@@ -330,7 +330,7 @@ def test_delete_unknown_id_nonzero(patched_workspace: Path) -> None:
     assert r.exit_code != 0
 
 
-# ── fork ──────────────────────────────────────────────────────────────
+
 
 
 def test_session_fork_help() -> None:
@@ -364,7 +364,7 @@ def test_fork_unknown_id_errors(patched_workspace: Path) -> None:
 def test_fork_empty_session_errors(patched_workspace: Path, manager: SessionManager) -> None:
     cid = new_chat_id()
     empty = manager.get_or_create(f"cli:{cid}")
-    manager.save(empty)  # persisted metadata line, zero messages
+    manager.save(empty)
     assert manager.exists(f"cli:{cid}")
 
     r = runner.invoke(session_app, ["fork", cid])
@@ -382,7 +382,7 @@ def test_fork_title_option(two_sessions: list[str], patched_workspace: Path, man
     assert child.metadata["title"] == "Spinoff"
 
 
-# ── session export ──────────────────────────────────────────────────────
+
 
 
 def test_export_by_bare_id_writes_verified_portable_artifact(

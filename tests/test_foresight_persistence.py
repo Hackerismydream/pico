@@ -26,7 +26,7 @@ from pico.memory_engine.consolidate.consolidator import (
 from pico.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
 # ---------------------------------------------------------------------------
-# Pure-helper tests.
+
 
 
 class TestForesightBulletFormat:
@@ -73,7 +73,7 @@ class TestForesightBulletFormat:
 
 
 # ---------------------------------------------------------------------------
-# MemoryStore.append_foresight.
+
 
 
 @pytest.fixture
@@ -105,7 +105,7 @@ def test_creates_section_on_first_append(store: MemoryStore):
     content = store.read_long_term()
     assert _FORESIGHT_HEADING in content
     assert "Alex returns to Project A index work tomorrow" in content
-    # Properly formatted bullet:
+
     assert "(from 2026-05-07 17:32, window: 1-2 days, confidence: high, src: episodes.md @ 2026-05-07 10:30)" in content
 
 
@@ -114,21 +114,21 @@ def test_appends_to_existing_section_preserving_prior_bullets(store: MemoryStore
     store.append_foresight([_FS_A])
     store.append_foresight([_FS_B])
     content = store.read_long_term()
-    # Both bullets present.
+
     assert content.count("- Alex returns to Project A") == 1
     assert content.count("- If 60s timeout fails") == 1
-    # FS_A came first, so it should appear before FS_B.
+
     assert content.index("Alex returns") < content.index("60s timeout")
 
 
 def test_dedupes_by_prediction_and_src_ts(store: MemoryStore):
     """Same (prediction, src_ts) is skipped on second call."""
     n1 = store.append_foresight([_FS_A])
-    n2 = store.append_foresight([_FS_A])  # exact duplicate
+    n2 = store.append_foresight([_FS_A])
     assert n1 == 1
-    assert n2 == 0  # nothing new written
+    assert n2 == 0
     content = store.read_long_term()
-    assert content.count("Alex returns") == 1  # not 2
+    assert content.count("Alex returns") == 1
 
 
 def test_semantic_dedup_collapses_reworded_repeat_emissions(store: MemoryStore):
@@ -139,17 +139,17 @@ def test_semantic_dedup_collapses_reworded_repeat_emissions(store: MemoryStore):
     content tokens.
     """
     store.append_foresight([_FS_A])
-    later = dict(_FS_A, src_ts="2026-05-08 10:30")  # same pred, new src
+    later = dict(_FS_A, src_ts="2026-05-08 10:30")
     written = store.append_foresight([later])
-    assert written == 0  # semantic dup → skipped
+    assert written == 0
     content = store.read_long_term()
     assert content.count("Alex returns") == 1
 
 
 def test_semantically_distinct_predictions_both_kept(store: MemoryStore):
     """Two predictions with different topical content both persist."""
-    store.append_foresight([_FS_A])  # Project A index work
-    written = store.append_foresight([_FS_B])  # 60s timeout / mutex
+    store.append_foresight([_FS_A])
+    written = store.append_foresight([_FS_B])
     assert written == 1
     content = store.read_long_term()
     assert "Alex returns" in content
@@ -178,11 +178,11 @@ def test_fifo_caps_at_max_keep(store: MemoryStore):
     new = [dict(_FS_A, src_ts=f"2026-05-1{i} 10:00", prediction=distinct_predictions[5 + i]) for i in range(3)]
     store.append_foresight(new, max_keep=5)
     content = store.read_long_term()
-    # Earliest 3 of the original 5 should have been dropped.
+
     assert distinct_predictions[0] not in content
     assert distinct_predictions[1] not in content
     assert distinct_predictions[2] not in content
-    # Most recent 5 should be present.
+
     for kept in distinct_predictions[3:8]:
         assert kept in content
 
@@ -200,7 +200,7 @@ def test_blank_prediction_is_skipped(store: MemoryStore):
     written = store.append_foresight([_FS_A, bad])
     assert written == 1
     content = store.read_long_term()
-    assert content.count("- ") == 1  # only the good one
+    assert content.count("- ") == 1
 
 
 class TestSpliceAtEndHelper:
@@ -208,24 +208,24 @@ class TestSpliceAtEndHelper:
         content = "# Title\n\n## Projects\n\n- a\n"
         out = _splice_h2_section_at_end(content, "## Foresight", "- pred1")
         assert "## Projects" in out
-        # Foresight comes after Projects
+
         assert out.index("## Projects") < out.index("## Foresight")
 
     def test_moves_section_to_end_when_already_present_in_middle(self):
         content = (
             "# Title\n\n"
             "## Projects\n\n- p\n\n"
-            "## Foresight\n\n- f-old\n\n"  # in the middle
+            "## Foresight\n\n- f-old\n\n"
             "## Habits\n\n- h\n"
         )
         out = _splice_h2_section_at_end(content, "## Foresight", "- f-new")
-        # Foresight should be moved past Habits to end.
+
         assert out.index("## Habits") < out.index("## Foresight")
-        # Old foresight content gone.
+
         assert "f-old" not in out
-        # New body present.
+
         assert "f-new" in out
-        # Projects/Habits content preserved verbatim.
+
         assert "- p\n" in out
         assert "- h\n" in out
 
@@ -233,7 +233,7 @@ class TestSpliceAtEndHelper:
         content = (
             "# Title\n\n"
             "## Projects\n\n- p\n\n"
-            "## Foresight\n\n- f-old\n"  # already last
+            "## Foresight\n\n- f-old\n"
         )
         out = _splice_h2_section_at_end(content, "## Foresight", "- f-new")
         assert out.index("## Projects") < out.index("## Foresight")
@@ -253,9 +253,9 @@ class TestEnsureForesightAtEnd:
     def test_moves_foresight_when_in_middle(self):
         c = "# Title\n\n## Foresight\n\n- f\n\n## Projects\n\n- p\n\n## Habits\n\n- h\n"
         out = _ensure_foresight_at_end(c)
-        # Now Foresight is after Habits
+
         assert out.index("## Habits") < out.index("## Foresight")
-        # Both Projects and Habits content survive
+
         assert "- p\n" in out
         assert "- h\n" in out
         assert "- f" in out
@@ -267,10 +267,10 @@ def test_foresight_section_lands_at_end_after_refresh_runs(tmp_path: Path):
     H2 (## Projects), the next foresight write moves ## Foresight back
     to the bottom."""
     store = MemoryStore(tmp_path, now_fn=lambda: datetime(2026, 5, 7, 17, 32))
-    # Simulate the case_10 sequence: annotate first (creates Foresight),
-    # then refresh_section appends Projects, then a 2nd annotate hits.
+
+
     store.append_foresight([_FS_A])
-    # Mimic refresh_section appending ## Projects via splicer.
+
     from pico.memory_engine.consolidate.consolidator import _splice_h2_section
 
     after_refresh = _splice_h2_section(
@@ -279,11 +279,11 @@ def test_foresight_section_lands_at_end_after_refresh_runs(tmp_path: Path):
         "- new project bullet [src: episodes.md @ 2026-05-01 09:00]",
     )
     store.write_long_term(after_refresh)
-    # Sanity: at this point Foresight is BEFORE Projects (creation order).
+
     pre = store.read_long_term()
     assert pre.index("## Foresight") < pre.index("## Projects")
 
-    # New foresight append → Foresight should move to bottom.
+
     store.append_foresight([_FS_B])
     post = store.read_long_term()
     assert post.index("## Projects") < post.index("## Foresight"), (
@@ -304,16 +304,16 @@ def test_coexists_with_other_h2_sections(tmp_path: Path):
     store.write_long_term(seeded)
     store.append_foresight([_FS_A])
     content = store.read_long_term()
-    # Original sections still byte-identical from heading onward
+
     assert "## Projects\n\n- Project B mutex landed" in content
     assert "## Habits\n\n- Gym Wed 20:00" in content
-    # New section appended
+
     assert _FORESIGHT_HEADING in content
     assert "Alex returns to Project A" in content
 
 
 # ---------------------------------------------------------------------------
-# annotate() end-to-end persistence.
+
 
 CASE_06_MESSAGES = [
     {"role": "user", "timestamp": "2026-05-07T09:30", "content": "想优化 Project A 月报, 30 秒太慢"},
@@ -379,12 +379,12 @@ async def test_annotate_enable_foresight_persists_to_user_md(tmp_path: Path):
 async def test_annotate_default_off_does_not_create_section(tmp_path: Path):
     """enable_foresight=False (default) → no ## Foresight section, no write."""
     store = MemoryStore(tmp_path, now_fn=lambda: datetime(2026, 5, 7, 17, 32))
-    # Canned response WITHOUT foresight_hint (matches default tool schema)
+
     canned_no_foresight = {"episode_summary": CANNED_WITH_FORESIGHT["episode_summary"]}
     ok = await store.annotate(
         CASE_06_MESSAGES,
         _FakeProvider(canned_no_foresight),
-        "fake-model",  # enable_foresight defaults to False
+        "fake-model",
     )
     assert ok is True
-    assert store.read_long_term() == ""  # nothing persisted
+    assert store.read_long_term() == ""

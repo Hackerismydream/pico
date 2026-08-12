@@ -13,7 +13,7 @@ runner = CliRunner()
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+
 # ---------------------------------------------------------------------------
 
 
@@ -51,7 +51,7 @@ def _mock_transport(recv_response: dict):
 
 
 # ---------------------------------------------------------------------------
-# list / ls
+
 # ---------------------------------------------------------------------------
 
 
@@ -142,7 +142,7 @@ class TestListCommand:
 
 
 # ---------------------------------------------------------------------------
-# exec
+
 # ---------------------------------------------------------------------------
 
 
@@ -180,7 +180,7 @@ class TestExecCommand:
         path = tmp_path / "debug.sock"
         path.touch()
 
-        # Simulate: stdout chunk then exit
+
         recv_responses = [
             {"type": "exit", "code": 0},
         ]
@@ -220,7 +220,7 @@ class TestExecCommand:
 
 
 # ---------------------------------------------------------------------------
-# shell
+
 # ---------------------------------------------------------------------------
 
 
@@ -252,7 +252,7 @@ class TestShellCommand:
         path.touch()
 
         recv_responses = [
-            {"type": "error", "message": "stopped"},  # error before ready — avoids raw mode
+            {"type": "error", "message": "stopped"},
         ]
         recv_mock = AsyncMock(side_effect=recv_responses)
         mock_reader = AsyncMock()
@@ -294,9 +294,9 @@ class TestShellCommand:
 
 
 # ---------------------------------------------------------------------------
-# _get_socket_path wiring (regression test for the cfg.tools.sandbox.debug.socket
-# attribute path — every other test in this file patches _get_socket_path away,
-# so without this test the wiring inside it is never exercised).
+
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -353,8 +353,8 @@ class TestGetSocketPath:
 
 
 # ---------------------------------------------------------------------------
-# Recv robustness (M2): malformed / empty server responses must not surface
-# as Python tracebacks in the user's terminal.
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -363,8 +363,8 @@ class TestRecvRobustness:
         path = tmp_path / "debug.sock"
         path.touch()
 
-        # readline() returning b"" simulates the server closing the connection
-        # before sending a response.
+
+
         mock_reader = MagicMock()
         mock_reader.readline = AsyncMock(return_value=b"")
         mock_writer = MagicMock()

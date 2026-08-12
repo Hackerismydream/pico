@@ -36,21 +36,21 @@ class AzureOpenAIProvider(LLMProvider):
         self.default_model = default_model
         self.api_version = "2024-10-21"
 
-        # Validate required parameters
+        # 校验必需参数。
         if not api_key:
             raise ValueError("Azure OpenAI api_key is required")
         if not api_base:
             raise ValueError("Azure OpenAI api_base is required")
 
-        # Ensure api_base ends with /
+        # 确保 api_base 以 / 结尾。
         if not api_base.endswith("/"):
             api_base += "/"
         self.api_base = api_base
 
     def _build_chat_url(self, deployment_name: str) -> str:
         """Build the Azure OpenAI chat completions URL."""
-        # Azure OpenAI URL format:
-        # https://{resource}.openai.azure.com/openai/deployments/{deployment}/chat/completions?api-version={version}
+        # Azure OpenAI URL 格式：
+        # 端点格式：https://{resource}.openai.azure.com/openai/deployments/{deployment}/chat/completions?api-version={version}
         base_url = self.api_base
         if not base_url.endswith("/"):
             base_url += "/"
@@ -62,8 +62,8 @@ class AzureOpenAIProvider(LLMProvider):
         """Build headers for Azure OpenAI API with api-key header."""
         return {
             "Content-Type": "application/json",
-            "api-key": self.api_key,  # Azure OpenAI uses api-key header, not Authorization
-            "x-session-affinity": uuid.uuid4().hex,  # For cache locality
+            "api-key": self.api_key,  # Azure OpenAI 使用 api-key header，而非 Authorization
+            "x-session-affinity": uuid.uuid4().hex,  # 保持缓存局部性
         }
 
     @staticmethod
@@ -93,7 +93,7 @@ class AzureOpenAIProvider(LLMProvider):
                 self._sanitize_empty_content(messages),
                 _AZURE_MSG_KEYS,
             ),
-            "max_completion_tokens": max(1, max_tokens),  # Azure API 2024-10-21 uses max_completion_tokens
+            "max_completion_tokens": max(1, max_tokens),  # Azure API 2024-10-21 使用该字段
         }
 
         if self._supports_temperature(deployment_name, reasoning_effort):
@@ -172,7 +172,7 @@ class AzureOpenAIProvider(LLMProvider):
             tool_calls = []
             if message.get("tool_calls"):
                 for tc in message["tool_calls"]:
-                    # Parse arguments from JSON string if needed
+                    # 必要时从 JSON 字符串解析参数。
                     args = tc["function"]["arguments"]
                     if isinstance(args, str):
                         args = json_repair.loads(args)

@@ -3,35 +3,24 @@
 // Modifications Copyright (c) 2026 EverMind.
 // See NOTICES.md and LICENSES/MIT-hermes-agent.txt.
 
-// StreamingMd — incremental markdown renderer for in-flight assistant text.
+// StreamingMd——用于正在生成的助手文本的增量 Markdown 渲染器。
 //
-// Naive approach (render <Md text={full}/>) re-tokenizes the entire message
-// on every stream delta. At 20-char batches over a 3 KB response that's 150
-// full re-parses.
+// 朴素方案（渲染 <Md text={full}/>）会在每次流增量时重新标记整条消息。3KB 响应按每批
+// 20 字符计算，需要完整重解析 150 次。
 //
-// This splits `text` at the last stable top-level block boundary (blank
-// line outside a fenced code span) into:
-//   stablePrefix — passed to an inner <Md>, memoized on its exact text
-//                  value. During the turn, the prefix only grows monotonically,
-//                  so its memo key matches the previous render and React
-//                  reuses the cached subtree — zero re-tokenization.
-//   unstableSuffix — the in-flight block(s). A separate <Md> re-parses just
-//                    this tail on every delta (O(unstable length) vs.
-//                    O(total length)).
+// 该方案在最后一个稳定顶层块边界（围栏代码块外的空行）处分割 `text`：
+//   stablePrefix——传给内部 <Md>，按精确文本值记忆化。轮次期间前缀只单调增长，因此记忆键
+//                  与上次渲染一致，React 复用缓存子树，无需重新标记。
+//   unstableSuffix——正在生成的块。独立 <Md> 在每次增量时只重解析尾部，复杂度从总长度降为
+//                    不稳定部分长度。
 //
-// The boundary is stored in a ref so it only advances — idempotent under
-// StrictMode double-render. Component unmounts between turns (isStreaming
-// flips off → message moves to history and renders via <Md> directly), so
-// the ref resets naturally.
+// 边界存入 Ref，只能前进，因此在 StrictMode 双重渲染下仍幂等。组件会在轮次间卸载：
+// isStreaming 关闭后消息进入历史并直接由 <Md> 渲染，Ref 会自然重置。
 //
-// Layout: the two <Md> subtrees MUST render stacked (column). The parent
-// container in messageLine.tsx is a default `flexDirection: 'row'` Box
-// (Ink's default), so returning a bare Fragment of two <Md> siblings
-// laid them out side-by-side — producing the "two jumbled columns while
-// streaming" rendering bug. Wrapping in a flexDirection="column" Box
-// here localizes the fix to the streaming path; the non-streaming <Md>
-// already returns its own column Box, so its single-child case was never
-// affected.
+// 布局：两个 <Md> 子树必须按列堆叠。messageLine.tsx 的父容器是默认
+// `flexDirection: 'row'` 的 Box（Ink 默认值），直接返回两个 <Md> 同级项的 Fragment 会让它们
+// 并排，造成“流式时两列文字混杂”缺陷。此处用 flexDirection="column" 的 Box 包装，将修复
+// 限定在流式路径；非流式 <Md> 已返回自己的列 Box，单子项情况从未受影响。
 
 import { Box } from '@hermes/ink'
 import { memo, useRef } from 'react'
@@ -40,25 +29,16 @@ import type { Theme } from '../theme.js'
 
 import { Md } from './markdown.js'
 
-// Count ``` / ~~~ AND `$$` / `\[…\]` fence toggles in `s` up to `end`. Odd
-// = currently inside a fenced block; splitting the prefix there would
-// orphan the fence and let the unstable suffix re-render as broken
-// markdown. Math fences only toggle when the code fence is closed so
-// snippets like ` ```\n$$x$$\n``` ` (math example inside a code block)
-// don't double-count. A `$$x$$` line that opens AND closes on its own
-// produces zero net toggles; that's `len >= 4` plus `endsDollar`.
+// 统计 `s` 到 `end` 范围内 ``` / ~~~ 及 `$$` / `\[…\]` 围栏切换次数。奇数表示当前位于
+// 围栏块内；在此处分割前缀会使围栏孤立，让不稳定后缀渲染成损坏的 Markdown。数学围栏仅在
+// 代码围栏关闭时切换，避免代码块中的数学示例 ` ```\n$$x$$\n``` ` 重复计数。自行开闭的
+// `$$x$$` 行净切换为零，对应 `len >= 4` 加 `endsDollar`。
 //
-// NB: this is INTENTIONALLY more conservative than `markdown.tsx`'s
-// parser, which falls back to paragraph rendering when an `$$` opener
-// has no matching closer. The renderer can do that safely because it
-// always sees the full text on every call. The streaming chunker
-// cannot — once a chunk is committed to the monotonic stable prefix it
-// is frozen, so prematurely deciding "this `$$` is just prose" would
-// permanently commit a paragraph rendering that becomes wrong the
-// instant the closer streams in. Treating any unmatched `$$` opener
-// as still-open keeps the boundary parked behind it until the closer
-// arrives (or the stream ends and the non-streaming `<Md>` takes over,
-// at which point the renderer's fallback kicks in correctly).
+// 注意：这里刻意比 `markdown.tsx` 解析器更保守；后者遇到没有匹配关闭符的 `$$` 起始符会回退到
+// 段落渲染。渲染器每次都看到完整文本，因此这样做安全；流式分块器不能。一旦块提交到单调稳定
+// 前缀便会冻结，过早认定“这个 `$$` 只是正文”会永久提交段落渲染，而关闭符一流入就变错。
+// 将所有未匹配 `$$` 起始符视为仍开启，可让边界停在其后，直到关闭符到达；若流结束，则由
+// 非流式 `<Md>` 接管，此时渲染器回退会正确生效。
 const fenceOpenAt = (s: string, end: number) => {
   let codeOpen = false
   let mathOpen = false
@@ -106,9 +86,8 @@ const fenceOpenAt = (s: string, end: number) => {
   return codeOpen || mathOpen
 }
 
-// Find the last "\n\n" boundary before `end` that is OUTSIDE a fenced code
-// block. Returns the index AFTER the second newline (start of the next
-// block), or -1 if no safe boundary exists yet.
+// 查找 `end` 前围栏代码块外最后一个 "\n\n" 边界。返回第二个换行后的索引，即下一块起点；
+// 尚无安全边界时返回 -1。
 export const findStableBoundary = (text: string) => {
   let idx = text.length
 
@@ -119,8 +98,7 @@ export const findStableBoundary = (text: string) => {
       return -1
     }
 
-    // Boundary candidate: end of stable prefix is boundary + 2 (start of
-    // next block). Check fence balance up to that point.
+    // 候选边界：稳定前缀终点为 boundary + 2，即下一块起点；检查到该位置的围栏平衡。
     const splitAt = boundary + 2
 
     if (!fenceOpenAt(text, splitAt)) {
@@ -136,18 +114,15 @@ export const findStableBoundary = (text: string) => {
 export const StreamingMd = memo(function StreamingMd({ compact, t, text }: StreamingMdProps) {
   const stablePrefixRef = useRef('')
 
-  // Reset if the text no longer starts with our recorded prefix (defensive;
-  // normally the component unmounts between turns so this shouldn't trigger).
+  // 若文本不再以已记录前缀开头则重置。此为防御性处理；正常情况下组件会在轮次间卸载，不会触发。
   if (!text.startsWith(stablePrefixRef.current)) {
     stablePrefixRef.current = ''
   }
 
   const boundary = findStableBoundary(text)
 
-  // Only advance the prefix — never retreat. The boundary math looks at the
-  // FULL text each call; if it returns a larger index than before, we grow
-  // the cached prefix. Monotonic growth makes the memo key stable across
-  // deltas (identical string → same <Md> subtree → no re-render).
+  // 前缀只前进不后退。边界计算每次查看完整文本；若返回索引大于此前值，则增长缓存前缀。
+  // 单调增长使记忆键在各增量间稳定：相同字符串对应同一 <Md> 子树，无需重新渲染。
   if (boundary > stablePrefixRef.current.length) {
     stablePrefixRef.current = text.slice(0, boundary)
   }

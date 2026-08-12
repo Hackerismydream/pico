@@ -92,9 +92,8 @@ export const estimatedMsgHeight = (
     h++
   }
 
-  // Inter-turn separator above non-first user messages (1 rule row + 1
-  // top-margin row). The render-side gate is in appLayout.tsx; we trust
-  // the caller to pass `withSeparator` only when it matches that gate.
+  // 非首条用户消息上方的轮次间分隔区由一行分隔线和一行顶部外边距组成。渲染侧
+  // 门槛位于 appLayout.tsx；调用方仅应在符合该门槛时传入 `withSeparator`。
   if (withSeparator) {
     h += 2
   }

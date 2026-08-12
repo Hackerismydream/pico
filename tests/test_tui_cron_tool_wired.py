@@ -24,7 +24,7 @@ def patched_tui_build_deps(monkeypatch: pytest.MonkeyPatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     captured: dict[str, Any] = {}
 
-    # Stub config objects
+
     config = MagicMock()
     config.workspace_path = str(tmp_path)
     config.agents.defaults.model = "stub-model"
@@ -55,7 +55,7 @@ def patched_tui_build_deps(monkeypatch: pytest.MonkeyPatch, tmp_path):
         lambda: ec_config,
     )
 
-    # Stub SessionManager + cron store dir
+
     monkeypatch.setattr(
         "pico.session.manager.SessionManager",
         lambda _wp: MagicMock(),
@@ -67,7 +67,7 @@ def patched_tui_build_deps(monkeypatch: pytest.MonkeyPatch, tmp_path):
         lambda: cron_dir,
     )
 
-    # AgentLoop spy
+
     class _AgentLoopSpy:
         def __init__(self, **kwargs):
             captured["agent_loop_kwargs"] = kwargs
@@ -77,7 +77,7 @@ def patched_tui_build_deps(monkeypatch: pytest.MonkeyPatch, tmp_path):
 
     monkeypatch.setattr("pico.agent.loop.AgentLoop", _AgentLoopSpy)
 
-    # CronService spy — capture allowed_channels + start() + on_job assignment
+
     class _CronServiceSpy:
         instances: list[Any] = []
 
@@ -102,7 +102,7 @@ def patched_tui_build_deps(monkeypatch: pytest.MonkeyPatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 2.1 — TUI AgentLoop receives a cron_service
+
 # ---------------------------------------------------------------------------
 
 
@@ -123,7 +123,7 @@ def test_tui_agent_loop_receives_cron_service(patched_tui_build_deps) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 2.2 — allowed_channels == {"tui"}
+
 # ---------------------------------------------------------------------------
 
 
@@ -142,7 +142,7 @@ def test_tui_cron_service_allowed_channels_is_tui(patched_tui_build_deps) -> Non
 
 
 # ---------------------------------------------------------------------------
-# 2.3 — cron.on_job is wired in run(), not in _build_tui_agent_loop
+
 # ---------------------------------------------------------------------------
 
 
@@ -160,9 +160,3 @@ def test_tui_cron_on_job_wired_in_run_not_build(patched_tui_build_deps) -> None:
     assert cron.on_job is None, (
         "on_job must be wired in run() (needs the spine scheduler), not in _build_tui_agent_loop"
     )
-
-
-# The message-tool-swap wrapper and the bus outbound handler are gone
-# cron now runs as a spine CRON turn and the reply is fanned out as
-# cron.delivered by ``_build_cron_callback_spine`` (covered in
-# test_tui_cron_delivered_event.py), so no bus publish / callback swap remains.

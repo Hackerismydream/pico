@@ -83,18 +83,18 @@ class BranchingDecision:
 
 
 # ---------------------------------------------------------------------------
-# Defaults (spec §18.7.2 typical B ∈ [3, 5])
+# 默认值（规范第 18.7.2 节中 B 通常属于 [3, 5]）
 # ---------------------------------------------------------------------------
 
 DEFAULT_MIN_B = 1
 DEFAULT_MAX_B = 5
 DEFAULT_TARGET_COVERAGE = 0.85
 
-# Lift posterior thresholds (Bernoulli p̂_child − p̂_root)
-LIFT_STRONG_POSITIVE = 0.10  # ≥ +10% pass rate → depth on winner (−1 to B)
-LIFT_STRONG_NEGATIVE = -0.05  # ≤ -5%  → broaden search (+1 to B)
+# 提升后验阈值（伯努利 p̂_child − p̂_root）
+LIFT_STRONG_POSITIVE = 0.10  # 通过率至少提升 10% 时深挖胜者，B 减 1
+LIFT_STRONG_NEGATIVE = -0.05  # 通过率下降至少 5% 时扩大搜索，B 加 1
 
-# Round-decay onset (≥ this round, B is shaded down by 1)
+# 轮次衰减起点：达到该轮次后 B 下调 1。
 LATE_ROUND_ONSET = 5
 
 
@@ -141,7 +141,7 @@ def branching_policy(
     components: dict[str, int] = {}
     rationale_parts: list[str] = []
 
-    # ── 1. Coverage-driven base ──
+    # ── 1. 覆盖率驱动的基数 ──
     gap = target_coverage - state.archive_coverage
     if gap > 0.5:
         b_base = 4
@@ -154,14 +154,14 @@ def branching_policy(
     components["coverage_base"] = b_base
     rationale_parts.append(f"coverage gap {gap:+.2f} → base {b_base}")
 
-    # ── 2. Uncovered-cell floor ──
+    # ── 2. 未覆盖单元下限 ──
     if state.n_uncovered_cells >= 5 and b_base < 3:
         b_after_floor = 3
         components["uncovered_floor"] = b_after_floor - b_base
         rationale_parts.append(f"{state.n_uncovered_cells} uncovered cells → floor to {b_after_floor}")
         b_base = b_after_floor
 
-    # ── 3. Parent-lift adjustment ──
+    # ── 3. 父节点提升调整 ──
     if state.parent_lift_posterior is not None:
         if state.parent_lift_posterior >= LIFT_STRONG_POSITIVE:
             components["lift_adjustment"] = -1
@@ -178,19 +178,19 @@ def branching_policy(
         else:
             components["lift_adjustment"] = 0
 
-    # ── 4. Late-round decay ──
+    # ── 4. 后期轮次衰减 ──
     if state.round_idx >= LATE_ROUND_ONSET:
         components["late_round_decay"] = -1
         rationale_parts.append(f"round {state.round_idx} ≥ {LATE_ROUND_ONSET} → decay (-1)")
         b_base -= 1
 
-    # ── 5. Budget cap ──
+    # ── 5. 预算上限 ──
     if b_base > state.remaining_budget:
         components["budget_cap"] = state.remaining_budget - b_base
         rationale_parts.append(f"budget {state.remaining_budget} caps from {b_base}")
         b_base = state.remaining_budget
 
-    # ── 6. Clamp ──
+    # ── 6. 钳制范围 ──
     final_b = max(min_b, min(max_b, b_base))
     if final_b != b_base:
         components["clamp"] = final_b - b_base

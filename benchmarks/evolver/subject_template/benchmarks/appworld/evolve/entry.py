@@ -53,7 +53,7 @@ def _make_precheck(repo_root: Path, base_sha: str, timeout: float):
             from pico.evolver.tree import git_ops
 
             source = git_ops.read_file_at(repo_root, base_sha, adapter.MODULE_PATH)
-        except Exception as exc:  # noqa: BLE001 - any read failure is a dead subject
+        except Exception as exc:  # noqa: BLE001 - 任意读取失败都表示目标不可用
             raise RuntimeError(f"cannot read {adapter.MODULE_PATH} at {base_sha[:12]} in {repo_root}: {exc}") from exc
         probe = task_defs.TRAIN_TASKS[0]
         with tempfile.TemporaryDirectory(prefix="small-real-precheck-") as tmp:

@@ -32,7 +32,7 @@ def sock_dir():
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+
 # ---------------------------------------------------------------------------
 
 
@@ -48,7 +48,7 @@ async def _client(path: Path, request: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# resolve_socket_path
+
 # ---------------------------------------------------------------------------
 
 
@@ -68,7 +68,7 @@ class TestResolveSocketPath:
 
 
 # ---------------------------------------------------------------------------
-# Server lifecycle
+
 # ---------------------------------------------------------------------------
 
 
@@ -105,11 +105,11 @@ class TestServerLifecycle:
     @pytest.mark.asyncio
     async def test_stale_socket_removed_on_start(self, sock_dir: Path) -> None:
         path = sock_dir / "debug.sock"
-        path.touch()  # simulate stale file
+        path.touch()
         server = SandboxDebugServer(path, set())
         await server.start()
         try:
-            assert path.exists()  # new socket created
+            assert path.exists()
         finally:
             await server.stop()
 
@@ -119,11 +119,11 @@ class TestServerLifecycle:
         server = SandboxDebugServer(path, set())
         await server.start()
         await server.stop()
-        await server.stop()  # should not raise
+        await server.stop()
 
 
 # ---------------------------------------------------------------------------
-# Framing error handling
+
 # ---------------------------------------------------------------------------
 
 
@@ -204,7 +204,7 @@ class TestFraming:
 
 
 # ---------------------------------------------------------------------------
-# list handler
+
 # ---------------------------------------------------------------------------
 
 
@@ -339,7 +339,7 @@ class TestListHandler:
 
 
 # ---------------------------------------------------------------------------
-# VM resolution (shared by exec and shell)
+
 # ---------------------------------------------------------------------------
 
 
@@ -455,12 +455,12 @@ class TestVmResolution:
 
         await server.stop()
         assert resp["type"] == "error"
-        # Must match the list-handler message verbatim — no "Failed to list VMs" wrapper.
+
         assert resp["message"] == "boxlite is not installed."
 
 
 # ---------------------------------------------------------------------------
-# exec handler streaming
+
 # ---------------------------------------------------------------------------
 
 
@@ -500,7 +500,7 @@ class TestExecHandler:
             await writer.drain()
 
             messages = []
-            for _ in range(3):  # stdout + exit (at most)
+            for _ in range(3):
                 line = await asyncio.wait_for(reader.readline(), timeout=2.0)
                 if not line:
                     break
@@ -522,7 +522,7 @@ class TestExecHandler:
 
 
 # ---------------------------------------------------------------------------
-# shell handler
+
 # ---------------------------------------------------------------------------
 
 
@@ -641,14 +641,14 @@ class TestShellHandler:
             writer.write((json.dumps({"cmd": "shell", "vm_ref": None, "shell": "/bin/sh"}) + "\n").encode())
             await writer.drain()
 
-            # Read ready
+
             await asyncio.wait_for(reader.readline(), timeout=2.0)
 
-            # Send resize — server will unblock _slow_wait once resize_tty is called
+
             writer.write((json.dumps({"cmd": "resize", "rows": 40, "cols": 120}) + "\n").encode())
             await writer.drain()
 
-            # Read exit message
+
             await asyncio.wait_for(reader.readline(), timeout=2.0)
             writer.close()
             await writer.wait_closed()
@@ -691,7 +691,7 @@ class TestShellHandler:
             reader, writer = await asyncio.open_unix_connection(str(path))
             writer.write((json.dumps({"cmd": "shell", "vm_ref": None, "shell": "/bin/sh"}) + "\n").encode())
             await writer.drain()
-            await asyncio.wait_for(reader.readline(), timeout=2.0)  # ready
+            await asyncio.wait_for(reader.readline(), timeout=2.0)
 
             writer.write((json.dumps({"cmd": "resize", "rows": 0, "cols": 80}) + "\n").encode())
             await writer.drain()
@@ -704,7 +704,7 @@ class TestShellHandler:
 
 
 # ---------------------------------------------------------------------------
-# Connection lifecycle: P1 regression tests
+
 # ---------------------------------------------------------------------------
 
 
@@ -743,7 +743,7 @@ class TestStartLifecycle:
             with pytest.raises(SandboxDebugServerError) as exc_info:
                 await srv2.start()
             assert "already in use" in str(exc_info.value)
-            # srv1 must still be operational after the rejected start.
+
             resp = await _client(path, {"cmd": "bogus"})
             assert resp["type"] == "error"
         finally:
@@ -751,7 +751,7 @@ class TestStartLifecycle:
 
     @pytest.mark.asyncio
     async def test_start_unlinks_stale_socket(self, sock_dir: Path) -> None:
-        # A regular file with no listener — must be treated as stale.
+
         path = sock_dir / "debug.sock"
         path.touch()
         srv = SandboxDebugServer(path, set())
@@ -779,7 +779,7 @@ class TestSingleClientGuard:
         box_info.name = None
         box_info.state.status = "running"
 
-        # A shell whose wait() blocks forever — keeps the first client attached.
+
         wait_started = asyncio.Event()
         wait_release = asyncio.Event()
 
@@ -804,7 +804,7 @@ class TestSingleClientGuard:
         try:
             with patch("boxlite.Boxlite") as cls:
                 cls.return_value = mock_runtime
-                # Client A — opens shell, reads ready, then sits idle.
+
                 rA, wA = await asyncio.open_unix_connection(str(path))
                 wA.write((json.dumps({"cmd": "shell", "vm_ref": None, "shell": "/bin/sh"}) + "\n").encode())
                 await wA.drain()
@@ -812,12 +812,12 @@ class TestSingleClientGuard:
                 assert first["type"] == "ready"
                 await asyncio.wait_for(wait_started.wait(), timeout=2.0)
 
-                # Client B — must be refused immediately with the single-client error.
+
                 respB = await _client(path, {"cmd": "list"})
                 assert respB["type"] == "error"
                 assert "active client" in respB["message"].lower()
 
-                # Now release client A so the server can shut down cleanly.
+
                 wait_release.set()
                 wA.close()
                 try:
@@ -833,7 +833,7 @@ class TestSingleClientGuard:
         server = SandboxDebugServer(path, set())
         await server.start()
         try:
-            # Two sequential single-client connections both succeed.
+
             r1 = await _client(path, {"cmd": "bogus"})
             assert r1["type"] == "error"
             r2 = await _client(path, {"cmd": "bogus"})
@@ -867,7 +867,7 @@ class TestExecDisconnectKillsExecution:
 
         async def _kill():
             kill_called.set()
-            wait_release.set()  # let wait() unblock so the task can be cancelled cleanly
+            wait_release.set()
 
         mock_execution = MagicMock()
         mock_execution.stdout = MagicMock(return_value=_async_iter(["partial output\n"]))
@@ -900,12 +900,12 @@ class TestExecDisconnectKillsExecution:
                 )
                 await writer.drain()
 
-                # Wait until we've seen the first stdout chunk so the handler is
-                # past initial setup and in the disconnect-watch state.
+
+
                 line = await asyncio.wait_for(reader.readline(), timeout=2.0)
                 assert json.loads(line)["type"] == "stdout"
 
-                # Now close the client — should trigger execution.kill().
+
                 writer.close()
                 try:
                     await writer.wait_closed()
@@ -940,8 +940,8 @@ class TestExecHandlesFutureWait:
         wait_future: asyncio.Future = loop.create_future()
         wait_future.set_result(MagicMock(exit_code=0))
 
-        # Use a plain MagicMock (not AsyncMock) so wait() returns the Future
-        # itself synchronously — same shape as the Rust-backed boxlite binding.
+
+
         mock_execution = MagicMock()
         mock_execution.stdout = MagicMock(return_value=_async_iter(["hi\n"]))
         mock_execution.stderr = MagicMock(return_value=_async_iter([]))
@@ -1054,8 +1054,8 @@ class TestShellDisconnectKillsExecution:
                 first = json.loads(await asyncio.wait_for(reader.readline(), timeout=2.0))
                 assert first["type"] == "ready"
 
-                # Close the client without ever sending any stdin — simulates the user
-                # opening `pico sandbox shell` and walking away by closing the term.
+
+
                 writer.close()
                 try:
                     await writer.wait_closed()
@@ -1083,9 +1083,9 @@ class TestShellDrainsStdoutBeforeExit:
         box_info.name = None
         box_info.state.status = "running"
 
-        # stdout yields several chunks each with a small delay; wait() returns
-        # immediately. Without the drain fix, exit would race ahead of the
-        # later chunks.
+
+
+
         chunks = ["line1\n", "line2\n", "line3\n"]
         mock_execution = MagicMock()
         mock_execution.stdout = MagicMock(return_value=_slow_async_iter(chunks, delay=0.05))
@@ -1119,7 +1119,7 @@ class TestShellDrainsStdoutBeforeExit:
                 await writer.drain()
 
                 messages = []
-                # ready, 3 stdout, exit — stop after exit
+
                 while True:
                     line = await asyncio.wait_for(reader.readline(), timeout=3.0)
                     if not line:
@@ -1138,7 +1138,7 @@ class TestShellDrainsStdoutBeforeExit:
             await server.stop()
 
         types = [m["type"] for m in messages]
-        # All three stdout chunks must appear strictly before the exit message.
+
         exit_idx = types.index("exit")
         stdout_indices = [i for i, t in enumerate(types) if t == "stdout"]
         assert len(stdout_indices) == 3, f"expected 3 stdout chunks before exit, got types={types}"
@@ -1171,8 +1171,8 @@ class TestShellResizeTaskCleanup:
         box_info.name = None
         box_info.state.status = "running"
 
-        # resize_tty hangs forever. Track whether the coroutine sees
-        # CancelledError — that's the signal the cleanup fix is doing its job.
+
+
         resize_started = asyncio.Event()
         resize_cancelled = asyncio.Event()
 
@@ -1184,10 +1184,10 @@ class TestShellResizeTaskCleanup:
                 resize_cancelled.set()
                 raise
 
-        # wait() must block until the test has staged the resize and closed
-        # the client; otherwise it would set done_event first and trigger
-        # cleanup before the resize_task is ever created. Closing the client
-        # makes _stdin_task observe EOF and set done_event itself.
+
+
+
+
         wait_release = asyncio.Event()
 
         async def _blocking_wait():
@@ -1207,8 +1207,8 @@ class TestShellResizeTaskCleanup:
         mock_runtime.list_info = AsyncMock(return_value=[box_info])
         mock_runtime.get = AsyncMock(return_value=mock_box)
 
-        # Capture asyncio's "Task exception was never retrieved" reports —
-        # if the resize task escapes cleanup, it lands here.
+
+
         loop = asyncio.get_running_loop()
         unhandled: list[dict] = []
         original_handler = loop.get_exception_handler()
@@ -1235,15 +1235,15 @@ class TestShellResizeTaskCleanup:
                 first = json.loads(await asyncio.wait_for(reader.readline(), timeout=2.0))
                 assert first["type"] == "ready"
 
-                # Send a resize so a hanging resize task lands in resize_tasks.
+
                 writer.write((json.dumps({"cmd": "resize", "rows": 40, "cols": 120}) + "\n").encode())
                 await writer.drain()
                 await asyncio.wait_for(resize_started.wait(), timeout=2.0)
 
-                # Close the client — handler tears down. The pending resize
-                # task must be cancelled (resize_cancelled gets set), and the
-                # whole cleanup must finish promptly (no deadlock waiting on
-                # the hung resize).
+
+
+
+
                 writer.close()
                 try:
                     await writer.wait_closed()
@@ -1252,11 +1252,11 @@ class TestShellResizeTaskCleanup:
 
                 await asyncio.wait_for(resize_cancelled.wait(), timeout=2.0)
         finally:
-            # Server.stop() should return quickly even with a previously
-            # hanging resize — it would block forever if the cleanup hadn't
-            # cancelled the task.
+
+
+
             await asyncio.wait_for(server.stop(), timeout=2.0)
             loop.set_exception_handler(original_handler)
 
-        # No "Task exception was never retrieved" or similar leakage.
+
         assert unhandled == [], f"unhandled task exceptions during cleanup: {unhandled}"

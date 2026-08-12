@@ -66,13 +66,13 @@ export async function captureMemoryDiagnostics(trigger: MemoryTrigger): Promise<
   const resourceUsage = process.resourceUsage()
   const uptimeSeconds = process.uptime()
 
-  // Not available on Bun / older Node.
+  // Bun 或较旧版本 Node 不提供此能力。
   let heapSpaces: ReturnType<typeof getHeapSpaceStatistics> | undefined
 
   try {
     heapSpaces = getHeapSpaceStatistics()
   } catch {
-    /* noop */
+    /* 无需操作。 */
   }
 
   const internals = process as unknown as {
@@ -86,8 +86,8 @@ export async function captureMemoryDiagnostics(trigger: MemoryTrigger): Promise<
   const smapsRollup = await swallow(() => readFile('/proc/self/smaps_rollup', 'utf8'))
 
   const nativeMemory = usage.rss - usage.heapUsed
-  // Real growth rate since STARTED_AT (captured at module load) — NOT a lifetime
-  // average of rss/uptime, which would report phantom "growth" for a stable process.
+  // 计算自模块加载时记录的 STARTED_AT 起的真实增长率，而不是 rss/uptime 的
+  // 生命周期平均值；后者会给稳定进程报告虚假的“增长”。
   const elapsed = Math.max(0, uptimeSeconds - STARTED_AT.uptime)
   const bytesPerSecond = elapsed > 0 ? (usage.rss - STARTED_AT.rss) / elapsed : 0
   const mbPerHour = (bytesPerSecond * 3600) / (1024 * 1024)
@@ -148,8 +148,8 @@ export async function captureMemoryDiagnostics(trigger: MemoryTrigger): Promise<
 
 export async function performHeapDump(trigger: MemoryTrigger = 'manual'): Promise<HeapDumpResult> {
   try {
-    // Diagnostics first — heap-snapshot serialization can crash on very large
-    // heaps, and the JSON sidecar is the most actionable artifact if so.
+    // 先写诊断信息，因为序列化超大堆快照可能崩溃；发生这种情况时，JSON 边车
+    // 文件是最具可操作性的产物。
     const diagnostics = await captureMemoryDiagnostics(trigger)
     const dir = process.env.PICO_HEAPDUMP_DIR?.trim() || join(getPicoHome(), 'heapdumps')
 
@@ -183,7 +183,7 @@ const UNITS = ['B', 'KB', 'MB', 'GB', 'TB']
 
 const STARTED_AT = { rss: process.memoryUsage().rss, uptime: process.uptime() }
 
-// Returns undefined when the probe isn't available (non-Linux paths, sandboxed FS).
+// 探针不可用时返回 undefined，例如非 Linux 路径或受限文件系统。
 const swallow = async <T>(fn: () => Promise<T>): Promise<T | undefined> => {
   try {
     return await fn()

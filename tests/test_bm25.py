@@ -12,8 +12,8 @@ def test_tokenize_drops_one_char_words() -> None:
 
 
 def test_tokenize_handles_chinese_per_char() -> None:
-    # CJK ideographs each become one token; a plain word-boundary regex
-    # would drop them entirely.
+
+
     out = tokenize("生成图片 image")
     assert "生" in out and "成" in out and "图" in out and "片" in out
     assert "image" in out
@@ -42,7 +42,7 @@ def test_bm25_ranks_matching_doc_highest() -> None:
 
 
 def test_bm25_idf_suppresses_common_term() -> None:
-    # 'tool' appears in every doc → near-zero IDF; 'weather' is rare → high.
+
     corpus = [
         tokenize("tool weather forecast"),
         tokenize("tool github issue"),

@@ -51,7 +51,7 @@ from typing import Any, Optional, Union
 from pico.evolver.judge.schema import PatchWhere, PatchWhy
 
 # ---------------------------------------------------------------------------
-# Status enum
+# 状态枚举
 # ---------------------------------------------------------------------------
 
 
@@ -98,7 +98,7 @@ class NodeStatus(str, Enum):
 
 
 # ---------------------------------------------------------------------------
-# Patch-related substructures
+# 补丁相关子结构
 # ---------------------------------------------------------------------------
 
 
@@ -113,7 +113,7 @@ class SourceEvidence:
 
     trajectory_id: str
     turn_range: tuple[int, int]
-    finding: str  # one-line summary of what the evidence shows
+    finding: str  # 证据所表明内容的单行摘要
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -156,11 +156,11 @@ class PatchComponent:
     becomes a no-op.
     """
 
-    component_id: str  # "comp_1" / "comp_2" — unique within one patch
-    target_file: str  # repo-relative path
-    diff: str  # unified diff for THIS file only
-    rationale: str  # what this component does
-    depends_on: list[str] = field(default_factory=list)  # other component_ids
+    component_id: str  # "comp_1" / "comp_2"，在单个补丁内唯一
+    target_file: str  # 仓库相对路径
+    diff: str  # 仅针对当前文件的统一差异
+    rationale: str  # 该组件的作用
+    depends_on: list[str] = field(default_factory=list)  # 其他组件 ID
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -203,12 +203,11 @@ class AppliedPatch:
     patch_where: PatchWhere
     patch_why: PatchWhy
     components: list[PatchComponent]  # >= 1
-    overall_reasoning: str  # judge's reasoning at the whole-patch level
+    overall_reasoning: str  # 评判器在整个补丁层面的推理
     source_evidence: list[SourceEvidence] = field(default_factory=list)
-    patch_why_extra: Optional[str] = None  # only when patch_why=other
+    patch_why_extra: Optional[str] = None  # 仅在 patch_why=other 时使用
 
-    # Bisect bookkeeping (spec §18.5.1.x). Set when a patch was rescued
-    # from regression by dropping some components.
+    # 二分记录（规范第 18.5.1.x 节）。通过丢弃部分组件使补丁摆脱退化时设置。
     partial: bool = False
     dropped_components: list[str] = field(default_factory=list)
 
@@ -217,11 +216,11 @@ class AppliedPatch:
             raise ValueError("AppliedPatch with patch_why=other requires non-empty patch_why_extra")
         if not self.components and self.patch_where != PatchWhere.control:
             raise ValueError("AppliedPatch requires at least one component")
-        # Component ids must be unique within the patch
+        # 组件 ID 在补丁内必须唯一。
         ids = [c.component_id for c in self.components]
         if len(ids) != len(set(ids)):
             raise ValueError(f"AppliedPatch components have duplicate component_id: {ids}")
-        # depends_on references must resolve to existing component_ids
+        # depends_on 引用必须解析到已有组件 ID。
         valid_ids = set(ids)
         for c in self.components:
             for dep in c.depends_on:
@@ -283,7 +282,7 @@ class AppliedPatch:
 
 
 # ---------------------------------------------------------------------------
-# Evaluation substructure
+# 评测子结构
 # ---------------------------------------------------------------------------
 
 
@@ -364,7 +363,7 @@ class EvalResult:
 
 
 # ---------------------------------------------------------------------------
-# Judge analysis substructure
+# 评判分析子结构
 # ---------------------------------------------------------------------------
 
 
@@ -381,7 +380,7 @@ class ProposedComponent:
 
     component_id: str
     target_file: str
-    summary: str  # natural language description of the proposed change
+    summary: str  # 对所提变更的自然语言描述
     depends_on: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -425,7 +424,7 @@ class CandidatePatch:
     components: list[ProposedComponent]  # >= 1
     overall_reasoning: str
     source_trajectory_id: str
-    patch_why_extra: Optional[str] = None  # only when patch_why=other
+    patch_why_extra: Optional[str] = None  # 仅在 patch_why=other 时使用
 
     def __post_init__(self) -> None:
         if self.patch_why == PatchWhy.other and not self.patch_why_extra:
@@ -512,11 +511,11 @@ class JudgeAnalysis:
 
 
 # ---------------------------------------------------------------------------
-# Top-level node
+# 顶层节点
 # ---------------------------------------------------------------------------
 
 
-SCHEMA_VERSION = 1  # bump when breaking change to JSON layout
+SCHEMA_VERSION = 1  # JSON 布局发生破坏性变更时递增
 
 
 @dataclass
@@ -538,15 +537,12 @@ class HarnessNode:
     parent_id: Optional[str]
     git_commit_sha: str
     git_branch: str
-    created_at: str  # ISO 8601 UTC
+    created_at: str  # ISO 8601 UTC 时间
     created_at_iter: int
-    # core_version (spec §22.5.4): the immutable-kernel version this node was
-    # created under. Used for cohort-controlled cross-experiment comparison —
-    # nodes with different ``core_version`` must not be directly compared on
-    # eval numbers. Read from ``pico.__version__`` at
-    # evolver startup and injected into each child node. Defaults to
-    # ``"unknown"`` so old JSON files without this field deserialise (with a
-    # warning logged at the call site, not here).
+    # core_version（规范第 22.5.4 节）：创建该节点时使用的不可变内核版本，用于队列受控的
+    # 跨实验比较。``core_version`` 不同的节点不得直接比较评测数字。evolver 启动时从
+    # ``pico.__version__`` 读取并注入每个子节点。默认为 ``"unknown"``，使缺少该字段的
+    # 旧 JSON 文件仍可反序列化；警告由调用点记录，而非此处。
     core_version: str = "unknown"
     status: NodeStatus = NodeStatus.active
     patch: Optional[AppliedPatch] = None
@@ -561,10 +557,9 @@ class HarnessNode:
         if not self.git_commit_sha:
             raise ValueError("git_commit_sha must be non-empty")
         if not self.core_version:
-            # Empty string isn't valid — caller must pass either a real
-            # version like "1.0.0" or the sentinel "unknown".
+        # 空字符串无效；调用方必须传入 "1.0.0" 之类的真实版本或哨兵值 "unknown"。
             raise ValueError("core_version must be non-empty (use 'unknown' if not available)")
-        # Root invariant: no parent → no applied patch
+        # 根节点不变量：没有父节点就没有已应用补丁。
         if self.parent_id is None and self.patch is not None:
             raise ValueError("root node (parent_id=None) must not carry an AppliedPatch")
 
@@ -573,7 +568,7 @@ class HarnessNode:
         """ISO 8601 UTC timestamp for ``created_at`` fields."""
         return datetime.now(timezone.utc).isoformat()
 
-    # -- serialisation ------------------------------------------------------
+    # -- 序列化 -------------------------------------------------------------
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -602,10 +597,8 @@ class HarnessNode:
         patch_raw = d.get("patch")
         eval_raw = d.get("eval")
         judge_raw = d.get("judge_analysis")
-        # Missing ``core_version`` is tolerated for backwards compat with
-        # JSON files written before §22.5 — the node falls back to
-        # ``"unknown"`` and downstream cohort analysis must exclude or
-        # specially mark these nodes (spec §22.5.4).
+        # 为兼容第 22.5 节之前写入的 JSON 文件，允许缺少 ``core_version``；节点回退为
+        # ``"unknown"``，下游队列分析必须排除或特别标记这些节点（规范第 22.5.4 节）。
         return cls(
             node_id=_require(d, "node_id", "HarnessNode"),
             parent_id=d.get("parent_id"),
@@ -649,9 +642,8 @@ class HarnessNode:
         """
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        # Write through a temp + rename so an interrupted write doesn't
-        # leave a half-formed JSON file — common pattern for crash-safe
-        # file replacement on POSIX.
+        # 通过临时文件加重命名写入，避免中断写入留下半成品 JSON；这是 POSIX 上崩溃安全
+        # 文件替换的常见模式。
         tmp = p.with_suffix(p.suffix + ".tmp")
         tmp.write_text(
             json.dumps(self.to_dict(), indent=2, ensure_ascii=False) + "\n",
@@ -669,7 +661,7 @@ class HarnessNode:
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# 内部辅助方法
 # ---------------------------------------------------------------------------
 
 

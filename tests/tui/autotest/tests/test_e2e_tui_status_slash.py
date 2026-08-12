@@ -33,7 +33,7 @@ def test_tui_status_slash_round_trip(harness):
     assert harness.wait(r"Runtime status|Model", timeout=10.0), (
         f"`/status` output not rendered within 10s; screen=\n{harness.screen()}"
     )
-    # Ctrl+C twice — first cancels open status overlay / input, second exits
+
     harness.press("ctrl+c")
     import time as _t
 

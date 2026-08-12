@@ -50,9 +50,9 @@ def build_span(
     attrs: dict[str, Any] = {
         "span.type": span_type,
         "framework": FRAMEWORK,
-        # session.id + channel.id are the keys the shared viewer groups on
-        # (audit.span.v1 common attrs). Mirror session_key/channel into them
-        # so Pico traces group by conversation -> turn like the others.
+        # session.id + channel.id 是共享 viewer 的分组键，
+    # （audit.span.v1 公共属性）。将 session_key/channel 同步写入其中。
+        # 使 Pico trace 与其他来源一样按 conversation -> turn 分组。
         "session.id": session_key,
         "session.key": session_key,
         "channel": channel,
@@ -80,7 +80,7 @@ def build_span(
 def emit(span: dict[str, Any]) -> None:
     try:
         _get_store().append_span(span)
-    except Exception:  # noqa: BLE001 — tracing must never break the host
+    except Exception:  # noqa: BLE001 — 追踪绝不能影响宿主
         pass
 
 

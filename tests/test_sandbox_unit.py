@@ -22,7 +22,7 @@ from pico.sandbox import (
 from pico.sandbox.boxlite_executor import BoxliteExecutor
 
 # ---------------------------------------------------------------------------
-# Helpers: mock executors
+
 # ---------------------------------------------------------------------------
 
 
@@ -56,7 +56,7 @@ class DirectMockExecutor(MockExecutor):
 
 
 # ---------------------------------------------------------------------------
-# ExecResult
+
 # ---------------------------------------------------------------------------
 
 
@@ -81,18 +81,18 @@ class TestExecResultAsText:
 
     def test_empty_output(self):
         r = ExecResult(stdout="", stderr="", exit_code=0)
-        assert r.as_text() == "\nExit code: 0"  # exit-code line is always present
+        assert r.as_text() == "\nExit code: 0"
 
     def test_truncation(self):
         long_out = "x" * 20_000
         r = ExecResult(stdout=long_out, stderr="", exit_code=0)
         text = r.as_text(max_chars=100)
         assert "truncated" in text
-        assert len(text) < 300  # well under original
+        assert len(text) < 300
 
 
 # ---------------------------------------------------------------------------
-# SandboxConfig validators
+
 # ---------------------------------------------------------------------------
 
 
@@ -125,7 +125,7 @@ class TestSandboxConfigValidators:
 
     def test_extra_volumes_wrong_length_raises(self):
         with pytest.raises(ValueError):
-            SandboxConfig(extra_volumes=[["/host", "/vm"]])  # missing mode
+            SandboxConfig(extra_volumes=[["/host", "/vm"]])
 
     def test_extra_volumes_valid(self):
         c = SandboxConfig(extra_volumes=[["/data", "/data", "ro"]])
@@ -133,7 +133,7 @@ class TestSandboxConfigValidators:
 
     def test_extra_config_key_rejected(self):
         with pytest.raises(Exception):
-            SandboxConfig(unknown_key="x")  # extra="forbid"
+            SandboxConfig(unknown_key="x")
 
     def test_aliases_accept_both_camel_and_snake(self):
         """populate_by_name=True + alias_generator=to_camel must let users
@@ -177,7 +177,7 @@ class TestSandboxConfigValidators:
 
 
 # ---------------------------------------------------------------------------
-# build_executor
+
 # ---------------------------------------------------------------------------
 
 
@@ -201,13 +201,13 @@ class TestBuildExecutor:
                 build_executor(SandboxConfig(backend="boxlite"), tmp_path)
 
     def test_unknown_backend_raises(self, tmp_path):
-        cfg = SandboxConfig.model_construct(backend="unknown")  # bypass validator
+        cfg = SandboxConfig.model_construct(backend="unknown")
         with pytest.raises(SandboxInitError, match="Unknown sandbox backend"):
             build_executor(cfg, tmp_path)
 
 
 # ---------------------------------------------------------------------------
-# DirectExecutor
+
 # ---------------------------------------------------------------------------
 
 
@@ -253,11 +253,11 @@ class TestDirectExecutor:
     async def test_lifecycle_noop(self):
         e = DirectExecutor()
         await e.start()
-        await e.stop()  # both no-ops; no error
+        await e.stop()
 
 
 # ---------------------------------------------------------------------------
-# ExecTool with mock executors
+
 # ---------------------------------------------------------------------------
 
 
@@ -268,7 +268,7 @@ class TestExecToolWithMockExecutor:
 
         executor = MockExecutor()
         tool = ExecTool(executor=executor, working_dir=str(tmp_path))
-        # rm -rf would normally be blocked
+
         result = await tool.execute("rm -rf /")
         assert "blocked" not in result
         assert len(executor.calls) == 1
@@ -339,10 +339,10 @@ class TestExecToolWithMockExecutor:
         call = executor.calls[0]
         assert call["env"] is not None
         assert "/custom/bin" in call["env"]["PATH"]
-        # Only PATH is passed — not a copy of the full host environment (which
-        # would leak host secrets past DirectExecutor's baseline allowlist).
+
+
         assert set(call["env"]) == {"PATH"}
-        # command unchanged
+
         assert "export PATH" not in call["command"]
 
     async def test_timeout_zero_passed_through(self, tmp_path):
@@ -364,7 +364,7 @@ class TestExecToolWithMockExecutor:
 
 
 # ---------------------------------------------------------------------------
-# BoxliteExecutor._translate_cwd
+
 # ---------------------------------------------------------------------------
 
 
@@ -395,7 +395,7 @@ class TestBoxliteTranslateCwd:
 
 
 # ---------------------------------------------------------------------------
-# BoxliteExecutor._collect
+
 # ---------------------------------------------------------------------------
 
 
@@ -424,7 +424,7 @@ class TestBoxliteCollect:
 
 
 # ---------------------------------------------------------------------------
-# BoxliteExecutor bridge logic (mock Execution)
+
 # ---------------------------------------------------------------------------
 
 
@@ -565,15 +565,15 @@ class TestBoxliteCleanupOrdering:
         owned_during_stop: list[bool] = []
 
         async def _stop():
-            # While box.stop() is running, ownership must still be claimed —
-            # otherwise a concurrent `sandbox ls` would mark the VM as orphan.
+
+
             owned_during_stop.append(mock_box.id in owned)
 
         mock_box.stop = AsyncMock(side_effect=_stop)
         executor._box = mock_box
         owned.add(mock_box.id)
 
-        # Stub out the runtime.remove() call so we don't import boxlite.
+
         from pico.sandbox import _runtime as rt_mod
 
         fake_runtime = MagicMock()
@@ -605,7 +605,7 @@ class TestBoxliteStartFailureCleanup:
 
         mock_box = MagicMock()
         mock_box.id = "vm-partial-start"
-        # box.start() blows up after create() succeeded — the partial-start case.
+
         mock_box.start = AsyncMock(side_effect=RuntimeError("vm refused to boot"))
         cleanup_called: list[str] = []
 
@@ -622,7 +622,7 @@ class TestBoxliteStartFailureCleanup:
 
         monkeypatch.setattr(rt_mod, "get_boxlite_runtime", lambda: fake_runtime)
 
-        # Patch boxlite.BoxOptions so we can construct it without the real package.
+
         import sys
 
         fake_boxlite = MagicMock()
@@ -682,7 +682,7 @@ class TestBoxliteStartFailureCleanup:
 
         mock_box = MagicMock()
         mock_box.id = "vm-verify-fails"
-        mock_box.start = AsyncMock()  # boot succeeds
+        mock_box.start = AsyncMock()
         cleanup_called: list[str] = []
 
         async def _stop():
@@ -690,7 +690,7 @@ class TestBoxliteStartFailureCleanup:
 
         mock_box.stop = AsyncMock(side_effect=_stop)
 
-        # _verify runs `echo ok`; make wait() hang so verify_timeout fires.
+
         async def _slow_wait():
             await asyncio.sleep(10)
             return MagicMock(exit_code=0)
@@ -736,7 +736,7 @@ class TestBoxliteStartProcessBridges:
         executor = BoxliteExecutor(image="ubuntu:22.04", workspace=tmp_path)
         mock_box = MagicMock()
 
-        # Real boxlite yields chunks with trailing \n (lines)
+
         json_line = '{"jsonrpc":"2.0","id":1,"method":"ping"}\n'
 
         async def _stdout():
@@ -744,7 +744,7 @@ class TestBoxliteStartProcessBridges:
 
         async def _stderr():
             return
-            yield  # make it an async generator
+            yield
 
         execution = MagicMock()
         execution.stdout.return_value = _stdout()
@@ -755,11 +755,11 @@ class TestBoxliteStartProcessBridges:
 
         read_recv, write_send = await executor.start_process("mcp-server", [])
 
-        # Give bridge tasks a moment to run
+
         await asyncio.sleep(0.05)
 
         msg = await asyncio.wait_for(read_recv.receive(), timeout=1.0)
-        # MCP SDK 1.x: read stream carries SessionMessage wrapping JSONRPCMessage
+
         assert isinstance(msg, SessionMessage)
         assert isinstance(msg.message, mcp_types.JSONRPCMessage)
 
@@ -778,8 +778,8 @@ class TestBoxliteStartProcessBridges:
         json_line = '{"jsonrpc":"2.0","id":1,"method":"ping"}\n'
 
         async def _stdout():
-            yield "npm warn: some download progress\n"  # non-JSON — must be skipped
-            yield json_line  # valid JSON — must arrive
+            yield "npm warn: some download progress\n"
+            yield json_line
 
         async def _stderr():
             return
@@ -797,7 +797,7 @@ class TestBoxliteStartProcessBridges:
 
         from mcp.shared.message import SessionMessage as SM
 
-        # The first (and only) message must be a SessionMessage wrapping the valid JSON line
+
         msg = await asyncio.wait_for(read_recv.receive(), timeout=1.0)
         assert isinstance(msg, SM), f"Expected SessionMessage, got {type(msg)}: {msg}"
         assert isinstance(msg.message, JSONRPCMessage)
@@ -829,7 +829,7 @@ class TestBoxliteStartProcessBridges:
 
         _, write_send = await executor.start_process("mcp-server", [])
 
-        # MCP SDK 1.x: write stream carries SessionMessage
+
         from mcp.shared.message import SessionMessage
 
         rpc_msg = JSONRPCMessage.model_validate({"jsonrpc": "2.0", "id": 1, "method": "ping"})
@@ -846,7 +846,7 @@ class TestBoxliteStartProcessBridges:
 
 
 # ---------------------------------------------------------------------------
-# AgentLoop executor lifecycle (mock executor + mock bus/provider)
+
 # ---------------------------------------------------------------------------
 
 
@@ -873,12 +873,12 @@ class TestAgentLoopExecutorLifecycle:
         from pico.agent.loop import AgentLoop
 
         loop = AgentLoop(provider=mock_provider, workspace=tmp_path)
-        # Inject a no-op executor
+
         loop._executor = MockExecutor()
         await loop._start_executor()
         stack_first = loop._executor_stack
         await loop._start_executor()
-        assert loop._executor_stack is stack_first  # same object
+        assert loop._executor_stack is stack_first
 
     async def test_start_executor_failing_executor_leaves_stack_none(self, tmp_path, mock_provider):
         """SandboxInitError from start() propagates; _executor_stack stays None."""
@@ -962,11 +962,11 @@ class TestAgentLoopExecutorLifecycle:
         loop = AgentLoop(
             provider=mock_provider,
             workspace=tmp_path,
-            mcp_servers={"svc": object()},  # non-empty so _connect_mcp is attempted
+            mcp_servers={"svc": object()},
         )
         loop._executor = StartedThenFailsMCP()
 
-        # Patch _connect_mcp to raise SandboxInitError after executor starts
+
         async def _failing_connect_mcp():
             raise SandboxInitError("test: MCP sandbox guard fired")
 
@@ -981,7 +981,7 @@ class TestAgentLoopExecutorLifecycle:
 
 
 # ---------------------------------------------------------------------------
-# connect_mcp_servers sandbox guard
+
 # ---------------------------------------------------------------------------
 
 
@@ -993,7 +993,7 @@ class TestConnectMcpSandboxGuard:
         from pico.agent.tools.mcp import connect_mcp_servers
         from pico.agent.tools.registry import ToolRegistry
 
-        executor = MockExecutor()  # is_sandboxed=True, supports_process_spawning=False
+        executor = MockExecutor()
         cfg = MagicMock()
         cfg.type = "stdio"
         cfg.command = "mcp-server"
@@ -1043,7 +1043,7 @@ class TestConnectMcpSandboxGuard:
         cfg.args = []
         cfg.env = None
         cfg.tool_timeout = 30
-        # Guard should NOT raise; error comes from start_process stub instead.
+
         try:
             await connect_mcp_servers({"svc": cfg}, ToolRegistry(), AsyncExitStack(), executor=SpawningExecutor())
         except SandboxInitError:
@@ -1059,7 +1059,7 @@ class TestConnectMcpSandboxGuard:
         from pico.agent.tools.mcp import connect_mcp_servers
         from pico.agent.tools.registry import ToolRegistry
 
-        executor = MockExecutor()  # is_sandboxed=True, supports_process_spawning=False
+        executor = MockExecutor()
 
         cfg_http = MagicMock()
         cfg_http.type = "streamableHttp"
@@ -1072,17 +1072,17 @@ class TestConnectMcpSandboxGuard:
         cfg_stdio.command = "mcp-server"
         cfg_stdio.args = []
 
-        # Server 1 is HTTP (no guard) — mock the transport so no real network request is
-        # made. anyio's cancel scopes inside streamable_http_client break when a real HTTP
-        # request fails in a pytest-asyncio test context; mocking avoids that.
-        # Server 2 is stdio (guard fires). SandboxInitError must propagate, not be swallowed.
+
+
+
+
         from contextlib import asynccontextmanager
         from unittest.mock import patch
 
         @asynccontextmanager
         async def _failing_http(*args, **kwargs):
             raise ConnectionError("mock: no network in tests")
-            yield  # make it a generator
+            yield
 
         with patch("mcp.client.streamable_http.streamable_http_client", _failing_http):
             with pytest.raises(SandboxInitError, match="stdio transport"):
@@ -1095,7 +1095,7 @@ class TestConnectMcpSandboxGuard:
 
 
 # ---------------------------------------------------------------------------
-# SubagentManager sandbox lifecycle
+
 # ---------------------------------------------------------------------------
 
 
@@ -1124,13 +1124,13 @@ class TestSubagentSandboxLifecycle:
             provider=mock_provider,
             workspace=tmp_path,
         )
-        manager.set_submit(lambda req: None)  # _announce_result asserts submit is wired
+        manager.set_submit(lambda req: None)
 
-        # Patch build_executor inside the subagent.manager module for this test.
-        # subagent.py now lives in a package
-        # (``pico.agent.subagent``); the runtime call site is now
-        # in ``pico.agent.subagent.manager`` and that's the module
-        # whose snapshot of ``build_executor`` must be replaced.
+
+
+
+
+
         import pico.agent.subagent.manager as subagent_mod
 
         original = subagent_mod.build_executor
@@ -1140,7 +1140,7 @@ class TestSubagentSandboxLifecycle:
 
         subagent_mod.build_executor = _patched_build
         try:
-            # Patch the inner method so the agent loop completes quickly
+
             original_inner = manager._run_subagent_inner
 
             async def _fast_inner(task_id, task, label, origin, executor):
@@ -1192,7 +1192,7 @@ class TestSubagentSandboxLifecycle:
         assert req.source.channel == "weixin" and req.source.chat_id == "u1"
         assert req.source.sender_id == "subagent"
         assert req.conversation == "weixin:u1"
-        assert handle.result_awaited is False  # fire-and-forget
+        assert handle.result_awaited is False
 
 
 def test_build_executor_warns_when_backend_none(monkeypatch, tmp_path):

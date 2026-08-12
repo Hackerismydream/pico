@@ -21,7 +21,7 @@ describe('wheelAccel — native path', () => {
     computeWheelStep(s, 1, 1020)
     computeWheelStep(s, 1, 1040)
 
-    // Key property: doesn't shrink below base.
+    // 关键性质：不能缩小到基准值以下。
     expect(computeWheelStep(s, 1, 1060)).toBeGreaterThanOrEqual(1)
   })
 
@@ -132,7 +132,7 @@ describe('wheelAccel — xterm.js path', () => {
   it('frac stays in [0,1) across events', () => {
     const s = initWheelAccel(true, 1)
 
-    // Correctness invariant of fractional carry: never negative, never reaches 1.
+    // 小数余量的正确性不变量：永不为负，也永不到达 1。
     for (let t = 1000; t < 1200; t += 30) {
       computeWheelStep(s, 1, t)
 

@@ -19,9 +19,8 @@ from uuid import uuid4
 
 from loguru import logger
 
-# Hard upper bound on how long a single confirm may stay pending on the
-# backend, independent of the frontend's 30s visible countdown (35 = 30 + 5s
-# network slack). On expiry the wait fail-safes to the prompt default.
+# 单次确认在后端保持挂起的硬上限，与前端可见的 30 秒倒计时无关；
+# 35 = 30 + 5 秒网络余量。超时后安全回退到提示框的默认选项。
 _CONFIRM_HARD_LIMIT_S = 35.0
 
 SendFrame = Callable[[dict[str, Any]], Awaitable[None]]
@@ -65,7 +64,7 @@ class ConfirmBroker:
             return await asyncio.wait_for(future, _CONFIRM_HARD_LIMIT_S)
         except asyncio.TimeoutError:
             return default
-        except Exception:  # noqa: BLE001 — fail-safe: worker thread needs a bool
+        except Exception:  # noqa: BLE001 — 失效保护：工作线程必须得到布尔值
             logger.exception("confirm_broker: await_confirm failed for {}", request_id)
             return default
         finally:

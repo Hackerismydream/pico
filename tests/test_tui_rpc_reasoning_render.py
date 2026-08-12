@@ -39,8 +39,8 @@ def _bind_helper(provider: _FakeProvider):
 
 
 # ---------------------------------------------------------------------------
-# REQ-10: _llm_call_stream consumes reasoning_content, fires callback,
-#         sets it on the final LLMResponse (parity with chat_with_retry).
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -75,7 +75,7 @@ async def test_reasoning_delta_fires_callback_and_accumulates() -> None:
     assert reasoning_received == ["The user ", "wants me to ", "check cron."]
     assert content_received == ["Sure, ", "checking."]
     assert response.content == "Sure, checking."
-    # Parity with non-streaming chat_with_retry path.
+
     assert response.reasoning_content == "The user wants me to check cron."
 
 
@@ -115,8 +115,8 @@ async def test_no_reasoning_leaves_response_reasoning_none() -> None:
 
 
 # ---------------------------------------------------------------------------
-# REQ-9: _normalize_stream_chunk extracts reasoning_content and does NOT drop
-#        a reasoning-only chunk as empty.
+
+
 # ---------------------------------------------------------------------------
 
 

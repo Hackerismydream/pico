@@ -35,7 +35,7 @@ class SkillMeta:
     requires: dict = field(default_factory=dict)
     """Dependency declarations: ``{"bins": [...], "env": [...]}``."""
 
-    # ---- Later fields (filled by ingest, currently None / empty) ----
+    # ---- 后续字段（由摄取过程填充，当前为 None 或空）----
 
     scope: str | None = None
     """Owning pool: personal / team / official / community / mass."""

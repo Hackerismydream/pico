@@ -53,8 +53,8 @@ class MCPToolWrapper(Tool):
                 failed=True,
             )
         except asyncio.CancelledError:
-            # MCP SDK's anyio cancel scopes can leak CancelledError on timeout/failure.
-            # Re-raise only if our task was externally cancelled (e.g. /stop).
+            # MCP SDK 的 anyio 取消作用域可能在超时或失败时泄漏 CancelledError。
+            # 只有当前任务确实被外部取消（如 /stop）时才重新抛出。
             task = asyncio.current_task()
             if task is not None and task.cancelling() > 0:
                 raise
@@ -92,8 +92,8 @@ async def connect_mcp_servers(
 ) -> None:
     """Connect to configured MCP servers and register their tools."""
     for name, cfg in mcp_servers.items():
-        # Resolve transport type BEFORE the try/except so the sandbox guard below
-        # can raise without being swallowed by the per-server error handler.
+        # 在 try/except 之前解析传输类型，使下方的沙箱保护能抛错，
+        # 而不被单服务器错误处理器吞掉。
         transport_type = cfg.type
         if not transport_type:
             if cfg.command:
@@ -104,9 +104,8 @@ async def connect_mcp_servers(
                 logger.warning("MCP server '{}': no command or url configured, skipping", name)
                 continue
 
-        # Sandbox guard: fail hard so the agent never starts with a silently broken
-        # MCP server. Runs outside try/except — SandboxInitError propagates to
-        # _connect_mcp() which surfaces it as a startup error.
+        # 沙箱保护采用硬失败，避免 Agent 带着静默损坏的 MCP 服务器启动。该逻辑在
+        # try/except 外运行，SandboxInitError 会传播到 _connect_mcp()，再作为启动错误暴露。
         if (
             transport_type == "stdio"
             and executor is not None
@@ -175,6 +174,6 @@ async def connect_mcp_servers(
 
             logger.info("MCP server '{}': connected, {} tools registered", name, len(tools.tools))
         except (Exception, BaseExceptionGroup) as e:
-            # BaseExceptionGroup is raised by anyio task groups (e.g. streamableHttp cancel
-            # scope failures) and is not a subclass of Exception in Python 3.11+.
+            # anyio 任务组可能抛出 BaseExceptionGroup，例如 streamableHttp 取消作用域失败；
+            # 它在 Python 3.11+ 中不是 Exception 的子类。
             logger.error("MCP server '{}': failed to connect: {}", name, e)

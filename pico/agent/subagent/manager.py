@@ -24,8 +24,8 @@ from pico.security.trust import wrap_untrusted
 from pico.tracing import semconv, trace
 from pico.utils.helpers import build_assistant_message
 
-# One hour: a runaway re-injection loop fires fast and trips the limit quickly,
-# while legitimate spawns spread over time and age out before it bites.
+# 使用一小时窗口：失控的重新注入循环会快速触发上限，而合法启动分散在时间上，
+# 会在受限前过期淘汰。
 _SPAWN_WINDOW_SECONDS = 3600
 
 
@@ -73,11 +73,9 @@ class SubagentManager:
         self.provider = provider
         self.workspace = workspace
         self.state = state or workspace
-        # Spine submit, late-bound (the scheduler pins its home loop at
-        # construction and is built inside each entry point's run loop; this
-        # manager is built in AgentLoop.__init__ in the sync prologue). Wired via
-        # set_submit before any announce; the result re-injection submits a
-        # SUBAGENT-origin turn.
+        # Spine submit 延迟绑定。调度器在构建时绑定所属事件循环，并于各入口的运行循环内构建；
+        # 而本管理器在 AgentLoop.__init__ 的同步前导阶段构建。任何通知前通过 set_submit 连接，
+        # 结果重新注入时提交一个来源为 SUBAGENT 的 Turn。
         self._submit = None
         self.model = model or provider.get_default_model()
         self.brave_api_key = brave_api_key
@@ -88,12 +86,11 @@ class SubagentManager:
         self._sandbox_config = sandbox_config
         self._owned_ids = owned_ids
         self._running_tasks: dict[str, asyncio.Task[SubagentOutcome]] = {}
-        self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
+        self._session_tasks: dict[str, set[str]] = {}  # 会话键 -> {任务 ID, ...}
         self._gate = asyncio.Semaphore(max_concurrent)
         self._max_spawns_per_hour = max_spawns_per_hour
-        # Per-session spawn timestamps (monotonic), kept per session (not
-        # per-process) so one busy session can't throttle others. Each deque is
-        # pruned to the rolling window on access, so it self-bounds.
+        # 按会话保存单调的启动时间戳，而非按进程，避免一个繁忙会话限流其他会话。
+        # 每次访问都将双端队列剪裁到滚动窗口内，因此容量自动有界。
         self._session_spawn_times: dict[str, deque[float]] = {}
 
     async def spawn(
@@ -158,8 +155,7 @@ class SubagentManager:
         logger.info("Subagent [{}] starting task: {}", task_id, label)
 
         try:
-            # Each subagent runs its own sandbox VM; gate the count so heavy
-            # fan-out can't exhaust host resources.
+            # 每个子 Agent 运行独立沙箱虚拟机，需限制数量，避免大规模扇出耗尽宿主机资源。
             async with self._gate:
                 executor = build_executor(self._sandbox_config, self.workspace, self._owned_ids)
                 async with executor:
@@ -182,7 +178,7 @@ class SubagentManager:
         executor: Any,
     ) -> SubagentOutcome:
         try:
-            # Build subagent tools (no message tool, no spawn tool)
+                # 构建子 Agent 工具，不包含 message 和 spawn
             tools = ToolRegistry()
             allowed_dir = self.workspace if self.restrict_to_workspace else None
             tools.register(ReadFileTool(workspace=self.workspace, allowed_dir=allowed_dir))
@@ -207,7 +203,7 @@ class SubagentManager:
                 {"role": "user", "content": task},
             ]
 
-            # Run agent loop (limited iterations)
+                # 在有限迭代次数内运行 Agent Loop
             max_iterations = 15
             iteration = 0
             final_result: str | None = None
@@ -232,15 +228,15 @@ class SubagentManager:
                         )
                     )
 
-                    # Execute tools
+                    # 执行工具
                     for tool_call in response.tool_calls:
                         args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
                         logger.debug(
                             "Subagent [{}] executing: {} with arguments: {}", task_id, tool_call.name, args_str
                         )
                         result = await tools.execute(tool_call.name, tool_call.arguments, tool_call.id)
-                        # The subagent's loop is an untrusted-data path too — fence its
-                        # tool output like the main loop does in add_tool_result.
+                        # 子 Agent 循环同样是不可信数据路径，需像主循环的 add_tool_result 一样
+                        # 对工具输出设置边界。
                         messages.append(
                             {
                                 "role": "tool",
@@ -289,9 +285,8 @@ class SubagentManager:
             SubagentStatus.EXHAUSTED: "failed: iteration budget exhausted",
         }[status]
 
-        # The subagent's result is attacker-influenceable (it may have fetched
-        # web pages / read files), so fence it as untrusted before it re-enters
-        # the main agent's context.
+        # 子 Agent 结果可受攻击者影响，因为它可能抓取了网页或读取了文件。
+        # 在重新进入主 Agent 上下文前，需将其作为不可信数据隔离。
         fenced_result = wrap_untrusted(result, source="subagent")
         announce_content = f"""[Subagent '{label}' {status_text}]
 
@@ -302,10 +297,9 @@ Result:
 
 Summarize this naturally for the user. Keep it brief (1-2 sentences). Do not mention technical details like "subagent" or task IDs."""
 
-        # Re-inject to trigger a main-agent turn in the originating session. The
-        # spine path routes by conversation (= originating session) with
-        # origin=SUBAGENT; each host runner delivers the final reply through its
-        # retained output surface. Fire-and-forget — the announce is fixed.
+        # 重新注入以在原始会话中触发主 Agent Turn。Spine 路径以原始会话为 conversation
+        # 路由，并设 origin=SUBAGENT；每个宿主运行器通过其保留的输出界面交付最终回复。
+        # 通知内容已固定，因此可即发即忘。
         assert self._submit is not None
         from pico.spine import ChatType, Origin, Source, TurnRequest
 
@@ -329,8 +323,7 @@ Summarize this naturally for the user. Keep it brief (1-2 sentences). Do not men
         from pico.agent.context import ContextBuilder
         from pico.memory_engine.skill_forge import LocalSkillCatalog
 
-        # Use a transient ContextBuilder to access the runtime-context
-        # builder; SubagentManager doesn't have its own ContextBuilder.
+        # 使用临时 ContextBuilder 访问运行时上下文构建器，因为 SubagentManager 没有自己的实例。
         time_ctx = ContextBuilder(
             self.workspace,
             state=self.state,
@@ -368,9 +361,8 @@ Stay focused on the assigned task. Your final response will be reported back to 
             t.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
-        # Drop this session's rate-limit entry on teardown: pruning empties a
-        # deque but never removes the key, so without this the dict would keep
-        # one entry per session for the process's life.
+        # 销毁时删除当前会话的限流项。剪裁只会清空双端队列，不会删除键；
+        # 如果不在此处清理，字典会在整个进程生命周期内为每个会话保留一项。
         self._session_spawn_times.pop(session_key, None)
         return len(tasks)
 

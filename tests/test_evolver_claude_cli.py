@@ -63,7 +63,7 @@ class TestRenderMessages:
         assert "[USER]\ndo X" in prompt
         assert "[ASSISTANT]\ndid X" in prompt
         assert prompt.strip().endswith("now Y")
-        assert "NEXT message only" in prompt  # the continue-instruction header
+        assert "NEXT message only" in prompt
 
 
 class TestCallFn:
@@ -74,9 +74,9 @@ class TestCallFn:
         argv = run.calls[0]["argv"]
         assert argv[:2] == ["claude", "-p"]
         assert argv[argv.index("--model") + 1] == "claude-test"
-        # Tools must be OFF: this is Claude-as-completion, the FSM keeps control.
+
         assert argv[argv.index("--allowedTools") + 1] == ""
-        # The prompt travels via stdin (argv overflows on rendered trajectories).
+
         assert run.calls[0]["input"] == "q"
 
     def test_retries_then_succeeds(self, monkeypatch):

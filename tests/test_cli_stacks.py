@@ -27,7 +27,7 @@ from pico.cli._token_wise_stack import install_from_config
 from pico.eval_engine import EvalEngine, EvalEngineConfig
 
 # ---------------------------------------------------------------------------
-# Fixtures
+
 # ---------------------------------------------------------------------------
 
 
@@ -38,7 +38,7 @@ def workspace():
 
 
 # ===========================================================================
-# build_eval_stack
+
 # ===========================================================================
 
 
@@ -76,7 +76,7 @@ class TestBuildEvalStack:
 
 
 # ===========================================================================
-# build_hooks_stack
+
 # ===========================================================================
 
 
@@ -89,7 +89,7 @@ class TestBuildHooksStack:
     def test_eval_engine_hooks_added(self):
         engine = build_eval_stack()
         chain = build_hooks_stack(eval_engine=engine)
-        # Default EvalEngine yields 3 hooks.
+
         assert len(chain) == 3
 
     def test_extra_hooks_appended_after_eval(self):
@@ -103,7 +103,7 @@ class TestBuildHooksStack:
         chain = build_hooks_stack(eval_engine=engine, extra_hooks=[custom])
         hooks = list(chain)
         assert len(hooks) == 4
-        # Extra hook comes after eval engine's three.
+
         assert hooks[-1] is custom
 
     def test_extra_hooks_only(self):
@@ -118,7 +118,7 @@ class TestBuildHooksStack:
 
 
 # ===========================================================================
-# install_from_config (TokenWise — relocated)
+
 # ===========================================================================
 
 
@@ -141,7 +141,7 @@ class TestInstallFromConfig:
         cfg = TokenWiseConfig(enabled=False)
         registry = install_from_config(cfg)
         assert isinstance(registry, StrategyRegistry)
-        # Disabled config → no strategies registered.
+
         assert len(registry) == 0
 
     def test_none_config_yields_empty_registry(self):
@@ -164,13 +164,13 @@ class TestInstallFromConfig:
 
 
 # ===========================================================================
-# build_memory_stack — deleted in Phase B-3.
+
 #
-# The ``DefaultMemoryEngine`` facade + ``build_memory_stack`` helper
-# went away when AgentLoop migrated to directly holding
-# ``MemoryConsolidator`` (which owns its own ``MemoryStore``) +
-# ``ContextBuilder.skills``. The previous test class here exercised
-# that assembly; it has no current equivalent because there's nothing
-# to assemble — the same wiring now lives inline in
-# ``AgentLoop.__init__``.
+
+
+
+
+
+
+
 # ===========================================================================

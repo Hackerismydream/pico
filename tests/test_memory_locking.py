@@ -21,8 +21,8 @@ def test_locked_yields_without_throwing(tmp_path: Path) -> None:
 
 def test_lock_path_is_sibling(tmp_path: Path) -> None:
     store = MemoryStore(tmp_path)
-    # Lock file is always a sibling of memory_file with a ``.lock`` suffix —
-    # derives from whatever path memory_file points at (L4: user.md).
+
+
     assert store.memory_lock_path.name == store.memory_file.name + ".lock"
     assert store.memory_lock_path.parent == store.memory_file.parent
 
@@ -60,14 +60,14 @@ def test_splice_write_skips_when_concurrent_modification(tmp_path: Path) -> None
 
 
 # ---------------------------------------------------------------------------
-# Multi-process serialization (POSIX-only)
+
 
 
 def _worker_acquire_and_hold(lock_dir: str, hold_secs: float, ready: Value, done: Value) -> None:
     """Helper run in subprocess: grab the same fcntl lock and hold it."""
     store = MemoryStore(Path(lock_dir))
     with store.locked():
-        ready.value = 1  # signal main: we have the lock
+        ready.value = 1
         time.sleep(hold_secs)
         done.value = 1
 
@@ -88,17 +88,17 @@ def test_lock_serializes_across_processes(tmp_path: Path) -> None:
     )
     p.start()
 
-    # Wait for the worker to hold the lock
+
     deadline = time.monotonic() + 5
     while ready.value == 0 and time.monotonic() < deadline:
         time.sleep(0.01)
     assert ready.value == 1, "worker never acquired the lock"
 
-    # While the worker holds the lock, our locked() acquire should block.
+
     t0 = time.monotonic()
     with store.locked():
         elapsed = time.monotonic() - t0
-        # Worker held for 0.3s; we should have waited at least most of that.
+
         assert elapsed >= 0.15, (
             f"main process didn't wait for worker to release "
             f"(elapsed={elapsed:.3f}s); fcntl lock not enforced cross-process"

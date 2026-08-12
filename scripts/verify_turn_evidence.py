@@ -57,9 +57,8 @@ SPINE_OUTCOMES = (
 _OK_OUTCOMES = {"completed", "completed_with_tool_failure"}
 CHANNEL_OUTCOMES = ("delivered", "dropped", "no_outlet")
 
-# The gate's own contract: which Turn the scenario must drive to which terminal
-# state. It lives here, not in the scenario, so a scenario that quietly stops
-# producing a state fails the gate instead of redefining it.
+# 门自身的契约：场景必须把哪个轮次驱动到哪个终态。契约位于此处而非场景中，因此场景若静默
+# 停止产生某状态，会让门失败而不是重定义契约。
 EXPECTED_TERMINALS = {
     "scenario:completed": "completed",
     "scenario:tool_failure": "completed_with_tool_failure",
@@ -68,9 +67,8 @@ EXPECTED_TERMINALS = {
     "scenario:cancelled": "cancelled",
     "scenario:delivery_exhausted": "completed",
 }
-# Turns whose outcome must be pairwise distinct: one per taxonomy entry.
-# ``scenario:delivery_exhausted`` is deliberately excluded -- it is a completed
-# Turn, and its distinguishing evidence is the channel outcome, not the Turn's.
+# 结果必须两两不同的轮次，每个分类条目一个。刻意排除 ``scenario:delivery_exhausted``：
+# 它是已完成轮次，区分证据是渠道结果，而非轮次结果。
 TERMINAL_WITNESSES = (
     "scenario:completed",
     "scenario:tool_failure",
@@ -93,7 +91,7 @@ _COUNT_PATTERNS = {
 
 
 # --------------------------------------------------------------------------
-# loading
+# 加载
 # --------------------------------------------------------------------------
 
 
@@ -206,7 +204,7 @@ def dedupe_spans(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 # --------------------------------------------------------------------------
-# indexing
+# 索引
 # --------------------------------------------------------------------------
 
 
@@ -268,7 +266,7 @@ def _public_turn(turn: dict[str, Any], usage_rows: int) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
-# detectors
+# 检测器
 # --------------------------------------------------------------------------
 
 
@@ -325,8 +323,7 @@ def check_usage_join(turns: dict[str, dict[str, Any]], usage_rows: list[dict[str
             findings.append(_finding("usage_row_without_trace_id", f"row {index} carries no trace id", row=index))
             continue
         turn = turns.get(trace_id)
-        # A trace group with no spine.turn is not a Turn: resolving against it
-        # would report a join that the evidence does not actually support.
+    # 没有 spine.turn 的追踪组不是轮次；对其解析会报告证据实际不支持的关联。
         if turn is None or turn["root_count"] == 0:
             findings.append(
                 _finding("usage_row_unjoinable_trace", "trace id has no Turn", row=index, trace_id=trace_id)
@@ -363,7 +360,7 @@ def check_delivery_join(
                 _finding("delivery_outcome_unknown", f"unknown channel outcome {outcome!r}", trace_id=trace_id)
             )
         if outcome == "no_outlet":
-            continue  # never enqueued, so it has no Turn span to parent onto
+            continue  # 从未入队，因此没有可作为父级的轮次跨度
         turn = turns.get(trace_id)
         if turn is None or turn["root_count"] == 0:
             findings.append(_finding("delivery_span_unjoinable_trace", "delivery trace has no Turn", trace_id=trace_id))
@@ -469,7 +466,7 @@ def check_scenario_deliveries(turns: dict[str, dict[str, Any]]) -> dict[str, Any
     findings: list[dict[str, Any]] = []
     by_conversation = {t["conversation_id"]: t for t in turns.values() if t["conversation_id"]}
     if not by_conversation:
-        # No Turns at all: the contract was not violated, it was never observed.
+        # 完全没有轮次：契约并非被违反，而是从未被观察到。
         return _result([], observed=0, evidence_class=CONTRACT, unit="scenario deliveries")
     for conversation, expected in sorted(EXPECTED_DELIVERIES.items()):
         turn = by_conversation.get(conversation)
@@ -490,9 +487,8 @@ def check_scenario_deliveries(turns: dict[str, dict[str, Any]]) -> dict[str, Any
 
 
 def _result(findings: list[dict[str, Any]], *, observed: int, evidence_class: str, unit: str) -> dict[str, Any]:
-    # Findings outrank the observed count: a detector can contradict on records
-    # the unit counter never sees (a notice with no delivery span), and reporting
-    # that as inconclusive would sell a violated contract as an unexercised one.
+    # 发现优先于观察计数：检测器可能在单元计数器从未看到的记录上发现矛盾，例如没有投递跨度的
+    # 通知；若报告为无结论，就会把已违反契约说成未执行契约。
     if findings:
         status = FAILED
     elif observed == 0:
@@ -509,7 +505,7 @@ def _result(findings: list[dict[str, Any]], *, observed: int, evidence_class: st
 
 
 # --------------------------------------------------------------------------
-# scenario execution + report
+# 场景执行与报告
 # --------------------------------------------------------------------------
 
 

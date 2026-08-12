@@ -11,7 +11,7 @@ from pico.memory_engine.skill_forge import SkillForgeRouter
 from pico.memory_engine.skill_forge.types import RouterHit
 
 # ----------------------------------------------------------------------
-# Stub doubles
+
 # ----------------------------------------------------------------------
 
 
@@ -63,7 +63,7 @@ def _ctx(message: str) -> AssemblyContext:
 
 
 # ----------------------------------------------------------------------
-# Baseline
+
 # ----------------------------------------------------------------------
 
 
@@ -171,7 +171,7 @@ async def test_activation_limit_keeps_overflow_hits_as_references(tmp_path: Path
 
 
 # ----------------------------------------------------------------------
-# Local refs
+
 # ----------------------------------------------------------------------
 
 

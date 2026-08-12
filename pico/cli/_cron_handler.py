@@ -99,9 +99,7 @@ def make_on_cron_job(
         )
         from pico.spine import ChatType, Origin, Source, Text, TurnRequest
 
-        # Include the originally-scheduled time so the reminder text can
-        # echo "set at 17:05" back to the user — otherwise the agent only
-        # knows "right now".
+        # 包含最初调度时间，使提醒文本能向用户回显“设置于 17:05”；否则智能体只知道当前时间。
         reminder_note = (
             "[Scheduled Task] Timer finished.\n\n"
             f"Task '{job.name}' ({_format_schedule_origin(job)}) "
@@ -112,9 +110,8 @@ def make_on_cron_job(
             "context."
         )
 
-        # Resolve delivery targets at TRIGGER time (reading cron config now lets
-        # ``cron config set`` take effect on the next fire) — response-independent,
-        # so it can run before the turn; len(targets) decides the path.
+        # 在触发时解析投递目标（此时读取 cron 配置，使 ``cron config set`` 在下一次触发时生效）。
+        # 该步骤与响应无关，可在轮次前执行；路径由 len(targets) 决定。
         cron_cfg = load_config().cron
         enabled_channels = set(channel_manager.enabled_channels) if channel_manager is not None else set()
         targets, warnings = resolve_cron_delivery(
@@ -127,24 +124,19 @@ def make_on_cron_job(
         for w in warnings:
             logger.warning("Cron job '{}' ({}): {}", job.name, job.id, w)
 
-        # Every cron turn runs through the spine. Delivery is explicit per branch:
-        # a single-target delivering job rides the hub to its one outlet; every
-        # other case (no forward, a broadcast, or a silent job) submits with the
-        # job's own channel as the source — ephemeral for the realistic cases, so
-        # it has no gateway outlet and the hub drops the reply. A broadcast then
-        # delivers explicitly below; a silent job delivers nothing. run_turn sets
-        # the cron-context guard itself (in the lane task), keyed on origin=CRON.
+        # 每个 cron 轮次都通过 spine 运行。各分支显式投递：单目标投递任务经 hub 到唯一出口；
+        # 其他情况（不转发、广播或静默任务）以任务自身渠道为来源提交。真实场景下该来源是临时的，
+        # 没有网关出口，hub 会丢弃回复；广播随后在下方显式投递，静默任务则不投递。run_turn
+        # 在通道任务中自行设置以 origin=CRON 为键的 cron 上下文防护。
         deliver_via_hub = job.payload.deliver and len(targets) == 1
         if deliver_via_hub:
             src_channel, src_chat = targets[0].channel, targets[0].chat_id
         else:
             src_channel = job.payload.channel or default_channel
             src_chat = job.payload.to or "direct"
-            # A silent job (deliver=False) stays silent because its ephemeral
-            # source has no gateway outlet (the hub drops the reply). A silent job
-            # on a non-ephemeral channel — only reachable by hand-editing jobs.json,
-            # since every creation path sets deliver=True — WOULD be delivered by
-            # the hub; warn so this edge is visible rather than a silent change.
+            # 静默任务（deliver=False）因临时来源没有网关出口而保持静默，hub 会丢弃回复。
+            # 非临时渠道上的静默任务会被 hub 投递；由于所有创建路径都设置 deliver=True，
+            # 只能手工编辑 jobs.json 才能到达此情况。发出警告，使该边界可见而非静默变化。
             if not job.payload.deliver and not is_ephemeral_channel(src_channel, enabled_channels):
                 logger.warning(
                     "Cron job '{}' ({}): silent job on non-ephemeral channel '{}' "
@@ -161,17 +153,13 @@ def make_on_cron_job(
             conversation=f"cron:{job.id}",
         )
         await submit(req).result()
-        # Read the reply back for host-specific delivery and pop it so the
-        # long-running map does not accumulate.
+        # 读回回复以执行主机特定投递，并弹出记录，避免长期运行的映射不断积累。
         response: str | None = readback_texts.pop(f"cron:{job.id}", None) if readback_texts is not None else None
 
-        # Broadcast a multi-target delivering job to every resolved target: the hub
-        # dropped the reply (no outlet for the ephemeral source), so this is the
-        # only delivery. It does NOT skip on a message-tool self-send — a self-send
-        # to an ephemeral source never reaches the user under the daemon, so
-        # broadcasting the reply to all targets is both simpler and strictly better
-        # than the legacy self-send guard, which suppressed the broadcast and left
-        # the other targets with nothing.
+        # 将多目标投递任务广播到所有已解析目标：hub 已丢弃回复（临时来源没有出口），因此这是
+        # 唯一投递。message 工具自发消息时也不跳过；守护进程中发往临时来源的自发消息永远
+        # 到不了用户，所以把回复广播到全部目标既更简单，也严格优于旧有自发消息防护——后者会
+        # 抑制广播，使其他目标什么都收不到。
         if job.payload.deliver and len(targets) > 1 and response:
             for t in targets:
                 await hub.post(

@@ -29,7 +29,7 @@ def discover_specs() -> dict[str, ChannelSpec]:
         try:
             mod = importlib.import_module(f"{_ADAPTERS_PKG}.{name}.spec")
         except ModuleNotFoundError:
-            continue  # not yet migrated
+            continue  # 尚未迁移
         if (spec := getattr(mod, "SPEC", None)) is not None:
             specs[name] = spec
     return specs

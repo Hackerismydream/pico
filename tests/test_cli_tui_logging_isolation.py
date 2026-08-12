@@ -48,9 +48,9 @@ def _isolate_logging(tmp_path, monkeypatch):
     """
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("PICO_CLI_DEBUG", raising=False)
-    # redirect_loguru_to_file resolves the log dir via get_logs_dir() →
-    # get_config_path(); clear any path a prior test pinned so it falls back
-    # to the tmp HOME instead of leaking to a real instance dir.
+
+
+
     monkeypatch.setattr("pico.config.loader._current_config_path", None)
 
     root = logging.getLogger()
@@ -77,7 +77,7 @@ def _isolate_logging(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("logger_name", _KNOWN_TTY_LEAKING_LOGGERS)
 def test_third_party_tty_handlers_stripped_after_redirect(logger_name, _isolate_logging):
-    # Precondition — litellm import (module-level) installed a stderr handler.
+
     assert _tty_stream_handlers(logger_name), (
         f"Test premise invalid: no stderr StreamHandler on {logger_name!r} at "
         "test start. Either litellm's logging setup changed upstream, or a "

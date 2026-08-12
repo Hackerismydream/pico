@@ -27,7 +27,7 @@ def _channel(group_policy="open"):
     return FeishuChannel(cfg)
 
 
-# ── content.extract_post ──────────────────────────────────────────────
+
 
 
 def test_extract_post_direct():
@@ -63,7 +63,7 @@ def test_extract_post_empty():
     assert content.extract_post({}) == ("", [])
 
 
-# ── content.extract_share_card / interactive ──────────────────────────
+
 
 
 def test_extract_share_chat():
@@ -86,7 +86,7 @@ def test_extract_element_link():
     ]
 
 
-# ── cards.detect_format ───────────────────────────────────────────────
+
 
 
 @pytest.mark.parametrize(
@@ -106,7 +106,7 @@ def test_detect_format(text, fmt):
     assert cards.detect_format(text) == fmt
 
 
-# ── cards rendering ───────────────────────────────────────────────────
+
 
 
 def test_post_payload_renders_link():
@@ -131,10 +131,10 @@ def test_parse_table_rejects_non_table():
 def test_card_payloads_split_multiple_tables():
     two = "| a |\n| - |\n| 1 |\n\ntext\n\n| b |\n| - |\n| 2 |"
     payloads = cards.card_payloads(two)
-    assert len(payloads) == 2  # one table per card (Feishu API 11310)
+    assert len(payloads) == 2
 
 
-# ── group mention gating ──────────────────────────────────────────────
+
 
 
 def test_mentioned_via_at_all():
@@ -163,7 +163,7 @@ def test_open_policy_addresses_all():
     assert ch._addressed_to_bot(msg) is True
 
 
-# ── two-tier transcription (native Feishu STT first, Groq fallback) ───
+
 
 
 def test_transcribe_prefers_native_feishu_stt(monkeypatch):
@@ -194,17 +194,17 @@ def test_transcribe_skips_native_once_disabled(monkeypatch):
         AsyncMock(return_value="groq text"),
     )
     assert asyncio.run(ch._transcribe("/tmp/a.opus")) == "groq text"
-    assert calls == []  # native STT not attempted when disabled
+    assert calls == []
 
 
-# ── inbound early gate (reject before side effects) ───────────────────
+
 
 
 def test_on_message_disallowed_sender_skips_react_and_download():
     """Denied sender is rejected before _react (network) and _extract (media
     download), not merely dropped at the central intake."""
     ch = _channel()
-    ch.config.allow_from = []  # deny all
+    ch.config.allow_from = []
     ch._react = AsyncMock()
     ch._extract = AsyncMock()
     ch.intake.publish = AsyncMock()
@@ -217,7 +217,7 @@ def test_on_message_disallowed_sender_skips_react_and_download():
     ch.intake.publish.assert_not_awaited()
 
 
-# ── send: transient vs permanent errors ───────────────────────────────
+
 
 
 def test_send_text_reaches_sdk_with_chat_id_and_content():
@@ -307,7 +307,7 @@ async def test_feishu_business_failure_is_reported_as_dropped_delivery():
     ch._client.im.v1.message.create.assert_called_once()
 
 
-# ── stop contract ──────────────────────────────────────────────────────
+
 
 
 def test_stop_blocks_zombie_inbound(monkeypatch):
@@ -324,7 +324,7 @@ def test_stop_blocks_zombie_inbound(monkeypatch):
     assert len(calls) == 1
     ch._running = False
     ch._on_message_sync(MagicMock())
-    assert len(calls) == 1  # zombie delivery dropped
+    assert len(calls) == 1
 
 
 async def test_quiesced_intake_drops_scheduled_handler_that_resumes_after_stop():
@@ -355,7 +355,7 @@ async def test_quiesced_intake_drops_scheduled_handler_that_resumes_after_stop()
     submit.assert_not_awaited()
 
 
-# ── contract conformance ───────────────────────────────────────────────
+
 
 
 def test_feishu_satisfies_channel_contract():
@@ -363,8 +363,8 @@ def test_feishu_satisfies_channel_contract():
     from pico.channels.contract import capability_violations
 
     ch = _channel()
-    assert isinstance(ch, Channel)  # name/capabilities/start/stop/send
-    assert capability_violations(ch) == []  # no login/streaming declared or implemented
+    assert isinstance(ch, Channel)
+    assert capability_violations(ch) == []
 
 
 def test_feishu_spec_import_is_cheap():
@@ -383,7 +383,7 @@ def test_feishu_spec_import_is_cheap():
     assert r.returncode == 0, r.stderr
 
 
-# ── observable receipts ───────────────────────────────────────────────
+
 
 
 def _capture_info_logs():

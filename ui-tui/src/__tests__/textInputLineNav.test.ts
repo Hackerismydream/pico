@@ -25,17 +25,17 @@ describe('lineNav', () => {
   })
 
   it('moves cursor up one line preserving column', () => {
-    // "hello\nworld" — cursor at col 3 of line 1 ('l' in world) → col 3 of line 0 ('l' in hello)
+    // "hello\nworld"：光标从第 1 行第 3 列（world 中的 l）移到第 0 行第 3 列（hello 中的 l）。
     expect(lineNav('hello\nworld', 9, -1)).toBe(3)
   })
 
   it('moves cursor down one line preserving column', () => {
-    // cursor at col 2 of line 0 → col 2 of line 1
+    // 光标从第 0 行第 2 列移到第 1 行第 2 列。
     expect(lineNav('hello\nworld', 2, 1)).toBe(8)
   })
 
   it('clamps to end of shorter destination line on up', () => {
-    // col 10 on long line → clamp to end of short line "abc"
+    // 长行第 10 列会限制到短行 "abc" 的末尾。
     const s = 'abc\nlong long text'
     const from = 14
 
@@ -43,14 +43,14 @@ describe('lineNav', () => {
   })
 
   it('clamps to end of shorter destination line on down', () => {
-    // col 10 on line 0 → clamp to end of "abc" on line 1
+    // 第 0 行第 10 列会限制到第 1 行 "abc" 的末尾。
     const s = 'long long text\nabc'
 
     expect(lineNav(s, 10, 1)).toBe(18)
   })
 
   it('handles empty lines correctly', () => {
-    // "a\n\nb" — cursor at line 2 (b) → up to empty line 1
+    // "a\n\nb"：光标从第 2 行的 b 上移到空的第 1 行。
     expect(lineNav('a\n\nb', 3, -1)).toBe(2)
   })
 

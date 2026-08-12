@@ -10,7 +10,6 @@ import pytest
 from pico.config.schema import ModelEndpoint, RoutingConfig
 from pico.routing.knn_router import KNNModelRouter
 
-# large has higher reward but higher cost across all training tasks.
 ENTRIES = [
     {
         "task_name": "a",
@@ -64,7 +63,7 @@ def _cfg(
     )
 
 
-# All neighbours point the same way; a query orthogonal to them has low cosine.
+
 FAR_ENTRIES = [
     {
         "task_name": "a",
@@ -101,7 +100,7 @@ async def test_routes_to_higher_reward(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_high_lambda_prefers_cheaper(tmp_path, monkeypatch):
-    # large: 60 - 5*10 = 10 ; small: 30 - 5*1 = 25 -> small wins
+
     r = KNNModelRouter(_cfg(_write_memory(tmp_path), lam=5.0))
     monkeypatch.setattr(r, "_embed", _const_embed([1.0, 0.0]))
     primary, fallbacks = await r.select_model_chain("do a task")
@@ -128,7 +127,7 @@ async def test_embedding_failure_returns_none(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fewer_than_two_candidates_returns_none(tmp_path, monkeypatch):
-    # config has a model not present in memory -> only one valid candidate.
+
     r = KNNModelRouter(_cfg(_write_memory(tmp_path), models=("small", "ghost")))
     monkeypatch.setattr(r, "_embed", _const_embed([1.0, 0.0]))
     assert r._candidates == ["small"]
@@ -137,7 +136,7 @@ async def test_fewer_than_two_candidates_returns_none(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_off_distribution_stays_on_default(tmp_path, monkeypatch):
-    # Query orthogonal to every neighbour -> zero similar neighbours -> default.
+
     r = KNNModelRouter(_cfg(_write_memory(tmp_path, FAR_ENTRIES), min_similarity=0.5, min_similar_neighbors=1))
     monkeypatch.setattr(r, "_embed", _const_embed([0.0, 1.0, 0.0]))
     assert await r.select_model_chain("x") == (None, [])
@@ -145,7 +144,7 @@ async def test_off_distribution_stays_on_default(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_too_few_similar_neighbors_stays_on_default(tmp_path, monkeypatch):
-    # Only 2 of 3 neighbours clear cosine 0.6, but a switch requires >= 3.
+
     r = KNNModelRouter(_cfg(_write_memory(tmp_path), min_similarity=0.6, min_similar_neighbors=3))
     monkeypatch.setattr(r, "_embed", _const_embed([1.0, 0.0]))
     assert await r.select_model_chain("x") == (None, [])
@@ -153,7 +152,7 @@ async def test_too_few_similar_neighbors_stays_on_default(tmp_path, monkeypatch)
 
 @pytest.mark.asyncio
 async def test_memory_too_small_stays_on_default(tmp_path, monkeypatch):
-    # 3 memory entries, but routing requires >= 10.
+
     r = KNNModelRouter(_cfg(_write_memory(tmp_path), min_memory_size=10))
     monkeypatch.setattr(r, "_embed", _const_embed([1.0, 0.0]))
     assert await r.select_model_chain("x") == (None, [])
@@ -161,7 +160,7 @@ async def test_memory_too_small_stays_on_default(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_small_margin_stays_on_default(tmp_path, monkeypatch):
-    # large beats the default (small) by 30, but a switch requires margin >= 40.
+
     r = KNNModelRouter(_cfg(_write_memory(tmp_path), min_margin=40.0), default_model="small")
     monkeypatch.setattr(r, "_embed", _const_embed([1.0, 0.0]))
     assert await r.select_model_chain("x") == (None, [])
@@ -169,7 +168,7 @@ async def test_small_margin_stays_on_default(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_already_on_default_no_switch(tmp_path, monkeypatch):
-    # The best pick IS the default model -> no switch needed.
+
     r = KNNModelRouter(_cfg(_write_memory(tmp_path)), default_model="large")
     monkeypatch.setattr(r, "_embed", _const_embed([1.0, 0.0]))
     assert await r.select_model_chain("x") == (None, [])
@@ -187,8 +186,8 @@ async def test_switches_when_all_gates_pass(tmp_path, monkeypatch):
     assert fallbacks == ["small"]
 
 
-# Text-based memory (no stored embedding): the router embeds each entry's
-# ``text`` at load via the configured endpoint.
+
+
 TEXT_ENTRIES = [
     {"task_name": "a", "text": "alpha", "rewards": {"small": 30, "large": 60}, "costs": {"small": 1, "large": 10}},
     {"task_name": "b", "text": "beta", "rewards": {"small": 30, "large": 60}, "costs": {"small": 1, "large": 10}},
@@ -226,7 +225,7 @@ async def test_text_memory_embeds_at_load(tmp_path, monkeypatch):
     monkeypatch.setattr(knn_mod.urllib.request, "urlopen", _fake_urlopen(lambda t: vecs[t]))
 
     r = KNNModelRouter(_cfg(_write_memory(tmp_path, TEXT_ENTRIES)))
-    assert r._embeddings.shape == (3, 2)  # embedded from text at load
+    assert r._embeddings.shape == (3, 2)
 
     monkeypatch.setattr(r, "_embed", _const_embed([1.0, 0.0]))
     primary, fallbacks = await r.select_model_chain("do a task")
@@ -236,8 +235,8 @@ async def test_text_memory_embeds_at_load(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_routing_error_falls_back_to_default(tmp_path, monkeypatch):
-    # A wrong-dimension query embedding makes the matmul raise; routing must
-    # degrade to (None, []) rather than propagate the error into the turn.
-    r = KNNModelRouter(_cfg(_write_memory(tmp_path)))  # memory vectors are 2-d
-    monkeypatch.setattr(r, "_embed", _const_embed([1.0, 0.0, 0.0]))  # 3-d query
+
+
+    r = KNNModelRouter(_cfg(_write_memory(tmp_path)))
+    monkeypatch.setattr(r, "_embed", _const_embed([1.0, 0.0, 0.0]))
     assert await r.select_model_chain("x") == (None, [])

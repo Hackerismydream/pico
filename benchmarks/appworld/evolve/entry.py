@@ -90,9 +90,8 @@ def _wait_ports_free(base: int, count: int, timeout: float = 20.0) -> None:
 
 
 def _abs_against(base_dir: Path, value: str) -> Path:
-    # bench_config paths resolve like the top-level keys do: against the
-    # config file's directory, so a resume from another CWD reads the same
-    # inputs the run started with.
+        # bench_config 路径与顶层键一样相对配置文件目录解析，使从其他当前目录恢复时
+        # 仍读取运行开始时的同一组输入。
     p = Path(value).expanduser()
     return p if p.is_absolute() else (base_dir / p).resolve()
 
@@ -134,9 +133,8 @@ def build(ctx: LaunchContext) -> BenchBundle:
             "subject agent's runtime config JSON (model endpoint etc.; start "
             "from docs/examples/subject_runtime.json)"
         )
-    # Validate against the runtime-config schema now, not at trial time: an
-    # empty or malformed subject config otherwise passes `check` and fails
-    # 270 trials deep into the cold start.
+    # 现在就按运行时配置模式验证，不能等到试验阶段；否则空或损坏的目标配置会通过
+    # `check`，直到冷启动深入 270 次试验后才失败。
     try:
         import contextlib
         import io
@@ -259,10 +257,9 @@ def build(ctx: LaunchContext) -> BenchBundle:
         return make_appworld_precheck(cfg)
 
     def run_cold_start() -> None:
-        # Fill missing trials, then the SOP infra-rerun ladder: a vanilla
-        # baseline scored with infra failures kept as zeros hands every
-        # candidate a free lift, so salvageable infra must be re-scored
-        # (into vanilla_infra_rerun{1,2}; the KEPT readers pick them up).
+    # 先补齐缺失试验，再执行 SOP 基础设施重跑阶梯。若原版基线把基础设施失败按零分
+    # 保留，每个候选都会平白获益，因此可挽救的基础设施失败必须重新评分，写入
+    # vanilla_infra_rerun{1,2} 并由 KEPT 读取器获取。
         runs_root.mkdir(parents=True, exist_ok=True)
         needs_fill = cold_start_done() < len(train_ids) * k_confirm
         needs_salvage = False
@@ -276,10 +273,8 @@ def build(ctx: LaunchContext) -> BenchBundle:
             except FileNotFoundError:
                 needs_fill = True
         if needs_fill or needs_salvage:
-            # Gate0 before spending: neither the initial fill nor the
-            # infra-rerun ladder may burn trials against a dead endpoint
-            # (SOP §0). A clean, complete cold start skips the probe —
-            # rounds have their own per-round Gate0.
+        # 花费前执行 Gate0：首次补齐与基础设施重跑阶梯都不能在失效端点上浪费试验
+        # （SOP §0）。干净完整的冷启动跳过探针，各轮有自己的逐轮 Gate0。
             make_precheck()()
 
         def base_eval(_node, task_ids, k, job_name, *, split="train"):

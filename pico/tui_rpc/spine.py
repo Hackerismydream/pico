@@ -120,11 +120,10 @@ class TuiTurnRunner(AgentTurnRunner):
                 self._rpc_errors[request_key] = exc
                 raise
 
-        # A CRON turn is not a user turn: it runs non-streaming (one reply, not a
-        # token stream) and its reply text is captured for the cron fan-out, which
-        # delivers a cron.delivered event to every session. Its unbound
-        # deliverables are suppressed here rather than entering the user chat
-        # stream. Mirrors the gateway's GatewayTurnRunner read-back path.
+        # CRON Turn 不是用户 Turn：它以非流式方式运行（一次回复，而非令牌流），
+        # 并捕获回复文本供 cron 扇出，后者向每个会话交付 cron.delivered 事件。
+        # 未绑定的可交付项在此处被抑制，不进入用户聊天流。该路径与网关的
+        # GatewayTurnRunner 读回路径一致。
         if req.origin is Origin.CRON:
             text_sink: dict[str, str] = {}
             outcome = await self._loop.run_turn(req, emit_bound, drain, stream=False, text_sink=text_sink)
@@ -146,10 +145,9 @@ class TuiTurnRunner(AgentTurnRunner):
         usage_sink: dict[str, Any] = {}
         outcome = await self._loop.run_turn(req, emit_bound, drain, stream=True, usage_sink=usage_sink)
 
-        # A synthetic tool.complete when the message tool fired (the loop
-        # skips it on the general tool path), so the UI records the agent acted —
-        # its reply already streamed as token deltas. Emitted before returning, so
-        # it lands in the turn's event stream ahead of TurnEnded.
+            # 消息工具触发时生成一个合成 tool.complete（Agent Loop 在通用工具路径中会跳过它），
+            # 让 UI 记录 Agent 已采取行动；回复已作为令牌增量流式输出。返回前发出，
+            # 确保它在 Turn 事件流中位于 TurnEnded 之前。
         message_tool = self._loop.tools.get("message")
         if bound and isinstance(message_tool, MessageTool) and message_tool.sent_in_turn:
             await emit(
@@ -213,18 +211,16 @@ class TuiOutlet:
                     },
                 )
         elif isinstance(out, Text):
-            # A non-streamed reply (clarification / hook short-circuit / empty
-            # fallback) rides one token.delta into the same buffer the streamed
-            # reply uses, so message.complete finalizes it like any other text.
+                # 非流式回复（澄清、Hook 短路或空回退）通过一个 token.delta 进入流式回复使用的
+                # 同一缓冲区，使 message.complete 能像处理其他文本一样完成它。
             if out.content:
                 await self._emitter.emit(cid, {"type": "token.delta", "payload": {"text": out.content}})
-        # Notice / MediaOut: eaten (no wire event today).
+            # Notice 和 MediaOut 当前没有线上事件，因此被消耗。
 
     async def send_stream_chunk(self, chat_id: str, stream_id: str, delta: str, *, done: bool = False) -> None:
         if done:
-            # The front-end has no stream-done event; the turn is finalized by
-            # message.complete (emitted by the sink). done=True only lets the hub
-            # close its stream state.
+            # 前端没有 stream-done 事件；Turn 由 sink 发出的 message.complete 完结。
+            # done=True 只让 hub 关闭其流状态。
             return
         if not delta:
             return
@@ -295,10 +291,9 @@ def _make_tui_sink(
     sink."""
 
     async def _finish(conversation_id: str) -> None:
-        # close_stream clears the hub's per-stream state (so the next turn on this
-        # conversation reopens cleanly); wait_idle then blocks until every queued
-        # token.delta has been delivered — an empty turn never built a queue, so
-        # it returns at once.
+        # close_stream 清除 hub 按流保存的状态，使该会话的下一个 Turn 能干净重开；
+        # 随后 wait_idle 阻塞，直到所有排队的 token.delta 都已交付。空 Turn 从未创建队列，
+        # 因此会立即返回。
         await hub.close_stream(conversation_id)
         await hub.wait_idle(channel)
 
@@ -341,8 +336,7 @@ def _make_tui_sink(
             bound = turn_id is not None and submission_id is not None
             rpc_error = rpc_errors.get(request_key) if request_key is not None else None
             _drop(event.conversation_id, request_key)
-            # A cancelled turn's error is emitted by turn.cancel, not here, to
-            # avoid a double error event.
+            # 已取消 Turn 的错误由 turn.cancel 发出，此处不再发送，避免重复错误事件。
             if bound and not event.cancelled:
                 code = rpc_error.code if rpc_error is not None else _TURN_FAILED_CODE
                 message = rpc_error.public_message if rpc_error is not None else "turn_failed"
@@ -356,8 +350,7 @@ def _make_tui_sink(
                 )
             return
         if isinstance(event, TurnStarted):
-            # TuiTurnRunner emits message.start after correlating the exact
-            # request to its turn.send binding.
+        # TuiTurnRunner 将精确请求与对应 turn.send 绑定关联后，再发出 message.start。
             return
         await hub.dispatch(event)
 

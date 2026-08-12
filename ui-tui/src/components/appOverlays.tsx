@@ -100,9 +100,8 @@ export function FloatingOverlays({
     return null
   }
 
-  // Fixed viewport centered on compIdx — previously the slice end was
-  // compIdx + 8 so the dropdown grew from 8 rows to 16 as the user scrolled
-  // down, bouncing the height on every keystroke.
+  // 使用以 compIdx 为中心的固定视口。此前切片终点为 compIdx + 8，导致用户向下
+  // 滚动时下拉框从 8 行增长到 16 行，并在每次按键时跳动高度。
   const viewportSize = Math.min(COMPLETION_WINDOW, completions.length)
 
   const start = Math.max(0, Math.min(compIdx - Math.floor(COMPLETION_WINDOW / 2), completions.length - viewportSize))

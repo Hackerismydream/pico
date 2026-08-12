@@ -16,7 +16,7 @@ class SandboxDebugConfig(BaseModel):
 
     enabled: bool = False
     socket: str = "sandbox/debug.sock"
-    max_message_bytes: int = 1048576  # 1 MiB
+    max_message_bytes: int = 1048576  # 1 MiB 上限
 
     @field_validator("max_message_bytes")
     @classmethod
@@ -31,26 +31,26 @@ class SandboxConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", alias_generator=to_camel, populate_by_name=True)
 
-    # "none"    → DirectExecutor: runs directly on host with no isolation (default)
-    # "auto"    → auto-detect: currently the only supported backend is boxlite;
-    #             raises an error on startup if detection fails
-    # "boxlite" → force boxlite; also runs availability probe, errors if unavailable
+    # "none"    → DirectExecutor：直接在宿主机运行，不提供隔离（默认）
+    # "auto"    → 自动检测：当前唯一支持的后端是 boxlite；
+    #             检测失败时在启动阶段报错
+    # "boxlite" → 强制使用 boxlite；同时执行可用性探测，不可用时报错
     backend: Literal["none", "auto", "boxlite"] = "none"
     image: str = "ubuntu:22.04"
     cpus: int = 2
     memory_mib: int = 2048
-    disk_size_gb: int | None = None  # None = ephemeral (boxlite default)
-    # Network: True=fully open; False=no network; list=domain allowlist
+    disk_size_gb: int | None = None  # None 表示使用 boxlite 默认的临时磁盘
+    # 网络：True 表示完全开放；False 表示禁网；列表表示域名白名单
     allow_net: bool | list[str] = True
-    # Extra volume mounts: each entry is [host_path, vm_path, "ro"|"rw"]
+    # 额外卷挂载：每项格式为 [host_path, vm_path, "ro"|"rw"]
     extra_volumes: list[list[str]] = Field(default_factory=list)
-    # Default timeout (seconds) for a single exec call inside the sandbox
+    # 沙箱内单次 exec 调用的默认超时时间（秒）
     default_timeout: int = 120
-    # Timeout (seconds) for the startup echo-ok probe
+    # 启动时 echo-ok 探测的超时时间（秒）
     verify_timeout: int = 30
-    # Timeout (seconds) for image pull + VM creation
+    # 拉取镜像并创建虚拟机的超时时间（秒）
     create_timeout: int = 300
-    # Debug socket server (nested object)
+    # 调试套接字服务器（嵌套对象）
     debug: SandboxDebugConfig = Field(default_factory=SandboxDebugConfig)
 
     @field_validator("allow_net")

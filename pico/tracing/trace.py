@@ -27,7 +27,7 @@ from . import spans as _spans
 
 _log = logging.getLogger("pico.tracing")
 
-# name domain -> coarse kind (span.type). Custom nodes pass kind= explicitly.
+# 名称域 -> 粗粒度 kind（span.type）；自定义节点显式传入 kind=。
 _KIND_BY_DOMAIN = {
     "session": "session",
     "spine": "session",
@@ -107,7 +107,7 @@ class Span:
             meta = {"traceId": self.trace_id, "sessionKey": self._session_key}
             art = _spans.persist_artifact(key, meta, sanitize_persisted_payload(payload), label=key)
             self._attrs.update(_spans.artifact_attributes(key, art))
-        except Exception:  # noqa: BLE001 — tracing must never break the host
+        except Exception:  # noqa: BLE001 — tracing 不得破坏 Host
             _log.debug("tracing: artifact(%s) failed", key, exc_info=True)
         return self
 
@@ -243,8 +243,8 @@ def span(
         cur = None if root else _ctx.current()
         trace_id = cur.trace_id if cur else _ctx.new_trace_id()
         parent = cur.parent_span_id if cur else None
-        # Passed session identity seeds a root span (the turn); otherwise inherit
-        # from the active context so children carry the turn's identity.
+        # 传入 session 身份时以此创建根 span（Turn）；否则继承活动上下文，
+        # 使子 span 携带 Turn 身份。
         session_key = session_key if session_key is not None else (cur.session_key if cur else None)
         channel = channel if channel is not None else (cur.channel if cur else None)
         chat_id = chat_id if chat_id is not None else (cur.chat_id if cur else None)
@@ -262,10 +262,9 @@ def span(
             source=cur.source if cur else None,
         )
         handle.set(attributes, **kw)
-        # A detached span is a leaf marker: it does NOT become the active parent,
-        # so work done inside it attaches to ITS parent, not to it. Required for
-        # cancellable spans (e.g. skill.inject) — otherwise a child that opened
-        # before the cancel would dangle off a span that never gets emitted.
+        # detached span 是叶节点标记，不会成为活动父节点；其中执行的工作会
+        # 挂到它的父节点，而不是它自身。这是可取消 span（如 skill.inject）
+        # 所必需的，否则取消前打开的子节点会悬挂在一个永不发出的 span 上。
         token = (
             None
             if detached
@@ -279,16 +278,16 @@ def span(
                 chat_id=chat_id,
             )
         )
-    except Exception:  # noqa: BLE001 — open must never break the host
+    except Exception:  # noqa: BLE001 — 打开追踪绝不能影响宿主
         _log.debug("tracing: span(%s) open failed", name, exc_info=True)
         yield _NoopSpan()
         return
 
     try:
         yield handle
-    # BaseException, not Exception: asyncio.CancelledError derives from
-    # BaseException, so an Exception-only handler closed a cancelled span as OK
-    # and the cancellation never reached the record.
+    # 必须捕获 BaseException 而非 Exception：asyncio.CancelledError 继承自
+    # BaseException。只捕获 Exception 会把已取消 span 以 OK 关闭，导致记录
+    # 感知不到取消。
     except BaseException as exc:
         handle.error("cancelled" if isinstance(exc, asyncio.CancelledError) else exc)
         raise
@@ -337,7 +336,7 @@ def attach(trace_id: str | None, parent_span_id: str | None = None) -> Iterator[
     token = None
     try:
         token = _ctx.push(trace_id=trace_id, span_id=parent_span_id)
-    except Exception:  # noqa: BLE001 — attach must never break the host
+    except Exception:  # noqa: BLE001 — 附加追踪绝不能影响宿主
         _log.debug("tracing: attach(%s) failed", trace_id, exc_info=True)
     try:
         yield
@@ -403,7 +402,7 @@ def instrument(name: str, *, kind: str | None = None, detached: bool = False, se
             if extract is not None:
                 try:
                     extract(s, _bind(args, kwargs), result, exc)
-                except Exception:  # noqa: BLE001 — extraction must not break the host
+                except Exception:  # noqa: BLE001 — 提取失败不得破坏 Host
                     _log.debug("tracing: extract for %s failed", name, exc_info=True)
 
         if inspect.iscoroutinefunction(func):
@@ -418,7 +417,7 @@ def instrument(name: str, *, kind: str | None = None, detached: bool = False, se
                     try:
                         result = await func(*args, **kwargs)
                         return result
-                    except BaseException as e:  # noqa: BLE001 — record + re-raise
+                    except BaseException as e:  # noqa: BLE001 — 记录后重新抛出
                         exc = e
                         raise
                     finally:
@@ -436,7 +435,7 @@ def instrument(name: str, *, kind: str | None = None, detached: bool = False, se
                 try:
                     result = func(*args, **kwargs)
                     return result
-                except BaseException as e:  # noqa: BLE001 — record + re-raise
+                except BaseException as e:  # noqa: BLE001 — 记录后重新抛出
                     exc = e
                     raise
                 finally:

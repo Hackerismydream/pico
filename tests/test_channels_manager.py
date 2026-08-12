@@ -35,10 +35,10 @@ class _FakeChannel:
     def is_running(self) -> bool:
         return self._running
 
-    async def start(self) -> None:  # pragma: no cover - not exercised
+    async def start(self) -> None:  # pragma: no cover - 未覆盖
         self._running = True
 
-    async def stop(self) -> None:  # pragma: no cover - not exercised
+    async def stop(self) -> None:  # pragma: no cover - 未覆盖
         self._running = False
 
     async def send(self, chat_id, content, media=None) -> None:  # pragma: no cover
@@ -68,7 +68,7 @@ def _manager(monkeypatch, specs, config) -> ChannelManager:
     return ChannelManager(config)
 
 
-# ── _init_channels ────────────────────────────────────────────────────
+
 
 
 def test_init_builds_enabled_channel_and_sets_groq_key(monkeypatch):
@@ -78,7 +78,7 @@ def test_init_builds_enabled_channel_and_sets_groq_key(monkeypatch):
         _config({"fake": SimpleNamespace(enabled=True, allow_from=["*"])}),
     )
     assert mgr.enabled_channels == ["fake"]
-    assert mgr.channels["fake"].transcription_api_key == "gk"  # set by manager
+    assert mgr.channels["fake"].transcription_api_key == "gk"
 
 
 def test_init_skips_disabled_channel(monkeypatch):
@@ -101,7 +101,7 @@ def test_init_disables_channel_on_missing_dependency(monkeypatch):
         {"fake": _spec(boom)},
         _config({"fake": SimpleNamespace(enabled=True, allow_from=["*"])}),
     )
-    assert "fake" not in mgr.channels  # disabled, construction did not raise
+    assert "fake" not in mgr.channels
 
 
 def test_empty_allow_from_disables_the_channel_loudly(monkeypatch):
@@ -119,7 +119,7 @@ def test_empty_allow_from_disables_the_channel_loudly(monkeypatch):
     assert "empty allowFrom denies every sender" in error
 
 
-# ── per-channel failure isolation ─────────────────────────────────────
+
 
 
 def test_factory_crash_disables_only_that_channel(monkeypatch):
@@ -352,7 +352,7 @@ async def test_quiesce_intake_preserves_caller_cancellation_over_barrier_failure
     assert intake.cancel_calls == 1
 
 
-# ── _missing_dep_hint (install-mode / OS split) ───────────────────────
+
 
 _EDITABLE_JSON = '{"url": "file:///src", "dir_info": {"editable": true}}'
 _WHEEL_JSON = '{"url": "https://x/pico_harness-0.1.2.whl", "archive_info": {}}'
@@ -383,11 +383,11 @@ def test_hint_editable_names_the_channel_extra(monkeypatch, modname):
 @pytest.mark.parametrize(
     "raw",
     [
-        _WHEEL_JSON,  # archive_info: no 'dir_info' key -> .get chain must not KeyError
-        None,  # direct_url.json absent -> read_text returns None
-        '{"url": "file:///x", "dir_info": {}}',  # dir_info present, 'editable' missing
-        "{}",  # empty object
-        "{not valid json",  # corrupt file -> JSONDecodeError must be swallowed
+        _WHEEL_JSON,
+        None,
+        '{"url": "file:///x", "dir_info": {}}',
+        "{}",
+        "{not valid json",
     ],
     ids=["wheel", "absent", "dir_info_no_editable", "empty", "malformed"],
 )
@@ -457,7 +457,7 @@ def test_init_warning_carries_install_hint(monkeypatch, direct_url, platform, ex
     assert expected in warning
 
 
-# ── status / accessors ────────────────────────────────────────────────
+
 
 
 def test_get_status_and_get_channel(monkeypatch):

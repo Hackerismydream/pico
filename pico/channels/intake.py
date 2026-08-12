@@ -122,16 +122,16 @@ class Intake:
                         channel=self.channel_name,
                         chat_id=str(chat_id),
                         sender_id=str(sender_id),
-                        # Not load-bearing for processing (channels read the real
-                        # chat_type from metadata, which rides extras); a best-effort
-                        # shape for the spine. group when the channel says so, else DM.
+                        # 该值不承载处理语义（channel 从 extras 携带的 metadata
+                        # 读取真实 chat_type），这里只为 Spine 尽力提供形状：
+                        # channel 声明为 group 时使用 group，否则使用 DM。
                         chat_type=ChatType.GROUP if meta.get("chat_type") == "group" else ChatType.DM,
                         extras=meta,
                     ),
                     text=content,
                     media=tuple(Media(path=p, mime="application/octet-stream", kind="file") for p in (media or [])),
-                    # session_key_override -> conversation: run_turn's cid is
-                    # `conversation or channel:chat_id`.
+                    # session_key_override -> conversation：run_turn 的 cid
+        # 使用 `conversation or channel:chat_id`。
                     conversation=session_key,
                 )
             )

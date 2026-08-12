@@ -40,9 +40,9 @@ def _mock_http(monkeypatch: pytest.MonkeyPatch, handler) -> None:
 
 
 async def test_rejects_url_resolving_to_private_ip(monkeypatch):
-    _resolve_to(monkeypatch, "169.254.169.254")  # cloud metadata endpoint
+    _resolve_to(monkeypatch, "169.254.169.254")
 
-    # If validation is bypassed this would attempt a real fetch; fail loudly.
+
     def _boom(*_a, **_k):
         raise AssertionError("HTTP client must not be constructed for a blocked URL")
 

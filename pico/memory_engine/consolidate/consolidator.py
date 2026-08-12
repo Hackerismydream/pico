@@ -59,10 +59,8 @@ def _normalize_save_memory_args(args: Any) -> dict[str, Any] | None:
     return args if isinstance(args, dict) else None
 
 
-# Split consolidation: episode/foresight annotation (light, every
-# trigger) vs profile-section refresh (heavy, only on tag heat).
-# Foresight emission is opt-in — default off keeps the tool schema
-# minimal and tokens cheap.
+# 拆分归并：每次触发都执行轻量的事件和预见标注；只在标签足够活跃时
+# 执行重量的用户资料分节刷新。预见输出为选择开启，默认关闭以保持工具模式最小化并节省令牌。
 
 
 def _build_annotate_tool(*, enable_foresight: bool) -> list[dict]:
@@ -249,20 +247,16 @@ def _parse_episode_line(line: str) -> tuple[str, str, list[str]] | None:
     return ts, summary, tags
 
 
-# Code-layer guards.
+# 代码层保护。
 #
-# Each of these enforces a rule the prompt already states but the LLM
-# does not reliably follow at 30-day scale. Kept as pure functions so
-# they can be unit-tested in isolation and reasoned about without the
-# rest of MemoryStore.
+# 这些保护分别强制提示词已声明、但 LLM 在 30 天尺度下不能稳定遵循的规则。
+# 它们保持为纯函数，便于独立单元测试，也可以脱离 MemoryStore 的其余部分进行推理。
 
-# Stored without the leading '#' since ``_TAG_RE`` already strips it
-# when parsing episode lines.
+# 存储时不带开头的 '#'，因为 ``_TAG_RE`` 解析事件行时已会移除。
 _PROCESS_TAGS: frozenset[str] = frozenset({"question", "habit", "answer"})
 _VALID_CONFIDENCE: frozenset[str] = frozenset({"low", "medium", "high"})
 _SRC_LINK_RE = re.compile(r"\[src:\s+episodes\.md\s+@\s+\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\]")
-# Tokens stripped before semantic dedup of foresight predictions —
-# common subjects/auxiliaries/framing words that carry no topical content.
+# 预见预测语义去重前移除的词元：不承载主题内容的常见主语、助动词和框架词。
 _FORESIGHT_DEDUP_STOPWORDS: frozenset[str] = frozenset(
     {
         "user",
@@ -291,10 +285,8 @@ _FORESIGHT_DEDUP_STOPWORDS: frozenset[str] = frozenset(
     }
 )
 _FORESIGHT_TOKEN_RE = re.compile(r"[a-zA-Z]{4,}|[一-鿿]{2,}")
-# Jaccard threshold for "same claim, reworded". 0.6 chosen empirically:
-# catches recurring-habit clusters like "Saturday run x4" or "daily
-# medication reminders x6" while leaving obviously-distinct predictions
-# alone.
+# “同一主张的不同改写”所用 Jaccard 阈值。根据实验选择 0.6，可捕获“周六跑步 x4”
+# 或“每日服药提醒 x6”这类重复习惯聚类，同时不影响明显不同的预测。
 _FORESIGHT_SEMANTIC_DUP_JACCARD: float = 0.6
 
 
@@ -408,12 +400,11 @@ def _drop_bullets_without_src(body: str) -> tuple[str, int]:
     return "\n".join(kept), dropped
 
 
-# Foresight predictions persist to user.md ## Foresight section.
-# Bullet format (single line, mirrors the [src:]-style evidence link used
-# by profile bullets):
-#   - <prediction> (from <gen_ts>, window: <range>, confidence: <level>, src: episodes.md @ <ep_ts>)
-# ``from`` = wall time when annotate() emitted this prediction; ``src`` =
-# the episode timestamp that triggered it (LLM-provided src_ts).
+    # 预见预测持久化到 user.md 的 ## Foresight 分节。条目使用单行格式，
+    # 与用户资料条目使用的 [src:] 式证据链接相呼应：
+        #   - <预测>（生成时间 <gen_ts>，窗口 <range>，置信度 <level>，来源 episodes.md @ <ep_ts>）
+    # ``from`` 是 annotate() 输出该预测时的墙上时间；``src`` 是触发它的事件时间戳，
+    # 由 LLM 以 src_ts 提供。
 _FORESIGHT_HEADING = "## Foresight"
 _FORESIGHT_BULLET_RE = re.compile(
     r"^-\s+(?P<prediction>.+?)\s+"
@@ -432,7 +423,7 @@ def _format_foresight_bullet(entry: dict[str, Any], generation_ts: str) -> str:
     """
     pred = (entry.get("prediction") or "").strip() or "?"
     window = (entry.get("window") or "").strip() or "?"
-    # Enforce {low|medium|high}; off-enum values render as '?'.
+        # 强制限定为 {low|medium|high}，枚举外的值渲染为 '?'。
     confidence = _normalize_confidence(entry.get("confidence") or "")
     src_ts = (entry.get("src_ts") or "").strip() or "?"
     return f"- {pred} (from {generation_ts}, window: {window}, confidence: {confidence}, src: episodes.md @ {src_ts})"
@@ -510,7 +501,7 @@ def _splice_h2_section_at_end(content: str, heading: str, new_body: str) -> str:
             break
 
     if h_idx is not None:
-        # Find next H2 boundary (or EOF) to delimit this section.
+    # 查找下一个 H2 边界或 EOF，以确定当前分节范围。
         next_h2 = None
         for i in range(h_idx + 1, len(lines)):
             if lines[i].startswith("## "):
@@ -571,7 +562,7 @@ def _splice_h2_section(content: str, heading: str, new_body: str) -> str:
         sep = "\n\n" if content and not content.endswith("\n\n") else ""
         return content.rstrip("\n") + sep + "\n" + target + "\n\n" + new_body.strip("\n") + "\n"
 
-    # Find next H2 (lines starting with "## " but not "### " etc.).
+    # 查找下一个 H2：以 "## " 开头、但不是 "### " 等更深层级的行。
     next_h2 = None
     for i in range(h_idx + 1, len(lines)):
         if lines[i].startswith("## "):
@@ -596,19 +587,16 @@ class MemoryStore:
         workspace: Path,
         now_fn: Callable[[], datetime] | None = None,
     ):
-        # User profile + episodic log live under the ``user_memory``
-        # pillar. ``memory_dir`` is an alias of ``memory_file.parent``
-        # for callsites that derive sibling paths (lock file below).
+        # 用户资料和事件日志位于 ``user_memory`` 支柱下。``memory_dir`` 是
+        # ``memory_file.parent`` 的别名，供需推导同级路径的调用点使用，如下方的锁文件。
         self.memory_file = ensure_dir(workspace / "user_memory" / "profile") / "user.md"
         self.history_file = ensure_dir(workspace / "user_memory" / "episodic") / "episodes.md"
         self.memory_dir = self.memory_file.parent
-        # Sibling lock file shared across processes that write user.md.
+        # 写入 user.md 的各进程共享同级锁文件。
         self.memory_lock_path = self.memory_file.with_suffix(self.memory_file.suffix + ".lock")
 
-        # Used by ``consolidate`` to inject ``Current Time:`` into the
-        # consolidator-LLM prompt — without this, the LLM's
-        # summary-paragraph timestamps fall back to wall clock even when
-        # session entries it sees were tagged with a fake clock.
+        # ``consolidate`` 用它向归并 LLM 提示词注入 ``Current Time:``。如果没有它，
+        # 即使 LLM 看到的会话项已使用伪时钟标记，其摘要段落时间戳仍会回退到墙上时间。
         self._now_fn = now_fn or datetime.now
 
     @contextmanager
@@ -624,9 +612,8 @@ class MemoryStore:
         yield from self._fcntl_locked(self.memory_lock_path)
 
     def _fcntl_locked(self, lock_path: Path) -> Iterator[None]:
-        # Cross-platform advisory lock (portalocker): real serialization on
-        # Windows too, instead of the previous win32 no-op that lost concurrent
-        # writes to user.md.
+        # 跨平台建议锁（portalocker）在 Windows 上也能实现真正串行化，取代之前的 win32 空操作；
+        # 旧实现会丢失对 user.md 的并发写入。
         from pico.utils.portable_lock import file_lock
 
         with file_lock(lock_path):
@@ -676,8 +663,7 @@ class MemoryStore:
             current = self.read_long_term()
             sections = _parse_user_md_sections(current)
 
-            # Existing bullets in ## Foresight section, preserved verbatim
-            # so we don't churn formatting on rewrite.
+            # 原样保留 ## Foresight 分节中的已有条目，避免重写时反复改动格式。
             existing_bullets: list[str] = []
             if _FORESIGHT_HEADING in sections:
                 for line in sections[_FORESIGHT_HEADING].splitlines():
@@ -704,11 +690,9 @@ class MemoryStore:
                 key = (pred, src_ts)
                 if key in existing_keys:
                     continue
-                # Semantic dedup. The (prediction, src_ts) key is
-                # exact-string; LLM produces reworded re-emissions of the
-                # same claim from different episodes that all slip
-                # through. Block them via Jaccard over content tokens
-                # (also blocks dupes within this very batch).
+                # 语义去重。( prediction, src_ts ) 键只能识别完全相同的字符串；LLM 会对来自不同事件的
+                # 同一主张换语重发，这些都会漏过。使用内容词元的 Jaccard 相似度拦截，
+                # 也会拦截当前批次内的重复项。
                 if _is_semantic_duplicate_foresight(pred, existing_predictions):
                     semantic_skipped += 1
                     continue
@@ -726,17 +710,15 @@ class MemoryStore:
                 return 0
 
             all_bullets = existing_bullets + new_bullets
-            # FIFO: keep most recent ``cap`` entries (drop oldest)
+            # FIFO：保留最新的 ``cap`` 项，丢弃最旧项
             if len(all_bullets) > cap:
                 all_bullets = all_bullets[-cap:]
 
             body = "\n".join(all_bullets)
             base = current or "# Long-term Memory\n"
-            # Always-at-end variant: if ## Foresight already exists in the
-            # middle of the file (e.g. because annotate ran before any
-            # refresh_section created ## Projects), this moves it to the
-            # bottom so the visual order is "stable profile sections first,
-            # auto-managed Foresight last".
+            # 始终置底变体：如果 ## Foresight 已位于文件中部，例如 annotate 早于任何
+            # refresh_section 创建 ## Projects，则将其移到底部，使视觉顺序为：
+            # 先放稳定的用户资料分节，最后放自动管理的 Foresight。
             new_content = _splice_h2_section_at_end(
                 base,
                 _FORESIGHT_HEADING,
@@ -777,7 +759,7 @@ class MemoryStore:
             kept.append(stripped)
         return "\n\n".join(kept)
 
-    # Shared helpers keep profile and episodic mutation inside MemoryStore.
+    # 共享辅助函数将用户资料和事件记录的修改限制在 MemoryStore 内。
 
     def read_history_tail(self, lines: int) -> str:
         """Return the last ``lines`` non-blank lines of HISTORY.md.
@@ -827,7 +809,7 @@ class MemoryStore:
             new = _splice_h2_section(current, heading, body)
         self.write_long_term(new)
 
-    # Section-aware read.
+        # 感知分节的读取。
     _SECTION_READ_TOP_K = 2
     _NOTES_HEADING_PREFIX = "## Notes"
 
@@ -964,9 +946,8 @@ class MemoryStore:
             sys_line = (
                 "You are a conversation annotator. Call annotate_conversation exactly once with episode_summary filled."
             )
-        # Feed the LLM its recently-used project slugs so it reuses
-        # them instead of inventing new variants every call (e.g.
-        # #project-clawtrack-release vs ...-cli vs ...-coverage).
+        # 将最近使用的项目 slug 提供给 LLM，让它复用旧值，而不是每次调用都发明新变体，
+        # 例如 #project-clawtrack-release、...-cli 和 ...-coverage。
         recent_tags = self.recent_project_tags(days=14, limit=12)
         if recent_tags:
             tag_history_lines = "\n".join(f"  - #{tag} ({n}x in last 14 days)" for tag, n in recent_tags)
@@ -1047,13 +1028,9 @@ episode_summary:
                 line = _ensure_text(ep).strip()
                 if not line:
                     continue
-                # Drop process-only episodes at the boundary. Prompt
-                # declares #question / #habit / #answer can't stand
-                # alone; LLM still emits them ~5% of the time. Letting
-                # them through pollutes refresh_section: their tag heat
-                # triggers a refresh that has no content tag to anchor
-                # to, and the LLM ends up writing freeform speculation
-                # into ## Projects / ## Notes.
+        # 在边界处丢弃只描述过程的事件。提示词声明 #question、#habit 和 #answer 不能单独存在，
+        # 但 LLM 仍有约 5% 的概率输出它们。放行会污染 refresh_section：标签热度触发刷新，
+        # 却没有内容标签作为锚点，最终让 LLM 向 ## Projects 或 ## Notes 写入自由形式的猜测。
                 if _is_process_only_episode(line):
                     n_dropped_process_only += 1
                     continue
@@ -1068,9 +1045,8 @@ episode_summary:
             if enable_foresight:
                 foresights = args.get("foresight_hint") or []
                 if foresights:
-                    # Persist to user.md ## Foresight section under the
-                    # memory lock; do it in a thread so the async event
-                    # loop isn't blocked on file I/O.
+            # 在内存锁保护下持久化到 user.md 的 ## Foresight 分节；在线程中执行，
+            # 避免异步事件循环被文件 I/O 阻塞。
                     written = await asyncio.to_thread(
                         self.append_foresight,
                         foresights,
@@ -1094,7 +1070,7 @@ episode_summary:
             return False
 
     # -------------------------------------------------------------------
-    # Heavy path — tag-frequency-triggered profile section refresh.
+        # 重量路径：由标签频率触发用户资料分节刷新。
     # -------------------------------------------------------------------
 
     @property
@@ -1413,11 +1389,9 @@ section_body: full new content for that H2, every bullet ending with
                 )
                 return False
 
-            # Drop profile bullets missing the
-            # ``[src: episodes.md @ ts]`` evidence link. Skip ## Foresight
-            # (auto-managed by append_foresight; uses paren-style src that
-            # the bracket regex wouldn't match — applying the filter there
-            # would wipe the section).
+                    # 丢弃缺少 ``[src: episodes.md @ ts]`` 证据链接的用户资料条目。跳过 ## Foresight：
+                    # 它由 append_foresight 自动管理，使用圆括号形式的 src，方括号正则无法匹配；
+                    # 如果对它应用该过滤器，会清空整个分节。
             if heading != _FORESIGHT_HEADING:
                 body, n_src_dropped = _drop_bullets_without_src(body)
                 if n_src_dropped:
@@ -1428,10 +1402,9 @@ section_body: full new content for that H2, every bullet ending with
                         heading,
                     )
 
-            # Soft observability: warn if section grew past the
-            # schema's hard caps (Projects/Habits 6, Notes 8, others 5).
-            # Don't truncate — that risks dropping useful content; just
-            # surface drift so the prompt can be re-tuned if it persists.
+                    # 软可观测性：分节超过模式硬上限时警告（Projects/Habits 为 6，Notes 为 8，
+                    # 其他为 5）。不执行截断，因为可能丢失有用内容；只暴露偏移，
+                    # 便于在问题持续时重新调整提示词。
             n_bullets = sum(1 for ln in body.splitlines() if ln.lstrip().startswith("-"))
             if n_bullets > 15:
                 logger.warning(
@@ -1476,10 +1449,8 @@ section_body: full new content for that H2, every bullet ending with
                 logger.info("refresh_section: concurrent modification detected; skipping write (will retry next round)")
                 return False
             new_content = _splice_h2_section(current, heading, new_body)
-            # Keep auto-managed ## Foresight at the bottom of user.md
-            # regardless of where refresh_section's splice landed the new
-            # section. Idempotent — no-op when Foresight is absent or
-            # already last.
+                # 无论 refresh_section 将新分节插入何处，都将自动管理的 ## Foresight 保持在 user.md 底部。
+                # 该操作幂等；Foresight 不存在或已位于最后时不执行任何操作。
             new_content = _ensure_foresight_at_end(new_content)
             if new_content != current:
                 self.write_long_term(new_content)
@@ -1510,7 +1481,7 @@ section_body: full new content for that H2, every bullet ending with
                 self.write_tag_offsets(offsets)
                 refreshed += 1
             else:
-                # Don't advance offset on failure — next round retries.
+            # 失败时不推进偏移量，下一轮将重试。
                 logger.warning(
                     "maybe_refresh_hot_tags: tag {!r} refresh failed; offset not advanced",
                     tag,
@@ -1523,9 +1494,8 @@ class MemoryConsolidator:
 
     _MAX_CONSOLIDATION_ROUNDS = 5
 
-    # A tag triggers a profile-section refresh once this many new
-    # episodes have accumulated since its last refresh. Below threshold,
-    # episodes still accumulate but user.md stays untouched.
+        # 自上次刷新后，某标签累积足够多的新事件时，触发用户资料分节刷新。
+        # 低于阈值时事件仍会累积，但 user.md 保持不变。
     _REFRESH_HOT_TAG_THRESHOLD = 5
 
     def __init__(
@@ -1548,9 +1518,8 @@ class MemoryConsolidator:
         self.context_window_tokens = context_window_tokens
         self._build_messages = build_messages
         self._get_tool_definitions = get_tool_definitions
-        # When True, annotate() asks the LLM for foresight predictions
-        # alongside episodes and persists them to user.md ## Foresight.
-        # Off by default.
+        # 为 True 时，annotate() 会让 LLM 与事件一起生成预见预测，并持久化到
+        # user.md 的 ## Foresight。默认关闭。
         self.enable_foresight = enable_foresight
         self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
 
@@ -1700,9 +1669,7 @@ class MemoryConsolidator:
                 if estimated <= 0:
                     break
 
-            # If at least one chunk was annotated, give hot tags a chance to
-            # refresh their corresponding profile sections. Runs at most once
-            # per ``maybe_consolidate_by_tokens`` invocation regardless of
-            # how many annotation rounds fired.
+        # 只要至少标注了一个块，就让活跃标签有机会刷新对应的用户资料分节。
+        # 无论触发多少轮标注，每次 ``maybe_consolidate_by_tokens`` 调用最多执行一次。
             if chunks_annotated:
                 await self.maybe_refresh_hot_tags()

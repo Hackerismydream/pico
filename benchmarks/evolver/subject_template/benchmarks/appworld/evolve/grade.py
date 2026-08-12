@@ -107,7 +107,7 @@ def _run_case(module, case: dict) -> dict:
         return record
     try:
         actual = fn(*case["args"])
-    except Exception:  # noqa: BLE001 - a candidate crash is a failed case, not a crashed run
+    except Exception:  # noqa: BLE001 - 候选项崩溃表示用例失败，而不是整次运行崩溃
         record["error"] = traceback.format_exc(limit=3).strip().splitlines()[-1]
         return record
     try:
@@ -134,7 +134,7 @@ def run_job(job: dict) -> None:
     module_error = None
     try:
         module = _load_module(job["module_path"])
-    except Exception:  # noqa: BLE001 - an unimportable candidate fails every task
+    except Exception:  # noqa: BLE001 - 无法导入的候选项在所有任务上都失败
         module_error = traceback.format_exc(limit=3).strip().splitlines()[-1]
     for trial in job["trials"]:
         if module_error is not None:

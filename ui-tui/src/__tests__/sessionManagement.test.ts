@@ -12,7 +12,7 @@ import { findSlashCommand } from '../app/slash/registry.js'
 import { patchUiState, resetUiState } from '../app/uiStore.js'
 import { buildChatStreamHandle } from '../app/useMainApp.js'
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+// ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
 const buildComposer = () => ({
   enqueue: vi.fn(),
@@ -81,7 +81,7 @@ const buildCtxFull = (
   transcript: { ...buildTranscript(), ...overrides.transcript }
 })
 
-// ── /sessions command parsing ──────────────────────────────────────────────────
+// ── /sessions 命令解析 ──────────────────────────────────────────────────
 
 describe('/sessions slash command', () => {
   beforeEach(() => {
@@ -263,7 +263,7 @@ describe('/sessions slash command', () => {
   })
 })
 
-// ── /sessions delete fallback surfaces errors ──────────────────────────────────
+// ── /sessions 删除回退路径显示错误 ──────────────────────────────────
 
 describe('/sessions delete error propagation', () => {
   beforeEach(() => {
@@ -320,7 +320,7 @@ describe('/sessions delete error propagation', () => {
   })
 })
 
-// ── /clear is an alias of /new (both mint a fresh session) ────────────────────
+// ── /clear 是 /new 的别名（二者都创建新会话） ────────────────────
 
 describe('/clear and /new', () => {
   beforeEach(() => {
@@ -371,7 +371,7 @@ describe('/clear and /new', () => {
   })
 })
 
-// ── sid reconciliation: turn path uses minted sid ─────────────────────────────
+// ── sid 协调：轮次路径使用新建 sid ─────────────────────────────
 
 const makeFakeRpcClient = () => {
   const subscribeParams: unknown[] = []
@@ -437,7 +437,7 @@ describe('sid reconciliation (chat-stream seam)', () => {
   })
 })
 
-// ── /export command ─────────────────────────────────────────────────────────
+// ── /export 命令 ─────────────────────────────────────────────────────────
 
 describe('/export slash command', () => {
   beforeEach(() => {

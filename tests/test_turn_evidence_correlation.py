@@ -44,7 +44,7 @@ def _rows(trace_dir):
 
 
 def _by_name(trace_dir):
-    # Last write wins: a checkpointed root re-emits under the same span id.
+
     out: dict[str, dict] = {}
     for row in _rows(trace_dir):
         out[row["name"]] = row
@@ -68,7 +68,7 @@ async def _run_one(runner, events: list) -> None:
     await lane.submit(_req())
 
 
-# --- scripted runners: the failure shapes the taxonomy has to separate ---
+
 
 
 class ScriptedRunner:
@@ -251,7 +251,7 @@ async def test_tracing_disabled_leaves_the_turn_untouched(trace_dir, monkeypatch
     assert [type(e).__name__ for e in events] == ["TurnStarted", "Text", "TurnEnded"]
 
 
-# --- the real agent loop under a real lane ---
+
 
 
 class _StubProvider(LLMProvider):

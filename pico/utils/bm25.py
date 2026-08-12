@@ -13,8 +13,8 @@ from __future__ import annotations
 import math
 import re
 
-# Match length-≥2 alphanumeric runs OR a single CJK ideograph.
-# ``re`` precompile is module-level to dodge per-call regex setup.
+# 匹配长度至少为 2 的字母数字串，或单个 CJK 表意字符。
+# 在模块级预编译 ``re``，避免每次调用都初始化正则表达式。
 _TOKEN_RE = re.compile(r"[a-z0-9]{2,}|[一-鿿]")
 
 
@@ -52,8 +52,8 @@ class BM25Okapi:
                 df[tok] = df.get(tok, 0) + 1
 
         n = self.corpus_size
-        # ``log(1 + (N - n + 0.5) / (n + 0.5))`` — Robertson-Spärck-Jones
-        # weighting; the ``1 +`` guard keeps it non-negative when n ≈ N.
+        # ``log(1 + (N - n + 0.5) / (n + 0.5))``——Robertson-Spärck-Jones 公式
+        # ``1 +`` 保护项可在 n ≈ N 时确保权重不为负数。
         self.idf = {term: math.log(1 + (n - count + 0.5) / (count + 0.5)) for term, count in df.items()}
 
     def get_scores(self, query_tokens: list[str]) -> list[float]:

@@ -35,7 +35,7 @@ export interface SetupStatusResponse {
   provider_configured?: boolean
 }
 
-// ── Session lifecycle ────────────────────────────────────────────────
+// ── 会话生命周期 ────────────────────────────────────────────────
 
 export interface SessionCreateResponse {
   info?: SessionInfo & { config_warning?: string; credential_warning?: string }
@@ -119,7 +119,7 @@ export interface TerminalResizeResponse {
   ok?: boolean
 }
 
-// ── Image attach ─────────────────────────────────────────────────────
+// ── 图像附加 ─────────────────────────────────────────────────────
 
 export interface ImageAttachResponse {
   height?: number
@@ -129,7 +129,7 @@ export interface ImageAttachResponse {
   width?: number
 }
 
-// ── Model picker ─────────────────────────────────────────────────────
+// ── 模型选择器 ─────────────────────────────────────────────────────
 
 export interface ModelOptionProvider {
   auth_type?: string
@@ -150,7 +150,7 @@ export interface ModelOptionsResponse {
   providers?: ModelOptionProvider[]
 }
 
-// ── Subagent events ──────────────────────────────────────────────────
+// ── 子智能体事件 ──────────────────────────────────────────────────
 
 export interface SubagentEventPayload {
   api_calls?: number

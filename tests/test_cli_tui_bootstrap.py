@@ -159,8 +159,8 @@ def test_pico_node_override_no_fallback(monkeypatch, tmp_path):
     from pico.cli.tui_commands import find_node
 
     monkeypatch.setenv("PICO_NODE", str(tmp_path / "nonexistent-node"))
-    # Even if VIRTUAL_ENV / PATH would otherwise resolve a working node,
-    # the explicit override must take precedence and fail closed.
+
+
     node_path, version = find_node()
     assert node_path is None, "PICO_NODE override must not fall back to venv/PATH"
     assert version is None
@@ -195,7 +195,7 @@ def test_find_node_discovers_windows_private_runtime(monkeypatch, tmp_path):
 def test_dev_npx_derived_from_node_path(monkeypatch, tmp_path):
     """`--dev` mode must derive npx from the validated node_path,
     not from PATH — so PICO_NODE's version-pin semantics are honored."""
-    # Lay out a fake node tree: /tmp.../fake-node/bin/{node,npx}
+
     fake_bin = tmp_path / "fake-node" / "bin"
     fake_bin.mkdir(parents=True)
     fake_node = fake_bin / "node"
@@ -210,8 +210,8 @@ def test_dev_npx_derived_from_node_path(monkeypatch, tmp_path):
 
     captured: dict[str, object] = {}
 
-    # Interactive `--dev` spawns through run_subprocess_with_rpc; the npx
-    # derivation logic is shared, so assert the derived binary here.
+
+
     def fake_run_subprocess_with_rpc(node_path, args, cwd, **_kw):
         captured["node_path"] = node_path
         captured["args"] = args
@@ -222,7 +222,7 @@ def test_dev_npx_derived_from_node_path(monkeypatch, tmp_path):
         "pico.cli.tui_commands.run_subprocess_with_rpc",
         fake_run_subprocess_with_rpc,
     )
-    # Even if PATH has a different npx, the derived one must win.
+
     monkeypatch.setattr(
         "pico.cli.tui_commands.shutil.which",
         lambda _name: "/usr/bin/npx",
@@ -260,7 +260,7 @@ def test_run_subprocess_returns_child_exit_code(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# RPC handshake integration
+
 # ---------------------------------------------------------------------------
 
 
@@ -272,7 +272,7 @@ def test_rpc_handshake_timeout(monkeypatch, tmp_path):
     is bypassed, and replace `run_subprocess_with_rpc` with a stub that
     simulates "child spawned, never sent hello → handshake_timeout()".
     """
-    # Fake dist/entry.js so the build-artifact check passes
+
     fake_ui_dir = tmp_path / "ui-tui"
     (fake_ui_dir / "dist").mkdir(parents=True)
     (fake_ui_dir / "dist" / "entry.js").write_text("// stub")
@@ -283,7 +283,7 @@ def test_rpc_handshake_timeout(monkeypatch, tmp_path):
         lambda: ("/usr/bin/node", (22, 5, 0)),
     )
 
-    # The new helper must return exit_code 3 when the handshake times out.
+
     monkeypatch.setattr(
         "pico.cli.tui_commands.run_subprocess_with_rpc",
         lambda *_a, **_kw: 3,
@@ -304,10 +304,10 @@ def test_rpc_handshake_timeout_helper_real(tmp_path, monkeypatch):
     """
     from pico.cli import tui_commands
 
-    # Override default handshake timeout for fast test
+
     monkeypatch.setattr(tui_commands, "_RPC_HANDSHAKE_TIMEOUT_S", 1.0)
 
-    # Child that just sleeps without writing anything.
+
     exit_code = tui_commands.run_subprocess_with_rpc(
         "/bin/sh",
         ["-c", "sleep 6"],
@@ -318,13 +318,13 @@ def test_rpc_handshake_timeout_helper_real(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Unix-socket transport
+
 # ---------------------------------------------------------------------------
 #
-# These exercise the production-path helper `_spawn_with_rpc_socket` which
-# replaces `pass_fds=(3,4)` for the real `pico` invocation. The
-# `pass_fds` variant is kept for `--check` smoke compat + existing
-# Python-only tests above; do NOT remove those.
+
+
+
+
 
 
 def test_rpc_socket_env_constants_exposed():
@@ -423,7 +423,7 @@ def test_rpc_socket_transport_handshake_ok(tmp_path, monkeypatch):
     """
     from pico.cli import tui_commands
 
-    # Short handshake timeout for fast feedback.
+
     monkeypatch.setattr(tui_commands, "_RPC_HANDSHAKE_TIMEOUT_S", 3.0)
 
     child_src = """
@@ -466,7 +466,7 @@ def test_rpc_socket_handshake_timeout_when_child_never_connects(tmp_path, monkey
 
     monkeypatch.setattr(tui_commands, "_RPC_HANDSHAKE_TIMEOUT_S", 1.0)
 
-    # `sleep` ignores the PICO_RPC_SOCKET env var — pure timeout path.
+
     exit_code = tui_commands.run_subprocess_with_rpc(
         "/bin/sh",
         ["-c", "sleep 6"],
@@ -477,8 +477,8 @@ def test_rpc_socket_handshake_timeout_when_child_never_connects(tmp_path, monkey
 
 
 # ---------------------------------------------------------------------------
-# Imports for the socket tests above
+
 # ---------------------------------------------------------------------------
 
 
-import sys  # noqa: E402  (kept at file bottom for the late-added tests)
+import sys  # noqa: E402  （为后续追加的测试保留在文件末尾）

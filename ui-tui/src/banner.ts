@@ -78,30 +78,29 @@ const PICO_HERO_ART = [
 export const PICO_LOGO_WIDTH = PICO_LOGO_ART.reduce((width, row) => Math.max(width, [...row].length), 0)
 export const PICO_HERO_WIDTH = PICO_HERO_ART.reduce((width, row) => Math.max(width, [...row].length), 0)
 
-// How many art rows share one ramp colour in the title (vertical bands).
+// 标题中每个渐变色覆盖的字符画行数（垂直色带）。
 const LOGO_ROWS_PER_BAND = 2
-// How many vertical colour bands the hero is split into (horizontal gradient).
+// 主图横向渐变所划分的垂直色带数量。
 const HERO_BANDS = 5
 
 const bandColor = (ramp: readonly string[], row: number) =>
   ramp[Math.floor(row / LOGO_ROWS_PER_BAND)] ?? ramp[ramp.length - 1]!
 
-// Title (wordmark): one ramp colour per LOGO_ROWS_PER_BAND rows, top → bottom,
-// using the first ceil(rows / band) ramp entries.
+// 标题字标从上到下每 LOGO_ROWS_PER_BAND 行使用一种渐变色，取前
+// ceil(rows / band) 个渐变项。
 export const picoLogo = (ramp: readonly string[], customLogo?: string): Line[] =>
   customLogo ? parseRichMarkup(customLogo) : PICO_LOGO_ART.map((text, i) => [bandColor(ramp, i), text])
 
-// Width of the "PICO" word — the minimum the short form needs.
+// “PICO”字标的宽度，也是短版所需的最小宽度。
 export const PICO_WORD_WIDTH = PICO_WORD_ART.reduce((width, row) => Math.max(width, [...row].length), 0)
 
-// Just the "PICO" word, with the per-word top → bottom ramp gradient.
+// 只渲染“PICO”字标，并采用从上到下的渐变。
 export const picoLogoWord = (ramp: readonly string[]): Line[] =>
   PICO_WORD_ART.map((text, i) => [bandColor(ramp, i), text])
 
-// Hero (pico): a horizontal gradient split into HERO_BANDS column bands,
-// coloured right → left so the highlight (ramp[0]) lands on the right and it
-// deepens toward the left (ramp[HERO_BANDS-1]). Each row is returned as an
-// array of `[color, segment]` pairs rendered inline.
+// Pico 主图使用由 HERO_BANDS 个列色带构成的横向渐变。颜色从右向左加深，
+// 使高亮色 ramp[0] 位于右侧，最深色 ramp[HERO_BANDS-1] 位于左侧。
+// 每行返回一组用于行内渲染的 `[color, segment]` 对。
 export const picoHero = (ramp: readonly string[], customHero?: string): Line[][] => {
   if (customHero) {
     return parseRichMarkup(customHero).map(line => [line])
@@ -129,7 +128,7 @@ export const picoHero = (ramp: readonly string[], customHero?: string): Line[][]
 
 export const artWidth = (lines: Line[]) => lines.reduce((m, [, t]) => Math.max(m, [...t].length), 0)
 
-// Width of a segmented art (hero): max over rows of the summed segment widths.
+// 分段字符画（主图）的宽度，即各行分段总宽度的最大值。
 export const rowsWidth = (rows: Line[][]) =>
   rows.reduce(
     (m, segs) =>

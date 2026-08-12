@@ -36,13 +36,13 @@ class RpcError(Exception):
     optional structured context (echoed into JSON-RPC `error.data`).
     """
 
-    CODE: ClassVar[int] = -32099  # catch-all
+    CODE: ClassVar[int] = -32099  # 兜底错误
     MESSAGE: ClassVar[str] = "rpc_error"
 
     def __init__(self, detail: str = "", data: dict[str, Any] | None = None):
         self.detail = detail
         self.data = data
-        # Default str() shows code + message + optional detail
+        # 默认 str() 展示错误码、消息和可选详情
         super().__init__(f"{self.MESSAGE}: {detail}" if detail else self.MESSAGE)
 
     @property
@@ -102,24 +102,22 @@ class NotSupportedInV01Error(RpcError):
     MESSAGE = "not_supported_in_v01"
 
 
-# Follow-up extension range (-32016..-32049). -32016 is subscription
-# overflow; was incorrectly aliased to -32010 in early drafts — -32010 is
-# already ConfigFieldReadonlyError.
+# 后续扩展区间（-32016..-32049）。-32016 表示订阅溢出；早期草案曾误用 -32010，
+# 但 -32010 已属于 ConfigFieldReadonlyError。
 class SubscriptionCapacityExceededError(RpcError):
     CODE = -32016
     MESSAGE = "subscription_capacity_exceeded"
 
 
-# JSON-RPC pre-defined ``internal_error`` (-32603). Class added so non-dispatcher
-# code-paths can raise typed -32603 cross-module — see ``_build_tui_agent_loop``
-# which runs outside any handler context yet needs to surface init crashes
-# through the factory closure consumed by ``_spawn_agent_loop_task``.
+# JSON-RPC 预定义的 ``internal_error``（-32603）。添加此类后，非分派器路径也能
+# 跨模块抛出带类型的 -32603。例如 ``_build_tui_agent_loop`` 运行在处理器上下文之外，
+# 却需通过 ``_spawn_agent_loop_task`` 使用的工厂闭包暴露初始化崩溃。
 class InternalError(RpcError):
     CODE = -32603
     MESSAGE = "internal_error"
 
 
-# JSON-RPC pre-defined error codes (specs §2.3 / RFC).
+# JSON-RPC 预定义错误码（见 specs §2.3 / RFC）。
 PARSE_ERROR = -32700
 INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
@@ -127,8 +125,7 @@ INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
 
 
-# Reverse lookup: JSON-RPC code → exception class. Useful for client-side
-# reconstruction or test assertions.
+# 反向查找：JSON-RPC 错误码 → 异常类，用于客户端重建异常或测试断言。
 JSONRPC_ERROR_REGISTRY: dict[int, type[RpcError]] = {
     cls.CODE: cls
     for cls in (

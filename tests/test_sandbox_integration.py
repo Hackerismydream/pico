@@ -20,10 +20,10 @@ requires_kvm = pytest.mark.skipif(
 
 pytestmark = [pytest.mark.real_vm, requires_kvm]
 
-# Images used by this test module — must be pulled before any test runs.
+
 _IMAGES = [
-    "ubuntu:22.04",  # base image for all executor tests
-    "node:20-slim",  # required for MCP stdio roundtrip test
+    "ubuntu:22.04",
+    "node:20-slim",
 ]
 
 
@@ -36,17 +36,17 @@ def pre_pull_images():
     Skips the whole module if boxlite is not installed or /dev/kvm is absent.
     """
     if sys.platform == "linux" and not Path("/dev/kvm").exists():
-        return  # pytestmark will skip all tests anyway
+        return
 
     try:
         import boxlite
     except ImportError:
-        return  # boxlite not installed; tests will fail at VM creation
+        return
 
     async def _pull(image: str) -> None:
         """Start a minimal throw-away box to force image pull, then stop it."""
         async with boxlite.SimpleBox(image=image, cpus=1, memory_mib=256):
-            pass  # __aenter__ pulls the image; __aexit__ removes the box
+            pass
 
     for image in _IMAGES:
         try:
@@ -119,8 +119,8 @@ async def node_executor(tmp_path):
         image="node:20-slim",
         workspace=tmp_path,
         cpus=1,
-        memory_mib=1024,  # npm needs more memory than basic ubuntu tests
-        create_timeout=600,  # first-run image pull can be slow
+        memory_mib=1024,
+        create_timeout=600,
     ) as e:
         yield e
 
@@ -131,8 +131,8 @@ class TestBoxliteStdioMCPRoundtrip:
         pytest.importorskip("mcp")
         from mcp import ClientSession
 
-        # Pre-install the package so start_process launches the binary immediately
-        # (without npm download) — avoids stdin/stdout timing issues during npx download.
+
+
         result = await node_executor.exec(
             "npm install -g @modelcontextprotocol/server-everything",
             timeout=120,

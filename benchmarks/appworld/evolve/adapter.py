@@ -57,12 +57,12 @@ from pico.evolver.tree.node import HarnessNode
 
 ActivationOf = Callable[[HarnessNode], Any]
 
-# Batch mode classifications (from batch.py's mode()). INFRA is an
-# infrastructure failure (env/proxy/timeout) — a Gate-f re-run candidate.
+# 批量模式分类来自 batch.py 的 mode()。INFRA 表示环境、代理或超时等基础设施
+# 故障，是 Gate-f 重跑候选。
 MODE_PASS = "PASS"
-MODE_LEGIT_FAIL = "LEGIT_FAIL"  # completed but wrong answer
-MODE_INCOMPLETE = "INCOMPLETE"  # stopped early / empty response
-MODE_INFRA = "INFRA"  # env/proxy/timeout
+MODE_LEGIT_FAIL = "LEGIT_FAIL"  # 已完成但答案错误。
+MODE_INCOMPLETE = "INCOMPLETE"  # 提前停止或响应为空。
+MODE_INFRA = "INFRA"  # 环境、代理或超时。
 
 _TRIAL_SUFFIX_RE = re.compile(r"_k\d+\.json$")
 
@@ -71,20 +71,20 @@ _TRIAL_SUFFIX_RE = re.compile(r"_k\d+\.json$")
 class AppWorldConfig:
     """Locate and parameterise the AppWorld batch scorer."""
 
-    appworld_root: Path  # Pico checkout/worktree (holds the batch module)
-    data_root: Path  # AppWorld installation (holds data/ and its venv)
+    appworld_root: Path  # Pico 检出或工作树，包含批量模块。
+    data_root: Path  # AppWorld 安装目录，包含 data/ 与虚拟环境。
     appworld_bin: Path
     appworld_python: Path
-    python_exe: str  # the Pico (pydantic v2) venv python
-    config_path: Path  # subject runtime config JSON
+    python_exe: str  # Pico 使用的 Pydantic v2 虚拟环境 Python。
+    config_path: Path  # 目标运行时配置 JSON。
     out_dir_root: Path
     split: str = "train"
     n: int = 90
     conc: int = 8
     base_port: int | None = None
     batch_module: str = "benchmarks.appworld.batch"
-    # Agent workspace (sessions land under <workspace>/...). Must equal the
-    # ws_root diagnosis reads trajectories from; None = batch.py's default.
+    # 智能体工作区，会话写入 <workspace>/...。必须与诊断读取轨迹的 ws_root 相同；
+    # None 表示使用 batch.py 默认值。
     workspace: Path | None = None
     extra_args: tuple[str, ...] = ()
 
@@ -183,7 +183,7 @@ def read_out_dir(out_dir: str | Path) -> dict[str, TaskEval]:
     for path in files:
         try:
             rec = json.load(open(path))
-        except Exception:  # noqa: BLE001 — a corrupt trial file is skipped
+        except Exception:  # noqa: BLE001 — 跳过损坏的试验文件
             continue
         tid = _task_id_of(rec, path)
         attempts[tid] = attempts.get(tid, 0) + 1

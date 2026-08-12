@@ -34,7 +34,7 @@ def test_adapter_satisfies_outlet_protocol():
     adapter = ChannelOutletAdapter(_FakeChannel())
     assert isinstance(adapter, Outlet)
     assert adapter.name == "telegram"
-    assert adapter.capabilities.streaming is False  # non-streaming
+    assert adapter.capabilities.streaming is False
 
 
 async def test_deliver_text_calls_channel_send():
@@ -55,7 +55,7 @@ async def test_deliver_media_out_sends_local_paths():
     )
     await adapter.deliver(MediaOut(media=media, source=_src()))
     assert len(ch.sent) == 1
-    # media carries the local file paths (channels handle them, the hub does not).
+
     assert ch.sent[0][2] == ["/tmp/a.png", "/tmp/b.png"]
 
 
@@ -67,4 +67,4 @@ async def test_deliver_eats_streaming_and_in_turn_events():
     await adapter.deliver(Reasoning(content="think", source=src))
     await adapter.deliver(ToolEvent(phase=ToolPhase.START, tool_call_id="t1", name="grep", source=src))
     await adapter.deliver(Notice(kind=NoticeKind.PROGRESS, detail="working", source=src))
-    assert ch.sent == []  # all eaten — a non-streaming channel renders only the final reply
+    assert ch.sent == []

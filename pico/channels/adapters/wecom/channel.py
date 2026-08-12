@@ -31,11 +31,11 @@ class WecomChannel(ChannelBase):
         super().__init__(config)
         self._client: Any = None
         self._seen: OrderedDict[str, None] = OrderedDict()
-        # The inbound frame is required to reply; keep the latest per chat,
-        # LRU-capped so a long-lived bot in many chats doesn't leak frames.
+        # 回复需要入站 frame，因此为每个 chat 保存最新一个，并用 LRU 限制容量，
+        # 避免长期运行且加入大量 chat 的机器人泄漏 frame。
         self._frames: OrderedDict[str, Any] = OrderedDict()
 
-    # ── lifecycle ─────────────────────────────────────────────────────
+    # ── 生命周期 ───────────────────────────────────────────────────
 
     async def start(self) -> None:
         if not self.config.bot_id or not self.config.secret:
@@ -84,7 +84,7 @@ class WecomChannel(ChannelBase):
 
         return handler
 
-    # ── inbound ───────────────────────────────────────────────────────
+    # ── 入站 ──────────────────────────────────────────────────────
 
     @staticmethod
     def _body(frame: Any) -> dict:
@@ -124,8 +124,8 @@ class WecomChannel(ChannelBase):
             from_info = body.get("from", {})
             sender_id = from_info.get("userid", "unknown") if isinstance(from_info, dict) else "unknown"
             chat_type = body.get("chattype", "single")
-            chat_id = body.get("chatid", sender_id)  # single chat: chatid == sender
-            if not self.is_allowed(sender_id):  # reject before media download in _extract
+            chat_id = body.get("chatid", sender_id)  # 单聊时 chatid == sender
+            if not self.is_allowed(sender_id):  # 在 _extract 下载媒体前拒绝
                 logger.warning("WeCom inbound rejected by allowlist: sender={}", sender_id)
                 return
 
@@ -142,7 +142,7 @@ class WecomChannel(ChannelBase):
                 sender_id=sender_id,
                 chat_id=chat_id,
                 content=content,
-                media=None,  # media paths are embedded in content (broad model compatibility)
+                media=None,  # 媒体路径嵌入 content，以兼容更多模型
                 metadata={"message_id": msg_id, "msg_type": msg_type, "chat_type": chat_type},
             )
             logger.info("WeCom inbound accepted: message_id={} msg_type={} chat_type={}", msg_id, msg_type, chat_type)
@@ -155,7 +155,7 @@ class WecomChannel(ChannelBase):
             if text := body.get("text", {}).get("content"):
                 parts.append(text)
         elif msg_type == "voice":
-            # WeCom transcribes voice server-side; use it directly (no Whisper).
+            # WeCom 在服务端转写语音，直接使用其结果，无需 Whisper。
             parts.append(f"[voice] {body['voice']['content']}" if body.get("voice", {}).get("content") else "[voice]")
         elif msg_type == "image":
             parts.append(await self._media_part(body.get("image", {}), "image"))
@@ -198,7 +198,7 @@ class WecomChannel(ChannelBase):
             logger.error("Error downloading WeCom media: {}", e)
             return None
 
-    # ── outbound ──────────────────────────────────────────────────────
+    # ── 出站 ──────────────────────────────────────────────────────
 
     async def send(self, chat_id: str, content: str, media: list[str] | None = None) -> None:
         if not self._client:
@@ -207,8 +207,8 @@ class WecomChannel(ChannelBase):
         content = content.strip()
         media = media or []
         if media:
-            # reply_stream is text-only; surface the dropped attachments to the
-            # user instead of losing them silently.
+            # reply_stream 只支持文本；应向用户说明附件被丢弃，
+            # 而不是静默丢失。
             logger.warning("WeCom reply is text-only; {} attachment(s) not sent", len(media))
             notes = "\n".join(
                 f"[Attachment not sent: {safe_name(m)}]" for m in media if isinstance(m, str) and m.strip()
@@ -225,5 +225,5 @@ class WecomChannel(ChannelBase):
             logger.info("WeCom message sent: chat_id={}", chat_id)
         except Exception as e:
             if transient_network(e):
-                raise  # ws drop / timeout: the frame is still cached, retry can succeed
+                raise  # ws 断开/超时后 frame 仍在缓存中，重试仍可能成功
             logger.error("Error sending WeCom message: {}", e)

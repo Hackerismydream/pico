@@ -59,7 +59,7 @@ def healthy_config(tmp_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyP
     return tmp_config
 
 
-# --------------------------------------------------------------------------- help
+
 
 
 def test_doctor_help_lists_all_flags() -> None:
@@ -70,7 +70,7 @@ def test_doctor_help_lists_all_flags() -> None:
         assert flag in r.stdout, f"missing flag in help: {flag}"
 
 
-# --------------------------------------------------------------------------- default mode
+
 
 
 def test_doctor_default_on_missing_config_exit1(tmp_config: Path) -> None:
@@ -86,7 +86,7 @@ def test_doctor_default_healthy_exit0(healthy_config: Path) -> None:
     """Resolved routing + no probe → exit 0, no network call made."""
     r = runner.invoke(app, ["doctor"])
     assert r.exit_code == 0, r.stdout
-    # Routing section should mention the resolved provider name
+
     assert "anthropic" in r.stdout.lower()
     assert "Configuration looks healthy" in r.stdout or "All checks passed" in r.stdout
     assert "myna-memory 0.1.1rc3" in r.stdout
@@ -149,7 +149,7 @@ def test_doctor_unresolved_routing_exit1(tmp_config: Path) -> None:
     """Model that no configured provider can serve → exit 1."""
     cfg = Config()
     cfg.agents.defaults.model = "anthropic/claude-sonnet-4-5"
-    # Leave every api_key empty so ``_match_provider`` returns ``(None, None)``.
+
     save_config(cfg)
     r = runner.invoke(app, ["doctor"])
     assert r.exit_code == 1, r.stdout
@@ -220,7 +220,7 @@ def test_doctor_unwritable_workspace_exit1(
     assert data["paths"]["workspace_writable"] is False
 
 
-# --------------------------------------------------------------------------- gateway status
+
 
 
 def test_doctor_shows_gateway_running(healthy_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -248,7 +248,7 @@ def test_doctor_shows_gateway_not_running(healthy_config: Path, monkeypatch: pyt
     assert "not running" in r.stdout
 
 
-# --------------------------------------------------------------------------- --probe
+
 
 
 def test_doctor_probe_success(healthy_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -290,7 +290,7 @@ def test_doctor_timeout_flag_passed_through(healthy_config: Path, monkeypatch: p
     assert captured.get("timeout_s") == 3
 
 
-# --------------------------------------------------------------------------- --json
+
 
 
 def test_doctor_json_default_structure(healthy_config: Path) -> None:
@@ -302,7 +302,7 @@ def test_doctor_json_default_structure(healthy_config: Path) -> None:
     for key in ("paths", "routing", "features", "gateway"):
         assert key in data, f"missing top-level key: {key}"
     assert "running" in data["gateway"]
-    # No probe was requested → key present but null
+
     assert data["probe"] is None
 
 

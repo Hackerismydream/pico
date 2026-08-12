@@ -79,7 +79,7 @@ from pico.evolver.judge.schema import (
 )
 
 SCHEMA_VERSION = "1.0"
-DEFAULT_MIN_WHY_CLASSES = 7  # spec §14 step ③ acceptance gate
+DEFAULT_MIN_WHY_CLASSES = 7  # 规范第 14 节步骤 ③ 的验收门
 
 
 def build_failure_map(
@@ -126,7 +126,7 @@ def build_failure_map(
             )
             continue
 
-        # L2 / L3: must have patch_proposal (schema invariant enforces this)
+        # L2/L3 必须有 patch_proposal，模式不变量会强制执行。
         if r.issue_type == IssueType.L2:
             n_l2 += 1
         else:
@@ -136,12 +136,12 @@ def build_failure_map(
         where = action.patch_where
         why = action.patch_why
         if where is None or why is None:
-            # Defensive: schema __post_init__ should have caught this
+            # 防御性处理：模式的 __post_init__ 本应捕获此情况。
             continue
 
         where_key = where.value
-        # patch_why_extra carries the full sub-name including the
-        # "other:" prefix per schema convention (see PatchWhy.other docstring).
+            # 按模式约定，patch_why_extra 携带包含 "other:" 前缀的完整子名称；
+            # 参见 PatchWhy.other 文档字符串。
         why_key = why.value if why != PatchWhy.other else (action.patch_why_extra or "other:unknown")
         where_distribution[where_key] += 1
         why_distribution[why_key] += 1

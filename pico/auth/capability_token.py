@@ -41,7 +41,7 @@ class CapabilityToken:
     agent_id: str
     capabilities: list[str] = field(default_factory=list)
     issued_at: int = field(default_factory=lambda: int(time.time()))
-    expires_at: int | None = None  # None = never expires
+    expires_at: int | None = None  # None 表示永不过期
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_payload(self) -> dict[str, Any]:
@@ -103,7 +103,7 @@ def verify_token(token_str: str, secret: str) -> CapabilityToken | None:
 
 
 # ---------------------------------------------------------------------------
-# helpers
+# 辅助函数
 # ---------------------------------------------------------------------------
 
 

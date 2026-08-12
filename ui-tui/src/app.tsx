@@ -11,17 +11,15 @@ import { useMainApp } from './app/useMainApp.js'
 import { AppLayout } from './components/appLayout.js'
 import { cursorColorHex } from './theme.js'
 
-// Ask the terminal for its real background color (OSC 11) so light/dark
-// detection doesn't have to guess from TERM_PROGRAM. The reply rides back on
-// stdin, but ink's keypress parser recognizes OSC responses and routes them to
-// the querier — it never emits them as input, so the `rgb:...` payload can't
-// leak into the composer. The DA1 sentinel from flush() bounds the wait when
-// the terminal ignores the query (it stays on the env-based scheme).
+// 向终端查询真实背景色（OSC 11），避免仅根据 TERM_PROGRAM 猜测明暗模式。
+// 响应会从 stdin 返回，但 Ink 的按键解析器会识别 OSC 响应并交给查询器，
+// 不会将其作为输入发出，因此 `rgb:...` 内容不会泄漏到编辑框。若终端忽略
+// 查询，flush() 发出的 DA1 哨兵会限制等待时间，并继续采用环境变量决定的配色。
 function useTerminalBackgroundProbe() {
-  // `as StdinProps`: useStdin()'s inferred return collapses `querier` to
-  // `unknown` across the package boundary (its internal `.js` import of
-  // StdinContext resolves differently than the public `.ts` export path). The
-  // public StdinProps type carries the correct `TerminalQuerier | null`.
+  // 这里需要 `as StdinProps`：useStdin() 的推导返回类型跨包后会将 `querier`
+  // 收窄为 `unknown`，因为其内部 `.js` 对 StdinContext 的导入路径与公开的
+  // `.ts` 导出路径解析结果不同；公开的 StdinProps 才包含正确的
+  // `TerminalQuerier | null` 类型。
   const { querier } = useStdin() as StdinProps
 
   useEffect(() => {
@@ -43,12 +41,11 @@ function useTerminalBackgroundProbe() {
   }, [querier])
 }
 
-// Paint the terminal's hardware cursor with the theme's primary color. On a
-// focused TTY the input cursor is the terminal's own cursor (positioned via
-// useDeclaredCursor), so it can only be recolored with OSC 12 — a text SGR
-// can't touch it. Re-emitted when the OSC 11 probe flips the scheme (light
-// #B87900 / dark #fbe23f); reset via OSC 112 on unmount, and also in
-// resetTerminalModes() so signal/crash exits restore the user's cursor color.
+// 使用主题主色绘制终端硬件光标。TTY 聚焦时，输入光标是由
+// useDeclaredCursor 定位的终端自身光标，只能通过 OSC 12 改色，文本 SGR
+// 无法影响它。OSC 11 探测导致配色切换时会重新发送颜色（亮色 #B87900，
+// 暗色 #fbe23f）；卸载时通过 OSC 112 重置，resetTerminalModes() 也会重置，
+// 确保信号或崩溃退出后恢复用户原有的光标颜色。
 const setCursorColorSeq = (hex: string) => `]12;${hex}`
 const RESET_CURSOR_COLOR_SEQ = ']112'
 
@@ -56,7 +53,7 @@ function useHardwareCursorColor() {
   const hex = cursorColorHex(useStore($uiTheme))
 
   useEffect(() => {
-    // tier 0 = colors disabled (NO_COLOR / FORCE_COLOR=0) — leave the cursor alone.
+    // 第 0 级表示已禁用颜色（NO_COLOR 或 FORCE_COLOR=0），不修改光标。
     if (activeColorTier() === 0) {
       return
     }
@@ -64,8 +61,7 @@ function useHardwareCursorColor() {
     process.stdout.write(setCursorColorSeq(hex))
   }, [hex])
 
-  // Reset only on unmount (not on every re-emit) so a scheme flip doesn't flash
-  // the default cursor color between writes.
+  // 仅在卸载时重置，而不是每次重新发送前都重置，避免配色切换期间闪现默认光标色。
   useEffect(
     () => () => {
       if (activeColorTier() !== 0) {

@@ -10,8 +10,8 @@ if TYPE_CHECKING:
 
 __all__ = ["LLMProvider", "LLMResponse", "LiteLLMProvider", "OpenAICodexProvider", "AzureOpenAIProvider"]
 
-# Lazy re-exports (PEP 562): importing a provider submodule must not eagerly pull
-# ``litellm_provider`` -> litellm, which dominates CLI cold start.
+# 惰性重新导出（PEP 562）：导入 Provider 子模块时不得提前加载
+# ``litellm_provider`` -> litellm，否则会主导 CLI 冷启动耗时。
 _LAZY_EXPORTS = {
     "LLMProvider": "pico.providers.base",
     "LLMResponse": "pico.providers.base",

@@ -13,11 +13,10 @@ import pytest
 
 from pico.config.update_channels import channel_field_specs
 
-# channel -> required fields, each backed by the adapter guard that proves it.
 EXPECTED_REQUIRED: dict[str, set[str]] = {
-    "feishu": {"app_id", "app_secret"},  # feishu/channel.py: if not app_id or not app_secret: return
-    "qq": {"app_id", "secret"},  # qq/channel.py: if not app_id or not secret
-    "wecom": {"bot_id", "secret"},  # wecom/channel.py: if not bot_id or not secret
+    "feishu": {"app_id", "app_secret"},
+    "qq": {"app_id", "secret"},
+    "wecom": {"bot_id", "secret"},
 }
 
 

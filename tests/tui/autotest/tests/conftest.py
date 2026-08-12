@@ -29,5 +29,5 @@ def harness() -> Iterator[Harness]:
     try:
         yield h
     finally:
-        # idempotent — no raise if subprocess already exited or never spawned
+
         h.kill()

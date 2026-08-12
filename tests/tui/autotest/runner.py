@@ -35,7 +35,7 @@ class ExtrasMissingError(HarnessError):
     """``tui-use`` not on PATH (or pexpect/pyte missing on a Tier 3 fallback)."""
 
 
-# Default env injected at spawn — see specs/tui-autotest.md §S5.1.
+
 _DEFAULT_ENV: dict[str, str] = {
     "TERM": "xterm-256color",
     "FORCE_COLOR": "1",
@@ -43,7 +43,7 @@ _DEFAULT_ENV: dict[str, str] = {
 
 _INFO_EXIT_RE = re.compile(r"Exit Code:\s*(-?\d+)")
 _INFO_STATUS_RE = re.compile(r"Status:\s*(\w+)")
-_BANNER_MARKER = "───"  # tui-use snapshot frames rows in U+2500 box-drawing chars
+_BANNER_MARKER = "───"
 
 _TUI_USE_BIN = "tui-use"
 _SPAWN_TIMEOUT_S = 15.0
@@ -69,7 +69,7 @@ class Harness:
         self._killed = False
         self._cached_exit_code: Optional[int] = None
 
-    # ── Lifecycle ────────────────────────────────────────────────────────
+
 
     def spawn(self, command: str) -> None:
         if self._session_id is not None:
@@ -85,7 +85,7 @@ class Harness:
             str(self.cols),
             "--rows",
             str(self.rows),
-            "--",  # stop tui-use option parsing; everything after is user cmd+args
+            "--",
         ]
         cmd.extend(shlex.split(command))
 
@@ -111,13 +111,13 @@ class Harness:
                 f"  stderr: {result.stderr.strip()}"
             )
 
-        # tui-use start prints the new session id to stdout on its own line.
+
         lines = [ln for ln in (result.stdout or "").splitlines() if ln.strip()]
         if not lines:
             raise SpawnError(f"tui-use start did not emit a session id; stdout={result.stdout!r}")
         self._session_id = lines[-1].strip()
-        # Make this the daemon's "current" session so the verbless tui-use
-        # commands (type/press/wait/snapshot/info/kill) target it.
+
+
         self._run_tui_use("use", self._session_id, check=True)
 
     def kill(self) -> int:
@@ -132,7 +132,7 @@ class Harness:
         self._cached_exit_code = exit_code
         return exit_code if exit_code is not None else -1
 
-    # ── Input ────────────────────────────────────────────────────────────
+
 
     def type(self, text: str) -> None:
         self._require_spawned("type")
@@ -147,7 +147,7 @@ class Harness:
             raise HarnessError("env_set() must be called before spawn()")
         self._env_overrides.update(mapping)
 
-    # ── Wait / observation ───────────────────────────────────────────────
+
 
     def wait(
         self,
@@ -168,7 +168,7 @@ class Harness:
             if compiled.search(self._raw_snapshot()):
                 return True
             time.sleep(poll_interval)
-        # One last shot after the deadline (race-safe for tight timeouts).
+
         return bool(compiled.search(self._raw_snapshot()))
 
     def dump(self) -> list[str]:
@@ -188,7 +188,7 @@ class Harness:
     def screen(self) -> str:
         return "\n".join(self.dump())
 
-    # ── Termination ──────────────────────────────────────────────────────
+
 
     def expect_exit(self, code: int = 0, timeout: float = 5.0) -> bool:
         self._require_spawned("expect_exit")
@@ -201,7 +201,7 @@ class Harness:
         actual = self._poll_exit_code(timeout=0.0)
         return actual is not None and actual == code
 
-    # ── Internal ─────────────────────────────────────────────────────────
+
 
     def _require_spawned(self, op: str) -> None:
         if self._session_id is None:

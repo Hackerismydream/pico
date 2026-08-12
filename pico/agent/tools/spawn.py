@@ -25,8 +25,8 @@ class _SpawnOrigin:
 class SpawnTool(Tool):
     """Tool to spawn a subagent for background task execution."""
 
-    # A subagent runs its own (up to 15-iteration) loop with no internal
-    # wall-clock cap, so give it a generous backstop rather than the default.
+    # 子 Agent 运行自己的循环，最多 15 次迭代，内部没有墙上时间上限，
+    # 因此使用宽裕的兜底超时，而非默认值。
     timeout_seconds = 900.0
 
     def __init__(self, manager: "SubagentManager"):

@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from .schema import PatchWhere, PatchWhy
 
-# --- Human-readable descriptions injected into the prompt ----------------
+# --- 注入提示的可读描述 -------------------------------------------------
 
 
 WHERE_DESCRIPTIONS: dict[PatchWhere, str] = {
@@ -123,7 +123,7 @@ WHY_DESCRIPTIONS: dict[PatchWhy, str] = {
 }
 
 
-# --- Main prompt -----------------------------------------------------------
+# --- 主提示 -------------------------------------------------------------
 
 
 def _render_where_block() -> str:

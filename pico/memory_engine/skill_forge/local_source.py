@@ -56,9 +56,8 @@ class LocalSkillSource:
         history: list[dict[str, Any]],
         k: int,
     ) -> list[RouterHit]:
-        # ``history`` is unused — local BM25 doesn't condition on prior
-        # conversation. Future "smarter local ranker" could fold it in;
-        # signature matches the Protocol so the seam stays.
+        # ``history`` 尚未使用，本地 BM25 不依赖先前对话。未来更智能的本地排序器
+        # 可以引入它；当前签名与协议一致，以保留扩展边界。
         del history
 
         hits = self._pool.search(query, top_k=k)
@@ -68,13 +67,11 @@ class LocalSkillSource:
                 continue
             meta = self._registry.get(h.name, source=h.source)
             if meta is None:
-                # File-watcher race: skill vanished between BM25
-                # snapshot and meta lookup. Skip rather than emit a
-                # half-populated hit.
+                # 文件监视器竞态：Skill 在 BM25 快照与元数据查找之间消失。
+                # 直接跳过，不输出只填充了部分字段的命中结果。
                 continue
-            # ``skill_dir`` lets the post-gate hydrate step in
-            # SkillsSegmentBuilder resolve {baseDir} / markdown-link refs
-            # without a second registry lookup.
+            # ``skill_dir`` 让 SkillsSegmentBuilder 的门控后填充步骤能解析 {baseDir}
+            # 和 Markdown 链接引用，无需再查一次注册表。
             path_obj = getattr(meta, "path", None)
             path_str = str(path_obj) if path_obj is not None else ""
             skill_dir: str | None = None
@@ -88,10 +85,8 @@ class LocalSkillSource:
                     score=h.score,
                     meta={
                         "source": "local",
-                        # The "physical source" inside Local (one of
-                        # ``workspace`` / ``builtin`` / ``external`` /
-                        # ``mirror/*``) is occasionally useful for
-                        # telemetry — keep it in meta.
+                        # Local 内的物理来源（``workspace``、``builtin``、``external`` 或 ``mirror/*``）
+                        # 偶尔会用于遥测，因此保留在 meta 中。
                         "physical_source": h.source,
                         "always": meta.always,
                         "skill_dir": skill_dir,

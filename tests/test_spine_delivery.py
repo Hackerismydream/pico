@@ -93,8 +93,8 @@ async def test_register_rejects_a_duplicate_outlet_name(hub):
 
 
 async def _settle(predicate, *, tries: int = 2000) -> None:
-    # Delivery is asynchronous (the per-outlet worker), so wait for the worker to
-    # act by yielding the loop until the condition holds.
+
+
     for _ in range(tries):
         if predicate():
             return
@@ -106,7 +106,7 @@ async def _settle(predicate, *, tries: int = 2000) -> None:
 async def hub():
     h = DeliveryHub()
     yield h
-    await h.aclose()  # cancel resident outlet workers so none leak past the test
+    await h.aclose()
 
 
 class GatedOutlet:
@@ -140,7 +140,7 @@ async def test_dispatch_routes_every_deliverable_to_its_channel_outlet(hub, out)
     hub.register(outlet)
     await hub.dispatch(out)
     await _settle(lambda: outlet.received == [out])
-    assert outlet.calls == 1  # eat / success path does not retry
+    assert outlet.calls == 1
 
 
 async def test_dispatch_keeps_same_channel_order(hub):
@@ -149,7 +149,7 @@ async def test_dispatch_keeps_same_channel_order(hub):
     for n in ("a", "b", "c"):
         await hub.dispatch(Text(content=n, source=_src("tg")))
     await _settle(lambda: len(outlet.received) == 3)
-    assert [m.content for m in outlet.received] == ["a", "b", "c"]  # per-outlet FIFO
+    assert [m.content for m in outlet.received] == ["a", "b", "c"]
 
 
 async def test_per_outlet_serial_holds_across_a_retry(hub, monkeypatch):
@@ -161,7 +161,7 @@ async def test_per_outlet_serial_holds_across_a_retry(hub, monkeypatch):
 
         def __init__(self) -> None:
             self.received: list = []
-            self._fail_left = 2  # the first event's first two attempts raise
+            self._fail_left = 2
 
         async def deliver(self, out) -> None:
             if out.content == "a" and self._fail_left > 0:
@@ -174,7 +174,7 @@ async def test_per_outlet_serial_holds_across_a_retry(hub, monkeypatch):
     await hub.dispatch(Text(content="a", source=_src("tg")))
     await hub.dispatch(Text(content="b", source=_src("tg")))
     await _settle(lambda: len(outlet.received) == 2)
-    assert [m.content for m in outlet.received] == ["a", "b"]  # b waits behind a's retries
+    assert [m.content for m in outlet.received] == ["a", "b"]
 
 
 async def test_send_max_retries_is_configurable(monkeypatch):
@@ -197,7 +197,7 @@ async def test_send_max_retries_is_configurable(monkeypatch):
     try:
         await hub.dispatch(Text(content="a", source=_src("tg")))
         await hub.wait_idle("tg")
-        assert outlet.attempts == 2  # 1 initial + 1 retry, then dropped
+        assert outlet.attempts == 2
     finally:
         await hub.aclose()
 
@@ -218,10 +218,10 @@ async def test_a_slow_outlet_does_not_block_another(hub):
     fast = FakeOutlet("fast")
     hub.register(slow)
     hub.register(fast)
-    await hub.dispatch(Text(content="s", source=_src("slow")))  # slow blocks in deliver
+    await hub.dispatch(Text(content="s", source=_src("slow")))
     await hub.dispatch(Text(content="f", source=_src("fast")))
     await _settle(lambda: fast.received and fast.received[0].content == "f")
-    assert not slow.received  # cross-outlet: fast delivered while slow is stuck
+    assert not slow.received
     slow.gate.set()
     await _settle(lambda: slow.received and slow.received[0].content == "s")
 
@@ -232,16 +232,16 @@ async def test_per_outlet_backpressure_isolates_channels(hub, monkeypatch):
     fast = FakeOutlet("fast")
     hub.register(slow)
     hub.register(fast)
-    await hub.dispatch(Text(content="s1", source=_src("slow")))  # worker takes it, blocks in deliver
+    await hub.dispatch(Text(content="s1", source=_src("slow")))
     await slow.entered.wait()
-    await hub.dispatch(Text(content="s2", source=_src("slow")))  # fills the maxsize-1 queue
+    await hub.dispatch(Text(content="s2", source=_src("slow")))
     blocked = asyncio.ensure_future(hub.dispatch(Text(content="s3", source=_src("slow"))))
     await asyncio.sleep(0)
-    assert not blocked.done()  # queue full -> this channel's sender is backpressured
-    await hub.dispatch(Text(content="f", source=_src("fast")))  # other channel unaffected
+    assert not blocked.done()
+    await hub.dispatch(Text(content="f", source=_src("fast")))
     await _settle(lambda: fast.received and fast.received[0].content == "f")
     slow.gate.set()
-    await blocked  # released once the slow worker drains
+    await blocked
 
 
 async def test_a_dead_worker_self_heals_on_next_enqueue(hub):
@@ -250,12 +250,12 @@ async def test_a_dead_worker_self_heals_on_next_enqueue(hub):
     await hub.dispatch(Text(content="a", source=_src("tg")))
     await _settle(lambda: len(outlet.received) == 1)
     dead = hub._workers["tg"]
-    dead.cancel()  # simulate the resident worker dying
+    dead.cancel()
     await asyncio.gather(dead, return_exceptions=True)
-    await hub.dispatch(Text(content="b", source=_src("tg")))  # done-check restarts it
+    await hub.dispatch(Text(content="b", source=_src("tg")))
     await _settle(lambda: len(outlet.received) == 2)
     assert [m.content for m in outlet.received] == ["a", "b"]
-    assert hub._workers["tg"] is not dead  # a fresh worker took over
+    assert hub._workers["tg"] is not dead
 
 
 async def test_a_raising_deliver_is_retried_then_succeeds(hub, monkeypatch):
@@ -265,7 +265,7 @@ async def test_a_raising_deliver_is_retried_then_succeeds(hub, monkeypatch):
     out = Text(content="hi", source=_src("tg"))
     await hub.dispatch(out)
     await _settle(lambda: outlet.received == [out])
-    assert outlet.calls == 3  # two failures, third sticks
+    assert outlet.calls == 3
 
 
 async def test_exhausted_retries_log_an_error_and_drop(hub, monkeypatch):
@@ -275,18 +275,18 @@ async def test_exhausted_retries_log_an_error_and_drop(hub, monkeypatch):
     lines: list[str] = []
     sink_id = logger.add(lambda m: lines.append(str(m)), level="ERROR", format="{message}")
     try:
-        await hub.dispatch(Text(content="hi", source=_src("tg")))  # delivered async, then dropped
+        await hub.dispatch(Text(content="hi", source=_src("tg")))
         await _settle(lambda: any("delivery failed" in line for line in lines))
     finally:
         logger.remove(sink_id)
-    assert outlet.calls == delivery_mod._SEND_MAX_RETRIES + 1  # initial + retries
-    assert not outlet.received  # dropped after exhaustion
+    assert outlet.calls == delivery_mod._SEND_MAX_RETRIES + 1
+    assert not outlet.received
     err = next(line for line in lines if "delivery failed" in line)
-    assert "tg" in err and "Text" in err and "transport down" in err  # channel + event + reason
+    assert "tg" in err and "Text" in err and "transport down" in err
 
 
 async def test_retry_backoff_doubles_from_the_base_delay(hub, monkeypatch):
-    real_sleep = asyncio.sleep  # keep a real yield; the fake replaces asyncio.sleep globally
+    real_sleep = asyncio.sleep
     delays: list[float] = []
 
     async def fake_sleep(d):
@@ -301,15 +301,15 @@ async def test_retry_backoff_doubles_from_the_base_delay(hub, monkeypatch):
             break
         await real_sleep(0)
     base = delivery_mod._RETRY_BASE_DELAY
-    assert delays == [base, base * 2, base * 4]  # one sleep per retry, exponential
-    assert outlet.calls == delivery_mod._SEND_MAX_RETRIES + 1  # no sleep after the final attempt
+    assert delays == [base, base * 2, base * 4]
+    assert outlet.calls == delivery_mod._SEND_MAX_RETRIES + 1
 
 
 async def test_an_unreachable_channel_warns_and_drops(hub):
     lines: list[str] = []
     sink_id = logger.add(lambda m: lines.append(str(m)), level="WARNING", format="{message}")
     try:
-        await hub.dispatch(Text(content="hi", source=_src("ghost")))  # no outlet registered
+        await hub.dispatch(Text(content="hi", source=_src("ghost")))
     finally:
         logger.remove(sink_id)
     warn = next(line for line in lines if "no outlet" in line)
@@ -362,63 +362,63 @@ class GatedStreamingOutlet(FakeStreamingOutlet):
 async def test_streaming_outlet_gets_chunks_then_a_done_close(hub):
     outlet = FakeStreamingOutlet("tg")
     hub.register(outlet)
-    src = _src("tg")  # chat_id == "c"
+    src = _src("tg")
     await hub.dispatch(StreamDelta(delta="he", source=src, conversation_id="tg:c"))
     await hub.dispatch(StreamDelta(delta="llo", source=src, conversation_id="tg:c"))
-    await hub.close_stream("tg:c")  # marker is queued after the deltas
+    await hub.close_stream("tg:c")
     await hub.wait_idle("tg")
     assert outlet.chunks == [
         ("c", "tg:c", "he", False),
         ("c", "tg:c", "llo", False),
-        ("c", "tg:c", "", True),  # close lands after every delta (S1: done never precedes a chunk)
+        ("c", "tg:c", "", True),
     ]
 
 
 async def test_close_stream_is_a_noop_for_an_unopened_conversation(hub):
     outlet = FakeStreamingOutlet("tg")
     hub.register(outlet)
-    await hub.close_stream("tg:never")  # no StreamDelta ever -> no channel recorded -> no-op
+    await hub.close_stream("tg:never")
     assert outlet.chunks == []
 
 
 async def test_non_streaming_outlet_eats_stream_delta(hub):
-    outlet = FakeOutlet("tg")  # not SupportsStreaming
+    outlet = FakeOutlet("tg")
     hub.register(outlet)
     await hub.dispatch(StreamDelta(delta="x", source=_src("tg"), conversation_id="tg:c"))
     await hub.close_stream("tg:c")
     await hub.wait_idle("tg")
-    assert outlet.received == []  # eaten, not delivered; close-marker no-ops (stream never opened)
+    assert outlet.received == []
 
 
 async def test_a_stream_reopens_cleanly_for_the_next_turn(hub):
-    # The same conversation streams across sequential turns; each close must reset
-    # the open-stream state so the next turn opens a fresh stream (not stack onto
-    # the closed one) — both the worker's table and the routing entry clear.
+
+
+
     outlet = FakeStreamingOutlet("tg")
     hub.register(outlet)
-    src = _src("tg")  # chat_id == "c"
+    src = _src("tg")
     for delta in ("a", "b"):
         await hub.dispatch(StreamDelta(delta=delta, source=src, conversation_id="tg:c"))
         await hub.close_stream("tg:c")
         await hub.wait_idle("tg")
     assert outlet.chunks == [
         ("c", "tg:c", "a", False),
-        ("c", "tg:c", "", True),  # turn 1
+        ("c", "tg:c", "", True),
         ("c", "tg:c", "b", False),
-        ("c", "tg:c", "", True),  # turn 2, reopened cleanly
+        ("c", "tg:c", "", True),
     ]
-    assert "tg:c" not in hub._open_streams  # close left no open-stream state behind
-    assert "tg:c" not in hub._stream_channel  # nor a routing entry
+    assert "tg:c" not in hub._open_streams
+    assert "tg:c" not in hub._stream_channel
 
 
 async def test_aclose_cancels_workers(hub):
     outlet = FakeOutlet("tg")
     hub.register(outlet)
     await hub.dispatch(Text(content="a", source=_src("tg")))
-    await _settle(lambda: len(outlet.received) == 1)  # worker is now back blocking on get
+    await _settle(lambda: len(outlet.received) == 1)
     worker = hub._workers["tg"]
     await hub.aclose()
-    assert worker.cancelled()  # in-flight/idle worker is cancelled, not awaited to finish
+    assert worker.cancelled()
     assert hub._workers == {}
 
 
@@ -627,30 +627,30 @@ async def test_cancelled_close_stream_restores_route_for_retry(hub, monkeypatch)
 async def test_drain_drops_queued_events_and_counts_them(hub):
     slow = GatedOutlet("slow")
     hub.register(slow)
-    await hub.dispatch(Text(content="s1", source=_src("slow")))  # worker takes it, blocks
+    await hub.dispatch(Text(content="s1", source=_src("slow")))
     await slow.entered.wait()
-    await hub.dispatch(Text(content="s2", source=_src("slow")))  # stays queued
-    await hub.dispatch(Text(content="s3", source=_src("slow")))  # stays queued
-    assert hub.drain() == 2  # the two still-queued events dropped; the in-flight one is not
-    assert hub.drain() == 0  # idempotent once empty
+    await hub.dispatch(Text(content="s2", source=_src("slow")))
+    await hub.dispatch(Text(content="s3", source=_src("slow")))
+    assert hub.drain() == 2
+    assert hub.drain() == 0
 
 
 async def test_wait_idle_returns_at_once_when_nothing_queued(hub):
     hub.register(FakeOutlet("tg"))
-    await hub.wait_idle("tg")  # registered but never dispatched -> no queue -> idle
-    await hub.wait_idle("ghost")  # no outlet, no queue -> idle
+    await hub.wait_idle("tg")
+    await hub.wait_idle("ghost")
 
 
 async def test_wait_idle_blocks_until_in_flight_delivery_completes(hub):
     slow = GatedOutlet("slow")
     hub.register(slow)
     await hub.dispatch(Text(content="s", source=_src("slow")))
-    await slow.entered.wait()  # worker dequeued and is blocked in deliver (not task_done)
+    await slow.entered.wait()
     waiter = asyncio.ensure_future(hub.wait_idle("slow"))
     await asyncio.sleep(0)
-    assert not waiter.done()  # an in-flight item keeps the channel non-idle
+    assert not waiter.done()
     slow.gate.set()
-    await waiter  # delivery completes -> task_done -> idle
+    await waiter
 
 
 async def test_wait_idle_returns_only_after_all_queued_delivered(hub):
@@ -659,37 +659,37 @@ async def test_wait_idle_returns_only_after_all_queued_delivered(hub):
     for n in ("a", "b", "c"):
         await hub.dispatch(Text(content=n, source=_src("tg")))
     await hub.wait_idle("tg")
-    assert [m.content for m in outlet.received] == ["a", "b", "c"]  # all rendered before wait returns
+    assert [m.content for m in outlet.received] == ["a", "b", "c"]
 
 
 async def test_wait_idle_returns_even_when_delivery_is_dropped(hub, monkeypatch):
     monkeypatch.setattr(delivery_mod, "_RETRY_BASE_DELAY", 0)
-    outlet = FakeOutlet("tg", fail_times=99)  # always raises -> retries exhausted -> dropped
+    outlet = FakeOutlet("tg", fail_times=99)
     hub.register(outlet)
     await hub.dispatch(Text(content="x", source=_src("tg")))
-    await hub.wait_idle("tg")  # task_done() in finally -> join() does not hang on the dropped item
+    await hub.wait_idle("tg")
     assert outlet.calls == delivery_mod._SEND_MAX_RETRIES + 1
 
 
 async def test_drain_keeps_wait_idle_consistent(hub):
     slow = GatedOutlet("slow")
     hub.register(slow)
-    await hub.dispatch(Text(content="s1", source=_src("slow")))  # becomes in-flight
+    await hub.dispatch(Text(content="s1", source=_src("slow")))
     await slow.entered.wait()
-    await hub.dispatch(Text(content="s2", source=_src("slow")))  # stays queued
-    assert hub.drain() == 1  # s2 dropped (with task_done)
-    slow.gate.set()  # s1 completes -> task_done
-    await hub.wait_idle("slow")  # both the in-flight and the drained item accounted -> returns
+    await hub.dispatch(Text(content="s2", source=_src("slow")))
+    assert hub.drain() == 1
+    slow.gate.set()
+    await hub.wait_idle("slow")
 
 
-# --- delivery evidence: the channel.deliver span + failure propagation ---
+
 
 
 @pytest.fixture
 def trace_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("PICO_TRACING", "1")
     monkeypatch.setenv("PICO_TRACING_DIR", str(tmp_path))
-    _spans._store = None  # force the store to re-init against the temp dir
+    _spans._store = None
     yield tmp_path
     _spans._store = None
 
@@ -779,13 +779,13 @@ async def test_exhausted_retries_record_dropped_and_notify_out_of_band(trace_dir
     assert _delivery_spans(trace_dir)[0]["status"]["code"] == "ERROR"
     assert [n.kind for n in notices] == [NoticeKind.DELIVERY_FAILED]
     assert notices[0].conversation_id == "tg:c"
-    assert not outlet.received  # the notice never rode the failing channel
+    assert not outlet.received
 
 
 async def test_a_delivery_failure_notice_is_never_redispatched(trace_dir, monkeypatch):
     """The failing channel must not be asked to carry its own failure report."""
     monkeypatch.setattr(delivery_mod, "_RETRY_BASE_DELAY", 0)
-    hub = DeliveryHub()  # no sink wired: log-only, and still no re-dispatch
+    hub = DeliveryHub()
     outlet = FakeOutlet("tg", fail_times=99)
     hub.register(outlet)
     try:
@@ -794,7 +794,7 @@ async def test_a_delivery_failure_notice_is_never_redispatched(trace_dir, monkey
         await _settle(lambda: _delivery_spans(trace_dir))
     finally:
         await hub.aclose()
-    assert outlet.calls == delivery_mod._SEND_MAX_RETRIES + 1  # no extra send for a notice
+    assert outlet.calls == delivery_mod._SEND_MAX_RETRIES + 1
     assert _delivery_spans(trace_dir)[0]["attributes"]["channel.outcome"] == "dropped"
 
 
@@ -814,7 +814,7 @@ async def test_a_delivery_span_joins_the_enclosing_turn_trace(hub, trace_dir):
     await hub.wait_idle("tg")
     await _settle(lambda: len(_delivery_spans(trace_dir)) == 1)
     span = _delivery_spans(trace_dir)[0]
-    assert span["traceId"] == turn_trace  # joins the turn even though the worker is resident
+    assert span["traceId"] == turn_trace
     assert span["parentSpanId"] == turn_span
 
 
@@ -852,9 +852,9 @@ async def test_a_raising_stream_chunk_does_not_kill_the_worker(hub):
     await hub.dispatch(StreamDelta(delta="x", source=_src("tg"), conversation_id="tg:c"))
     await hub.wait_idle("tg")
     worker = hub._workers["tg"]
-    await hub.dispatch(Text(content="after", source=_src("tg")))  # same worker must serve this
+    await hub.dispatch(Text(content="after", source=_src("tg")))
     await _settle(lambda: outlet.received and outlet.received[0].content == "after")
-    assert hub._workers["tg"] is worker  # survived rather than being restarted
+    assert hub._workers["tg"] is worker
 
 
 async def test_delivery_evidence_is_absent_when_tracing_is_disabled(hub, trace_dir, monkeypatch):

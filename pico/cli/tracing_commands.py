@@ -57,7 +57,7 @@ def _viewer_health(port: int) -> bool:
             if resp.status != 200:
                 return False
             data = json.loads(resp.read().decode("utf-8"))
-    except Exception:  # noqa: BLE001 — any failure means "not our viewer"
+    except Exception:  # noqa: BLE001 — 任意失败都表示这不是我们的查看器
         return False
     return isinstance(data, dict) and data.get("ok") is True
 
@@ -72,7 +72,7 @@ def _find_free_port(start: int, span: int = 20) -> int | None:
 
 def _viewer_env(port: int) -> dict:
     env = dict(os.environ)
-    # Both server.js and log-store.js resolve the trace dir from this var.
+    # server.js 和 log-store.js 都通过该变量解析追踪目录。
     env["TRACING_STATE_DIR"] = str(tracing_config.state_dir())
     env["TRACING_UI_PORT"] = str(port)
     return env
@@ -107,9 +107,8 @@ def _open_dashboard(port: int) -> None:
             console.print(f"Tracing dashboard already running at [cyan]{url}[/cyan]")
             webbrowser.open(url)
             return
-        # Port is held by something that is NOT our viewer (a stale instance or
-        # an unrelated server) — reusing it would open a broken/foreign page.
-        # Move to the next free port instead of clashing.
+        # 端口被非本查看器的进程占用（旧实例或无关服务器）；复用会打开损坏或外部页面。
+        # 改用下一个空闲端口，避免冲突。
         free = _find_free_port(port + 1)
         if free is None:
             console.print(
@@ -127,7 +126,7 @@ def _open_dashboard(port: int) -> None:
     server_js = _server_js()
     log_dir = tracing_config.state_dir()
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = open(log_dir / "viewer.log", "a", encoding="utf-8")  # noqa: SIM115 — handed to the child
+    log_file = open(log_dir / "viewer.log", "a", encoding="utf-8")  # noqa: SIM115 — 交给子进程持有
     subprocess.Popen(
         [node, str(server_js)],
         cwd=str(_viewer_dir()),
@@ -137,7 +136,7 @@ def _open_dashboard(port: int) -> None:
         start_new_session=True,
     )
 
-    for _ in range(24):  # wait up to ~6s for the server to actually serve
+    for _ in range(24):  # 最多等待约 6 秒，直到服务器真正开始服务
         if _viewer_health(port):
             break
         time.sleep(0.25)

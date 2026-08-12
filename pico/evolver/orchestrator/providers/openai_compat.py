@@ -61,7 +61,7 @@ def make_call_fn(
     url = base_url.rstrip("/") + "/chat/completions"
 
     def call_fn(messages: Messages) -> str:
-        import httpx  # lazy: unit tests inject their own call_fn
+        import httpx  # 延迟导入：单元测试会注入自己的 call_fn
 
         payload = {
             "model": model,

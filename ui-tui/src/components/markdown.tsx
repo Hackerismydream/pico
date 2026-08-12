@@ -13,13 +13,10 @@ import { normalizeExternalUrl, urlSlugTitleLabel, useLinkTitle } from '../lib/ex
 import { BOX_CLOSE, BOX_OPEN, texToUnicode } from '../lib/mathUnicode.js'
 import { highlightLine, isHighlightable } from '../lib/syntax.js'
 
-// `\boxed{X}` regions in `texToUnicode` output are marked with the
-// non-printable U+0001 / U+0002 sentinels. Split on them and render the
-// boxed segment with `inverse + bold` so it reads as a highlighter-pen
-// emphasis on top of whatever color the parent `<Text>` is using (the
-// theme accent for math). The leading / trailing space inside the
-// highlight gives a one-cell visual margin so the highlight reads as a
-// block, not a hug.
+// `texToUnicode` 输出中的 `\boxed{X}` 区域由不可打印的 U+0001 / U+0002 哨兵标记。
+// 按哨兵切分，并以 `inverse + bold` 渲染框内片段，使其像荧光笔一样叠加在父 `<Text>` 使用的
+// 颜色上，即数学主题强调色。高亮内部首尾空格提供一个单元格的视觉边距，使高亮看起来像色块，
+// 而不是紧贴文字。
 const renderMath = (text: string): ReactNode => {
   if (!text.includes(BOX_OPEN)) {
     return text
@@ -77,11 +74,9 @@ const QUOTE_RE = /^\s*(?:>\s*)+/
 const TABLE_DIVIDER_CELL_RE = /^:?-{3,}:?$/
 const MD_URL_RE = '((?:[^\\s()]|\\([^\\s()]*\\))+?)'
 
-// Display math openers: `$$ ... $$` (TeX) and `\[ ... \]` (LaTeX). The
-// opener is matched only when `$$` / `\[` appears at the very start of the
-// trimmed line — `startsWith('$$')` used to fire on prose like
-// `$$x+y$$ followed by more`, opening a block that never closed because the
-// trailing `$$` on the same line was invisible to the close-scan loop.
+// 块级数学起始符：TeX 的 `$$ ... $$` 和 LaTeX 的 `\[ ... \]`。只有 `$$` / `\[` 位于
+// 去空白后行首时才匹配。过去 startsWith('$$') 会在 `$$x+y$$ followed by more` 等正文上
+// 触发，打开永不关闭的块，因为关闭扫描循环看不到同一行末尾的 `$$`。
 const MATH_BLOCK_OPEN_RE = /^\s*(\$\$|\\\[)(.*)$/
 const MATH_BLOCK_CLOSE_DOLLAR_RE = /^(.*?)\$\$\s*$/
 const MATH_BLOCK_CLOSE_BRACKET_RE = /^(.*?)\\\]\s*$/
@@ -89,44 +84,34 @@ const MATH_BLOCK_CLOSE_BRACKET_RE = /^(.*?)\\\]\s*$/
 export const MEDIA_LINE_RE = /^\s*[`"']?MEDIA:\s*(\S+?)[`"']?\s*$/
 export const AUDIO_DIRECTIVE_RE = /^\s*\[\[audio_as_voice\]\]\s*$/
 
-// Inline markdown tokens, in priority order. The outer regex picks the
-// leftmost match at each position, preferring earlier alternatives on tie —
-// so `**` must come before `*`, `__` before `_`, etc. Each pattern owns its
-// own capture groups; MdInline dispatches on which group matched.
+// 行内 Markdown 令牌按优先级排列。外层正则在每个位置选择最左匹配，同位时优先较早分支，
+// 因此 `**` 必须先于 `*`，`__` 先于 `_`。每个模式拥有独立捕获组，MdInline 按命中组分发。
 //
-// Subscript (`~x~`) is restricted to short alphanumeric runs so prose like
-// `thing ~! more ~?` from Kimi / Qwen / GLM (kaomoji-style decorators)
-// doesn't pair up the first `~` with the next one on the line and swallow
-// the text between them as a dim `_`-prefixed span.
+// 下标（`~x~`）限制为短字母数字串，避免 Kimi/Qwen/GLM 输出的颜文字式正文
+// `thing ~! more ~?` 把第一个 `~` 与行内下一个配对，并将中间文本吞成暗色 `_` 前缀片段。
 //
-// Inline math (`$x$` and `\(x\)`) takes precedence over emphasis at the
-// same start position because regex alternation is leftmost-first; a
-// dollar-delimited span at column N wins over a `*` at column N+1, so
-// `$P=a*b*c$` renders as math instead of having `*b*` corrupted into
-// italics. Single-character minimums and "no space adjacent to delimiter"
-// rules keep currency prose like `$5 to $10` from being swallowed.
+// 行内数学（`$x$` 和 `\(x\)`）在同一起点优先于强调，因为正则分支最左优先；第 N 列以美元符
+// 包围的片段优先于第 N+1 列的 `*`，使 `$P=a*b*c$` 渲染为数学，而不是把 `*b*` 误作斜体。
+// 最少一个字符且分隔符旁不得有空格的规则，可避免吞掉 `$5 to $10` 等货币正文。
 export const INLINE_RE = new RegExp(
   [
-    `!\\[(.*?)\\]\\(${MD_URL_RE}\\)`, // 1,2  image
-    `\\[(.+?)\\]\\(${MD_URL_RE}\\)`, // 3,4  link
-    `<((?:https?:\\/\\/|mailto:)[^>\\s]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,})>`, // 5   autolink
-    `~~(.+?)~~`, // 6    strike
-    `\`([^\\\`]+)\``, // 7    code
-    `\\*\\*(.+?)\\*\\*`, // 8    bold *
-    `(?<!\\w)__(.+?)__(?!\\w)`, // 9    bold _
-    `\\*(.+?)\\*`, // 10   italic *
-    `(?<!\\w)_(.+?)_(?!\\w)`, // 11   italic _
-    `==(.+?)==`, // 12   highlight
-    `\\[\\^([^\\]]+)\\]`, // 13   footnote ref
-    `\\^([^^\\s][^^]*?)\\^`, // 14   superscript
-    `~([A-Za-z0-9]{1,8})~`, // 15   subscript
-    `(https?:\\/\\/[^\\s<]+)`, // 16   bare URL — wrapped so it owns its own
-    //                                capture group; without this, the math
-    //                                spans below would land in m[16] and the
-    //                                MdInline dispatcher would treat them as
-    //                                bare URLs and render them as autolinks.
-    `(?<!\\$)\\$([^\\s$](?:[^$\\n]*?[^\\s$])?)\\$(?!\\$)`, // 17   inline math $...$
-    `\\\\\\(([^\\n]+?)\\\\\\)` // 18   inline math \(...\)
+  `!\\[(.*?)\\]\\(${MD_URL_RE}\\)`, // 1、2：图片
+  `\\[(.+?)\\]\\(${MD_URL_RE}\\)`, // 3、4：链接
+  `<((?:https?:\\/\\/|mailto:)[^>\\s]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,})>`, // 5：自动链接
+  `~~(.+?)~~`, // 6：删除线
+  `\`([^\\\`]+)\``, // 7：代码
+  `\\*\\*(.+?)\\*\\*`, // 8：星号粗体
+  `(?<!\\w)__(.+?)__(?!\\w)`, // 9：下划线粗体
+  `\\*(.+?)\\*`, // 10：星号斜体
+  `(?<!\\w)_(.+?)_(?!\\w)`, // 11：下划线斜体
+  `==(.+?)==`, // 12：高亮
+  `\\[\\^([^\\]]+)\\]`, // 13：脚注引用
+  `\\^([^^\\s][^^]*?)\\^`, // 14：上标
+  `~([A-Za-z0-9]{1,8})~`, // 15：下标
+  `(https?:\\/\\/[^\\s<]+)`, // 16：裸 URL；单独包装以拥有自己的捕获组，
+  // 否则下方数学片段会落入 m[16]，MdInline 分发器会将其当作裸 URL 并渲染为自动链接。
+  `(?<!\\$)\\$([^\\s$](?:[^$\\n]*?[^\\s$])?)\\$(?!\\$)`, // 17：行内数学 $...$
+  `\\\\\\(([^\\n]+?)\\\\\\)` // 18：行内数学 \(...\)
   ].join('|'),
   'g'
 )
@@ -207,22 +192,16 @@ export const stripInlineMarkup = (v: string) =>
     .replace(/\\\(([^\n]+?)\\\)/g, '$1')
 
 const renderTable = (k: number, rows: string[][], t: Theme) => {
-  // Column widths in *display cells*, not UTF-16 code units.  CJK
-  // glyphs and most emoji render as two cells but `String#length`
-  // counts them as one, which collapses Chinese / Japanese / Korean
-  // tables into drift across rows.  `stringWidth` (Bun.stringWidth
-  // fast path + an East-Asian-width-aware fallback, memoised in
-  // @hermes/ink) returns the actual cell count.
+// 列宽按显示单元格而非 UTF-16 代码单元计算。中日韩字形和多数表情符号渲染为两个单元格，
+// 但 `String#length` 只计为一个，会使中日韩表格逐行错位。`stringWidth` 使用
+// Bun.stringWidth 快速路径和感知东亚字符宽度的回退，并在 @hermes/ink 中记忆化，返回真实单元格数。
   const cellWidth = (raw: string) => stringWidth(stripInlineMarkup(raw))
 
   const widths = rows[0]!.map((_, ci) => Math.max(...rows.map(r => cellWidth(r[ci] ?? ''))))
 
-  // Thin divider under the header.  Without it tables look like prose
-  // with extra spacing because the header is just accent-coloured text
-  // (#15534).  We avoid full borders on purpose — column widths come
-  // from `stringWidth(...)`, so the dividers and the row content stay
-  // in sync on CJK / emoji tables; tab-style column gaps still read
-  // cleanly without the boxed look.
+  // 标题下方使用细分隔线。若没有它，标题只是强调色文本，表格看起来像增加了间距的正文
+  // （#15534）。刻意不用完整边框；列宽来自 `stringWidth(...)`，因此中日韩/表情符号表格中的
+  // 分隔线与行内容保持同步。制表符式列间距在无方框外观时仍然清晰。
   const sep = widths.map(w => '─'.repeat(Math.max(1, w))).join('  ')
 
   return (
@@ -279,20 +258,17 @@ function MdInline({ t, text }: { t: Theme; text: string }) {
         </Text>
       )
     } else if (m[7]) {
-      // Code is the one wrap that does NOT recurse — inline `code` spans
-      // are verbatim by definition. Letting MdInline reprocess them
-      // would corrupt regex examples and shell snippets.
+  // 代码是唯一不递归的包装；行内 `code` 按定义应原样显示。让 MdInline 再处理会破坏正则示例和
+  // Shell 片段。
       parts.push(
         <Text color={t.color.accent} dimColor key={parts.length}>
           {m[7]}
         </Text>
       )
     } else if (m[8] ?? m[9]) {
-      // Recurse into bold / italic / strike / highlight so nested
-      // `$...$` math (and other inline tokens) inside a `**bolded
-      // statement with $\mathbb{Z}$ math**` actually render. Without
-      // this the inner content is dropped into a single `<Text bold>`
-      // verbatim and the math renderer never sees it.
+  // 递归粗体、斜体、删除线和高亮，使 `**bolded statement with $\mathbb{Z}$ math**` 内嵌的
+  // `$...$` 数学及其他行内令牌真正渲染。否则内部内容会原样放入单个 `<Text bold>`，
+  // 数学渲染器永远看不到它。
       parts.push(
         <Text bold key={parts.length}>
           <MdInline t={t} text={m[8] ?? m[9]!} />
@@ -329,8 +305,8 @@ function MdInline({ t, text }: { t: Theme; text: string }) {
         </Text>
       )
     } else if (m[16]) {
-      // Bare URL — trim trailing prose punctuation into a sibling text node
-      // so `see https://x.com/, which…` keeps the comma outside the link.
+      // 裸 URL：把尾随正文标点裁成同级文本节点，使 `see https://x.com/, which…` 中的逗号
+      // 保持在链接之外。
       const url = m[16].replace(/[),.;:!?]+$/g, '')
 
       parts.push(renderResolvedLink(parts.length, t, url))
@@ -339,13 +315,10 @@ function MdInline({ t, text }: { t: Theme; text: string }) {
         parts.push(<Text key={parts.length}>{m[16].slice(url.length)}</Text>)
       }
     } else if (m[17] ?? m[18]) {
-      // Inline math is run through `texToUnicode` (Greek letters, ℕℤℚℝ,
-      // operators, sub/superscripts, fractions) and rendered in italic
-      // accent. Italic is the disambiguator — links use accent+underline,
-      // so without italic readers can't tell `\mathbb{R}` (math) from a
-      // hyperlinked word. Anything `texToUnicode` doesn't recognise is
-      // preserved verbatim, so unfamiliar commands just look like their
-      // raw LaTeX rather than vanishing.
+  // 行内数学通过 `texToUnicode` 处理希腊字母、ℕℤℚℝ、运算符、上下标和分数，并以斜体强调色
+  // 渲染。斜体用于消除歧义；链接使用强调色加下划线，若无斜体，读者无法区分数学
+  // `\mathbb{R}` 和超链接词。`texToUnicode` 无法识别的内容原样保留，使陌生命令显示为原始
+  // LaTeX 而不是消失。
       parts.push(
         <Text color={t.color.accent} italic key={parts.length}>
           {renderMath(texToUnicode(m[17] ?? m[18]!))}
@@ -363,9 +336,8 @@ function MdInline({ t, text }: { t: Theme; text: string }) {
   return <Text wrap="wrap-trim">{parts.length ? parts : text}</Text>
 }
 
-// Cross-instance parsed-children cache: useMemo's per-instance cache dies
-// on remount, so virtualization re-parses every row that scrolls back into
-// view. Theme-keyed WeakMap drops stale palettes; inner Map is LRU-bounded.
+// 跨实例的已解析子项缓存：useMemo 的逐实例缓存会在重新挂载时消失，导致虚拟化重新解析每个
+// 滚回视口的行。以主题为键的 WeakMap 丢弃过期调色板，内部 Map 受 LRU 上限约束。
 const MD_CACHE_LIMIT = 512
 const mdCache = new WeakMap<Theme, Map<string, ReactNode[]>>()
 
@@ -556,10 +528,8 @@ function MdImpl({ compact, t, text }: MdProps) {
         const headRest = mathOpen[2] ?? ''
         const block: string[] = []
 
-        // Single-line block: `$$x + y = z$$` or `\[x\]`. Capture inner content
-        // and emit the block immediately. Without this, the close-scan loop
-        // skips line `i` and treats the next opener as our closer, swallowing
-        // every paragraph in between.
+      // 单行块：`$$x + y = z$$` 或 `\[x\]`。捕获内部内容并立即输出块。否则关闭扫描循环会
+      // 跳过第 `i` 行，把下一个起始符当成当前关闭符，吞掉中间所有段落。
         const sameLineClose = headRest.match(closeRe)
 
         if (sameLineClose) {
@@ -576,9 +546,8 @@ function MdImpl({ compact, t, text }: MdProps) {
           continue
         }
 
-        // Multi-line block: scan ahead for a real closer before committing.
-        // If none exists in the rest of the document, render this line as a
-        // paragraph instead of consuming everything that follows.
+      // 多行块：提交前向前扫描真实关闭符。若文档余下部分不存在关闭符，则把当前行渲染为段落，
+      // 而不是吞掉后续全部内容。
         let closeIdx = -1
 
         for (let j = i + 1; j < lines.length; j++) {

@@ -36,9 +36,8 @@ def _cid(req: TurnRequest) -> str:
     return req.conversation or f"{req.source.channel}:{req.source.chat_id}"
 
 
-# Origins whose submitter reads the turn's reply back for explicit delivery.
-# Only cron needs this for multi-target delivery. A channel user reply rides
-# emit -> hub -> outlet, so storing it would leak.
+# 提交方会读回轮次回复并显式投递的来源。只有 cron 的多目标投递需要这样做；渠道用户回复
+# 经 emit -> hub -> outlet 传递，若再存储就会泄漏。
 _READBACK_ORIGINS = frozenset({Origin.CRON})
 
 
@@ -62,17 +61,15 @@ class GatewayTurnRunner(AgentTurnRunner):
         self._sources = sources
 
     async def run(self, req: TurnRequest, emit: Emit, drain: Drain) -> TurnOutcome:
-        # Stash the turn's reply address so the sink can route a TurnFailed error
-        # reply back to the originating channel (the lifecycle event carries only
-        # conversation_id). Keyed by the lane's conversation id; the sink pops it
-        # on TurnEnded/TurnFailed so the daemon does not accumulate.
+        # 暂存本轮回复地址，使出口能把 TurnFailed 错误回复路由回原渠道（生命周期事件只携带
+        # conversation_id）。以通道的会话 ID 为键；出口在 TurnEnded/TurnFailed 时弹出，
+        # 避免守护进程不断积累。
         self._sources[_cid(req)] = req.source
         if req.origin not in _READBACK_ORIGINS:
             return await self._loop.run_turn(req, emit, drain, stream=False)
         text_sink: dict[str, str] = {}
         outcome = await self._loop.run_turn(req, emit, drain, stream=False, text_sink=text_sink)
-        # Stored before returning: the worker resolves result() only after run()
-        # returns, so the submitter's read is ordered after this write.
+            # 返回前存储：工作器只在 run() 返回后才解析 result()，因此提交方一定在此次写入后读取。
         if req.conversation is not None and (text := text_sink.get("text")) is not None:
             self._readback_texts[req.conversation] = text
         return outcome
@@ -143,9 +140,8 @@ def build_gateway(
         hub.register(ChannelOutletAdapter(channel))
     readback_texts: dict[str, str] = {}
     sources: dict[str, Source] = {}
-    # user>1 is safe now that per-turn tool state (message routing, context) is
-    # turn-local: concurrent user turns no longer clobber each other's reply
-    # target. system>1 lets independent Cron and Subagent turns overlap.
+            # 轮次工具状态（消息路由、上下文）现已局部化到每轮，user>1 因而安全：并发用户轮次
+            # 不会再覆盖彼此的回复目标。system>1 则允许独立的 Cron 和子智能体轮次重叠。
     scheduler = Scheduler(
         GatewayTurnRunner(agent_loop, readback_texts, sources),
         OriginPools(user=user_pool, system=system_pool),

@@ -31,10 +31,9 @@ class AskUserTool(Tool):
         broker: QuestionBroker | None = None,
         conversation_id: str = "",
     ) -> None:
-        # The broker is the shared transport singleton (not per-turn). The
-        # conversation_id is per-turn, so it lives in a ContextVar — a turn runs
-        # in its own lane task, so a concurrent turn cannot clobber it. A str is
-        # immutable, so a plain set/get is task-isolated without copy-on-write.
+        # Broker 是共享的传输层单例，而非每个 Turn 一个。conversation_id 按 Turn 区分，
+        # 因此存放在 ContextVar 中。每个 Turn 在自己的通道任务内运行，并发 Turn 无法覆盖它。
+        # str 不可变，普通 set/get 已能按任务隔离，无需写时复制。
         self._broker = broker
         self._cid: ContextVar[str] = ContextVar("ask_user_cid", default=conversation_id)
 

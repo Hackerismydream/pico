@@ -43,7 +43,7 @@ def _receipts(level="INFO"):
         logger.remove(sink_id)
 
 
-# ── body extraction ───────────────────────────────────────────────────
+
 
 
 def test_body_from_frame_attr():
@@ -52,14 +52,14 @@ def test_body_from_frame_attr():
 
 def test_body_from_dict():
     assert WecomChannel._body({"body": {"y": 2}}) == {"y": 2}
-    assert WecomChannel._body({"y": 2}) == {"y": 2}  # no 'body' key -> frame itself
+    assert WecomChannel._body({"y": 2}) == {"y": 2}
 
 
 def test_body_other_type():
     assert WecomChannel._body(123) == {}
 
 
-# ── per-type content extraction (text/voice/mixed are SDK-free) ───────
+
 
 
 def test_extract_text():
@@ -93,7 +93,7 @@ def test_extract_mixed():
     assert "[image]" in out
 
 
-# ── media extract (download mocked; save_media_bytes stubbed off disk) ─
+
 
 
 def test_extract_image_downloads_and_labels(monkeypatch):
@@ -116,7 +116,7 @@ def test_extract_file_uses_provided_name_over_server_name(monkeypatch):
     ch._client = AsyncMock()
     ch._client.download_file = AsyncMock(return_value=(b"%PDF", "server.bin"))
     out = asyncio.run(ch._extract({"file": {"url": "u", "aeskey": "k", "name": "doc.pdf"}}, "file"))
-    assert "[file: doc.pdf]" in out  # display uses the provided name, not the server fname
+    assert "[file: doc.pdf]" in out
 
 
 def test_extract_image_missing_keys_marks_failed():
@@ -132,7 +132,7 @@ def test_extract_image_marks_failed_when_download_returns_no_data():
     assert out == "[image: image: download failed]"
 
 
-# ── dedup ─────────────────────────────────────────────────────────────
+
 
 
 def test_process_dedup_skips_repeated_msgid():
@@ -146,7 +146,7 @@ def test_process_dedup_skips_repeated_msgid():
         }
     )
     asyncio.run(ch._process(frame, "text"))
-    asyncio.run(ch._process(frame, "text"))  # same msgid -> deduped
+    asyncio.run(ch._process(frame, "text"))
     assert ch.intake.publish.await_count == 1
 
 
@@ -166,18 +166,18 @@ def test_frames_are_lru_capped(monkeypatch):
             }
         )
         asyncio.run(ch._process(frame, "text"))
-    assert len(ch._frames) == 2  # capped
-    assert "c0" not in ch._frames  # oldest evicted
+    assert len(ch._frames) == 2
+    assert "c0" not in ch._frames
     assert "c2" in ch._frames
 
 
-# ── outbound (send) ────────────────────────────────────────────────────
+
 
 
 def test_send_noop_without_client():
     ch = _channel()
     ch._client = None
-    asyncio.run(ch.send("c1", "hi"))  # no raise
+    asyncio.run(ch.send("c1", "hi"))
 
 
 def test_send_skips_empty_content():
@@ -244,7 +244,7 @@ def test_send_swallows_reply_error(error):
     ch._client = AsyncMock()
     ch._client.reply_stream = AsyncMock(side_effect=error)
     ch._frames["c1"] = SimpleNamespace(body={})
-    asyncio.run(ch.send("c1", "hi"))  # no raise
+    asyncio.run(ch.send("c1", "hi"))
 
 
 def test_send_logs_sent_receipt():
@@ -267,7 +267,7 @@ def test_send_logs_no_receipt_when_reply_fails():
     assert "WeCom message sent" not in "".join(lines)
 
 
-# ── enter_chat welcome ─────────────────────────────────────────────────
+
 
 
 def test_on_enter_chat_sends_welcome_when_configured():
@@ -288,7 +288,7 @@ def test_on_enter_chat_noop_without_welcome():
     ch._client.reply_welcome.assert_not_awaited()
 
 
-# ── inbound early gate (reject before side effects) ───────────────────
+
 
 
 def test_process_disallowed_sender_skips_download_and_publish():
@@ -306,12 +306,12 @@ def test_process_disallowed_sender_skips_download_and_publish():
     )
     with _receipts("WARNING") as lines:
         asyncio.run(ch._process(frame, "image"))
-    ch._extract.assert_not_awaited()  # no media download for a denied sender
+    ch._extract.assert_not_awaited()
     ch.intake.publish.assert_not_awaited()
     assert "WeCom inbound rejected by allowlist: sender=u1" in "".join(lines)
 
 
-# ── observable receipts ───────────────────────────────────────────────
+
 
 
 def test_process_logs_accept_receipt():
@@ -338,7 +338,7 @@ def test_process_logs_empty_content_drop():
     assert "WeCom inbound dropped: message_id=m1 has no extractable content" in "".join(lines)
 
 
-# ── malformed frames ──────────────────────────────────────────────────
+
 
 
 def test_process_non_dict_body_is_dropped():
@@ -373,7 +373,7 @@ def test_process_unhandled_error_logs_and_does_not_raise():
     assert "WeCom inbound dropped: event handling failed" in "".join(lines)
 
 
-# ── lifecycle: auth readiness ─────────────────────────────────────────
+
 
 
 @pytest.mark.parametrize(
@@ -391,7 +391,7 @@ def test_start_bails_out_without_credentials(bot_id, secret):
     assert "WeCom bot_id and secret not configured" in "".join(lines)
 
 
-# ── contract conformance ───────────────────────────────────────────────
+
 
 
 def test_wecom_satisfies_channel_contract():
@@ -399,8 +399,8 @@ def test_wecom_satisfies_channel_contract():
     from pico.channels.contract import capability_violations
 
     ch = _channel()
-    assert isinstance(ch, Channel)  # name/capabilities/start/stop/send
-    assert capability_violations(ch) == []  # no login/streaming declared or implemented
+    assert isinstance(ch, Channel)
+    assert capability_violations(ch) == []
 
 
 def test_wecom_spec_declares_beta_maturity():

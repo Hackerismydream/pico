@@ -34,30 +34,30 @@ def test_origin_contract_contains_only_retained_sources():
 
 
 def test_for_origin_rejects_unknown_origin():
-    # fail-loud: a value outside the mapped set must raise, not fall through to
-    # the system pool — a new origin has to consciously pick a pool.
+
+
     pools = OriginPools(user=1, system=1)
     with pytest.raises(ValueError):
         pools.for_origin("not-an-origin")
 
 
 async def test_user_pool_is_independent_of_a_full_system_pool():
-    # Per-event guarantee: a user turn never waits for an LLM slot behind a
-    # system task. Hold the only system slot; a USER turn still runs.
+
+
     pools = OriginPools(user=1, system=1)
-    await pools.for_origin(Origin.CRON).acquire()  # system pool now full
+    await pools.for_origin(Origin.CRON).acquire()
     lane = Lane(runner=Quick(), pools=pools, sink=_sink, conversation_id="c")
     fut = lane.submit(_req(Origin.USER, "user"))
-    assert isinstance(await asyncio.wait_for(fut, timeout=1.0), TurnOutcome)  # ran despite full system pool
+    assert isinstance(await asyncio.wait_for(fut, timeout=1.0), TurnOutcome)
 
 
 async def test_no_cross_pool_borrow():
-    # A full user pool blocks a user turn even when the system pool is idle.
+
     pools = OriginPools(user=1, system=5)
-    await pools.for_origin(Origin.USER).acquire()  # hold the only user slot
+    await pools.for_origin(Origin.USER).acquire()
     lane = Lane(runner=Quick(), pools=pools, sink=_sink, conversation_id="c")
     blocked = lane.submit(_req(Origin.USER, "b"))
     with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(asyncio.shield(blocked), timeout=0.1)  # stays blocked, no borrow
-    pools.for_origin(Origin.USER).release()  # free the slot; the turn then runs
-    assert isinstance(await asyncio.wait_for(blocked, timeout=1.0), TurnOutcome)  # then runs
+        await asyncio.wait_for(asyncio.shield(blocked), timeout=0.1)
+    pools.for_origin(Origin.USER).release()
+    assert isinstance(await asyncio.wait_for(blocked, timeout=1.0), TurnOutcome)

@@ -19,15 +19,14 @@ from typing import Optional
 
 from pico.evolver.tree import git_ops
 
-# The harness surface the driver may edit; anything else it touches is reverted.
+# 驱动可编辑的框架表面；触及的其他内容都会还原。
 WHITELIST_PREFIXES = (
     "benchmarks/appworld/agent_cli.py",
     "benchmarks/appworld/tool.py",
 )
-# Build artifacts only — every OTHER whitelist file is captured regardless of
-# suffix, because a suffix filter silently halves candidates whose fix includes
-# a .toml/.cfg/extensionless file: the driver verified the full change in the
-# sandbox but the commit (and thus the eval) carried only part of it.
+# 这里只列构建产物；其他允许列表文件无论后缀都要捕获。若按后缀过滤，包含
+# .toml、.cfg 或无扩展名文件的修复会被静默截半：驱动在沙箱验证完整变更，提交
+# 及随后的评测却只携带一部分。
 _IGNORED_SUFFIXES = (".pyc", ".pyo")
 _IGNORED_DIR_PARTS = ("__pycache__",)
 
@@ -84,12 +83,9 @@ class Sandbox:
         return {rel: p.read_bytes() for rel, p in self._iter_whitelist()}
 
     def bash(self, command: str, timeout: float = 60.0) -> str:
-        # The candidate is the diff of THIS worktree vs base; a command that
-        # names the origin repo escapes the experiment — reads see the wrong
-        # version (the worktree is pinned at the parent commit), writes poison
-        # every later measurement AND are never captured into the candidate.
-        # The path is discoverable in-sandbox (the worktree's .git file names
-        # the origin gitdir), so an in-context prohibition alone is not enough.
+        # 候选是当前工作树相对基线的差异；命名源仓库的命令会逃出实验。读取会看到
+        # 错误版本（工作树固定在父提交），写入会污染后续所有测量且永不进入候选。
+        # 沙箱内可从工作树 .git 文件发现源路径，因此仅在上下文中禁止还不够。
         if str(self.repo_root.resolve()) in command:
             return (
                 f"[refused: command references the origin repo "
@@ -111,7 +107,7 @@ class Sandbox:
                 "whole filesystem (no `find /`); you are at the repo root, use relative paths "
                 "like benchmarks/appworld/agent_cli.py.]"
             )
-        except Exception as e:  # noqa: BLE001 — a bad command must not crash the run
+        except Exception as e:  # noqa: BLE001 — 错误命令不能使运行崩溃
             return f"[bash error: {type(e).__name__}: {str(e)[:150]}]"
         out = (r.stdout or "")[-4000:]
         err = (r.stderr or "")[-1500:]

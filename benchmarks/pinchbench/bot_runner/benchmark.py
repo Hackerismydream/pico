@@ -23,12 +23,12 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List
 
-# Add project root to path so we can import the Pico runtime
-# Path: benchmarks/pinchbench/bot_runner/benchmark.py
+# 将项目根目录加入路径，以便导入 Pico 运行时。
+# 路径：benchmarks/pinchbench/bot_runner/benchmark.py
 SCRIPT_DIR = Path(__file__).parent
-BENCHMARK_ROOT = SCRIPT_DIR.parent  # pinchbench/
-BENCHMARKS_ROOT = BENCHMARK_ROOT.parent  # benchmarks/
-PROJECT_ROOT = BENCHMARKS_ROOT.parent  # project root
+BENCHMARK_ROOT = SCRIPT_DIR.parent  # pinchbench/ 目录。
+BENCHMARKS_ROOT = BENCHMARK_ROOT.parent  # benchmarks/ 目录。
+PROJECT_ROOT = BENCHMARKS_ROOT.parent  # 项目根目录。
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(SCRIPT_DIR))
 
@@ -36,7 +36,7 @@ from bot_executor import DEFAULT_API_KEY, DEFAULT_MODEL, execute_task  # noqa: E
 from grading import GradeResult, grade_task  # noqa: E402
 from task_loader import Task, load_all_tasks  # noqa: E402
 
-# Configure logging
+# 配置日志。
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -120,7 +120,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
         logger.error("No OpenRouter API key configured. Set OPENROUTER_API_KEY or pass --api-key.")
         return
 
-    # Load tasks
+    # 加载任务。
     all_tasks = load_all_tasks(tasks_dir)
     tasks_to_run = _select_tasks(all_tasks, args.suite)
 
@@ -162,7 +162,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
             )
             logger.info("=" * 70)
 
-            # Execute via bot mode
+            # 通过机器人模式执行。
             workspace = run_root / run_id / f"{task.task_id}_run{run_idx + 1}"
             execution_error = None
             try:
@@ -187,7 +187,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
                     "timed_out": False,
                 }
 
-            # Grade
+            # 评分。
             try:
                 grade = grade_task(
                     task=task,
@@ -213,7 +213,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
             task_grades.append(grade)
             results.append(result)
 
-            # Log score
+            # 记录分数。
             pct = grade.score / grade.max_score * 100 if grade.max_score > 0 else 0
             emoji = "PASS" if grade.score >= grade.max_score else "PARTIAL" if grade.score > 0 else "FAIL"
             logger.info(
@@ -231,7 +231,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
                 for k, v in grade.breakdown.items():
                     logger.info("    %s: %.2f", k, v)
 
-        # Aggregate runs
+        # 聚合各次运行。
         task_scores = [g.score for g in task_grades]
         grades_by_task[task.task_id] = {
             "runs": [g.to_dict() for g in task_grades],
@@ -241,7 +241,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
             "max": max(task_scores),
         }
 
-    # Summary
+    # 摘要。
     logger.info("")
     logger.info("=" * 70)
     logger.info("  BENCHMARK RESULTS SUMMARY (BOT MODE)")
@@ -263,7 +263,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
     logger.info("  Total execution time: %.1fs", total_time)
     logger.info("=" * 70)
 
-    # Save results
+    # 保存结果。
     aggregate = {
         "mode": "bot",
         "model": args.model,

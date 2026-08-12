@@ -36,13 +36,13 @@ requires_kvm = pytest.mark.skipif(
 
 pytestmark = [pytest.mark.real_vm, requires_kvm]
 
-# Image used by these tests — pulled once per session before any test runs.
+
 _IMAGE = "ubuntu:22.04"
 
 runner = CliRunner()
 
 
-# ── session setup ─────────────────────────────────────────────────────────────
+
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -54,7 +54,7 @@ def pre_pull_image():
     the whole module if boxlite is not installed or /dev/kvm is absent.
     """
     if sys.platform == "linux" and not Path("/dev/kvm").exists():
-        return  # pytestmark will skip all tests anyway
+        return
 
     try:
         import boxlite
@@ -64,15 +64,15 @@ def pre_pull_image():
     from pico.sandbox._runtime import get_boxlite_runtime
 
     async def _pull() -> None:
-        # Pull through Pico's runtime so the image cache matches the home
-        # dir the real_server fixture and SandboxDebugServer use.
+
+
         async with boxlite.SimpleBox(
             image=_IMAGE,
             cpus=1,
             memory_mib=256,
             runtime=get_boxlite_runtime(),
         ):
-            pass  # __aenter__ pulls the image; __aexit__ removes the box
+            pass
 
     try:
         asyncio.run(_pull())
@@ -80,7 +80,7 @@ def pre_pull_image():
         pytest.skip(f"OCI image pull failed for {_IMAGE!r} — likely a network issue, not a code bug.\n  Error: {exc}")
 
 
-# ── per-test fixtures: short socket dir + real VM + real debug server ───────
+
 
 
 @pytest.fixture
@@ -115,8 +115,8 @@ async def real_server(sock_dir):
 
     runtime = get_boxlite_runtime()
     box = await runtime.create(boxlite.BoxOptions(image=_IMAGE, cpus=1, memory_mib=512))
-    # `create` leaves the VM in `configured` state; we need it `running` before
-    # the CLI's `list` will show it as running and exec/shell can attach.
+
+
     await box.start()
 
     sock_path = sock_dir / "debug.sock"
@@ -134,16 +134,16 @@ async def real_server(sock_dir):
             await box.stop()
         except Exception:
             pass
-        # boxlite 0.8.2 Box has no .remove() — must go through the runtime.
-        # Without this, every CI run would leak the VM (silently, because the
-        # AttributeError was swallowed by `except Exception: pass`).
+
+
+
         try:
             await runtime.remove(box.id)
         except Exception:
             pass
 
 
-# ── helpers ───────────────────────────────────────────────────────────────────
+
 
 
 async def _invoke(args, socket_path):
@@ -161,7 +161,7 @@ async def _invoke(args, socket_path):
     return await asyncio.get_running_loop().run_in_executor(None, _run)
 
 
-# ── list / ls ─────────────────────────────────────────────────────────────────
+
 
 
 class TestListLsRealVM:
@@ -176,7 +176,7 @@ class TestListLsRealVM:
         path, _ = real_server
         result = await _invoke(["list"], path)
         assert result.exit_code == 0
-        # Image name shows up in the table (possibly truncated by Rich rendering).
+
         assert "ubuntu" in result.output
 
     async def test_ls_alias_returns_same_vm(self, real_server):
@@ -188,14 +188,14 @@ class TestListLsRealVM:
         assert box_id[:8] in ls_result.output
 
     async def test_list_marks_owned_vm(self, real_server):
-        # Server owns the VM (we put its id in owned_ids), so the table should
-        # render the owned-marker `*` in the first column.
+
+
         path, _ = real_server
         result = await _invoke(["list"], path)
         assert "*" in result.output
 
 
-# ── exec ──────────────────────────────────────────────────────────────────────
+
 
 
 class TestExecRealVM:
@@ -207,7 +207,7 @@ class TestExecRealVM:
 
     async def test_exec_nonzero_exit_propagated(self, real_server):
         path, _ = real_server
-        # Use sh -c so we control the exit code exactly.
+
         result = await _invoke(["exec", "sh", "-c", "exit 7"], path)
         assert result.exit_code == 7
 
@@ -227,13 +227,13 @@ class TestExecRealVM:
         assert "via-ref" in result.output
 
 
-# ── shell ─────────────────────────────────────────────────────────────────────
 
 
-# Helper to launch the real CLI under a PTY. We use subprocess with the slave
-# end as stdin/stdout/stderr instead of pty.fork() — pytest-asyncio runs the
-# test loop on the main thread but our `_invoke` helper offloads to a thread
-# pool, which makes the process multi-threaded and forkpty() unsafe (deadlock).
+
+
+
+
+
 def _spawn_shell_under_pty(socket_path: Path) -> tuple[subprocess.Popen, int]:
     """Spawn `pico sandbox shell` in a subprocess whose stdio is a PTY.
 
@@ -244,9 +244,9 @@ def _spawn_shell_under_pty(socket_path: Path) -> tuple[subprocess.Popen, int]:
     """
     master_fd, slave_fd = pty.openpty()
 
-    # Tiny inline runner that patches the socket-path resolver and invokes the
-    # shell command. Equivalent to what _invoke does but in a fresh process so
-    # forkpty thread-safety issues do not apply.
+
+
+
     runner_src = (
         "import os, sys\n"
         "from unittest.mock import patch\n"
@@ -269,7 +269,7 @@ def _spawn_shell_under_pty(socket_path: Path) -> tuple[subprocess.Popen, int]:
         close_fds=True,
         start_new_session=True,
     )
-    os.close(slave_fd)  # parent only needs the master end
+    os.close(slave_fd)
     return proc, master_fd
 
 
@@ -299,19 +299,19 @@ class TestShellRealVM:
 
         loop.add_reader(master_fd, _on_master)
         try:
-            # Wait for the in-VM shell prompt (sh prints `# ` for root, `$ ` for non-root).
+
             deadline = time.time() + 30
             while b"# " not in bytes(output) and b"$ " not in bytes(output) and time.time() < deadline:
                 await asyncio.sleep(0.1)
-            await asyncio.sleep(0.3)  # let the prompt fully arrive
+            await asyncio.sleep(0.3)
             assert b"# " in bytes(output) or b"$ " in bytes(output), (
                 f"shell prompt never arrived; got: {bytes(output)!r}"
             )
 
-            # Type a command. With a working stdin path, the marker should
-            # appear at least twice in the output stream:
-            #   1. the cooked-mode kernel echo of our typed line, and
-            #   2. the result of `echo MARKER` printed by the shell.
+
+
+
+
             os.write(master_fd, b"echo " + marker + b"\n")
             deadline = time.time() + 15
             while bytes(output).count(marker) < 2 and time.time() < deadline:
@@ -337,8 +337,8 @@ class TestShellRealVM:
                 pass
 
         full = bytes(output)
-        # Echo of the typed command proves stdin reached the in-VM PTY,
-        # and the program output proves the shell processed it.
+
+
         assert full.count(marker) >= 2, (
             f"expected marker {marker!r} to appear at least twice "
             f"(typed-echo + program-output); got count={full.count(marker)} "
@@ -346,7 +346,7 @@ class TestShellRealVM:
         )
 
     async def test_shell_unknown_vm_ref_errors(self, real_server):
-        # No PTY needed for the error-path: the CLI exits before raw-mode setup.
+
         path, _ = real_server
         result = await _invoke(["shell", "--vm", "no-such-vm-id"], path)
         assert result.exit_code == 1

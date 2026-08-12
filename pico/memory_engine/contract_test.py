@@ -37,7 +37,6 @@ class MemoryBackendContractTests:
     leakage is impossible.
     """
 
-    # ── Subclass hook ───────────────────────────────────────────────
 
     async def make_backend(self) -> MemoryBackend:
         """Construct a fresh backend for one test.
@@ -50,7 +49,6 @@ class MemoryBackendContractTests:
             "MemoryBackendContractTests subclass must override make_backend()",
         )
 
-    # ── Fixture ─────────────────────────────────────────────────────
 
     @pytest.fixture
     async def backend(self):
@@ -61,7 +59,6 @@ class MemoryBackendContractTests:
         finally:
             await b.stop()
 
-    # ── Contract assertions ─────────────────────────────────────────
 
     async def test_satisfies_protocol(self, backend) -> None:
         """The returned object must be recognized as a MemoryBackend."""
@@ -144,7 +141,7 @@ class LifecycleContractTests:
         b = await self.make_backend()
         await b.start()
         await b.stop()
-        # Second cycle on a stopped backend should not raise.
+        # 后端停止后再执行一轮不应抛出异常。
         await b.start()
         await b.stop()
 

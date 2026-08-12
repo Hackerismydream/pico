@@ -15,14 +15,12 @@ from loguru import logger
 from pico.proactive_engine.schedulers.cron.types import CronJob, CronJobState, CronPayload, CronSchedule, CronStore
 from pico.utils.portable_lock import file_lock
 
-# Stale-claim TTL — if a claim is older than this, another process may steal
-# it (the original process likely crashed mid-job).
+# 过期 claim 的 TTL：超过该时长后其他进程可以接管，原进程很可能在任务中途崩溃。
 _CLAIM_TTL_MS = 30 * 60 * 1000
 
-# Cap the sleep-until-next-wake so run_due runs at least this often. This
-# is how we pick up jobs written to jobs.json by a peer process — run_due
-# reloads the store on mtime change. Without this cap, a gateway armed for
-# a far-future wake would miss a sooner job added by REPL.
+# 限制下一次唤醒前的最长睡眠时间，保证 run_due 至少按此频率运行。
+# run_due 会在 mtime 变化时重载 store，从而发现同级进程写入 jobs.json 的任务。
+# 没有该上限时，等待遥远唤醒时间的 gateway 会错过 REPL 新增的更早任务。
 _MAX_WAKE_INTERVAL_S = 30.0
 
 
@@ -66,7 +64,7 @@ def _compute_next_run(schedule: CronSchedule, now_ms: int) -> int | None:
 
             from croniter import croniter
 
-            # Use caller-provided reference time for deterministic scheduling
+        # 使用调用方提供的参考时间，确保调度结果确定。
             base_time = now_ms / 1000
             tz = ZoneInfo(schedule.tz) if schedule.tz else datetime.now().astimezone().tzinfo
             base_dt = datetime.fromtimestamp(base_time, tz=tz)
@@ -92,9 +90,9 @@ def _validate_schedule_for_add(schedule: CronSchedule, now_ms: int) -> None:
         except Exception:
             raise ValueError(f"unknown timezone '{schedule.tz}'") from None
 
-    # A schedule with no next run would be stored as a job that silently never
-    # fires (a false success to the caller). _compute_next_run is the single
-    # source of truth for "runnable", so reject any kind it maps to None here.
+        # 没有下次运行时间的 schedule 若被保存，会成为永不触发的任务，向调用方
+        # 造成假成功。_compute_next_run 是“可运行”的唯一事实来源，因此此处拒绝
+        # 任何被它映射为 None 的类型。
     if _compute_next_run(schedule, now_ms) is None:
         if schedule.kind == "at":
             raise ValueError("at time is in the past")
@@ -127,23 +125,22 @@ class CronService:
         they predate the channel attribution field.
         """
         self.store_path = store_path
-        # Sibling file for advisory locking (survives atomic rename of
-        # the data file, lets concurrent processes coordinate run_due).
+        # 相邻文件用于 advisory lock；数据文件原子重命名后它仍存在，
+        # 让并发进程协调 run_due。
         self.lock_path = store_path.with_suffix(store_path.suffix + ".lock")
         self.on_job = on_job
         self.allowed_channels = allowed_channels
         self._store: CronStore | None = None
         self._incompatible_records: dict[int, Any] = {}
         self._store_metadata: dict[str, Any] = {}
-        # Nanosecond precision: float st_mtime collapses writes ~238ns apart
-        # into one value, serving a stale cache after an external rewrite.
+        # 使用纳秒精度：浮点 st_mtime 会把间隔约 238 纳秒的写入合并
+        # 合并成一个值，避免外部重写后仍提供过期缓存。
         self._last_mtime: int = 0
         self._timer_task: asyncio.Task | None = None
         self._running = False
-        # Optional fake-clock injection for benchmark harnesses (longrun).
-        # When provided, all internal time reads route through this callable
-        # so newly created jobs' next_run_at_ms aligns with simulated time
-        # rather than real wall-clock.
+        # 为 benchmark harness（longrun）提供可选的伪时钟注入。设置后，内部
+        # 所有时间读取都经过该 callable，使新任务的 next_run_at_ms 对齐模拟时间，
+        # 而不是真实 wall-clock。
         self._now_fn = now_fn
 
     def _now_ms(self) -> int:
@@ -313,8 +310,7 @@ class CronService:
             "jobs": [self._serialize_job(job) for job in self._store.jobs],
         }
 
-        # Atomic write (temp + rename) so concurrent readers never see a
-        # partially-flushed file.
+        # 通过临时文件 + rename 原子写入，避免并发读取方看到只刷新了一部分的文件。
         tmp = self.store_path.with_suffix(self.store_path.suffix + ".tmp")
         tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, self.store_path)
@@ -436,7 +432,7 @@ class CronService:
         if next_wake:
             delay_s = max(0.0, (next_wake - self._now_ms()) / 1000)
         else:
-            # No pending job — still poll for new writes.
+                # 没有待执行任务时仍需轮询新写入。
             delay_s = _MAX_WAKE_INTERVAL_S
         delay_s = min(delay_s, _MAX_WAKE_INTERVAL_S)
 
@@ -457,7 +453,7 @@ class CronService:
         """
         my_pid = os.getpid()
         with self._locked():
-            # Force reread — peer process may have mutated in the meantime.
+            # 强制重读：同级进程可能已在此期间修改数据。
             self._store = None
             self._load_store()
             if not self._store:
@@ -468,14 +464,13 @@ class CronService:
             for j in self._store.jobs:
                 if not (j.enabled and j.state.next_run_at_ms and now >= j.state.next_run_at_ms):
                     continue
-                # Channel routing: if the caller set an allow-list, only
-                # claim jobs whose channel is in it. Jobs created before
-                # channel attribution existed (empty/None channel) remain
-                # claimable by any process for backwards compat.
+                # 渠道路由：调用方设置 allow-list 后，只 claim 其中渠道的任务。
+                # 为向后兼容，在 channel attribution 出现前创建的任务
+                #（channel 为空或 None）仍可被任意进程 claim。
                 if self.allowed_channels is not None and j.payload.channel:
                     if j.payload.channel not in self.allowed_channels:
                         continue
-                # Skip if a live peer already has it.
+                # 已被存活的同级进程持有时跳过。
                 cb = j.state.claimed_by_pid
                 ca = j.state.claimed_at_ms
                 if cb is not None and ca is not None and (now - ca) < _CLAIM_TTL_MS:
@@ -575,7 +570,7 @@ class CronService:
         job.state.last_run_at_ms = start_ms
         job.updated_at_ms = self._now_ms()
 
-        # Handle one-shot jobs
+        # 处理一次性任务。
         if job.schedule.kind == "at":
             if job.delete_after_run:
                 job.state.next_run_at_ms = None
@@ -585,13 +580,12 @@ class CronService:
         elif job.enabled:
             job.state.next_run_at_ms = _compute_next_run(job.schedule, self._now_ms())
         else:
-            # Recurring job that was force-fired while disabled (CLI
-            # `cron run --force`). Don't advance next_run_at_ms — the
-            # job is still disabled, and a future-dated next-run combined
-            # with enabled=False would mislead `cron list` output.
+            # 这是禁用状态下被强制触发的周期任务（CLI `cron run --force`）。
+            # 不推进 next_run_at_ms：任务仍处于禁用状态，未来的 next-run 与
+            # enabled=False 同时出现会误导 `cron list` 输出。
             job.state.next_run_at_ms = None
 
-    # ========== Public API ==========
+    # ========== 公共 API ==========
 
     def record_silent_fire(self, job_id: str) -> bool:
         """Increment silent_fire_count for a job; auto-disable when it
@@ -685,31 +679,25 @@ class CronService:
            same intent (e.g. "daily 8:00 take meds" + "today 8:00 take
            meds").
         """
-        # One ``now`` snapshot for both validation and storage: the validate
-        # predicate and the stored next_run must agree on "now", or a boundary
-        # ``at`` (at ~ now) could pass validation yet store next_run=None. Taken
-        # before the lock so an invalid schedule fails fast without contending it.
+        # 校验与存储共用同一个 ``now`` 快照。校验谓词和存储的 next_run 必须对
+        # “现在”达成一致，否则临界 ``at``（at ≈ now）可能通过校验却保存为
+        # next_run=None。锁外取值，使无效 schedule 无需争锁即可快速失败。
         now = self._now_ms()
         _validate_schedule_for_add(schedule, now)
         with self._locked():
-            # Reload under lock so we don't clobber a concurrent writer's add.
+            # 在锁内重载，避免覆盖并发写入方新增的任务。
             self._store = None
             store = self._load_store()
             if store.version != 1:
                 raise ValueError(f"unsupported cron store version '{store.version}'")
 
-            # L7: topic_tag dedup — strictest, runs first. If the new
-            # request carries a topic_tag, any existing enabled job for the
-            # same (channel, to, topic_tag) is treated as a duplicate. This
-            # catches the caregiver-style failure mode where the LLM
-            # creates near-identical med-reminder crons with subtly
-            # different schedule offsets (11:20 + 11:30) or message
-            # wording — message-equal dedup and 15min window dedup both
-            # miss them. The topic_tag IS the identity for "what topic
-            # is this reminder about", so two crons with the same
-            # topic_tag are by definition the same logical reminder.
-            # Update the existing job's message/schedule in-place rather
-            # than spawn a parallel one.
+            # L7：topic_tag 去重最严格，因此最先执行。新请求带 topic_tag 时，
+            # 相同 (channel, to, topic_tag) 的任何已启用任务都视为重复。这能捕获
+            # 护理场景中的失败模式：LLM 创建近乎相同的用药提醒 cron，只在时间
+            #（11:20 与 11:30）或措辞上略有差异；消息全等去重和 15 分钟窗口去重
+            # 都会漏掉。topic_tag 就是“提醒主题”的身份，因此相同 topic_tag 的
+            # 两个 cron 按定义属于同一逻辑提醒。就地更新现有任务的消息/schedule，
+            # 而不是创建并行任务。
             if topic_tag:
                 for j in store.jobs:
                     if not j.enabled:
@@ -738,10 +726,8 @@ class CronService:
                     self._arm_timer()
                     return j
 
-            # Message-equal dedup (covers same-intent reminders the LLM
-            # re-asks for across days, possibly with different schedule
-            # kinds). Stricter than time-window: byte-equality on full
-            # message text → false-positive rate ~0.
+            # 消息全等去重：覆盖 LLM 跨天重复请求的同意图提醒，即使 schedule
+            # 类型不同。它比时间窗口更严格：完整消息文本按字节相等，误报率约为 0。
             for j in store.jobs:
                 if not j.enabled:
                     continue
@@ -763,13 +749,10 @@ class CronService:
                 self._arm_timer()
                 return j
 
-            # Cross-kind time-window dedup (covers caregiver-style
-            # "expr + at for the same intent" double-add). Window is
-            # generous (15min) because two genuinely-distinct reminders
-            # less than 15min apart are almost always an LLM mistake;
-            # the rare legitimate case (two distinct meds at 8:00 and
-            # 8:10) loses one fire — acceptable trade-off given the
-            # spam alternative.
+            # 跨类型时间窗口去重：覆盖护理场景中“同一意图同时 expr + at”的重复添加。
+            # 窗口设为较宽的 15 分钟，因为间隔不足 15 分钟的两个真正独立提醒几乎
+            # 总是 LLM 错误。少数合法情况（8:00 和 8:10 服用不同药物）会少触发
+            # 一次；相比垃圾提醒，这是可接受的权衡。
             new_next = _compute_next_run(schedule, now)
             if new_next is not None:
                 for j in store.jobs:
@@ -793,16 +776,16 @@ class CronService:
                         self._arm_timer()
                         return j
 
-            # Dedup: same recurring schedule + same channel + same recipient
-            # → update message in place rather than create a duplicate.
+            # 去重：周期 schedule、channel 和 recipient 都相同时，
+            # 就地更新消息而不是创建重复任务。
             existing = self._find_duplicate_schedule(store.jobs, schedule, channel, to)
             if existing is not None:
                 existing.payload.message = message
                 existing.payload.deliver = deliver
                 existing.name = name
                 existing.updated_at_ms = now
-                # Recompute next_run_at_ms only if the existing job already
-                # fired or was disabled — otherwise keep its scheduled fire.
+                    # 仅当现有任务已经触发或被禁用时才重算 next_run_at_ms，
+                    # 否则保留原定触发时间。
                 if not existing.enabled or existing.state.next_run_at_ms is None:
                     existing.enabled = True
                     existing.state.next_run_at_ms = _compute_next_run(schedule, now)

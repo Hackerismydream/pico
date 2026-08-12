@@ -32,7 +32,7 @@ sandbox_app = typer.Typer(
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# 辅助方法
 # ---------------------------------------------------------------------------
 
 
@@ -48,11 +48,10 @@ def _get_socket_path() -> Path:
         cfg = load_config()
         debug_socket = cfg.tools.sandbox.debug.socket
     except FileNotFoundError:
-        # No config file at the expected path — use the default socket.
+        # 预期路径没有配置文件，使用默认套接字。
         pass
     except Exception as exc:
-        # Config exists but failed to load/parse. Don't crash the CLI, but
-        # warn loudly so the user can correlate with a wrong socket lookup.
+        # 配置存在但加载或解析失败。不要让 CLI 崩溃，但需明确警告，方便用户关联错误的套接字查找。
         logger.warning("Failed to load sandbox debug config (%s); using default socket path", exc)
 
     return SandboxDebugServer.resolve_socket_path(debug_socket, get_data_dir())
@@ -94,10 +93,8 @@ async def _recv(reader: asyncio.StreamReader) -> dict:
     try:
         return json.loads(line.decode())
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        # The framing is internal between client and server, so this should
-        # never happen in practice — but if it does (truncated line, garbage,
-        # protocol mismatch), surface it as a clean error rather than a
-        # traceback in the user's terminal.
+        # 帧格式仅用于客户端和服务器内部，实际不应出错；若确实发生（行截断、垃圾数据、协议
+        # 不匹配），应展示清晰错误，而不是在用户终端输出回溯。
         raise _SocketClosedError(f"server sent malformed response: {exc}") from exc
 
 
@@ -109,7 +106,7 @@ def _close(writer: asyncio.StreamWriter) -> None:
 
 
 # ---------------------------------------------------------------------------
-# list / ls
+# 列表 / ls
 # ---------------------------------------------------------------------------
 
 
@@ -139,9 +136,9 @@ def _run_list() -> None:
             return
 
         table = Table(title="Sandbox VMs")
-        table.add_column("", style="bold", no_wrap=True)  # owned marker
+        table.add_column("", style="bold", no_wrap=True)  # 所有权标记
         table.add_column("ID", style="cyan", no_wrap=True)
-        # table.add_column("Name")  # VMs are not named today; restore when naming is supported
+        # table.add_column("Name")  # 当前 VM 没有名称，支持命名后恢复
         table.add_column("State")
         table.add_column("Image")
         table.add_column("CPUs", justify="right")
@@ -156,7 +153,7 @@ def _run_list() -> None:
             table.add_row(
                 owned_marker,
                 vm.get("id", ""),
-                # vm.get("name") or "",  # VMs are not named today; restore when naming is supported
+                # vm.get("name") or "",  # 当前 VM 没有名称，支持命名后恢复
                 status_styled,
                 vm.get("image", ""),
                 str(vm.get("cpus", "")),
@@ -181,7 +178,7 @@ def sandbox_ls() -> None:
 
 
 # ---------------------------------------------------------------------------
-# exec
+# 执行
 # ---------------------------------------------------------------------------
 
 
@@ -203,10 +200,8 @@ def sandbox_exec(
 
     async def _do() -> int:
         reader, writer = await _connect(socket_path)
-        # Buffer for line-aware stderr prefixing: chunks aren't guaranteed
-        # to be line-aligned (boxlite may split a single line across
-        # chunks, or coalesce many lines into one), so prefix per "\n" line
-        # rather than per chunk to avoid mid-line "[stderr] " markers.
+        # 为按行添加标准错误前缀而缓冲：数据块不保证与行对齐（boxlite 可能拆分单行或合并多行），
+        # 因此按 "\n" 分行加前缀，而不是逐块添加，避免在行中间出现 "[stderr] " 标记。
         stderr_buf = bytearray()
 
         def _emit_stderr(chunk: bytes) -> None:
@@ -220,8 +215,7 @@ def sandbox_exec(
             sys.stderr.buffer.flush()
 
         def _flush_stderr_tail() -> None:
-            # Flush any final partial line (no trailing newline) so it isn't
-            # silently dropped when the VM process exits between writes.
+        # 刷新最后一个没有换行符的不完整行，避免 VM 进程在两次写入间退出时静默丢失。
             if stderr_buf:
                 sys.stderr.buffer.write(b"[stderr] " + bytes(stderr_buf))
                 sys.stderr.buffer.write(b"\n")
@@ -271,7 +265,7 @@ def sandbox_exec(
 
 
 # ---------------------------------------------------------------------------
-# shell
+# Shell 交互
 # ---------------------------------------------------------------------------
 
 
@@ -295,7 +289,7 @@ def sandbox_shell(
         try:
             await _send(writer, {"cmd": "shell", "vm_ref": vm, "shell": shell_path})
 
-            # Wait for ready or error before entering raw mode
+            # 进入原始模式前等待就绪或错误。
             try:
                 first = await _recv(reader)
             except _SocketClosedError as exc:
@@ -308,7 +302,7 @@ def sandbox_shell(
                 console.print(f"[red]Unexpected server response: {first}[/red]")
                 return 1
 
-            # Save terminal state and enter raw mode
+            # 保存终端状态并进入原始模式。
             fd = sys.stdin.fileno()
             old_attrs = termios.tcgetattr(fd)
 
@@ -326,8 +320,7 @@ def sandbox_shell(
             stdin_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
 
             def _on_readable() -> None:
-                # Fired by the event loop when fd becomes readable; we're already
-                # in the loop thread, so put_nowait is safe to call directly.
+                # 文件描述符可读时由事件循环触发；当前已在循环线程，可安全直接调用 put_nowait。
                 try:
                     chunk = os.read(fd, 4096)
                     stdin_queue.put_nowait(chunk if chunk else None)
@@ -337,8 +330,7 @@ def sandbox_shell(
             loop.add_reader(fd, _on_readable)
 
             async def _do_send_resize(rows: int, cols: int) -> None:
-                # Wrapped so a broken-pipe error during shutdown can't surface
-                # as 'Task exception was never retrieved' on GC.
+                # 包装后，关闭期间的管道破裂错误不会在垃圾回收时显示为“从未获取任务异常”。
                 try:
                     await _send(writer, {"cmd": "resize", "rows": rows, "cols": cols})
                 except Exception:
@@ -352,15 +344,15 @@ def sandbox_shell(
                 except Exception:
                     pass
 
-            # SIGWINCH may fire on any thread context; bounce through the loop
-            # so create_task / writer access happen in the loop thread.
+                # SIGWINCH 可能在任意线程上下文触发；转回事件循环，确保 create_task 和 writer
+                # 访问发生在循环线程。
             original_sigwinch = signal.getsignal(signal.SIGWINCH)
             signal.signal(
                 signal.SIGWINCH,
                 lambda *_: loop.call_soon_threadsafe(_send_resize),
             )
 
-            # Send initial terminal size
+            # 发送初始终端尺寸。
             _send_resize()
 
             async def _recv_loop():
@@ -381,16 +373,13 @@ def sandbox_shell(
                             console.print(f"\r\n[red]Error: {msg.get('message')}[/red]")
                             break
                 except _SocketClosedError as exc:
-                    # Distinguish a server-side disconnect from a clean exit so
-                    # the user sees *why* the shell ended (agent crashed, server
-                    # restarted, malformed protocol, …) instead of a silent close.
+                    # 区分服务器断开与正常退出，使用户看到 Shell 结束原因（智能体崩溃、服务器
+                    # 重启、协议格式错误等），而不是静默关闭。
                     _restore()
                     console.print(f"\r\n[red]Error: {exc}[/red]")
                 except Exception as exc:
-                    # Anything else (KeyError on a malformed-but-valid-JSON payload,
-                    # base64 decode failure, etc.) is a real bug — show enough info
-                    # for a follow-up report instead of silently dropping the user
-                    # back to a closed terminal with exit code 1.
+                    # 其他异常（格式错误但合法 JSON 载荷引发的 KeyError、base64 解码失败等）都是真实
+                    # 缺陷；应显示足够信息供后续报告，而不是让用户静默回到状态码为 1 的已关闭终端。
                     _restore()
                     console.print(f"\r\n[red]Internal error in sandbox shell: {type(exc).__name__}: {exc}[/red]")
                     logger.exception("sandbox shell recv loop failed")
@@ -398,8 +387,8 @@ def sandbox_shell(
                     done.set()
 
             async def _stdin_loop():
-                # Race each queue.get() against done.wait() so cancellation is
-                # immediate — no 50 ms polling lag, no wasted wake-ups.
+                # 让每次 queue.get() 与 done.wait() 竞速，使取消立即生效；无需 50 毫秒轮询延迟，
+                # 也不会浪费唤醒。
                 done_task = asyncio.create_task(done.wait())
                 try:
                     while True:
@@ -413,11 +402,9 @@ def sandbox_shell(
                             break
                         chunk = get_task.result()
                         if not chunk:
-                            # Local stdin reached EOF (e.g. piped input ended,
-                            # or terminal closed). Forward a final EOT byte
-                            # (\x04) so the VM-side PTY's line discipline sees
-                            # VEOF and terminates the shell — matches `docker
-                            # exec -it` behavior on Ctrl-D / pipe end.
+                        # 本地标准输入到达 EOF（如管道输入结束或终端关闭）。转发最后一个 EOT 字节
+                        # （\x04），使 VM 侧 PTY 的行规程收到 VEOF 并终止 Shell；行为与
+                        # `docker exec -it` 在 Ctrl-D 或管道结束时一致。
                             data = base64.b64encode(b"\x04").decode()
                             try:
                                 await _send(writer, {"cmd": "stdin", "data": data})

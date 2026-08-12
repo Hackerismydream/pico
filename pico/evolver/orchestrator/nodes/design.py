@@ -189,7 +189,7 @@ def design_round(
                         max_retries=max_retries,
                     )
                 )
-            except Exception:  # noqa: BLE001 — skip a candidate that won't parse
+            except Exception:  # noqa: BLE001 — 跳过无法解析的候选项
                 continue
     return patches
 

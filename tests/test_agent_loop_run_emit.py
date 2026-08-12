@@ -171,8 +171,8 @@ def _stub_edges(loop: AgentLoop) -> None:
 
 
 async def test_help_slash_returns_command_list_at_outbound_layer(tmp_path):
-    # Slash exit (:1294) pinned at the _process_message reply layer
-    # (media-capable; the old str-returning path would project metadata away).
+
+
     loop = AgentLoop(provider=_FakeChatProvider([]), workspace=tmp_path)
     _stub_edges(loop)
 
@@ -184,10 +184,10 @@ async def test_help_slash_returns_command_list_at_outbound_layer(tmp_path):
 
 
 async def test_hook_short_circuit_preserves_media_at_outbound_layer(tmp_path):
-    # MediaOut category: a before_user_inbound short-circuit (:1199) returns a
-    # reply that can carry media. Pinned at the reply layer —
-    # the old str-returning path would project media away, so collapse-drops-media would
-    # be untestable otherwise.
+
+
+
+
     loop = AgentLoop(
         provider=_FakeChatProvider([]),
         workspace=tmp_path,
@@ -199,16 +199,16 @@ async def test_hook_short_circuit_preserves_media_at_outbound_layer(tmp_path):
 
     assert out is not None
     content, media = out
-    assert media == ["/tmp/x.png"]  # media survives the short-circuit return
+    assert media == ["/tmp/x.png"]
     assert content == "short"
 
 
-# ── run(req, emit) collapse — emit sequence per category ────────────
+
 
 
 async def test_run_streams_then_dissolves_main_response(tmp_path):
-    # Streaming main response: each non-empty chunk -> emit(StreamDelta); the
-    # return dissolves (b2) -> no trailing Text. Usage rides TurnOutcome.
+
+
     chunks = [
         StreamDelta(content="Hel"),
         StreamDelta(content="lo", usage={"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}),
@@ -221,7 +221,7 @@ async def test_run_streams_then_dissolves_main_response(tmp_path):
 
     assert [type(e).__name__ for e in sink.events] == ["StreamDelta", "StreamDelta"]
     assert [e.delta for e in sink.events] == ["Hel", "lo"]
-    assert not any(isinstance(e, EvText) for e in sink.events)  # dissolved, no double
+    assert not any(isinstance(e, EvText) for e in sink.events)
     assert outcome.usage.total_tokens == 5
     assert outcome.explicit_reply is True
 
@@ -243,10 +243,10 @@ async def test_run_emits_reasoning_then_stream(tmp_path):
 
 
 async def test_run_tool_call_emits_tool_events_and_notice(tmp_path):
-    # Tool-call turn under run(): emit(ToolEvent start) + emit(Notice tool_hint) +
-    # emit(ToolEvent complete), then the final answer streams + dissolves.
-    # The ToolEvent schema: start carries tool_call_id/name/
-    # arguments, complete carries tool_call_id/result_preview/truncated.
+
+
+
+
     provider = _FakeStreamToolProvider(
         [
             [
@@ -276,11 +276,11 @@ async def test_run_tool_call_emits_tool_events_and_notice(tmp_path):
     assert complete.failed is False
     assert outcome.tool_calls == 1
     assert outcome.tool_failures == 0
-    # The tool-call hint rides NoticeKind.TOOL_HINT (kept distinct from PROGRESS so
-    # an outlet gates it on send_tool_hints), not merged into PROGRESS.
+
+
     assert any(isinstance(e, EvNotice) and e.kind is NoticeKind.TOOL_HINT for e in sink.events)
     assert any(isinstance(e, EvStreamDelta) and e.delta == "done" for e in sink.events)
-    assert not any(isinstance(e, EvText) for e in sink.events)  # streamed final dissolves
+    assert not any(isinstance(e, EvText) for e in sink.events)
 
 
 async def test_run_marks_failed_tool_completion(tmp_path):
@@ -408,8 +408,8 @@ async def test_run_observes_and_parallelizes_progressive_target_tools(tmp_path):
 
 
 async def test_inject_message_merged_before_next_iteration(tmp_path):
-    # BusyPolicy.INJECT: a message injected mid-turn is drained at the next
-    # iteration's top and appended as a user message before that LLM call.
+
+
     class _RecordingStreamToolProvider:
         def __init__(self, scripts):
             self._scripts = scripts
@@ -454,7 +454,7 @@ async def test_inject_message_merged_before_next_iteration(tmp_path):
 
     await loop.run_turn(_req("start"), _EmitCollector(), _drain_inject, stream=True)
 
-    assert len(provider.calls) >= 2  # the tool call drove a second iteration
+    assert len(provider.calls) >= 2
     second = provider.calls[1]
     assert any(m.get("role") == "user" and "also check the logs" in str(m.get("content", "")) for m in second), (
         f"injected message not merged into the second iteration: {second}"
@@ -462,7 +462,7 @@ async def test_inject_message_merged_before_next_iteration(tmp_path):
 
 
 async def test_run_slash_emits_text_not_streamed(tmp_path):
-    # /help is an early return (no LLM stream) -> streamed=False -> emit(Text).
+
     loop = AgentLoop(provider=_FakeChatProvider([]), workspace=tmp_path)
     _stub_edges(loop)
     sink = _EmitCollector()
@@ -476,8 +476,8 @@ async def test_run_slash_emits_text_not_streamed(tmp_path):
 
 
 async def test_run_short_circuit_emits_media_before_text(tmp_path):
-    # MediaOut category: a hook short-circuit returns media + content. MediaOut is
-    # independent of the stream and precedes Text (G-MEDIA-2(a) order).
+
+
     loop = AgentLoop(
         provider=_FakeChatProvider([]),
         workspace=tmp_path,
@@ -489,14 +489,14 @@ async def test_run_short_circuit_emits_media_before_text(tmp_path):
     await loop.run_turn(_req("hi"), sink, _drain)
 
     kinds = [type(e).__name__ for e in sink.events]
-    assert kinds == ["MediaOut", "Text"]  # media first, then text
+    assert kinds == ["MediaOut", "Text"]
     assert sink.events[0].media[0].path == "/tmp/x.png"
     assert sink.events[1].content == "short"
 
 
 async def test_run_propagates_sandbox_error_not_error_string(tmp_path):
-    # Unlike the old string-returning path (returned "[Sandbox error]"), run() lets the exception
-    # propagate so the lane turns it into TurnFailed.
+
+
     loop = AgentLoop(provider=_FakeChatProvider([]), workspace=tmp_path)
 
     async def _boom() -> None:
@@ -512,13 +512,13 @@ async def test_run_propagates_sandbox_error_not_error_string(tmp_path):
 
 
 async def test_run_propagates_mid_turn_error_not_sorry_text(tmp_path):
-    # N-TURNFAILED second source: a mid-turn provider error propagates out of
-    # _process_message (the "Sorry" catch lives in _dispatch, the bus wrapper run()
-    # does not use) -> run() re-raises -> the lane makes TurnFailed, not a Text.
+
+
+
     class _BoomStreamProvider:
         async def chat_stream(self, **kwargs):
             raise RuntimeError("mid-turn boom")
-            yield  # unreachable; makes this an async generator
+            yield
 
         def get_default_model(self) -> str:
             return "fake/model"
@@ -590,13 +590,13 @@ def _message_tool_call(arguments: str) -> StreamDelta:
 
 
 async def test_run_message_tool_text_streams_and_dissolves(tmp_path):
-    # The message tool's reply routes through on_token -> StreamDelta (b2), then
-    # _process_message returns None -> no trailing Text. explicit_reply is still
-    # True (the agent did reply via the tool).
+
+
+
     provider = _FakeStreamToolProvider(
         [
             [_message_tool_call('{"content": "hi via tool"}')],
-            [StreamDelta(content="")],  # second iteration: nothing more, finish
+            [StreamDelta(content="")],
         ]
     )
     loop = AgentLoop(provider=provider, workspace=tmp_path)
@@ -606,7 +606,7 @@ async def test_run_message_tool_text_streams_and_dissolves(tmp_path):
     outcome = await loop.run_turn(_req("hi"), sink, _drain)
 
     assert any(isinstance(e, EvStreamDelta) and e.delta == "hi via tool" for e in sink.events)
-    assert not any(isinstance(e, EvText) for e in sink.events)  # tool reply dissolves
+    assert not any(isinstance(e, EvText) for e in sink.events)
     assert not any(isinstance(e, EvToolEvent) for e in sink.events)
     assert outcome.explicit_reply is True
     assert outcome.tool_calls == 1
@@ -636,10 +636,10 @@ async def test_run_failed_message_tool_emits_one_failed_completion(tmp_path):
 
 
 async def test_run_message_tool_media_is_not_dropped(tmp_path):
-    # Regression guard: a message-tool reply carrying media must emit MediaOut
-    # (media is independent of the token stream). The tool path returns None from
-    # _process_message, so the return boundary never sees it — _route_to_stream
-    # must emit the media itself, matching what the bus path delivers.
+
+
+
+
     provider = _FakeStreamToolProvider(
         [
             [_message_tool_call('{"content": "see this", "media": ["/tmp/pic.png"]}')],
@@ -658,12 +658,12 @@ async def test_run_message_tool_media_is_not_dropped(tmp_path):
     assert outcome.explicit_reply is True
 
 
-# ── stream=False (REPL assembly, canon Q2-D): reply is one Text, no StreamDelta ──
+
 
 
 async def test_run_stream_false_main_reply_is_one_text(tmp_path):
-    # build_repl wires stream=False -> non-streaming chat_with_retry -> the reply
-    # is one Text (CliOutlet renders it), never a StreamDelta.
+
+
     provider = _FakeChatProvider([LLMResponse(content="full reply", finish_reason="stop")])
     loop = AgentLoop(provider=provider, workspace=tmp_path)
     _stub_edges(loop)
@@ -678,9 +678,9 @@ async def test_run_stream_false_main_reply_is_one_text(tmp_path):
 
 
 async def test_run_stream_false_message_tool_emits_text(tmp_path):
-    # The message-tool reply under stream=False must emit Text, not StreamDelta —
-    # else a non-streaming outlet (CliOutlet) would eat the delta and the REPL
-    # would go silent for tool replies.
+
+
+
     provider = _FakeChatProvider(
         [
             LLMResponse(
@@ -705,7 +705,7 @@ async def test_run_stream_false_message_tool_emits_text(tmp_path):
     assert outcome.tool_failures == 0
 
 
-# ── origin gates the user-inbound hook ──
+
 
 
 def _hook_loop(tmp_path):
@@ -725,7 +725,7 @@ def _hook_loop(tmp_path):
 async def test_run_turn_user_origin_fires_user_inbound_hook(tmp_path):
     sink = _EmitCollector()
     await _hook_loop(tmp_path).run_turn(_req("hi", origin=Origin.USER), sink, _drain)
-    # USER -> hook fires -> short-circuits, the LLM is never reached.
+
     assert any(isinstance(e, EvText) and e.content == "hook-fired" for e in sink.events)
     assert not any(isinstance(e, EvStreamDelta) for e in sink.events)
 
@@ -745,13 +745,13 @@ async def test_run_turn_subagent_origin_suppresses_user_inbound_hook(tmp_path):
 
 
 async def _process_via_chat(loop, msg):
-    # _process_message with no callbacks -> non-streaming chat_with_retry path.
+
     return await loop._process_message(msg)
 
 
 async def test_process_message_origin_none_plain_fires_hook(tmp_path):
-    # A direct call passes origin=None; the safe default
-    # (origin not in _SKIP_*) treats it as a user inbound and fires the hook.
+
+
     loop = AgentLoop(
         provider=_FakeChatProvider([LLMResponse(content="llm", finish_reason="stop")]),
         workspace=tmp_path,
@@ -800,9 +800,9 @@ def test_agent_loop_has_no_sentinel_callback_parameters():
 
 
 async def test_run_turn_reconstructs_metadata_from_source_extras(tmp_path):
-    # channel metadata rides Source.extras; run_turn reconstructs it into
-    # the turn metadata so consumers (here _set_tool_context, which reads
-    # message_id for reply threading) still see it.
+
+
+
     loop = AgentLoop(
         provider=_FakeChatProvider([LLMResponse(content="ok", finish_reason="stop", tool_calls=[])]),
         workspace=tmp_path,
@@ -829,12 +829,12 @@ async def test_run_turn_reconstructs_metadata_from_source_extras(tmp_path):
         text="hi",
     )
     await loop.run_turn(req, _EmitCollector(), _drain, stream=False)
-    assert seen.get("message_id") == "m1"  # extras -> metadata -> _set_tool_context
+    assert seen.get("message_id") == "m1"
 
 
 async def test_run_turn_empty_extras_reconstructs_empty_metadata(tmp_path):
-    # No-regression: a host source carries no extras -> metadata={} ->
-    # _set_tool_context sees message_id=None.
+
+
     loop = AgentLoop(
         provider=_FakeChatProvider([LLMResponse(content="ok", finish_reason="stop", tool_calls=[])]),
         workspace=tmp_path,
@@ -847,4 +847,4 @@ async def test_run_turn_empty_extras_reconstructs_empty_metadata(tmp_path):
 
     loop._set_tool_context = _spy
     await loop.run_turn(_req("hi"), _EmitCollector(), _drain, stream=False)
-    assert seen["message_id"] is None  # empty extras -> metadata={} -> no message_id
+    assert seen["message_id"] is None

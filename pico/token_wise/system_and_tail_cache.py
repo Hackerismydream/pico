@@ -89,12 +89,12 @@ class SystemAndTailCacheStrategy(TokenStrategy):
 
         breakpoints_used = 0
 
-        # bp1: system prompt
+        # bp1：系统提示
         if new_messages and new_messages[0].get("role") == "system":
             _apply_cache_marker(new_messages[0])
             breakpoints_used += 1
 
-        # bp2–4: last N non-system messages (N = 4 - breakpoints_used)
+        # bp2–4：最后 N 条非 system 消息（N = 4 - breakpoints_used）
         remaining = 4 - breakpoints_used
         non_sys_indices = [i for i in range(len(new_messages)) if new_messages[i].get("role") != "system"]
 
@@ -104,5 +104,5 @@ class SystemAndTailCacheStrategy(TokenStrategy):
         used = breakpoints_used + min(remaining, len(non_sys_indices))
         logger.debug("SystemAndTailCacheStrategy: placed {} breakpoint(s) on model={}", used, model)
 
-        # Hermes does NOT mark tools — all 4 breakpoints go to messages.
+        # Hermes 不标记工具，因此 4 个断点全部用于消息。
         return new_messages, tools, model

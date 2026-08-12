@@ -97,8 +97,8 @@ async def _drive(monkeypatch, *, max_concurrent: int, spawn_n: int) -> int:
         await mgr.spawn(task=f"task-{i}")
     tasks = list(mgr._running_tasks.values())
 
-    # Wait until the gate is saturated, then let any erroneous extra entrant
-    # (which would push current past the cap) surface before asserting.
+
+
     await _settle(lambda: state["current"] == max_concurrent)
     await asyncio.sleep(0)
     peak = state["peak"]
@@ -141,7 +141,7 @@ def _stub_mgr(monkeypatch, **kw) -> SubagentManager:
     monkeypatch.setattr(manager_mod, "build_executor", lambda *a, **k: _DummyExecutor())
     mgr = SubagentManager(provider=_StubProvider(), workspace=Path("/tmp"), **kw)
 
-    async def _noop_inner(*a, **k) -> SubagentOutcome:  # complete immediately, no VM
+    async def _noop_inner(*a, **k) -> SubagentOutcome:
         return SubagentOutcome(SubagentStatus.COMPLETED, "done")
 
     monkeypatch.setattr(mgr, "_run_subagent_inner", _noop_inner)
@@ -196,10 +196,10 @@ async def test_spawn_rate_limit_recovers_after_window(monkeypatch):
     mgr = _stub_mgr(monkeypatch, max_spawns_per_hour=1)
 
     assert "started" in await mgr.spawn(task="a")
-    assert "Spawn refused" in await mgr.spawn(task="b")  # second within window
+    assert "Spawn refused" in await mgr.spawn(task="b")
 
-    clock[0] += manager_mod._SPAWN_WINDOW_SECONDS + 1  # first spawn ages out
-    assert "started" in await mgr.spawn(task="c")  # recovered
+    clock[0] += manager_mod._SPAWN_WINDOW_SECONDS + 1
+    assert "started" in await mgr.spawn(task="c")
 
 
 async def test_spawn_rate_limit_is_per_session(monkeypatch):
@@ -209,7 +209,7 @@ async def test_spawn_rate_limit_is_per_session(monkeypatch):
 
     assert "started" in await mgr.spawn(task="a", session_key="sessA")
     assert "Spawn refused" in await mgr.spawn(task="a2", session_key="sessA")
-    assert "started" in await mgr.spawn(task="b", session_key="sessB")  # unaffected
+    assert "started" in await mgr.spawn(task="b", session_key="sessB")
 
 
 async def test_cancel_by_session_clears_spawn_history(monkeypatch):
@@ -236,7 +236,7 @@ async def test_cancel_by_session_cancels_live_task(monkeypatch, trace_dir):
 
     async def _blocking_inner(task_id, task, label, origin, executor) -> None:
         entered.set()
-        await release.wait()  # never set — keeps the task live until cancelled
+        await release.wait()
 
     monkeypatch.setattr(mgr, "_run_subagent_inner", _blocking_inner)
     submitted = []

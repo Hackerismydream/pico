@@ -17,8 +17,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
-# Capabilities and SupportsStreaming live in spine.delivery (their consumer is
-# the delivery hub); re-exported here so channels keep importing from one place.
+# Capabilities 和 SupportsStreaming 定义在 spine.delivery（其消费者是
+# delivery hub）；此处重新导出，让 channel 始终从同一入口导入。
 from pico.spine.delivery import Capabilities, SupportsStreaming
 
 if TYPE_CHECKING:
@@ -66,13 +66,13 @@ class ChannelSpec:
     """
 
     display_name: str
-    factory: Callable[[Any], Channel]  # (config) -> Channel
+    factory: Callable[[Any], Channel]  # 配置映射到渠道实例
     capabilities: Capabilities = field(default_factory=Capabilities)
     maturity: Maturity = "beta"
 
 
-# Each capability flag must agree with its matching opt-in protocol. Adding a
-# capability = add one row; the check below covers both directions for it.
+# 每个 capability 标志必须与对应的 opt-in protocol 一致。新增 capability
+# 时增加一行即可；下方检查会同时覆盖两个方向。
 _CAP_PROTOCOLS: tuple[tuple[str, type], ...] = (
     ("interactive_login", SupportsLogin),
     ("streaming", SupportsStreaming),

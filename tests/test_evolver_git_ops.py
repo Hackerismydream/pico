@@ -72,7 +72,7 @@ class TestCommitFilesAsChild:
         assert (repo_dir / "src/x.py").read_text() == "x = 1\n"
         assert _git(repo_dir, "rev-parse", "HEAD").strip() == sha
         assert _git(repo_dir, "status", "--porcelain") == ""
-        assert _git(repo_dir, "worktree", "list").count("\n") == 1  # main only
+        assert _git(repo_dir, "worktree", "list").count("\n") == 1
 
     def test_unknown_parent_refused(self, repo):
         repo_dir, _ = repo
@@ -171,10 +171,10 @@ class TestRefs:
         child, _ = git_ops.commit_files_as_child(repo_dir, sha, {"src/x.py": b"x = 3\n"}, "evolver: candidate")
         git_ops.create_ref(repo_dir, "refs/evolver/n1", child)
         assert _git(repo_dir, "rev-parse", "refs/evolver/n1").strip() == child
-        # Overwrite is allowed (re-promotion re-points the ref).
+
         git_ops.create_ref(repo_dir, "refs/evolver/n1", sha)
         assert _git(repo_dir, "rev-parse", "refs/evolver/n1").strip() == sha
         git_ops.delete_ref(repo_dir, "refs/evolver/n1")
-        git_ops.delete_ref(repo_dir, "refs/evolver/n1")  # absent: no-op
+        git_ops.delete_ref(repo_dir, "refs/evolver/n1")
         proc = subprocess.run(["git", "rev-parse", "refs/evolver/n1"], cwd=repo_dir, env=_ENV, capture_output=True)
         assert proc.returncode != 0

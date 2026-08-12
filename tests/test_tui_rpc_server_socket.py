@@ -46,7 +46,7 @@ from pico.tui_rpc.methods import register_aligned_methods
 from pico.tui_rpc.server import RpcServer
 
 # ---------------------------------------------------------------------------
-# Helpers
+
 # ---------------------------------------------------------------------------
 
 
@@ -122,7 +122,7 @@ def _capture_asyncio_warnings() -> Iterator[list[str]]:
 
 
 # ---------------------------------------------------------------------------
-# Tests
+
 # ---------------------------------------------------------------------------
 
 
@@ -145,7 +145,7 @@ async def test_socket_roundtrip_after_inbound_byte() -> None:
         serve_task = asyncio.create_task(server.serve_forever())
         await server.started.wait()
 
-        # 1) handshake
+
         await _send(client, "system.hello", {"client_version": "0.0.2"}, 1)
         hello = await _read_one_frame(client)
         assert hello, "no handshake response — write transport closed early"
@@ -154,7 +154,7 @@ async def test_socket_roundtrip_after_inbound_byte() -> None:
         assert "result" in hello_obj
         assert hello_obj["result"]["server_version"]
 
-        # 2) three follow-up requests (simulating /cha autocomplete keystrokes)
+
         for rid in (2, 3, 4):
             await _send(client, "system.ping", {}, rid)
             resp = await _read_one_frame(client)
@@ -194,7 +194,7 @@ async def test_socket_no_asyncio_pipe_warnings(_capture_asyncio_warnings: list[s
 
         await _send(client, "system.hello", {"client_version": "0.0.2"}, 1)
         await _read_one_frame(client)
-        # Fire 10 pings; pre-fix the asyncio warning starts after 5 dropped writes.
+
         for rid in range(2, 12):
             await _send(client, "system.ping", {}, rid)
             await _read_one_frame(client)
@@ -220,9 +220,9 @@ async def test_pipe_path_still_works() -> None:
     The v0.0.1 demo runner and any future test that wires unidirectional
     pipes (e.g. ``test_handshake_timeout_*``) depend on this fallback.
     """
-    # Node→Python (requests)
+
     req_r, req_w = os.pipe()
-    # Python→Node (responses)
+
     notif_r, notif_w = os.pipe()
 
     try:
@@ -232,7 +232,7 @@ async def test_pipe_path_still_works() -> None:
         serve_task = asyncio.create_task(server.serve_forever())
         await server.started.wait()
 
-        # Send a hello via the request pipe write end.
+
         frame = (
             json.dumps(
                 {
@@ -248,7 +248,7 @@ async def test_pipe_path_still_works() -> None:
 
         loop = asyncio.get_running_loop()
 
-        # Read response from notif_r non-blockingly.
+
         os.set_blocking(notif_r, False)
         buf = bytearray()
         deadline = loop.time() + 2.0
@@ -273,8 +273,8 @@ async def test_pipe_path_still_works() -> None:
         except asyncio.CancelledError:
             pass
     finally:
-        # serve_forever owns req_r + notif_w via _shutdown; we still close
-        # the other ends.
+
+
         for fd in (req_w, notif_r):
             try:
                 os.close(fd)

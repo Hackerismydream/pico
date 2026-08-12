@@ -49,7 +49,7 @@ def register(app: typer.Typer) -> None:
 
             console.print(f"Model: {config.agents.defaults.model}")
 
-            # Check API keys from registry
+    # 从注册表检查 API 密钥。
             for spec in PROVIDERS:
                 p = getattr(config.providers, spec.name, None)
                 if p is None:
@@ -57,7 +57,7 @@ def register(app: typer.Typer) -> None:
                 if spec.is_oauth:
                     console.print(f"{spec.label}: [green]✓ (OAuth)[/green]")
                 elif spec.is_local:
-                    # Local deployments show api_base instead of api_key
+        # 本地部署显示 api_base 而非 api_key。
                     if p.api_base:
                         console.print(f"{spec.label}: [green]✓ {p.api_base}[/green]")
                     else:

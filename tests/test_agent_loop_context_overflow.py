@@ -27,7 +27,7 @@ def workspace():
 
 
 # --------------------------------------------------------------------------- #
-# unit: _emergency_shrink                                                      #
+
 # --------------------------------------------------------------------------- #
 
 
@@ -39,10 +39,10 @@ def test_emergency_shrink_elides_all_but_recent_tool_results():
 
     shrunk, elided = AgentLoop._emergency_shrink(msgs)
 
-    assert elided == 3  # 6 tool results, keep most-recent 3
+    assert elided == 3
     tool_contents = [m["content"] for m in shrunk if m["role"] == "tool"]
     assert tool_contents == [_PLACEHOLDER] * 3 + ["result 3", "result 4", "result 5"]
-    # non-tool messages untouched
+
     assert shrunk[0]["content"] == "sys" and shrunk[1]["content"] == "q"
 
 
@@ -53,7 +53,7 @@ def test_emergency_shrink_noop_when_few_tool_results():
 
 
 # --------------------------------------------------------------------------- #
-# loop level: overflow -> shrink -> recover                                    #
+
 # --------------------------------------------------------------------------- #
 
 
@@ -117,8 +117,8 @@ async def test_overflow_shrinks_and_recovers(workspace):
     )
 
     assert out is not None
-    assert out[0] == "answer after compaction"  # recovered, not the error
+    assert out[0] == "answer after compaction"
     assert provider._overflowed is True
-    # the post-overflow (recovery) call saw elided placeholders, not 5 full results
+
     recovery_call = provider.seen_messages[-1]
-    assert sum(1 for m in recovery_call if m.get("content") == _PLACEHOLDER) == 2  # 5 - keep 3
+    assert sum(1 for m in recovery_call if m.get("content") == _PLACEHOLDER) == 2

@@ -28,7 +28,7 @@ class StrategyRegistry:
     def __init__(self, strategies: list[TokenStrategy] | None = None):
         self._strategies: list[TokenStrategy] = list(strategies or [])
 
-    # ---- Introspection ----
+    # ---- 内省 ----
 
     @property
     def strategies(self) -> list[TokenStrategy]:
@@ -60,7 +60,7 @@ class StrategyRegistry:
         else:
             self._strategies.append(strategy)
 
-    # ---- Hooks ----
+    # ---- 钩子 ----
 
     async def before_llm_call(
         self,

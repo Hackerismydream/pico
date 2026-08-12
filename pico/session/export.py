@@ -127,7 +127,7 @@ def _payload_digest(payload: dict[str, Any]) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
-# ── internals ──────────────────────────────────────────────────────────
+# ── 内部实现 ─────────────────────────────────────────────────────────
 
 
 def _render_header(session: Session) -> str:

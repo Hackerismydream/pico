@@ -49,7 +49,6 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Context & Decision
 # ---------------------------------------------------------------------------
 
 
@@ -72,20 +71,15 @@ class AgentHookContext:
 
     session_key: str
 
-    # ── before_user_inbound ──
     turn_request: "TurnRequest | None" = None
 
-    # ── before_iteration / before_execute_tools / after_iteration ──
     iteration: int | None = None
     messages: list[dict[str, Any]] | None = None
     tools: list[dict[str, Any]] | None = None
-    response: Any | None = None  # LLMResponse or dict; left as Any to avoid
-    # an import cycle from this base module.
+    response: Any | None = None  # 可以是 LLMResponse 或字典；保留 Any 以避免
 
-    # ── after_send ──
     outbound_content: str | None = None
 
-    # ── Free-form ──
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -115,7 +109,6 @@ class HookDecision:
 
 
 # ---------------------------------------------------------------------------
-# AgentHook ABC
 # ---------------------------------------------------------------------------
 
 
@@ -135,7 +128,6 @@ class AgentHook(ABC):
         """
         return type(self).__name__
 
-    # ── User-inbound phase ─────────────────────────────────────────────
 
     async def before_user_inbound(self, ctx: AgentHookContext) -> HookDecision:
         """Fires when a fresh user message arrives, before AgentLoop
@@ -145,7 +137,6 @@ class AgentHook(ABC):
         """
         return HookDecision()
 
-    # ── ReAct iteration phases ────────────────────────────────────────
 
     async def before_iteration(self, ctx: AgentHookContext) -> HookDecision:
         """Fires before each LLM call in the ReAct loop.
@@ -186,7 +177,6 @@ class AgentHook(ABC):
         """
         return HookDecision()
 
-    # ── Outbound phase ─────────────────────────────────────────────────
 
     async def after_send(self, ctx: AgentHookContext) -> HookDecision:
         """Fires when the final outbound content has been assembled,

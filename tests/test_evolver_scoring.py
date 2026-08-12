@@ -115,13 +115,13 @@ class TestInfraRerunLadder:
         )
         out = eval_with_infra_rerun(fake, None, ["t1", "t2"], 3, "job")
         assert out["t1"].passes == 2 and out["t1"].infra_attempts == 0
-        # Only the contaminated task is re-scored, under the ladder job name.
+
         assert fake.calls[1] == (["t1"], "job_infra_rerun1")
 
     def test_missing_task_is_infra_by_definition(self):
         fake = _ScriptedEval(
             [
-                {"t1": _te("t1", 3, 3)},  # t2 never came back
+                {"t1": _te("t1", 3, 3)},
                 {"t2": _te("t2", 1, 3)},
             ]
         )
@@ -130,8 +130,8 @@ class TestInfraRerunLadder:
         assert out["t2"].passes == 1
 
     def test_keeps_measurement_with_fewest_infra(self):
-        # The rerun came back just as contaminated: keep the original (strictly
-        # fewer infra trials required to replace).
+
+
         first = _te("t1", 1, 3, infra=1)
         fake = _ScriptedEval(
             [
@@ -142,14 +142,14 @@ class TestInfraRerunLadder:
         )
         out = eval_with_infra_rerun(fake, None, ["t1"], 3, "job")
         assert out["t1"] is first
-        assert len(fake.calls) == 3  # base + 2 reruns, then the ladder ends
+        assert len(fake.calls) == 3
 
     def test_persistent_infra_survives_and_scores_low(self):
         results = [{"t1": _te("t1", 0, 3, infra=3)} for _ in range(3)]
         fake = _ScriptedEval(results)
         out = eval_with_infra_rerun(fake, None, ["t1"], 3, "job", max_reruns=2)
         assert len(fake.calls) == 3
-        assert out["t1"].infra_attempts == 3  # left to score 0, never dropped
+        assert out["t1"].infra_attempts == 3
 
     def test_wrapper_is_identity_at_zero_reruns(self):
         inner = _ScriptedEval([])
@@ -233,9 +233,9 @@ class TestFlipSummary:
         cand = {"t1": _te("t1", 2, 3), "t2": _te("t2", 0, 3), "t3": _te("t3", 3, 3)}
         ctrl = {"t1": _te("t1", 1, 3), "t2": _te("t2", 1, 3), "t3": _te("t3", 3, 3)}
         s = flip_summary(cand, ctrl, ["t1", "t2", "t3"])
-        assert s["rescued"] == ["t1"]  # 1/3 -> 2/3 counts as rescued
+        assert s["rescued"] == ["t1"]
         assert s["regressed"] == ["t2"]
-        assert s["still_failing"] == ["t1", "t2"]  # anything below 1.0
+        assert s["still_failing"] == ["t1", "t2"]
 
     def test_missing_arm_scores_zero(self):
         cand = {"t1": _te("t1", 2, 3)}

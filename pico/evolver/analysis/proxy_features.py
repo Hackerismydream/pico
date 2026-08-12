@@ -67,8 +67,7 @@ class ProxyFeatures:
     docker_error_count: int
 
 
-# Docker / container daemon errors most commonly seen inside exec tool output
-# or in the runner's exception traceback when something blows up at the infra layer.
+# Docker/容器守护进程错误最常见于 exec 工具输出，或基础设施层故障时运行器的异常回溯中。
 _DOCKER_ERROR_PATTERNS = re.compile(
     r"(?:"
     r"docker:\s+error\b"
@@ -99,7 +98,7 @@ def _classify_exit(result_json: dict, reward_passed: bool | None) -> ExitStatus:
         return _EXCEPTION_TO_STATUS[exc]
     if reward_passed is False:
         return ExitStatus.FAILED_VERIFIER
-    # no reward and no recognised exception → bucket as OTHER
+        # 没有奖励且没有已识别异常时归入 OTHER。
     if exc:
         return ExitStatus.OTHER
     return ExitStatus.NO_SESSION
@@ -130,8 +129,7 @@ def _session_path(trial_dir: Path) -> Path | None:
     sessions_dir = trial_dir / "agent" / "workspace" / "sessions"
     if not sessions_dir.is_dir():
         return None
-    # the legacy runner writes a single tb2-task.jsonl by convention; fall back to
-    # any .jsonl if name differs.
+    # 旧运行器按约定写入单个 tb2-task.jsonl；名称不同时回退到任意 .jsonl 文件。
     preferred = sessions_dir / "tb2-task.jsonl"
     if preferred.exists():
         return preferred
@@ -205,7 +203,7 @@ def extract_features(trial_dir: str | Path) -> ProxyFeatures:
     else:
         turn_count, has_tool_calls_ever, avg_len, docker_errors_session = _scan_session(session)
 
-    # also scan exception traceback for docker errors
+        # 同时扫描异常回溯中的 Docker 错误。
     exc_tb = (result.get("exception_info") or {}).get("exception_traceback") or ""
     docker_errors = docker_errors_session + len(_DOCKER_ERROR_PATTERNS.findall(exc_tb))
 

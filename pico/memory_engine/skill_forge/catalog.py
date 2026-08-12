@@ -39,13 +39,12 @@ class LocalSkillCatalog:
         workspace: Path,
         config: Any = None,
         builtin_skills_dir: Path | None = None,
-        llm_provider: "LLMProvider | None" = None,  # accepted for caller compat; unused
+        llm_provider: "LLMProvider | None" = None,  # 为兼容调用方而保留，当前未使用
         *,
         start_watcher: bool = True,
     ):
-        # R1: build extra_dirs from config.local_dirs. List order = priority
-        # (later overrides earlier on name collision). Each tuple:
-        # (path, display_name, always_enabled).
+        # R1：从 config.local_dirs 构建 extra_dirs。列表顺序即优先级，名称冲突时后者覆盖前者。
+        # 每个元组格式为 (path, display_name, always_enabled)。
         extra_dirs: list[tuple[Path, str, bool]] = []
         if config is not None and getattr(config, "enabled", False):
             seen_names: dict[str, int] = {}
@@ -75,29 +74,21 @@ class LocalSkillCatalog:
 
         self._config = config
 
-        # Local-pool BM25 retrieval over file-based skills (workspace +
-        # builtin). Always available — no model, no GPU.
+        # 对基于文件的 Skill（工作区和内置）执行本地池 BM25 检索，不需模型或 GPU，始终可用。
         self._local_pool = LocalPool(self._registry)
 
-        # Background SKILL.md watcher. Auto-started by default so the
-        # common long-lived consumer (ContextBuilder) picks up hand-edits
-        # to ``<workspace>/skills/**/SKILL.md`` without anyone needing to
-        # remember a separate call. The watcher runs in a daemon thread
-        # so process exit cleans it up; when ``watchfiles`` is missing
-        # this collapses to a no-op + one INFO log.
+        # 后台 SKILL.md 监视器默认自动启动，使长生命周期消费方 ContextBuilder 能自动获取
+        # 对 ``<workspace>/skills/**/SKILL.md`` 的手动编辑。监视器运行在守护线程中，进程退出时自动清理；
+        # 缺少 ``watchfiles`` 时退化为空操作并记录一条 INFO 日志。
         #
-        # Short-lived consumers (a single CLI command, a one-shot
-        # ``build_skills_summary()`` for a subagent) should pass
-        # ``start_watcher=False``: starting costs ~25ms, and the watcher's
-        # daemon thread holds a strong reference back through the
-        # ``on_change`` bound method that keeps the catalog alive past its
-        # single use — a real thread/handle leak in long-lived parents
-        # that spawn many subagents.
+        # 短生命周期消费方（单个 CLI 命令、为子 Agent 执行一次的 ``build_skills_summary()``）
+        # 应传入 ``start_watcher=False``。启动约耗时 25 毫秒，且监视器的守护线程会通过
+        # ``on_change`` 绑定方法持有反向强引用，使目录在单次使用后仍存活。对会启动
+        # 许多子 Agent 的长生命周期父进程而言，这是真实的线程和句柄泄漏。
         self._file_watcher: "SkillFileWatcher | None" = None
         if start_watcher:
             self.start_file_watcher()
 
-    # ── Pool/registry access (for LocalSkillSource) ──────────────────
 
     @property
     def registry(self) -> SkillRegistry:
@@ -167,9 +158,8 @@ class LocalSkillCatalog:
             resolve_source=self._registry.resolve_source_for_path,
         )
         if not watcher.start():
-            # Failure to start (missing dep / missing root) — leave
-            # ``_file_watcher`` unset so a later call can retry once
-            # the prerequisite is fixed (e.g. workspace materialized).
+            # 启动失败（缺少依赖或根目录）时不设置 ``_file_watcher``，使后续调用能在
+            # 前置条件修复后重试，例如工作区已实体化。
             return False
         self._file_watcher = watcher
         return True
@@ -186,7 +176,7 @@ class LocalSkillCatalog:
         self._file_watcher = None
 
     # ------------------------------------------------------------------
-    # Legacy ``SkillsLoader`` API (signature-compatible drop-in)
+    # 旧版 ``SkillsLoader`` API（签名兼容的直接替代）
     # ------------------------------------------------------------------
 
     def list_skills(self, filter_unavailable: bool = True) -> list[dict[str, str]]:
@@ -209,10 +199,8 @@ class LocalSkillCatalog:
         """
         if getattr(self._config, "disable_always", False):
             return []
-        # Registry list_all already returns skills ordered by layer
-        # iteration (workspace → extra_dirs in order → builtin), and
-        # within each layer by discovery order.  Sort stably by
-        # (source priority, name) so truncation is predictable.
+        # 注册表 list_all 已按分层迭代顺序返回 Skill：工作区 → 按顺序的 extra_dirs → 内置；
+        # 每层内按发现顺序。再按（来源优先级，名称）稳定排序，使截断结果可预测。
         all_always = [
             m for m in self._registry.list_all() if m.always and self._registry.check_available(m.name, source=m.source)
         ]
@@ -252,7 +240,7 @@ class LocalSkillCatalog:
         """
         if max_inject is None:
             max_inject = getattr(self._config, "inject_max", 0) or 0
-        # Backward-compat: accept list[str] of names, resolve via registry.
+        # 向后兼容：接受名称列表，并通过注册表解析。
         if skills and isinstance(skills[0], str):
             resolved: list[SkillMeta] = []
             for name in skills:
@@ -310,8 +298,7 @@ class LocalSkillCatalog:
         if only is None:
             metas: list[SkillMeta] = self._registry.list_all()
         else:
-            # Backward-compat: accept list[str] of skill names — resolve to
-            # SkillMeta via the registry, drop unknowns.
+            # 向后兼容：接受 Skill 名称列表，通过注册表解析为 SkillMeta，并丢弃未知项。
             if only and isinstance(only[0], str):
                 resolved: list[SkillMeta] = []
                 for name in only:
@@ -363,7 +350,7 @@ class LocalSkillCatalog:
 
 
 # ----------------------------------------------------------------------
-# Rendering helpers (module-level, stateless)
+# 渲染辅助函数（模块级、无状态）
 # ----------------------------------------------------------------------
 
 

@@ -62,14 +62,14 @@ class BoxliteExecutor(SandboxExecutor):
         self._create_timeout = create_timeout
         self._owned_ids = owned_ids
 
-        self._box: Any | None = None  # boxlite.Box, lazy-imported
+        self._box: Any | None = None  # 延迟导入的 boxlite.Box
         self._stack = AsyncExitStack()
         self._init_lock = asyncio.Lock()
         self._process_tasks: list[asyncio.Task] = []
-        self._process_executions: list[Any] = []  # list[boxlite.Execution]
+        self._process_executions: list[Any] = []  # boxlite.Execution 列表
 
     # ------------------------------------------------------------------
-    # Lifecycle
+    # 生命周期
     # ------------------------------------------------------------------
 
     async def start(self) -> None:
@@ -88,10 +88,9 @@ class BoxliteExecutor(SandboxExecutor):
         try:
             await self._start_inner()
         except BaseException:
-            # Catch BaseException (not Exception) so cleanup also runs on
-            # KeyboardInterrupt / SystemExit / asyncio.CancelledError. A leaked
-            # half-started VM is worse than the cleanup itself raising; we
-            # re-raise immediately so the original signal still propagates.
+            # 捕获 BaseException 而不是 Exception，使 KeyboardInterrupt、SystemExit 和
+            # asyncio.CancelledError 也能触发清理。泄漏半启动的虚拟机比清理失败更糟；
+            # 清理后立即重新抛出，以保留原始信号。
             await self._cleanup_after_failed_start()
             raise
 
@@ -128,8 +127,8 @@ class BoxliteExecutor(SandboxExecutor):
         from pico.sandbox._runtime import get_boxlite_runtime
 
         async def _do_pull() -> None:
-            # Use Pico's runtime so the image lands in the same cache the
-            # working Box reads from (otherwise SimpleBox would default to ~/.boxlite).
+            # 使用 Pico 的运行时，让镜像进入工作 Box 读取的同一缓存；
+            # 否则 SimpleBox 会默认使用 ~/.boxlite。
             async with boxlite.SimpleBox(
                 image=self._image,
                 cpus=1,
@@ -231,19 +230,19 @@ class BoxliteExecutor(SandboxExecutor):
 
             import boxlite
 
-            # boxlite 0.8.2: volumes are dicts, not tuples
+            # boxlite 0.8.2 中 volumes 是字典，不是元组
             volumes = [
                 {"host": str(self._workspace), "guest": self.WORKSPACE_MOUNT, "readonly": False},
                 *[{"host": e[0], "guest": e[1], "readonly": e[2] == "ro"} for e in self._extra_volumes],
             ]
-            # boxlite 0.8.2: network is a string field; allow_net is a separate list field
-            # (NetworkSpec does not exist in this version)
+            # boxlite 0.8.2 中 network 是字符串字段，allow_net 是独立的列表字段；
+            # 该版本不存在 NetworkSpec
             extra_kwargs: dict = {}
             if self._allow_net is False:
                 extra_kwargs["network"] = "none"
             elif isinstance(self._allow_net, list):
                 extra_kwargs["allow_net"] = self._allow_net
-            # else: allow_net is True → fully open, no kwargs needed
+            # 其余情况下 allow_net 为 True，完全开放网络，无需额外参数
 
             options = boxlite.BoxOptions(
                 image=self._image,
@@ -257,12 +256,12 @@ class BoxliteExecutor(SandboxExecutor):
 
             runtime = get_boxlite_runtime()
             self._box = await runtime.create(options)
-            # Register cleanup *before* start() so a failure inside start() still
-            # tears the box down — otherwise a partially-started VM leaks.
+            # 在 start() 之前注册清理回调，这样 start() 内部失败时仍会销毁 Box，
+            # 避免泄漏部分启动的虚拟机。
             if self._owned_ids is not None:
                 self._owned_ids.add(self._box.id)
             self._stack.push_async_callback(self._cleanup_box)
-            await self._box.start()  # create() does not auto-start; start() is required
+            await self._box.start()  # create() 不会自动启动，必须显式调用 start()
             logger.info("Sandbox started (image=%s)", self._image)
             return self._box
 
@@ -274,16 +273,15 @@ class BoxliteExecutor(SandboxExecutor):
 
                 await self._box.stop()
                 try:
-                    # Box has no remove() in 0.8.2 — use the runtime
+                    # Box 在 0.8.2 中没有 remove()，需通过运行时删除
                     await get_boxlite_runtime().remove(box_id)
                 except Exception:
-                    pass  # box may already be gone after stop()
+                    pass  # stop() 后 Box 可能已经被删除
             except Exception as exc:
                 logger.warning("Error cleaning up sandbox box: %s", exc)
             finally:
-                # Drop ownership only after the VM is fully torn down. If we
-                # discarded earlier, a debug client racing the cleanup would
-                # see a still-running VM marked unowned and may try to rm it.
+                # 只在虚拟机完全销毁后才移除所有权。如果提前移除，与清理并发的
+                # 调试客户端会看到一台仍在运行但标记为无主的虚拟机，并可能尝试删除它。
                 if self._owned_ids is not None:
                     self._owned_ids.discard(box_id)
                 self._box = None
@@ -302,7 +300,7 @@ class BoxliteExecutor(SandboxExecutor):
         return "".join(line if line.endswith("\n") else line + "\n" for line in lines)
 
     # ------------------------------------------------------------------
-    # Core execution
+    # 核心执行逻辑
     # ------------------------------------------------------------------
 
     async def exec(
@@ -316,7 +314,7 @@ class BoxliteExecutor(SandboxExecutor):
         effective_timeout = self._default_timeout if timeout is None else timeout
         vm_cwd = self._translate_cwd(cwd)
 
-        # boxlite 0.8.2: Box.exec() accepts cwd directly — no shell injection needed
+        # boxlite 0.8.2 的 Box.exec() 可直接接收 cwd，无需注入 Shell 命令
         env_tuples = list(env.items()) if env else None
 
         execution: Any = None
@@ -353,7 +351,7 @@ class BoxliteExecutor(SandboxExecutor):
             )
 
     # ------------------------------------------------------------------
-    # Process spawning (MCP stdio servers)
+    # 启动进程（MCP stdio 服务器）
     # ------------------------------------------------------------------
 
     @property
@@ -396,9 +394,9 @@ class BoxliteExecutor(SandboxExecutor):
         stdin_writer = execution.stdin()
 
         async def _stdout_bridge() -> None:
-            # MCP SDK 1.x: read stream carries SessionMessage (wrapping JSONRPCMessage).
-            # boxlite stdout yields chunks (not guaranteed to be line-aligned for large
-            # messages). Buffer and split on '\n' to reconstruct complete JSON lines.
+            # MCP SDK 1.x 的读流传递包装 JSONRPCMessage 的 SessionMessage。
+            # boxlite stdout 输出的是数据块，大消息不保证按行对齐，因此需先缓冲，
+            # 再按 '\n' 分割以重建完整 JSON 行。
             buf = ""
             try:
                 async for chunk in stdout_iter:
@@ -412,14 +410,14 @@ class BoxliteExecutor(SandboxExecutor):
                             rpc_msg = JSONRPCMessage.model_validate_json(line)
                             await read_send.send(SessionMessage(message=rpc_msg))
                         except Exception as parse_exc:
-                            # Non-JSON stdout (e.g. startup banners). Log and skip.
+                            # 非 JSON 的标准输出（如启动横幅）只记录日志并跳过。
                             logger.debug(
                                 "MCP stdout [%s]: skipping non-JSON line %r (%s)",
                                 command,
                                 line[:80],
                                 parse_exc,
                             )
-                # Flush any remaining content after stream ends (no trailing newline)
+                # 流结束后处理没有末尾换行符的剩余内容
                 line = buf.strip()
                 if line:
                     try:
@@ -447,8 +445,8 @@ class BoxliteExecutor(SandboxExecutor):
                 logger.error("MCP stderr bridge error: %s", exc)
 
         async def _stdin_bridge() -> None:
-            # MCP SDK 1.x: write stream carries SessionMessage; serialize the inner
-            # JSONRPCMessage as newline-delimited JSON to the VM process stdin.
+            # MCP SDK 1.x 的写流传递 SessionMessage；将其内部 JSONRPCMessage
+            # 序列化为换行分隔的 JSON，再写入虚拟机进程的标准输入。
             try:
                 async for session_msg in write_recv:
                     rpc_msg = session_msg.message if isinstance(session_msg, SessionMessage) else session_msg
@@ -461,8 +459,8 @@ class BoxliteExecutor(SandboxExecutor):
             finally:
                 await write_recv.aclose()
 
-        # No await between create_task and extend — asyncio is single-threaded so no
-        # context switch can occur here. stop() is therefore guaranteed to see all three tasks.
+        # create_task 和 extend 之间没有 await；asyncio 单线程执行，此处不会切换上下文，
+        # 因此 stop() 一定能看到这三个任务。
         tasks = [
             asyncio.create_task(_stdout_bridge()),
             asyncio.create_task(_stderr_bridge()),

@@ -654,7 +654,7 @@ describe('writeClipboardText', () => {
     const child = {
       once: vi.fn((event: string, cb: (code?: number) => void) => {
         if (event === 'close') {
-          cb(1) // non-zero exit = failure
+          cb(1) // 非零退出码表示失败。
         }
 
         return child
@@ -664,7 +664,7 @@ describe('writeClipboardText', () => {
 
     const start = vi.fn().mockReturnValue(child)
 
-    // Linux with no WAYLAND_DISPLAY / no WSL_INTEROP — falls through xclip then xsel, both fail
+    // Linux 未设置 WAYLAND_DISPLAY 和 WSL_INTEROP 时依次回退到 xclip、xsel，二者均失败。
     await expect(writeClipboardText('hello', 'linux', start, {})).resolves.toBe(false)
   })
 
@@ -745,7 +745,7 @@ describe('writeClipboardText', () => {
       once: vi.fn((event: string, cb: (code?: number) => void) => {
         if (event === 'close') {
           callCount++
-          // wl-copy fails, xclip succeeds
+          // wl-copy 失败，xclip 成功。
           cb(callCount === 1 ? 1 : 0)
         }
 
@@ -771,7 +771,7 @@ describe('writeClipboardText', () => {
       once: vi.fn((event: string, cb: (code?: number) => void) => {
         if (event === 'close') {
           callCount++
-          cb(callCount < 3 ? 1 : 0) // first two fail, third (xsel) succeeds
+          cb(callCount < 3 ? 1 : 0) // 前两次失败，第三次由 xsel 成功。
         }
 
         return child

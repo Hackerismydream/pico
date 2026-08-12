@@ -7,10 +7,9 @@ A diff with no beacon is unmonitorable — rejected before eval.
 
 from __future__ import annotations
 
-# WHERE classifies by behavioral target, not file location: a direct edit
-# to benchmark agent code (e.g. termination policy) classifies as
-# loop_override / tool_override / context_override by what it changes,
-# so no separate "benchmark_agent_code" value exists.
+# WHERE 按行为目标而非文件位置分类：直接编辑基准智能体代码（如终止策略）时，根据实际变更
+# 分类为 loop_override、tool_override 或 context_override，因此没有单独的
+# "benchmark_agent_code" 值。
 CODE_CLASS_WHERES = {
     "tool_new",
     "loop_override",

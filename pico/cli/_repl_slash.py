@@ -49,7 +49,7 @@ def handle_repl_slash(command: str, *, console: "Console") -> bool:
     try:
         tokens = shlex.split(command)
     except ValueError:
-        return False  # unbalanced quotes — not ours to handle
+        return False  # 引号不成对，不由本层处理
     if not tokens:
         return False
 
@@ -62,7 +62,7 @@ def handle_repl_slash(command: str, *, console: "Console") -> bool:
     return False
 
 
-# ── tiny arg helpers ──────────────────────────────────────────────────
+# ── 小型参数辅助方法 ─────────────────────────────────────────────────
 
 
 def _has_flag(tokens: list[str], *names: str) -> bool:
@@ -104,7 +104,7 @@ def _invoke(console: "Console", fn: Callable[..., Any], **kwargs: Any) -> None:
         pass
 
 
-# ── /cron ──────────────────────────────────────────────────────────────
+# ── /cron 命令 ─────────────────────────────────────────────────────────
 
 
 def _handle_cron(args: list[str], console: "Console") -> bool:
@@ -174,8 +174,7 @@ def _handle_cron_destructive(sub: str, rest: list[str], console: "Console") -> b
         console.print(f"[red]usage: /cron {sub} <id> -y[/red]")
         return True
     if not _has_flag(rest, "-y", "--yes"):
-        # No interactive confirm under prompt_toolkit — show what would change
-        # and require an explicit -y on re-run.
+        # prompt_toolkit 下不做交互确认——展示将发生的变更，并要求重新运行时显式传入 -y。
         job = _resolve_quiet(ident)
         if job is not None:
             console.print(
@@ -201,8 +200,7 @@ def _handle_cron_add(rest: list[str], console: "Console") -> bool:
             "[--tz <zone>] [--channel <ch>] [--to <id>][/red]"
         )
         return True
-    # Schedule validation (exactly-one-of, syntax) is delegated to cron_add,
-    # which prints friendly errors and raises typer.Exit on bad input.
+    # 调度校验（互斥选择、语法）委托给 cron_add；它会输出友好错误并在输入无效时抛出 typer.Exit。
     _invoke(
         console,
         cc.cron_add,
@@ -233,7 +231,7 @@ def _resolve_quiet(ident: str):
         return None
 
 
-# ── help ─────────────────────────────────────────────────────────────────
+# ── 帮助 ─────────────────────────────────────────────────────────────────
 
 
 def _print_help(console: "Console") -> None:

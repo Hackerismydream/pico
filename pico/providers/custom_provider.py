@@ -17,7 +17,7 @@ class CustomProvider(LLMProvider):
     ):
         super().__init__(api_key, api_base)
         self.default_model = default_model
-        # Keep affinity stable for this provider instance to improve backend cache locality.
+        # 保持当前 Provider 实例的 affinity 稳定，以改善后端缓存局部性。
         self._client = AsyncOpenAI(
             api_key=api_key,
             base_url=api_base,
@@ -74,7 +74,7 @@ class CustomProvider(LLMProvider):
             }
             if u
             else {},
-            # Volc / vLLM expose Qwen3 reasoning trace as `reasoning`; OpenAI canonical is `reasoning_content`.
+            # Volc / vLLM 用 `reasoning` 暴露 Qwen3 推理轨迹；OpenAI 标准字段为 `reasoning_content`。
             reasoning_content=getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None) or None,
         )
 

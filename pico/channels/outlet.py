@@ -37,4 +37,4 @@ class ChannelOutletAdapter:
             await self._channel.send(out.source.chat_id, out.content)
         elif isinstance(out, MediaOut):
             await self._channel.send(out.source.chat_id, "", media=[m.path for m in out.media])
-        # StreamDelta / Reasoning / ToolEvent / Notice: eaten — render-can't path.
+        # StreamDelta / Reasoning / ToolEvent / Notice：当前渠道无法渲染，直接消费。

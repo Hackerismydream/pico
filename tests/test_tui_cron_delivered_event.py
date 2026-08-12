@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 # ---------------------------------------------------------------------------
-# 2.4 — CronDeliveredEvent Pydantic model validates + round-trips via TurnEvent
+
 # ---------------------------------------------------------------------------
 
 
@@ -62,7 +62,7 @@ def test_cron_delivered_event_in_turn_event_union() -> None:
 
 
 # ---------------------------------------------------------------------------
-# cron.delivered fan-out (spine read-back -> wrapper fan-out, off the bus)
+
 # ---------------------------------------------------------------------------
 
 
@@ -136,7 +136,7 @@ async def test_cron_callback_spine_fans_out_reply(emitter_spy: MagicMock) -> Non
     from pico.cli.tui_commands import _build_cron_callback_spine
 
     async def base_on_cron(job):
-        return "reminder body"  # the read-back reply
+        return "reminder body"
 
     wrapped = _build_cron_callback_spine(base_on_cron, emitter_spy)
 
@@ -149,9 +149,9 @@ async def test_cron_callback_spine_fans_out_reply(emitter_spy: MagicMock) -> Non
     assert event["payload"]["job_id"] == "j7"
     assert event["payload"]["name"] == "standup"
     assert event["payload"]["text"] == "reminder body"
-    assert event["payload"]["fired_at"]  # stamped by the wrapper
+    assert event["payload"]["fired_at"]
 
-    # deliver=False job: base runs (side-effects) but nothing is fanned out.
+
     emitter_spy.emit.reset_mock()
     silent = SimpleNamespace(id="j8", name="silent", payload=SimpleNamespace(deliver=False))
     await wrapped(silent)

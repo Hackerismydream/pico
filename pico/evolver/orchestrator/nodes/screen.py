@@ -40,7 +40,7 @@ class ScreenResult:
     cull_threshold: float
     sigma_screen: float
     passes_to_confirm: bool
-    bucket: str  # "clear_win" | "within_band" | "cull" — for the log/ledger
+    bucket: str  # "clear_win" | "within_band" | "cull"，用于日志/账本
 
     @property
     def margin(self) -> float:

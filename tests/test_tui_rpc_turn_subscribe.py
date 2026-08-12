@@ -36,7 +36,7 @@ def dispatcher(emitter: SubscriptionEmitter) -> Dispatcher:
 
 
 # ---------------------------------------------------------------------------
-# turn.subscribe
+
 # ---------------------------------------------------------------------------
 
 
@@ -48,7 +48,7 @@ async def test_turn_subscribe_returns_subscription_id(
 
     assert set(result) == {"subscription_id"}
     assert isinstance(result["subscription_id"], str)
-    assert len(result["subscription_id"]) >= 16  # uuid hex
+    assert len(result["subscription_id"]) >= 16
 
 
 async def test_turn_subscribe_multiple_subscribers_same_session(
@@ -69,7 +69,7 @@ async def test_turn_subscribe_rejects_missing_session_key(
 
 
 # ---------------------------------------------------------------------------
-# turn.unsubscribe
+
 # ---------------------------------------------------------------------------
 
 
@@ -109,7 +109,7 @@ async def test_turn_unsubscribe_twice_second_call_returns_false(
 
 
 # ---------------------------------------------------------------------------
-# End-to-end via Dispatcher
+
 # ---------------------------------------------------------------------------
 
 

@@ -54,7 +54,7 @@ def populated_cron(fake_cron_dir: Path) -> CronService:
     return svc
 
 
-# ── list ─────────────────────────────────────────────────────────────
+
 
 
 def test_list_empty(runner, fake_cron_dir):
@@ -67,8 +67,8 @@ def test_list_empty(runner, fake_cron_dir):
 def test_list_shows_jobs(runner, populated_cron):
     result = runner.invoke(cron_app, ["list"])
     assert result.exit_code == 0
-    # Rich Table may line-wrap "morning meds" → "morning" + "meds" on
-    # separate cell rows. Job IDs don't wrap, so match by ID instead.
+
+
     for j in populated_cron.list_jobs():
         assert j.id in result.stdout
     assert "2 jobs" in result.stdout
@@ -83,7 +83,7 @@ def test_list_hides_disabled_by_default(runner, populated_cron):
     assert result.exit_code == 0
     assert "2 jobs" in result.stdout
     assert "1 enabled, 1 disabled" in result.stdout
-    # Disabled job should NOT appear in body (banner counts but doesn't list)
+
     assert disabled_id not in result.stdout
     enabled_id = [j.id for j in populated_cron.list_jobs(include_disabled=True) if j.enabled][0]
     assert enabled_id in result.stdout
@@ -99,7 +99,7 @@ def test_list_all_includes_disabled(runner, populated_cron):
         assert j.id in result.stdout
 
 
-# ── get ──────────────────────────────────────────────────────────────
+
 
 
 def test_get_full_detail(runner, populated_cron):
@@ -141,12 +141,12 @@ def test_get_shows_topic_tag_dash_when_absent(runner, populated_cron):
     """Jobs without a topic_tag render '-' (not 'None' / blank) so the
     table layout stays predictable."""
     job = populated_cron.list_jobs()[0]
-    assert job.payload.topic_tag is None  # sanity: populated_cron sets no tag
+    assert job.payload.topic_tag is None
     r = runner.invoke(cron_app, ["get", job.id])
     assert r.exit_code == 0
     assert "topic_tag" in r.stdout
-    # Confirm the dash placeholder is rendered for the topic_tag row,
-    # not just elsewhere (other absent fields also use '-').
+
+
     topic_line = next(
         (line for line in r.stdout.splitlines() if "topic_tag" in line),
         None,
@@ -204,7 +204,7 @@ def test_get_ambiguous_prefix(runner, fake_cron_dir):
             }
         )
     )
-    # Common prefix "ab" matches both
+
     result = runner.invoke(cron_app, ["get", "ab"])
     assert result.exit_code == 1
     assert "Ambiguous" in result.stdout
@@ -212,7 +212,7 @@ def test_get_ambiguous_prefix(runner, fake_cron_dir):
     assert "ab56ef78" in result.stdout
 
 
-# ── delete ───────────────────────────────────────────────────────────
+
 
 
 def test_delete_with_yes_skips_confirm(runner, populated_cron):
@@ -220,7 +220,7 @@ def test_delete_with_yes_skips_confirm(runner, populated_cron):
     result = runner.invoke(cron_app, ["delete", job.id, "--yes"])
     assert result.exit_code == 0
     assert "Removed" in result.stdout
-    # Verify gone
+
     remaining = [j.id for j in populated_cron.list_jobs(include_disabled=True)]
     assert job.id not in remaining
 
@@ -230,7 +230,7 @@ def test_delete_aborts_on_no_confirm(runner, populated_cron):
     result = runner.invoke(cron_app, ["delete", job.id], input="n\n")
     assert result.exit_code == 1
     assert "aborted" in result.stdout
-    # Verify still there
+
     remaining = [j.id for j in populated_cron.list_jobs(include_disabled=True)]
     assert job.id in remaining
 
@@ -241,19 +241,19 @@ def test_delete_unknown_id(runner, fake_cron_dir):
     assert "No job matching" in result.stdout
 
 
-# ── enable / disable ─────────────────────────────────────────────────
+
 
 
 def test_disable_then_enable(runner, populated_cron):
     job = populated_cron.list_jobs()[0]
-    # Disable
+
     r1 = runner.invoke(cron_app, ["disable", job.id, "--yes"])
     assert r1.exit_code == 0
     assert "Disabled" in r1.stdout
     refreshed = [j for j in populated_cron.list_jobs(include_disabled=True) if j.id == job.id][0]
     assert refreshed.enabled is False
 
-    # Enable
+
     r2 = runner.invoke(cron_app, ["enable", job.id])
     assert r2.exit_code == 0
     assert "Enabled" in r2.stdout
@@ -305,21 +305,21 @@ def test_disable_already_disabled_is_noop(runner, populated_cron):
     assert "already disabled" in r.stdout
 
 
-# ── run ──────────────────────────────────────────────────────────────
+
 
 
 def test_run_test_fire_on_recurring_job(runner, populated_cron):
     """cron run on a recurring job: --yes skips the state-mutation
     confirm; output must use [TEST-FIRE] (not [DRY-RUN]) and explain
     that state was advanced even though delivery was stubbed."""
-    job = populated_cron.list_jobs()[0]  # cron 0 9 * * * (recurring)
+    job = populated_cron.list_jobs()[0]
     r = runner.invoke(cron_app, ["run", job.id, "--yes"])
     assert r.exit_code == 0
     assert "[TEST-FIRE]" in r.stdout
-    # No leftover DRY-RUN labeling that contradicted the real semantics
+
     assert "[DRY-RUN]" not in r.stdout
     assert job.payload.channel in r.stdout or job.payload.to in r.stdout
-    # Must say message was stubbed AND state moved
+
     assert "delivery was stubbed" in r.stdout
     assert "next_run advanced" in r.stdout
 
@@ -328,7 +328,7 @@ def test_run_warns_about_state_mutation_for_recurring(runner, populated_cron):
     """The pre-confirm warning must mention next_run/last_run advance —
     i.e. user can't claim they were misled into thinking it's a true
     dry-run."""
-    job = populated_cron.list_jobs()[0]  # cron 0 9 * * *
+    job = populated_cron.list_jobs()[0]
     r = runner.invoke(cron_app, ["run", job.id, "--yes"])
     assert r.exit_code == 0
     assert "advance next_run_at" in r.stdout
@@ -356,17 +356,17 @@ def test_run_warns_when_active_claim_present(
         channel="cli",
         to="direct",
     )
-    # Hand-poke a fresh claim by another pid (simulate gateway running).
+
     jobs_path = fake_cron_dir / "jobs.json"
     data = json.loads(jobs_path.read_text())
     data["jobs"][0]["state"]["claimedByPid"] = 99999
-    data["jobs"][0]["state"]["claimedAtMs"] = int(_time() * 1000) - 5_000  # 5s ago
+    data["jobs"][0]["state"]["claimedAtMs"] = int(_time() * 1000) - 5_000
     jobs_path.write_text(json.dumps(data))
 
-    # Decline the state-mutation confirm so we just inspect the warning
-    # without actually firing.
+
+
     r = runner.invoke(cron_app, ["run", j.id], input="n\n")
-    # Confirm aborted (exit 1) but warning was printed before the prompt
+
     assert r.exit_code == 1
     assert "active claim" in r.stdout
     assert "Possible gateway activity" in r.stdout
@@ -384,20 +384,20 @@ def test_run_one_shot_at_with_delete_warns_about_removal(
     svc = CronService(fake_cron_dir / "jobs.json")
     j = svc.add_job(
         name="future thing",
-        schedule=_Sched(kind="at", at_ms=2_000_000_000_000),  # year 2033
+        schedule=_Sched(kind="at", at_ms=2_000_000_000_000),
         message="x",
         deliver=True,
         channel="cli",
         to="direct",
-        delete_after_run=True,  # this is the default for at-kind
+        delete_after_run=True,
     )
-    # Decline the confirm so we just inspect the warning text without
-    # actually deleting the job.
+
+
     r = runner.invoke(cron_app, ["run", j.id], input="n\n")
     assert r.exit_code == 1
     assert "REMOVE" in r.stdout
     assert "delete_after_run=True" in r.stdout
-    # And it actually didn't run (still in store)
+
     assert j.id in {x.id for x in svc.list_jobs(include_disabled=True)}
 
 
@@ -429,7 +429,7 @@ def test_run_aborts_on_no_confirm(runner, populated_cron):
     r = runner.invoke(cron_app, ["run", job.id], input="n\n")
     assert r.exit_code == 1
     assert "aborted" in r.stdout
-    # State unchanged
+
     refreshed = next(j for j in populated_cron.list_jobs(include_disabled=True) if j.id == job.id)
     assert refreshed.state.next_run_at_ms == before_next
     assert refreshed.state.last_run_at_ms is None
@@ -458,14 +458,14 @@ def test_run_unknown_id(runner, fake_cron_dir):
     assert "No job matching" in r.stdout
 
 
-# ── add ──────────────────────────────────────────────────────────────
+
 
 
 def test_add_requires_exactly_one_schedule(runner, fake_cron_dir, monkeypatch):
-    # Patch load_pico_config so it doesn't try to read the user's
-    # real config during the test
 
-    # No schedule → error
+
+
+
     r = runner.invoke(
         cron_app,
         [
@@ -483,7 +483,7 @@ def test_add_requires_exactly_one_schedule(runner, fake_cron_dir, monkeypatch):
     assert r.exit_code == 2
     assert "exactly one schedule flag" in r.stdout
 
-    # Two schedules → error
+
     r = runner.invoke(
         cron_app,
         [
@@ -524,7 +524,7 @@ def test_add_cron(runner, fake_cron_dir, monkeypatch):
     )
     assert r.exit_code == 0
     assert "Created job" in r.stdout
-    # Job in store
+
     svc = CronService(fake_cron_dir / "jobs.json")
     jobs = svc.list_jobs()
     assert len(jobs) == 1
@@ -622,7 +622,7 @@ def test_add_invalid_cron(runner, fake_cron_dir, monkeypatch):
     )
     assert r.exit_code == 2
     assert "Invalid cron expression" in r.stdout
-    # And no job was created (validation must fail before add_job)
+
     svc = CronService(fake_cron_dir / "jobs.json")
     assert svc.list_jobs() == []
 
@@ -675,7 +675,7 @@ def test_add_invalid_tz(runner, fake_cron_dir, monkeypatch):
     assert "Unknown timezone" in r.stdout
 
 
-# ── _parse_duration ─────────────────────────────────────────────────
+
 
 
 from pico.cli.cron_commands import _parse_duration
@@ -711,8 +711,8 @@ def test_parse_duration_accepts(value, expected):
         ("", "empty"),
         ("abc", "invalid"),
         ("5x", "invalid"),
-        # Length-variable units (weeks/months/years) belong under --cron.
-        # The regex doesn't match these suffixes, so they surface as "invalid".
+
+
         ("1w", "invalid"),
         ("1mo", "invalid"),
         ("1y", "invalid"),
@@ -724,7 +724,7 @@ def test_parse_duration_rejects(value, hint_substr):
     assert hint_substr in str(exc_info.value)
 
 
-# ── cron config sub-typer ─────────────────────────────────────────────
+
 
 
 @pytest.fixture
@@ -759,7 +759,7 @@ def test_config_get_single_flag(runner, isolated_config):
     r = runner.invoke(cron_app, ["config", "get", "--forward-channels"])
     assert r.exit_code == 0, r.output
     assert "*" in r.stdout
-    # Single-flag mode: no table header → no 'default_timezone' row leaks in
+
     assert "Asia/Shanghai" not in r.stdout
 
 
@@ -822,7 +822,7 @@ def test_config_set_default_timezone_invalid(runner, isolated_config):
     )
     assert r.exit_code == 1
     assert "Invalid value" in r.stdout or "unknown timezone" in r.stdout
-    # File must not contain a half-written value
+
     assert not isolated_config.exists() or "defaultTimezone" not in (
         isolated_config.read_text() if isolated_config.exists() else ""
     )
@@ -869,14 +869,14 @@ def test_config_set_multiple_flags_invalid_one_aborts_all(
             "config",
             "set",
             "--forward-channels",
-            "telegram",  # valid
+            "telegram",
             "--default-timezone",
-            "Mars/Olympus",  # invalid
+            "Mars/Olympus",
         ],
     )
     assert r.exit_code == 1
     assert "Invalid value" in r.stdout or "unknown timezone" in r.stdout
-    # No file written: pre-parse pass aborted before any update_cron_config call
+
     assert not isolated_config.exists()
 
 
@@ -894,7 +894,7 @@ def test_config_reset_with_yes(runner, isolated_config):
     assert r.exit_code == 0, r.output
     data = json.loads(isolated_config.read_text())
     assert "cron" not in data
-    assert data["agents"]["defaults"]["model"] == "kept"  # sibling preserved
+    assert data["agents"]["defaults"]["model"] == "kept"
 
 
 def test_config_reset_aborts_on_no(runner, isolated_config):

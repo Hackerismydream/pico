@@ -24,7 +24,7 @@ def _free_port() -> int:
 
 
 class _Handler(BaseHTTPRequestHandler):
-    def do_GET(self):  # noqa: N802 — BaseHTTPRequestHandler API
+    def do_GET(self):  # noqa: N802 — BaseHTTPRequestHandler 接口
         if self.path == "/api/health" and getattr(self.server, "health_ok", False):
             body = json.dumps({"ok": True, "port": 0, "stateDir": "/x"}).encode()
             self.send_response(200)
@@ -36,7 +36,7 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"Not found")
 
-    def log_message(self, *_a):  # silence test server logging
+    def log_message(self, *_a):
         pass
 
 
@@ -71,7 +71,7 @@ def test_viewer_health_true_for_our_viewer():
 
 def test_find_free_port_skips_occupied():
     port = _free_port()
-    srv = _serve(port, health_ok=False)  # occupy `port`
+    srv = _serve(port, health_ok=False)
     try:
         got = tc._find_free_port(port)
         assert got is not None

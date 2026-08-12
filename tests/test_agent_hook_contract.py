@@ -32,7 +32,7 @@ from pico.agent.hook import (
 )
 
 # ---------------------------------------------------------------------------
-# Fixtures
+
 # ---------------------------------------------------------------------------
 
 
@@ -43,7 +43,7 @@ def ctx():
 
 
 # ---------------------------------------------------------------------------
-# 1. Default no-op for every phase
+
 # ---------------------------------------------------------------------------
 
 
@@ -87,7 +87,7 @@ class TestAgentHookDefaults:
 
 
 # ---------------------------------------------------------------------------
-# 2. HookDecision dataclass
+
 # ---------------------------------------------------------------------------
 
 
@@ -117,7 +117,7 @@ class TestHookDecision:
 
 
 # ---------------------------------------------------------------------------
-# 3. AgentHookContext
+
 # ---------------------------------------------------------------------------
 
 
@@ -150,7 +150,7 @@ class TestAgentHookContext:
 
 
 # ---------------------------------------------------------------------------
-# 4. CompositeHook empty
+
 # ---------------------------------------------------------------------------
 
 
@@ -171,7 +171,7 @@ class TestCompositeHookEmpty:
 
 
 # ---------------------------------------------------------------------------
-# 5. CompositeHook single-member dispatch
+
 # ---------------------------------------------------------------------------
 
 
@@ -198,13 +198,13 @@ class TestCompositeHookSingleMember:
                 return HookDecision()
 
         composite = CompositeHook([OnlyBefore()])
-        # Calling a phase the hook didn't override
+
         await composite.after_iteration(ctx)
-        assert called == []  # before_iteration recorder never ran
+        assert called == []
 
 
 # ---------------------------------------------------------------------------
-# 6. Registration order preserved
+
 # ---------------------------------------------------------------------------
 
 
@@ -242,7 +242,7 @@ class TestCompositeHookRegistrationOrder:
 
 
 # ---------------------------------------------------------------------------
-# 7. Short-circuit halts the chain
+
 # ---------------------------------------------------------------------------
 
 
@@ -264,7 +264,7 @@ class TestCompositeHookShortCircuit:
         decision = await composite.before_user_inbound(ctx)
 
         assert decision.short_circuit_result == "STOP"
-        # Trailing must NOT be invoked once the chain short-circuits.
+
         assert called == ["halter"]
 
     async def test_short_circuit_only_in_named_phase(self, ctx):
@@ -293,8 +293,8 @@ class TestCompositeHookShortCircuit:
         composite = CompositeHook([Halter(), Trailing()])
 
         await composite.before_user_inbound(ctx)
-        # before_user_inbound: halter short-circuits, trailing skipped.
-        # before_iteration: both run.
+
+
         await composite.before_iteration(ctx)
 
         assert called == [
@@ -305,7 +305,7 @@ class TestCompositeHookShortCircuit:
 
 
 # ---------------------------------------------------------------------------
-# 8. after_send content chains through
+
 # ---------------------------------------------------------------------------
 
 
@@ -325,8 +325,8 @@ class TestCompositeHookContentChain:
         decision = await composite.after_send(ctx)
 
         assert decision.modified_content == "original A B"
-        # ctx is left updated so any subsequent inspection sees the
-        # fully-chained content.
+
+
         assert ctx.outbound_content == "original A B"
 
     async def test_after_send_no_modification_means_no_change(self, ctx):
@@ -334,7 +334,7 @@ class TestCompositeHookContentChain:
 
         class Observer(AgentHook):
             async def after_send(self, ctx):
-                # Observer-only, no modification
+
                 return HookDecision()
 
         composite = CompositeHook([Observer(), Observer()])
@@ -375,15 +375,15 @@ class TestCompositeHookContentChain:
         composite = CompositeHook([WouldModify()])
         decision = await composite.after_iteration(ctx)
 
-        # The dispatcher for non-after_send phases does not propagate
-        # modified_content into ctx, and the final decision exposes the
-        # raw last-modified (which is None because nothing was chained).
+
+
+
         assert decision.modified_content is None
-        assert ctx.outbound_content == "starting"  # unchanged
+        assert ctx.outbound_content == "starting"
 
 
 # ---------------------------------------------------------------------------
-# Exception isolation
+
 # ---------------------------------------------------------------------------
 
 
@@ -404,7 +404,7 @@ class TestCompositeHookExceptionIsolation:
         composite = CompositeHook([Bad(), Good()])
         decision = await composite.before_iteration(ctx)
 
-        # Both ran; Bad's exception was swallowed.
+
         assert called == ["bad", "good"]
         assert decision.short_circuit_result is None
 
@@ -431,7 +431,7 @@ class TestCompositeHookExceptionIsolation:
 
 
 # ---------------------------------------------------------------------------
-# Late registration via append/extend
+
 # ---------------------------------------------------------------------------
 
 
@@ -475,7 +475,7 @@ class TestCompositeHookRegistration:
 
 
 # ---------------------------------------------------------------------------
-# Smoke test: end-to-end mixed chain
+
 # ---------------------------------------------------------------------------
 
 
@@ -519,20 +519,20 @@ class TestCompositeHookEndToEndScenario:
 
         composite = CompositeHook([CommandHook(), ObserverHook(), SuffixHook()])
 
-        # Path 1: /pick reply → short-circuit, observer skipped.
+
         ctx.turn_request = _req("/pick 2")
         d1 = await composite.before_user_inbound(ctx)
         assert d1.short_circuit_result == "picked option"
         assert log == ["command.check", "command.short_circuit"]
 
-        # Path 2: normal reply → consumer doesn't short-circuit, observer runs.
+
         log.clear()
         ctx.turn_request = _req("hello")
         d2 = await composite.before_user_inbound(ctx)
         assert d2.short_circuit_result is None
         assert log == ["command.check", "observer.observe"]
 
-        # after_send: suffix hook appends.
+
         log.clear()
         ctx.outbound_content = "hi user"
         d3 = await composite.after_send(ctx)

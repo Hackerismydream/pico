@@ -9,22 +9,16 @@ const MODES = ['hidden', 'collapsed', 'expanded'] as const
 
 export const SECTION_NAMES = ['thinking', 'tools', 'subagents', 'activity'] as const
 
-// Out-of-the-box per-section defaults — applied when the user hasn't pinned
-// an explicit override and layered ABOVE the global details_mode:
+// 开箱即用的逐区段默认值：用户未固定显式覆盖时应用，层级高于全局 details_mode：
 //
-//   - thinking / tools: expanded — stream open so the turn reads like a
-//     live transcript (reasoning + tool calls side by side) instead of a
-//     wall of chevrons the user has to click every turn.
-//   - activity: hidden — ambient meta (gateway hints, terminal-parity
-//     status pings and background notifications) is noise for typical use. Tool
-//     failures still render inline on the failing tool row, and ambient
-//     errors/warnings surface via the floating-alert backstop when every
-//     panel resolves to hidden.
-//   - subagents: not set — falls through to the global details_mode so
-//     Spawn trees stay under a chevron until a delegation actually happens.
+//   - thinking / tools：展开——保持流打开，使轮次像实时转录（推理与工具调用并列），而不是每轮
+//     都要点击的一墙箭头。
+//   - activity：隐藏——环境元数据（网关提示、终端一致性状态 ping 和后台通知）对典型使用是噪声。
+//     工具失败仍在失败工具行内渲染；所有面板均隐藏时，环境错误/警告通过浮动警报兜底显示。
+//   - subagents：未设置——回退到全局 details_mode，使 spawn 树在真正委派发生前保持在箭头下。
 //
-// Opt out of any of these with `display.sections.<name>` in config.yaml
-// or at runtime via `/details <name> collapsed|hidden`.
+// 可在 config.yaml 中用 `display.sections.<name>`，或运行时用
+// `/details <name> collapsed|hidden` 退出任一默认值。
 const SECTION_DEFAULTS: SectionVisibility = {
   thinking: 'expanded',
   tools: 'expanded',
@@ -50,9 +44,8 @@ export const isSectionName = (v: unknown): v is SectionName =>
 export const resolveDetailsMode = (d?: { details_mode?: unknown; thinking_mode?: unknown } | null): DetailsMode =>
   parseDetailsMode(d?.details_mode) ?? THINKING_FALLBACK[norm(d?.thinking_mode)] ?? 'collapsed'
 
-// Build SectionVisibility from a free-form blob.  Unknown section names and
-// invalid modes are dropped silently — partial overrides are intentional, so
-// missing keys fall through to SECTION_DEFAULTS / global at lookup time.
+// 从自由格式数据构建 SectionVisibility。未知区段名和无效模式静默丢弃；部分覆盖是有意设计，
+// 缺失键在查找时回退到 SECTION_DEFAULTS 或全局值。
 export const resolveSections = (raw: unknown): SectionVisibility =>
   raw && typeof raw === 'object' && !Array.isArray(raw)
     ? (Object.fromEntries(
@@ -62,15 +55,11 @@ export const resolveSections = (raw: unknown): SectionVisibility =>
       ) as SectionVisibility)
     : {}
 
-// Effective mode for one section: explicit override → global command mode →
-// built-in live-stream defaults → global config mode.
+// 单个区段的有效模式：显式覆盖 → 全局命令模式 → 内置实时流默认值 → 全局配置模式。
 //
-// The `commandOverride` flag is set for in-session `/details <mode>` changes.
-// That command should immediately apply to every section, including sections
-// with built-in defaults like thinking/tools=expanded and activity=hidden. On
-// startup/config sync we keep those defaults layered above the persisted global
-// config so the TUI still opens live reasoning/tools by default unless the user
-// pins explicit per-section overrides.
+// 会话内 `/details <mode>` 变更会设置 `commandOverride`。该命令应立即应用到所有区段，包括
+// thinking/tools=expanded、activity=hidden 等内置默认值区段。启动/配置同步时，这些默认值仍
+// 位于持久化全局配置之上，使 TUI 默认打开实时推理/工具，除非用户固定显式逐区段覆盖。
 export const sectionMode = (
   name: SectionName,
   global: DetailsMode,

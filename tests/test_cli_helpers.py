@@ -79,7 +79,7 @@ def test_send_probe_timeout_raises(monkeypatch: pytest.MonkeyPatch, stub_load_co
 
 
 # ---------------------------------------------------------------------------
-# make_provider — custom routes through LiteLLM (so it gets streaming)
+
 # ---------------------------------------------------------------------------
 
 
@@ -141,7 +141,7 @@ def test_make_provider_routes_custom_openai_compatible_endpoint() -> None:
 
 
 # ---------------------------------------------------------------------------
-# check_provider_credentials — fail-fast without importing litellm
+
 # ---------------------------------------------------------------------------
 
 
@@ -174,7 +174,7 @@ def test_check_provider_credentials_exits_when_no_key(tmp_path: Path) -> None:
 def test_check_provider_credentials_passes_with_key(tmp_path: Path) -> None:
     from pico.config.loader import load_config
 
-    _helpers.check_provider_credentials(load_config(_write_config(tmp_path, api_key="sk-x")))  # no raise
+    _helpers.check_provider_credentials(load_config(_write_config(tmp_path, api_key="sk-x")))
 
 
 def test_make_lazy_provider_returns_lazy_without_building(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -183,7 +183,7 @@ def test_make_lazy_provider_returns_lazy_without_building(monkeypatch: pytest.Mo
     from pico.config.loader import load_config
     from pico.providers.lazy import LazyProvider
 
-    # Stub the real build so prewarm never imports litellm.
+
     monkeypatch.setattr(_helpers, "make_provider", lambda _c: SimpleNamespace(name="real"))
 
     provider = _helpers.make_lazy_provider(load_config(_write_config(tmp_path, api_key="sk-x")))

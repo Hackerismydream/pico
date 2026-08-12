@@ -103,7 +103,7 @@ class TestMemory:
     async def test_no_backend_empty_text(self, tmp_path: Path) -> None:
         b = MemorySegmentBuilder(ContextBuilder(workspace=tmp_path).memory, backend=None)
         seg = await b.build(_ctx(tmp_path))
-        # Empty workspace + no recall → no memory block.
+
         assert seg.text == ""
         assert seg.meta["memory_hits"] == 0
 
@@ -143,7 +143,7 @@ class TestActiveSkills:
     async def test_none_on_empty_workspace(self, tmp_path: Path) -> None:
         b = ActiveSkillsSegmentBuilder(ContextBuilder(workspace=tmp_path).skills)
         seg = await b.build(_ctx(tmp_path))
-        # Built-in always-skills may exist; assert the builder either skips
-        # or emits a well-formed # Active Skills block (never malformed).
+
+
         if seg is not None:
             assert seg.text.startswith("# Active Skills")

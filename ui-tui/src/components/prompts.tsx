@@ -96,9 +96,8 @@ export function ClarifyPrompt({ cols = 80, onAnswer, onCancel, req, t }: Clarify
 export function ConfirmPrompt({ onCancel, onConfirm, req, t }: ConfirmPromptProps) {
   const [sel, setSel] = useState(0)
 
-  // The 30s countdown only drives the RPC path (a server-side broker waiting
-  // on a response).  In-process confirms have no remote deadline, so they
-  // start suspended (remaining = null) and never auto-cancel.
+  // 30 秒倒计时只驱动 RPC 路径，即服务端代理等待响应的情况。进程内确认没有
+  // 远端截止时间，因此以暂停状态启动（remaining = null）且不会自动取消。
   const isRpc = Boolean(req.requestId)
   const [remaining, setRemaining] = useState<null | number>(isRpc ? CONFIRM_COUNTDOWN_SECONDS : null)
   const intervalRef = useRef<null | ReturnType<typeof setInterval>>(null)
@@ -144,7 +143,7 @@ export function ConfirmPrompt({ onCancel, onConfirm, req, t }: ConfirmPromptProp
         intervalRef.current = null
       }
     }
-    // onCancel is stable for the lifetime of a given confirm overlay.
+    // onCancel 在给定确认浮层的整个生命周期内保持稳定。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRpc])
 
@@ -182,7 +181,7 @@ export function ConfirmPrompt({ onCancel, onConfirm, req, t }: ConfirmPromptProp
       return answer(sel === 0 ? onCancel : onConfirm)
     }
 
-    // Any other key suspends the countdown without answering.
+    // 其他任意按键会暂停倒计时，但不作答。
     suspend()
   })
 

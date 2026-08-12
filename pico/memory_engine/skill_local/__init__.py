@@ -23,10 +23,10 @@ from pico.memory_engine.skill_local.registry import SkillRegistry
 from pico.memory_engine.skill_local.types import ScoredSkill, SkillMeta
 
 __all__ = [
-    # Data layer
+    # 数据层
     "SkillRegistry",
     "LocalPool",
-    # Shared types
+    # 共享类型
     "SkillMeta",
     "ScoredSkill",
 ]

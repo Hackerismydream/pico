@@ -57,7 +57,7 @@ class _Base(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Feature 1 — Context Management (Curator)
+# 功能 1：上下文管理（Curator）
 # ---------------------------------------------------------------------------
 
 
@@ -74,7 +74,7 @@ class ContextConfig(_Base):
     loads — the value is ignored by ``build_context_engine``.
     """
 
-    # Curator history-lane knobs.
+    # Curator 历史路径参数。
     fast_path_threshold: float = 0.60
     """Curator Fast Path cutoff. Below this % of budget → zero-LLM pass-through."""
 
@@ -97,7 +97,7 @@ class ContextConfig(_Base):
     """Relative path under workspace for lossless message archives."""
 
 
-# Feature 2 — Call Efficiency
+# 功能 2：调用效率
 # ---------------------------------------------------------------------------
 
 
@@ -170,16 +170,15 @@ TokenWiseConfig = CallEfficiencyConfig
 
 
 # ---------------------------------------------------------------------------
-# Feature 3 — SkillForge
+# 功能 3：SkillForge
 # ---------------------------------------------------------------------------
 #
-# SkillForge owns Local Skill retrieval and execution.
+# SkillForge 负责 Local Skill 的检索与执行。
 #
-# The config is intentionally kept flat. Component-level knobs
-# (embedding model, BM25 parameters, etc.) live in the
-# scaffold dataclasses inside ``skill_forge/`` and stay at their
-# defaults for now. Owners will promote individual fields here when
-# they need user-facing knobs.
+# 配置有意保持扁平。组件级参数
+    # （嵌入模型、BM25 参数等）位于
+# 暂时留在 ``skill_forge/`` 内的脚手架 dataclass 中并使用默认值；
+# 需要向用户开放时，再由负责人把相应字段提升到这里。
 
 
 class LocalDirConfig(_Base):
@@ -208,7 +207,7 @@ class SkillForgeConfig(_Base):
     configurations but do not participate in the active Runtime path.
     """
 
-    # --- Master switch + location ---
+    # --- 总开关与位置 ---
     enabled: bool = True
     """Compatibility switch used while discovering configured Local Skill directories."""
 
@@ -231,7 +230,7 @@ class SkillForgeConfig(_Base):
     Paths deeper than this below a layer root are silently skipped.
     Prevents unbounded filesystem walks on huge mirrors."""
 
-    # --- Retrieval / reranker knobs ---
+    # --- 检索/重排参数 ---
     embedding_model: str = "default"
     """Dense embedding model identifier. MUST match the embedding model
     that produced ``mass_library_db``'s stored vectors, otherwise dense
@@ -274,7 +273,7 @@ class SkillForgeConfig(_Base):
     top_k: int = 5
     """Number of skills returned by ``select()``."""
 
-    # --- Dual-pool fusion weights (R6) ---
+    # --- 双池融合权重（R6）---
     local_pool_top_k: int = 10
     """Candidate count from the local BM25 pool per query."""
 
@@ -289,7 +288,7 @@ class SkillForgeConfig(_Base):
     """When reranker is enabled, mass pool fetches this many candidates
     for rescoring, then truncates to ``mass_pool_top_k`` before RRF."""
 
-    # --- Legacy query rewrite knobs ---
+    # --- 旧版查询改写参数 ---
     rewrite_enabled: bool = False
     """Legacy evaluation knob retained for config compatibility.
 
@@ -306,7 +305,7 @@ class SkillForgeConfig(_Base):
     mass_library_db: str | None = None
     """Deprecated compatibility field ignored by Local Skill retrieval."""
 
-    # --- Skill injection mode (full_body vs summary) ---
+    # --- 技能注入模式（full_body 或 summary）---
     injection_mode: str = "full_body"
     """How selected skills are surfaced to the agent.
 
@@ -329,7 +328,7 @@ class SkillForgeConfig(_Base):
     by local_dirs list order + alphabetical, with a WARN listing dropped
     skill names."""
 
-    # --- Legacy LLM gate selector ---
+    # --- 旧版 LLM 门控选择器 ---
     llm_gate_enabled: bool = False
     """Legacy evaluation knob retained for config compatibility.
 
@@ -363,7 +362,7 @@ class SkillForgeConfig(_Base):
     stats_tracking: bool = True
     """Record per-skill invocation stats. Cheap, enables future features."""
 
-    # --- Validators ---
+    # --- 校验器 ---
 
     @model_validator(mode="before")
     @classmethod
@@ -391,7 +390,7 @@ class SkillForgeConfig(_Base):
 
 
 # ---------------------------------------------------------------------------
-# CFG-1 — Plugin / Memory backend / SkillForgeRouter
+# CFG-1：插件 / 记忆后端 / SkillForgeRouter
 # ---------------------------------------------------------------------------
 
 
@@ -465,13 +464,13 @@ class SkillForgeRouterConfig(_Base):
     """Final top-K returned from ``SkillForgeRouter.select``."""
 
 
-# Resolve the forward-ref ``SkillForgeConfig.router: "SkillForgeRouterConfig"``
-# now that ``SkillForgeRouterConfig`` exists in module scope.
+# ``SkillForgeRouterConfig`` 已存在于模块作用域，此处解析前向引用
+        # 字段声明：``SkillForgeConfig.router: "SkillForgeRouterConfig"``。
 SkillForgeConfig.model_rebuild()
 
 
 # ---------------------------------------------------------------------------
-# Feature 4 — Runtime Discipline
+# 功能 4：Runtime 约束
 # ---------------------------------------------------------------------------
 
 
@@ -539,29 +538,29 @@ class TracingConfig(_Base):
 
 
 # ---------------------------------------------------------------------------
-# Root
+# 根配置
 # ---------------------------------------------------------------------------
 
 
 class PicoConfig(_Base):
     """Pico root config. Composes the base Config with feature extensions."""
 
-    # Feature blocks
+    # 功能配置块
     context: ContextConfig = Field(default_factory=ContextConfig)
     call_efficiency: CallEfficiencyConfig = Field(default_factory=CallEfficiencyConfig)
-    # SkillForge subsystem — its RRF routing policy nests at
-    # ``skill_forge.router`` (config key ``skillForge.router``), no longer a
-    # separate top-level ``skillRouter`` block.
+    # SkillForge 子系统：其 RRF 路由策略嵌套在
+        # ``skill_forge.router``（配置键 ``skillForge.router``），不再是
+    # 而不是独立的顶层 ``skillRouter`` 块。
     skill_forge: SkillForgeConfig = Field(default_factory=SkillForgeConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     tracing: TracingConfig = Field(default_factory=TracingConfig)
 
-    # CFG-1: plugin system + memory backend.
+    # CFG-1：插件系统与记忆后端。
     plugins: PluginsConfig = Field(default_factory=PluginsConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
 
-    # The full base config (agents, channels, providers, tools, routing).
-    # Kept as a nested field so we can round-trip YAML with the base loader.
+    # 完整基础配置（agents、channels、providers、tools、routing）。
+    # 保持为嵌套字段，以便与基础 loader 往返转换 YAML。
     base: BaseConfig = Field(default_factory=BaseConfig)
 
     @model_validator(mode="before")
@@ -607,11 +606,10 @@ def load_pico_config(config_path: Path | None = None) -> PicoConfig:
                 data = json.load(f) or {}
         except (json.JSONDecodeError, OSError):
             data = {}
-        # Apply the same migrations the base loader uses before extracting
-        # extension blocks.
+        # 提取扩展块前，执行与基础 loader 相同的迁移。
         data = _migrate_config(data, pop_extension_keys=False)
-        # Warn once when the user still has the ignored legacy
-        # ``skill_forge.mass_library_db`` field.
+        # 用户仍保留已忽略的旧配置时只警告一次。
+        # ``skill_forge.mass_library_db`` 字段。
         _warn_mass_library_db_deprecated(data)
         for key in EXTENSION_KEYS:
             if key in data and data[key] is not None:

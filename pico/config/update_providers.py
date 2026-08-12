@@ -72,10 +72,10 @@ def _provider_spec(name: str) -> ProviderSpec:
 _SECRET_EXACT = {"token", "secret", "password", "api_key"}
 _SECRET_SUFFIXES = ("_token", "_secret", "_key", "_password")
 
-# Names that should be redacted but neither match _SECRET_EXACT nor end in a
-# secret suffix. Today this only covers Gemini's ``api_key_list`` (suffix is
-# ``_list``, not ``_key``). Delete entries here as schema.py grows the
-# ``json_schema_extra={"secret": True}`` marker on the underlying fields.
+# 需要脱敏，但既不匹配 _SECRET_EXACT、也不以 secret 后缀结尾的名称。
+# 目前仅涵盖 Gemini 的 ``api_key_list``（其后缀是
+    # ``_list`` 而非 ``_key``）。随着 schema.py 在底层字段上增加
+    # ``json_schema_extra={"secret": True}`` 标记，应删除此处对应条目。
 _KNOWN_SECRET_FIELDS: set[str] = {"api_key_list"}
 
 
@@ -149,7 +149,7 @@ def _oauth_token_path(provider_name: str) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Public API: reflection
+# 公共 API：反射
 # ---------------------------------------------------------------------------
 
 
@@ -165,7 +165,7 @@ def provider_field_specs(name: str) -> dict[str, dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Public API: read
+# 公共 API：读取
 # ---------------------------------------------------------------------------
 
 
@@ -265,7 +265,7 @@ def get_provider_config(
 
 
 # ---------------------------------------------------------------------------
-# Public API: write
+# 公共 API：写入
 # ---------------------------------------------------------------------------
 
 
@@ -436,11 +436,11 @@ def remove_provider_model(
 
 
 # ---------------------------------------------------------------------------
-# Public API: credential health check
+# 公共 API：凭据健康检查
 # ---------------------------------------------------------------------------
 
 
-# Maps HTTP status → user-facing status keyword used by the CLI hint table.
+# 将 HTTP 状态映射为 CLI 提示表使用的用户可见状态关键字。
 _HTTP_STATUS_MAP: dict[int, str] = {
     200: "valid",
     401: "invalid_key",

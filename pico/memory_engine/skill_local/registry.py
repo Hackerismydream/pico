@@ -43,12 +43,9 @@ log = logging.getLogger(__name__)
 
 from pico.memory_engine.skill_local.types import SkillMeta
 
-# Default builtin skills directory — mirrors the path used by the legacy
-# ``SkillsLoader`` so that replacing it is a drop-in change.
+# 默认内置 Skill 目录与旧版 ``SkillsLoader`` 使用的路径一致，使替换可直接完成。
 #
-# Resolves to ``pico/memory_engine/skills/`` — the built-in markdown
-# library lives under the memory_engine package alongside the skill code
-# itself.
+# 解析为 ``pico/memory_engine/skills/``；内置 Markdown 库与 Skill 代码一起位于 memory_engine 包内。
 _DEFAULT_BUILTIN_SKILLS_DIR = Path(__file__).parent.parent / "skills"
 
 
@@ -89,28 +86,21 @@ class SkillRegistry:
             self._extra_dirs.extend(extra_dirs)
         self.builtin_skills = builtin_skills_dir or _DEFAULT_BUILTIN_SKILLS_DIR
         self._metas_cache: list[SkillMeta] | None = None
-        # Primary key: (source, name). One entry per physical skill, mirror
-        # entries with colliding names across sources are kept distinct here.
+        # 主键为 (source, name)。每个物理 Skill 占一项，跨来源同名的镜像项在此保持分离。
         self._by_full_key: dict[tuple[str, str], SkillMeta] | None = None
-        # Secondary index: name → first-priority meta (workspace > external >
-        # builtin > other sources alphabetical). For legacy callers that
-        # don't carry a source.
+        # 次级索引：名称 → 最高优先级元数据（工作区 > 外部 > 内置 > 其他来源字母序），
+        # 供不携带来源的旧调用方使用。
         self._by_name: dict[str, SkillMeta] | None = None
-        # Sources that need a partial rescan on the next ``list_all``.
-        # Empty set + ``_metas_cache`` not None ⇒ cache is fresh.
-        # Populated by :meth:`invalidate_source` so that small mutations
-        # do not drop the whole cache.
+        # 下次 ``list_all`` 需部分重新扫描的数据源。空集合且 ``_metas_cache`` 不为 None
+        # 表示缓存已是最新。由 :meth:`invalidate_source` 填充，使小范围变更不会丢弃整个缓存。
         self._dirty_sources: set[str] = set()
-        # Serializes cache reads/writes against the background
-        # SkillFileWatcher thread. Without it, a watcher-driven
-        # ``invalidate_source`` landing mid-rebuild would set a flag
-        # that ``list_all``'s tail then clears, losing the update.
-        # RLock so a future caller can compose ``invalidate_*`` inside
-        # a locked section without deadlocking.
+        # 将缓存读写与后台 SkillFileWatcher 线程串行化。否则在重建中途由监视器触发的
+        # ``invalidate_source`` 会设置一个标志，随后被 ``list_all`` 尾部清除，丢失本次更新。
+        # 使用 RLock，使未来调用方可在持锁区域内组合 ``invalidate_*`` 而不死锁。
         self._lock = threading.RLock()
 
     # ------------------------------------------------------------------
-    # Public API
+    # 公开 API
     # ------------------------------------------------------------------
 
     def invalidate_cache(self) -> None:
@@ -192,7 +182,7 @@ class SkillRegistry:
                 continue
             parts = rel.parts
             if not parts:
-                return None  # SKILL.md directly at root — iterator skips it
+                return None  # 迭代器会跳过直接位于根目录的 SKILL.md
             return default if len(parts) == 1 else parts[0]
         return None
 
@@ -225,25 +215,23 @@ class SkillRegistry:
         if self._metas_cache is not None and not self._dirty_sources:
             return self._metas_cache
 
-        # Carry over still-valid cached entries (i.e. sources NOT in
-        # ``_dirty_sources``). Full rebuild path treats every source as
-        # dirty, which ``filter_in`` below rejects → starts empty.
+        # 保留仍有效的缓存项，即来源不在 ``_dirty_sources`` 中的项。完整重建路径
+        # 将每个来源视为脏数据，会被下方 ``filter_in`` 拒绝，因此从空集合开始。
         if self._metas_cache is not None:
             kept = [m for m in self._metas_cache if m.source not in self._dirty_sources]
             wanted_dirty = self._dirty_sources
         else:
             kept = []
-            wanted_dirty = None  # full scan: keep every source we find
+            wanted_dirty = None  # 完整扫描时保留发现的每个来源
 
         metas: list[SkillMeta] = list(kept)
         full_key: dict[tuple[str, str], SkillMeta] = {(m.source, m.name): m for m in kept}
-        # Physical-directory dedupe runs on the directory name; ``full_key`` is keyed
-        # by (source, display name) so by-name lookups still work when
-        # display name diverges from the directory name.
+        # 物理目录去重按目录名执行；``full_key`` 以（来源，显示名称）为键，使显示名称
+        # 与目录名不同时，按名查找仍可用。
         seen_dirs: set[tuple[str, str]] = {(m.source, m.path.parent.name) for m in kept}
 
-        # Walk layers: workspace → extra_dirs (list order) → builtin.
-        # R1: later extra_dirs override earlier on name collision.
+        # 遍历分层：工作区 → 按列表顺序的 extra_dirs → 内置。
+        # R1：extra_dirs 中后出现的项在名称冲突时覆盖先出现的项。
         layers: list[tuple[Path, str, bool]] = [
             (self.workspace_skills, "workspace", True),
         ]
@@ -275,15 +263,12 @@ class SkillRegistry:
                 full_key.setdefault((source, meta.name), meta)
                 metas.append(meta)
 
-        # Build _by_name: later-mounted layers override earlier (R1).
-        # Iterate in layer order (workspace → extra → builtin); within
-        # metas the iteration already follows this order. Last-write-wins
-        # among extra_dirs, but workspace always wins (comes first in
-        # layers so it's overwritten by extra? No — workspace is the
-        # user's own skills and must have highest priority).
+        # 构建 _by_name：后挂载的分层覆盖先挂载的分层（R1）。metas 已按工作区 → 外部 → 内置
+        # 的分层顺序迭代。extra_dirs 中最后写入者获胜，但工作区必须始终获胜，
+        # 因为它是用户自己的 Skill，应具有最高优先级。
         #
-        # Strategy: iterate low-to-high priority so last write wins.
-        # Priority: builtin < extra_dirs[0] < ... < extra_dirs[-1] < workspace.
+        # 策略：按优先级从低到高迭代，使最后写入获胜。
+        # 优先级：内置 < extra_dirs[0] < ... < extra_dirs[-1] < 工作区。
         n_extra = len(self._extra_dirs)
         prio: dict[str, int] = {"builtin": 0}
         for i, (_, label, _) in enumerate(self._extra_dirs):
@@ -300,9 +285,9 @@ class SkillRegistry:
                     prev.source,
                     m.source,
                 )
-            by_name[m.name] = m  # last write wins
+            by_name[m.name] = m  # 最后写入获胜
 
-        # R2: startup log
+        # R2：启动日志
         source_counts: dict[str, int] = {}
         for m in metas:
             source_counts[m.source] = source_counts.get(m.source, 0) + 1
@@ -327,7 +312,7 @@ class SkillRegistry:
         compound-key lookup.
         """
         if self._by_name is None:
-            self.list_all()  # populates both indices
+            self.list_all()  # 同时填充两个索引
         if source is not None:
             return (self._by_full_key or {}).get((source, name))
         return self._by_name.get(name) if self._by_name else None
@@ -377,7 +362,7 @@ class SkillRegistry:
         return _missing_requirements(meta.requires)
 
     # ------------------------------------------------------------------
-    # Internal helpers
+    # 内部辅助函数
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -448,10 +433,9 @@ class SkillRegistry:
             always = False
         content = _strip_frontmatter(body)
 
-        # ``stable_key`` is the directory name.
+        # ``stable_key`` 使用目录名。
         stable_key = skill_dir.name
-        # Display name prefers frontmatter ``name`` and falls back to the
-        # directory name.
+        # 显示名称优先使用前置元数据的 ``name``，否则回退到目录名。
         display_name = (frontmatter.get("name") or "").strip() or skill_dir.name
         description = frontmatter.get("description", "") or display_name
 
@@ -469,7 +453,7 @@ class SkillRegistry:
 
 
 # ----------------------------------------------------------------------
-# Module-level helpers (pure functions, testable in isolation)
+# 模块级辅助函数（纯函数，可独立测试）
 # ----------------------------------------------------------------------
 
 

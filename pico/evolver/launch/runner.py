@@ -260,10 +260,8 @@ def _unseal_and_report(
             file=sys.stderr,
         )
         return False
-    # Stamp before writing the report: the stamp is what stops a resume, so
-    # no crash window may leave test numbers on disk in a still-resumable
-    # run. A crash after the stamp leaves a final run with retention.json
-    # missing — `finalize` detects that and recomputes.
+    # 写报告前先盖章：该标记负责阻止恢复，因此不能存在崩溃窗口，让测试数字留在仍可恢复的
+    # 运行目录中。盖章后崩溃会留下缺少 retention.json 的最终运行；`finalize` 会检测并重算。
     if not meta.unsealed_at:
         meta.stamp_unsealed(reason=reason)
     atomic_write_json(Path(spec.work_dir) / "retention.json", report)
@@ -299,9 +297,8 @@ def cmd_run(config_path: str, *, smoke: bool = False, force: bool = False) -> in
 def _cmd_run(spec: RunSpec, *, force: bool) -> int:
     _note_defaulted_base(spec)
 
-    # Build (validate) the bundle before creating run_meta: a first launch
-    # that dies on a config mistake must not leave a fingerprint behind, or
-    # the corrected config would be refused as drift on the next attempt.
+    # 创建 run_meta 前构建并校验 bundle：首次启动若因配置错误失败，不得留下指纹，否则下次
+    # 尝试时修正后的配置会被误判为漂移并拒绝。
     bundle = _build_bundle(spec, with_models=True, require_sealed=True)
 
     spec.work_dir.mkdir(parents=True, exist_ok=True)
@@ -315,9 +312,8 @@ def _cmd_run(spec: RunSpec, *, force: bool) -> int:
         _say(f"phase 1/3 cold start: {done}/{total} trials present, running the rest …")
     else:
         _say(f"phase 1/3 cold start: {total} trials present, verifying the infra-rerun ladder …")
-    # Always invoked: run_cold_start is idempotent (fills missing trials only)
-    # and owns the infra-rerun ladder, which may have salvage work to do even
-    # when every base trial file exists.
+    # 始终调用：run_cold_start 具备幂等性，只填补缺失试验；它还负责基础设施重跑阶梯，即使
+    # 所有基础试验文件都存在，也可能仍有抢救工作要做。
     try:
         bundle.run_cold_start()
     except KeyboardInterrupt:
@@ -360,8 +356,7 @@ def _cmd_run(spec: RunSpec, *, force: bool) -> int:
         return 130
     except RuntimeError as exc:
         _refresh_summary(spec)
-        # Environment-shaped failures (Gate0 precheck, dead endpoint) are
-        # actionable messages, not tracebacks; completed work is durable.
+        # 环境类失败（门控 0 预检、端点失效）应显示可执行消息而非回溯；已完成工作保持持久。
         print(f"run stopped: {exc}", file=sys.stderr)
         print("fix the environment and re-run the same command to resume", file=sys.stderr)
         return 1
@@ -510,7 +505,7 @@ def _cmd_finalize(spec: RunSpec, *, yes: bool) -> int:
     bundle = _build_bundle(spec, with_models=False)
     if recompute:
         if bundle.unseal is None:
-            # Finalized without a sealed test: there is no report to rebuild.
+        # 未执行密封测试便已最终化，因此没有报告可重建。
             _say(f"already finalized at {meta.unsealed_at} ({meta.finalize_reason}); no sealed test was configured")
             return 0
         _say(
@@ -536,10 +531,9 @@ def _cmd_finalize(spec: RunSpec, *, yes: bool) -> int:
         )
         return 2
 
-    # Unsealing scores nodes on test: the orchestrator (hence models for its
-    # construction path) is not needed, but the bench's eval is — the bundle
-    # closures carry it. vanilla_train comes from the built orchestrator, so
-    # build it without LLM roles (they are only called during rounds).
+    # 解封会在测试集上给节点评分：不需要编排器及其构建路径所需模型，但需要基准评测，bundle
+    # 闭包已携带它。vanilla_train 来自构建后的编排器，因此在无 LLM 角色的情况下构建；
+    # 这些角色只在轮次中调用。
     _claim_ephemeral_root(spec, meta)
     orch = bundle.build_orchestrator()
     ok = _unseal_and_report(spec, bundle, orch, records, meta, reason="user_finalized")

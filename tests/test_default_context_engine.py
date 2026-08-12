@@ -34,7 +34,7 @@ from pico.memory_engine import Memory, TokenBudget
 from pico.memory_engine.skill_forge import RouterHit, SkillForgeRouter
 
 # ---------------------------------------------------------------------------
-# Test doubles
+
 # ---------------------------------------------------------------------------
 
 
@@ -108,7 +108,7 @@ class _StubProvider:
         return "stub"
 
     async def chat_with_retry(self, *args, **kwargs):
-        # Only reached on the slow path; these tests stay on fast path.
+
         raise NotImplementedError
 
 
@@ -191,7 +191,7 @@ def _engine(
 
 
 # ---------------------------------------------------------------------------
-# Identity / lifecycle
+
 # ---------------------------------------------------------------------------
 
 
@@ -201,15 +201,15 @@ class TestEngineIdentity:
         assert eng.name == "context_assembler"
 
     def test_owns_compaction_is_true(self, builder: ContextBuilder) -> None:
-        # The unified engine owns its own archival compaction (Curator
-        # lane), so AgentLoop hands it the full append-only log and skips
-        # the host MemoryConsolidator.
+
+
+
         eng = _engine(builder, router=SkillForgeRouter([]), backend=_StubBackend())
         assert eng.owns_compaction is True
 
 
 # ---------------------------------------------------------------------------
-# Two-track concurrency (recall + router.select)
+
 # ---------------------------------------------------------------------------
 
 
@@ -233,7 +233,7 @@ class TestTwoTrackConcurrency:
             turn=_turn(),
         )
         elapsed = time.monotonic() - t0
-        # Serial would be ~0.20 s. Concurrent ~0.10 s. Loose bound 0.15.
+
         assert elapsed < 0.15
 
     async def test_track_ids_passed_to_recall(
@@ -271,14 +271,14 @@ class TestTwoTrackConcurrency:
             memory_top_k=7,
         )
         await eng.assemble("s", [], _budget(), turn=_turn("q"))
-        # SkillForgeRouter applies an over-fetch factor; the source sees k*2
-        # by default.
-        assert source.calls[0][1] == 6  # 3 × default over_fetch_factor 2
+
+
+        assert source.calls[0][1] == 6
         assert backend.recall_calls[0]["top_k"] == 7
 
 
 # ---------------------------------------------------------------------------
-# AssembledContext metadata
+
 # ---------------------------------------------------------------------------
 
 
@@ -310,7 +310,7 @@ class TestAssembledMetadata:
 
 
 # ---------------------------------------------------------------------------
-# Block rendering — recall → # Memory, router → # Skills
+
 # ---------------------------------------------------------------------------
 
 
@@ -346,8 +346,8 @@ class TestRendering:
         eng = _engine(builder, router=SkillForgeRouter([source]), backend=_StubBackend())
         ac = await eng.assemble("s", [], _budget(), turn=_turn())
         sys_content = ac.messages[0]["content"]
-        # No addendum channel and no "# Retrieved skills" heading — the
-        # router body lands in segment 5 (# Skills).
+
+
         assert ac.system_prompt_addition is None
         assert "# Retrieved skills" not in sys_content
         assert "# Skills" in sys_content
@@ -377,7 +377,7 @@ class TestRendering:
 
 
 # ---------------------------------------------------------------------------
-# Graceful degrade — no backend wired
+
 # ---------------------------------------------------------------------------
 
 
@@ -405,7 +405,7 @@ class TestNoBackendDegrade:
 
 
 # ---------------------------------------------------------------------------
-# Failure semantics
+
 # ---------------------------------------------------------------------------
 
 
@@ -455,7 +455,7 @@ class TestFailureSemantics:
 
 
 # ---------------------------------------------------------------------------
-# Turn fields passthrough
+
 # ---------------------------------------------------------------------------
 
 

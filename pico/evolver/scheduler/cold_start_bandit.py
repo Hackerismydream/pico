@@ -242,23 +242,20 @@ class ColdStartCoverageBandit:
         self._exploration_weight = exploration_weight
         self._rng = random.Random(rng_seed)
 
-        # Partition by stability; stable_pass is dropped (no pathology)
+        # 按稳定性分组；stable_pass 没有病理，直接丢弃。
         self._borderline_pool: list[Trial] = [t for t in trials if t.is_borderline]
         stable_fail_pool: list[Trial] = [t for t in trials if t.is_stable_fail]
 
-        # Phase 1 ordering: shuffle deterministically (every borderline
-        # trial is high-signal; order matters only for variety across
-        # different runs with different seeds)
+        # 阶段 1 排序：确定性洗牌。每个边界试验信号都很强，顺序只用于让不同种子的运行保持多样性。
         self._rng.shuffle(self._borderline_pool)
 
-        # Phase 2 K-means strata over stable_fail pool
+        # 阶段 2：对 stable_fail 池进行 K-means 分层。
         self._stable_fail_strata: dict[str, list[Trial]] = _kmeans_strata(
             stable_fail_pool,
             n_stable_fail_strata,
             self._rng,
         )
-        # Record which stratum each trial originated from, so update()
-        # can find the right StratumStats after a trial has been popped
+        # 记录每次试验来自哪个分层，使试验弹出后 update() 仍能找到正确的 StratumStats。
         self._trial_to_stratum: dict[str, str] = {}
         for stratum_id, ts in self._stable_fail_strata.items():
             self._rng.shuffle(ts)
@@ -268,12 +265,12 @@ class ColdStartCoverageBandit:
             sid: StratumStats(stratum_id=sid) for sid in self._stable_fail_strata
         }
 
-        # Mutable state
+        # 可变状态
         self._sampled: list[Trial] = []
         self._covered_why: set[str] = set()
         self._borderline_idx = 0
 
-    # ────────────────────── public API ──────────────────────
+    # ────────────────────── 公共 API ───────────────────────
 
     def done(self) -> bool:
         """Stop conditions: budget hit, coverage met, or pool exhausted."""
@@ -292,20 +289,20 @@ class ColdStartCoverageBandit:
         if self.done():
             raise RuntimeError("ColdStartCoverageBandit is done; cannot sample more")
 
-        # Phase 1: borderline pool, sequential drain after init shuffle
+        # 阶段 1：边界池在初始化洗牌后依次排空。
         if self._borderline_idx < len(self._borderline_pool):
             t = self._borderline_pool[self._borderline_idx]
             self._borderline_idx += 1
             return t
 
-        # Phase 2: UCB pick on stable_fail strata
+        # 阶段 2：在 stable_fail 分层上使用 UCB 选择。
         T = len(self._sampled)
         scored: list[tuple[float, str]] = []
         for sid, stats in self._strata_bandit.items():
             if not self._stable_fail_strata.get(sid):
                 continue
             score = stats.ucb_score(T, self._exploration_weight)
-            # tiny jitter so equal scores are broken deterministically
+            # 加入极小扰动，以确定性方式打破同分。
             score = score + self._rng.random() * 1e-9
             scored.append((score, sid))
         if not scored:
@@ -347,7 +344,7 @@ class ColdStartCoverageBandit:
         """Current size of each stable_fail sub-stratum (post-popping)."""
         return {sid: len(ts) for sid, ts in self._stable_fail_strata.items()}
 
-    # ────────────────────── helpers ──────────────────────
+    # ────────────────────── 辅助方法 ──────────────────────
 
     def _has_unsampled_trial(self) -> bool:
         if self._borderline_idx < len(self._borderline_pool):

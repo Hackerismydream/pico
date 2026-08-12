@@ -268,10 +268,9 @@ function detectSpanFailure(span, attrs) {
   }
 
   if (span?.name === 'subagent.call') {
-    // Only genuine-failure statuses are failures. openclaw used 'accepted' for
-    // a successful spawn; Pico uses 'ok' / 'completed' / 'ended'. Flagging
-    // anything != 'accepted' wrongly marked successful Pico subagents red —
-    // the span's own status.code (checked above) is authoritative.
+  // 只有真实失败状态才算失败。OpenClaw 用 'accepted' 表示成功 spawn，Pico 使用
+  // 'ok' / 'completed' / 'ended'。把所有非 'accepted' 状态标红会误伤成功的 Pico 子智能体；
+  // 上方检查的跨度自身 status.code 才是权威值。
     const subagentStatus = String(attrs['subagent.status'] || '').toLowerCase();
     if (subagentStatus === 'error' || subagentStatus === 'failed') {
       return { isFailed: true, failureLabel: subagentStatus };
@@ -279,11 +278,10 @@ function detectSpanFailure(span, attrs) {
   }
 
   if (span?.name === 'skill.read') {
-    // openclaw's skill.read signals success via skill.read.* byte/sha attrs;
-    // Pico's read_file→skill.read signals it via skill.result_preview /
-    // skill.path / tool.output.artifact_bytes. Accept EITHER family as evidence
-    // of a real read so a successful Pico read (status.code already OK above)
-    // isn't false-flagged "read failed" just because the openclaw attrs are absent.
+  // OpenClaw 的 skill.read 通过 skill.read.* 字节/SHA 属性表示成功；Pico 的
+  // read_file→skill.read 通过 skill.result_preview、skill.path、tool.output.artifact_bytes
+  // 表示。任一属性族都可作为真实读取证据，避免成功的 Pico 读取仅因缺少 OpenClaw 属性而
+  // 被误标为“读取失败”；其 status.code 在上方已为正常。
     const bytes = attrs['skill.read.file_bytes'];
     const sha1 = attrs['skill.read.file_sha1'];
     const preview = attrs['skill.read.preview'] || attrs['skill.result_preview'];
@@ -549,9 +547,8 @@ function buildTraceGroups(sessionSpans) {
     children.sort(compareSpansByTime);
   }
 
-  // session.turn roots the main trace; subagent.run roots a subagent's OWN
-  // trace (Pico subagents run as a separate trace, linked via the dispatch
-  // node's subagent.trace_id). Both are first-class trace roots.
+  // session.turn 是主追踪根；subagent.run 是子智能体自身追踪的根。Pico 子智能体作为独立追踪
+  // 运行，并通过分发节点的 subagent.trace_id 关联。两者都是一等追踪根。
   let rootCandidates = spans.filter((span) => (span.name === 'session.turn' || span.name === 'subagent.run') && (!span.parentSpanId || !spanById.has(span.parentSpanId)));
   if (!rootCandidates.length) {
     rootCandidates = spans.filter((span) => !span.parentSpanId || !spanById.has(span.parentSpanId));
@@ -810,9 +807,8 @@ function serveStatic(reqPath, res) {
   sendText(res, 200, fs.readFileSync(filePath, 'utf8'), typeByExt[ext] || 'text/plain; charset=utf-8');
 }
 
-// Content search across all spans: title/subtitle/attributes plus the FULL text
-// of every artifact a span references (messages, recalled memories, deposits).
-// Fuzzy = case-insensitive, whitespace-split terms, all must match (AND).
+  // 跨全部跨度进行内容搜索：标题、副标题、属性，以及跨度引用的每个产物全文（消息、召回记忆、
+  // 沉淀内容）。模糊匹配不区分大小写，按空白拆词，且所有词必须同时匹配。
 const MAX_SEARCH_RESULTS = 50;
 const MAX_ARTIFACT_SEARCH_BYTES = 512 * 1024;
 
@@ -846,7 +842,7 @@ function searchSpans(query) {
     for (const trace of session.traces || []) {
       for (const span of trace.spans || []) {
         const attrs = span.attributes || {};
-        // pieces: [label, text]; artifacts carry the full node input/output.
+      // pieces 结构为 [标签, 文本]；产物携带完整节点输入/输出。
         const pieces = [
           ['title', [span.displayTitle, span.displaySubtitle, span.name].filter(Boolean).join(' ')],
           ['attributes', JSON.stringify(attrs)]
@@ -859,7 +855,7 @@ function searchSpans(query) {
         }
         const combined = pieces.map(([, text]) => text).join('\n').toLowerCase();
         if (!terms.every((term) => combined.includes(term))) continue;
-        // Snippet from the most specific piece hit by the first term (prefer artifacts).
+    // 从首个搜索词命中的最具体片段生成摘要，并优先使用产物。
         let snippet = '';
         let field = '';
         for (const [label, text] of pieces.slice(2).concat([pieces[1], pieces[0]])) {
@@ -889,9 +885,8 @@ function searchSpans(query) {
   return results.slice(0, MAX_SEARCH_RESULTS);
 }
 
-// Load node-type descriptors, merged by `type` in increasing precedence:
-// bundled → state-dir drop-in → --descriptors CLI. Later sources override.
-// See TRACING_STANDARD.md §7. Never throws — a bad file is skipped.
+  // 加载节点类型描述符，按优先级递增并以 `type` 合并：内置、状态目录附加文件、
+  // --descriptors CLI。后来源覆盖前来源，见 TRACING_STANDARD.md 第 7 节。绝不抛错，坏文件跳过。
 function readDescriptorDir(dir) {
   const out = [];
   let names;
@@ -907,7 +902,7 @@ function readDescriptorDir(dir) {
       if (Array.isArray(parsed)) out.push(...parsed);
       else if (parsed && typeof parsed === 'object') out.push(parsed);
     } catch {
-      // skip malformed descriptor file
+      // 跳过格式错误的描述符文件。
     }
   }
   return out;

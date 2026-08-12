@@ -46,7 +46,7 @@ export const writeActiveSessionFile = (sessionId: null | string, file = process.
   try {
     writeFileSync(file, JSON.stringify({ session_id: sessionId }), { mode: 0o600 })
   } catch {
-    // Best-effort shell epilogue hint only; never break live session changes.
+    // 仅作为尽力而为的 shell 收尾提示，不能破坏实时会话变更。
   }
 }
 
@@ -147,10 +147,9 @@ export const tryAcquireSessionMutation = (
   }
 }
 
-// Delete the target session; when it was the active one, always mint a fresh
-// session (never resume a survivor) — the UI must never stay bound to a
-// deleted key. Resolves to whether the server deleted the matching logical
-// session generation (deleted: null means there was no current match).
+// 删除目标会话；若它是活动会话，则始终创建新会话而不恢复其他存留会话，确保
+// 界面不会继续绑定已删除的键。返回服务端是否删除了匹配的逻辑会话世代；
+// deleted 为 null 表示当前没有匹配项。
 export const performDeleteWithFallback = async (
   targetId: string,
   deps: DeleteFallbackDeps
@@ -172,8 +171,8 @@ export const performDeleteWithFallback = async (
     return removed
   }
 
-  // Close the picker before switching so a picker-initiated delete never
-  // leaves the overlay over the fresh session (resumeById does the same).
+  // 切换前关闭选择器，避免由选择器发起的删除在新会话上残留浮层；resumeById
+  // 采用同样处理。
   patchOverlayState({ picker: false })
   deps.beforeNewSession?.()
   await deps.newSession()
@@ -250,8 +249,7 @@ export function useSessionLifecycle(opts: UseSessionLifecycleOptions) {
     setLastUserMsg(null)
     setStickyPrompt('')
     composerActions.setPasteSnips([])
-    // Half-prune: new session has new keys, but keep a warm pool in case
-    // the user resumes back to the prior session.
+    // 半量裁剪：新会话使用新键，同时保留热缓存池以便用户恢复到先前会话。
     evictInkCaches('half')
   }, [composerActions, setHistoryItems, setLastUserMsg, setStickyPrompt])
 

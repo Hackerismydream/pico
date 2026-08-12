@@ -2,10 +2,9 @@
 // Copyright (c) 2026 EverMind.
 // See NOTICES.md.
 //
-// TuiRpcClient — adapter unit tests against a mock unix socket
-// server (same pattern as `src/rpc/__tests__/client.test.ts`). Covers
-// handshake, gateway.ready synth, drain-replay, request delegation,
-// kill semantics, and getLogTail placeholder.
+// TuiRpcClient 适配器针对模拟 Unix 套接字服务端的单元测试，模式与
+// `src/rpc/__tests__/client.test.ts` 相同。覆盖握手、合成 gateway.ready、
+// 排空重放、请求委托、终止语义以及 getLogTail 占位行为。
 
 import type { Server, Socket } from 'node:net'
 
@@ -21,9 +20,8 @@ import { RpcClient } from '../rpc/index.js'
 import { TuiRpcClient } from '../tuiRpcClient.js'
 
 // --------------------------------------------------------------------------
-// Mock server: line-delimited JSON. Auto-answers `system.hello` with a
-// canned SystemHelloResult; any further frames are echoed to the test's
-// handler so individual cases can shape per-test responses.
+// 模拟服务端使用逐行 JSON。自动以预设 SystemHelloResult 回答 `system.hello`；
+// 后续帧转发给测试处理器，使各用例可定制响应。
 // --------------------------------------------------------------------------
 
 type Frame = Record<string, unknown>
@@ -40,7 +38,7 @@ function startMock(): Promise<MockServer> {
     const dir = mkdtempSync(join(tmpdir(), 'pico-tui-rpc-test-'))
     const socketPath = join(dir, 'sock')
 
-    // Default handler answers `system.hello`; per-test override replaces this.
+    // 默认处理器回答 `system.hello`，各测试可覆盖它。
     let handler: (socket: Socket, frame: Frame) => void = (socket, frame) => {
       if (frame.method === 'system.hello') {
         const resp = {
@@ -73,7 +71,7 @@ function startMock(): Promise<MockServer> {
             try {
               handler(socket, JSON.parse(line) as Frame)
             } catch {
-              /* malformed — ignore */
+        /* 格式错误，忽略。 */
             }
           }
 
@@ -157,7 +155,7 @@ describe('TuiRpcClient', () => {
     client.on('event', (ev: GatewayEvent) => events.push(ev))
 
     await client.start()
-    // Allow the setTimeout(0)-deferred publish to fire before drain.
+    // 允许 setTimeout(0) 延迟的发布在 drain 前触发。
     await new Promise(resolve => setTimeout(resolve, 20))
     client.drain()
 
@@ -195,7 +193,7 @@ describe('TuiRpcClient', () => {
     await new Promise(resolve => setTimeout(resolve, 20))
     client.drain()
 
-    // Server (ConfirmBroker) pushes a top-level confirm.request notification.
+    // 服务端 ConfirmBroker 推送顶层 confirm.request 通知。
     serverSocket!.write(
       JSON.stringify({
         jsonrpc: '2.0',
@@ -248,13 +246,13 @@ describe('TuiRpcClient', () => {
     client.on('exit', (code: number) => exits.push(code))
 
     client.kill()
-    client.kill() // second call is a no-op
+    client.kill() // 第二次调用不执行操作。
     expect(exits).toEqual([0])
 
     const localClient = client
 
-    client = null // disable afterEach cleanup
-    // Followup safety: localClient has set `killed = true`; no socket left dangling.
+    client = null // 禁用 afterEach 清理。
+    // 后续安全性：localClient 已设置 `killed = true`，不会留下悬空套接字。
     expect(localClient).toBeDefined()
   })
 

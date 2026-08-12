@@ -59,7 +59,7 @@ class FeishuChannel(ChannelBase):
         self._seen: OrderedDict[str, None] = OrderedDict()
         self._native_stt_disabled = False
 
-    # ── lifecycle ─────────────────────────────────────────────────────
+    # ── 生命周期 ───────────────────────────────────────────────────
 
     async def start(self) -> None:
         if not self.config.app_id or not self.config.app_secret:
@@ -127,11 +127,11 @@ class FeishuChannel(ChannelBase):
             ws_loop.close()
 
     async def stop(self) -> None:
-        # lark.ws.Client has no stop(); dropping references + exit closes it.
+        # lark.ws.Client 没有 stop()；丢弃引用并退出即可关闭。
         self._running = False
         logger.info("Feishu bot stopped")
 
-    # ── group addressing ──────────────────────────────────────────────
+    # ── 群组寻址 ──────────────────────────────────────────────────
 
     def _is_bot_mentioned(self, message: Any) -> bool:
         if "@_all" in (message.content or ""):
@@ -145,7 +145,7 @@ class FeishuChannel(ChannelBase):
     def _addressed_to_bot(self, message: Any) -> bool:
         return self.config.group_policy == "open" or self._is_bot_mentioned(message)
 
-    # ── reactions (ack UX) ────────────────────────────────────────────
+    # ── 反应（确认交互）───────────────────────────────────────────
 
     async def _react(self, message_id: str, emoji_type: str) -> None:
         if not self._client:
@@ -177,7 +177,7 @@ class FeishuChannel(ChannelBase):
         except Exception as e:
             logger.warning("Error adding reaction: {}", e)
 
-    # ── outbound ──────────────────────────────────────────────────────
+    # ── 出站 ──────────────────────────────────────────────────────
 
     async def send(self, chat_id: str, content: str, media: list[str] | None = None) -> None:
         if not self._client:
@@ -251,7 +251,7 @@ class FeishuChannel(ChannelBase):
         sent_id = getattr(getattr(response, "data", None), "message_id", None)
         logger.info("Feishu message sent: msg_type={} message_id={}", msg_type, sent_id)
 
-    # ── media upload / download (lark SDK, per-adapter) ───────────────
+    # ── 媒体上传/下载（逐适配器使用 Lark SDK）────────────────────
 
     def _upload_image_sync(self, path: str) -> str | None:
         from lark_oapi.api.im.v1 import CreateImageRequest, CreateImageRequestBody
@@ -301,7 +301,7 @@ class FeishuChannel(ChannelBase):
     ) -> tuple[bytes | None, str | None]:
         from lark_oapi.api.im.v1 import GetMessageResourceRequest
 
-        # Feishu only accepts 'image' or 'file'; audio rides the file endpoint.
+        # 飞书只接受 'image' 或 'file'；音频通过 file 端点发送。
         api_type = "file" if resource_type == "audio" else resource_type
         try:
             request = (
@@ -342,7 +342,7 @@ class FeishuChannel(ChannelBase):
             return str(path), f"[{msg_type}: {path.name}]"
         return None, f"[{msg_type}: download failed]"
 
-    # ── transcription ─────────────────────────────────────────────────
+    # ── 转写 ──────────────────────────────────────────────────────
 
     async def _transcribe(self, path: str) -> str:
         """Transcribe a voice file, preferring Feishu's own speech-to-text
@@ -383,9 +383,8 @@ class FeishuChannel(ChannelBase):
                 )
                 .build()
             )
-            # file_recognize is QPS-limited (code 99991400); the limit is
-            # transient, so retry a couple of times with backoff before
-            # giving up and falling back to Whisper.
+            # file_recognize 有 QPS 限制（错误码 99991400）；该限制是暂时的，
+            # 因此先退避重试数次，再放弃并回退到 Whisper。
             for attempt in range(3):
                 response = self._client.speech_to_text.v1.speech.file_recognize(request)
                 if response.success() and response.data and response.data.recognition_text:
@@ -397,7 +396,7 @@ class FeishuChannel(ChannelBase):
                 self._disable_native_stt(code, getattr(response, "msg", ""))
                 break
         except Exception as e:
-            # Likely transient (network) — fall back but keep native enabled.
+            # 可能是暂时性网络错误：本次回退，但仍保持原生转写启用。
             logger.warning("Feishu native STT failed, falling back to Whisper: {}", e)
         return None
 
@@ -406,14 +405,14 @@ class FeishuChannel(ChannelBase):
         emit a single actionable hint. Operators read this to know whether to
         grant a scope, upgrade the Feishu plan, or rely on the Whisper key."""
         self._native_stt_disabled = True
-        if code == 99991672:  # app lacks the speech_to_text:speech scope
+        if code == 99991672:  # 应用缺少 speech_to_text:speech 权限
             logger.warning(
                 "Feishu native STT disabled: the app lacks the 'speech_to_text:speech' "
                 "permission. Grant it in the Feishu developer console (then publish a "
                 "new app version) for key-free transcription; using Whisper meanwhile. ({})",
                 msg,
             )
-        elif code == 99991400:  # rate / availability limit
+        elif code == 99991400:  # 频率/可用性限制
             logger.warning(
                 "Feishu native STT disabled: file_recognize is rate-limited or "
                 "unavailable on this tenant's plan (the API requires a paid Feishu "
@@ -424,14 +423,13 @@ class FeishuChannel(ChannelBase):
         else:
             logger.warning("Feishu native STT disabled (code={}, msg={}); using Whisper.", code, msg)
 
-    # ── inbound ───────────────────────────────────────────────────────
+    # ── 入站 ──────────────────────────────────────────────────────
 
     def _on_message_sync(self, data: Any) -> None:
         """Bridge the lark WS thread back onto the main event loop."""
         if not self._running:
-            # lark.ws.Client has no stop(): the socket may outlive stop() and
-            # keep delivering. Drop zombie deliveries here so a stopped (or
-            # restarted) instance can never publish again.
+            # lark.ws.Client 没有 stop()：socket 可能比 stop() 活得更久并继续投递。
+            # 此处丢弃僵尸投递，确保已停止（或已重启）的实例不会再次发布。
             return
         if self._loop and self._loop.is_running():
             asyncio.run_coroutine_threadsafe(self._on_message(data), self._loop)
@@ -455,7 +453,7 @@ class FeishuChannel(ChannelBase):
             msg_type = message.message_type
             if chat_type == "group" and not self._addressed_to_bot(message):
                 return
-            if not self.is_allowed(sender_id):  # reject before react / media download
+            if not self.is_allowed(sender_id):  # 在表态或下载媒体前拒绝
                 logger.info("Feishu inbound rejected by allowlist: sender={}", sender_id)
                 return
 

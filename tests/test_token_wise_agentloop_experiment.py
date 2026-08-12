@@ -64,9 +64,9 @@ def api_key() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Workspace fixture — produces a tmp workspace whose SOUL.md is large enough
-# that the assembled system prompt comfortably clears Sonnet's 1024-token
-# cache minimum.
+
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -111,14 +111,14 @@ def _seed_workspace(workspace: Path) -> None:
         "preamble. Do not apologize. Do not say 'as a code reviewer'."
     )
     (workspace / "SOUL.md").write_text("\n".join(soul_lines), encoding="utf-8")
-    # Keep AGENTS.md, USER.md, TOOLS.md tiny so SOUL.md dominates the prompt.
+
     (workspace / "AGENTS.md").write_text("# Agent\nTerse responses only.\n", encoding="utf-8")
     (workspace / "USER.md").write_text("# User\nDeveloper.\n", encoding="utf-8")
     (workspace / "TOOLS.md").write_text("# Tools\nNo extra notes.\n", encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
-# Variant data structures
+
 # ---------------------------------------------------------------------------
 
 
@@ -163,7 +163,7 @@ class VariantResult:
 
 
 # ---------------------------------------------------------------------------
-# The variant runner — builds a real AgentLoop, drives 6 turns
+
 # ---------------------------------------------------------------------------
 
 
@@ -218,13 +218,13 @@ async def _run_variant(
     cost_so_far: dict[str, float],
 ) -> VariantResult:
     """One variant = a fresh workspace, fresh AgentLoop, six run_turn calls."""
-    # Per-variant workspace so each variant has its own session/memory.
+
     workspace = workspace_root / name
     workspace.mkdir(parents=True, exist_ok=True)
     _seed_workspace(workspace)
 
-    # Provider — pin to Anthropic backend so OpenRouter doesn't shuffle and
-    # break the cache between calls within this variant.
+
+
     provider = LiteLLMProvider(
         api_key=api_key,
         api_base="https://openrouter.ai/api/v1",
@@ -234,8 +234,8 @@ async def _run_variant(
         extra_body=_OPENROUTER_PIN,
     )
 
-    # Strategy registry — every variant gets a recording UsageTracker so we
-    # can compare apples to apples; only V3 also gets the CacheOptimizer.
+
+
     tracker = _RecordingTracker()
     strategies: list = []
     if install_cache_optimizer:
@@ -243,24 +243,24 @@ async def _run_variant(
     strategies.append(tracker)
     registry = StrategyRegistry(strategies)
 
-    # The real AgentLoop. We disable everything that would inject side
-    # effects we don't want in the experiment (MCP, channels).
+
+
     loop = AgentLoop(
         provider=provider,
         workspace=workspace,
         model=MODEL,
-        max_iterations=4,  # we expect zero tool turns
-        context_window_tokens=200_000,  # disable consolidator triggering
+        max_iterations=4,
+        context_window_tokens=200_000,
         mcp_servers={},
         channels_config=None,
         strategies=registry,
     )
-    # Strip default tools so the assistant has nothing to invoke and the
-    # tools schema doesn't add noise/cost variance to the experiment.
+
+
     loop.tools._tools.clear()
 
-    # Capture the assembled system prompt size so the report can show what
-    # actually went over the wire (not just what we put in SOUL.md).
+
+
     sys_prompt = loop.context.build_system_prompt()
     sys_chars = len(sys_prompt)
 
@@ -273,7 +273,7 @@ async def _run_variant(
                 pytest.fail(f"Cost guard tripped at ${sum(cost_so_far.values()):.4f} (cap=${COST_GUARD_USD}).")
             await _run_user_turn(loop, q, session_key=session_key, chat_id=name)
 
-            # Pull this turn's usage out of the tracker history.
+
             assert len(tracker.history) == turn_idx, (
                 f"expected tracker.history len={turn_idx}, got {len(tracker.history)}"
             )
@@ -286,7 +286,7 @@ async def _run_variant(
                     cache_write=snap.cache_write_tokens,
                     completion=snap.output_tokens,
                     cost_usd=snap.estimated_cost_usd,
-                    response_chars=0,  # session manager retains response; tracker doesn't
+                    response_chars=0,
                 )
             )
             cost_so_far[name] = result.total_cost
@@ -297,7 +297,7 @@ async def _run_variant(
 
 
 # ---------------------------------------------------------------------------
-# Report writer
+
 # ---------------------------------------------------------------------------
 
 
@@ -421,7 +421,7 @@ def _write_report(variants: list[VariantResult], baseline_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# The experiment
+
 # ---------------------------------------------------------------------------
 
 
@@ -479,7 +479,7 @@ async def test_agentloop_ablation_experiment(api_key: str, tmp_path: Path):
     print(f"\nReport written to: {REPORT_PATH}\n")
     print(body)
 
-    # ---- Assertions on observable behavior ----
+
     for v in [v1, v2, v3]:
         assert v.error is None, f"variant {v.name} crashed: {v.error}"
         assert len(v.turns) == TURNS, f"{v.name} did not complete all turns"
@@ -487,12 +487,12 @@ async def test_agentloop_ablation_experiment(api_key: str, tmp_path: Path):
             f"{v.name} system prompt too short ({v.sys_prompt_chars} chars) — may not exceed Anthropic's cache minimum"
         )
 
-    # V1: no cache markers placed → zero cache activity must be observed.
+
     assert v1.total_cache_read == 0, "V1 baseline must have zero cache reads"
     assert v1.total_cache_write == 0, "V1 baseline must have zero cache writes"
 
-    # V2 and V3: the system prompt was big enough to qualify for caching, so
-    # repeated turns within each variant must have reused the cache.
+
+
     assert v2.total_cache_read > 0, (
         f"V2 had no cache reads across {TURNS} turns — provider auto-cache is broken end-to-end. v2.turns={v2.turns}"
     )
@@ -502,7 +502,7 @@ async def test_agentloop_ablation_experiment(api_key: str, tmp_path: Path):
         f"v3.turns={v3.turns}"
     )
 
-    # Savings claims.
+
     assert v3.total_cost < v1.total_cost, (
         f"V3 (${v3.total_cost:.6f}) is not cheaper than V1 baseline (${v1.total_cost:.6f})"
     )

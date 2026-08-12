@@ -85,7 +85,7 @@ def test_status_marks_oauth_providers_distinctly(tmp_config: Path) -> None:
 
     r = runner.invoke(app, ["status"])
     assert r.exit_code == 0
-    # OpenAI Codex is a pure-OAuth provider in the registry
+
     assert "OAuth" in r.stdout
 
 

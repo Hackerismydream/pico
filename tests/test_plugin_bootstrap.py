@@ -123,7 +123,7 @@ def _write_real_plugin(
 
 
 # ---------------------------------------------------------------------------
-# End-to-end: discover → activate → build
+
 # ---------------------------------------------------------------------------
 
 
@@ -221,7 +221,7 @@ class TestEndToEnd:
 
 
 # ---------------------------------------------------------------------------
-# Cross-source: bundled wins over user-level for same id
+
 # ---------------------------------------------------------------------------
 
 
@@ -246,7 +246,7 @@ class TestCrossSource:
             user_dir=user,
             entry_points_group=None,
         )
-        # Bundled wins — the user copy is shadowed and never imported.
+
         result = registry.build_memory_backend(
             "example",
             config={},
@@ -256,7 +256,7 @@ class TestCrossSource:
 
 
 # ---------------------------------------------------------------------------
-# Conflict: two activated plugins same backend name
+
 # ---------------------------------------------------------------------------
 
 
@@ -292,7 +292,7 @@ class TestConflict:
 
 
 # ---------------------------------------------------------------------------
-# Empty bootstrap
+
 # ---------------------------------------------------------------------------
 
 
@@ -304,8 +304,8 @@ class TestEmpty:
 
 
 # ---------------------------------------------------------------------------
-# User/project-dir plugins ship their factory package in the plugin dir;
-# activation must put that dir on sys.path so the factory imports.
+
+
 # ---------------------------------------------------------------------------
 
 

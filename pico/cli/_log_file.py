@@ -51,15 +51,14 @@ def redirect_loguru_to_file(
         rotation=rotation,
         retention=retention,
         filter=record_filter,
-        enqueue=True,  # thread-safe writes from channel threads + asyncio
-        # diagnose=True would annotate tracebacks with local variable values,
-        # writing secrets (API tokens, etc.) into a persisted, retained file.
+        enqueue=True,  # 确保渠道线程和 asyncio 的写入线程安全
+        # diagnose=True 会在回溯中标注局部变量值，把密钥（API 令牌等）写入持久保留的文件。
         backtrace=False,
         diagnose=False,
     )
     if terminal_level is not None:
-        # Same diagnose hazard as the file sink: an annotated traceback would
-        # dump locals (inbound message bodies, sender ids, tokens) to stderr.
+        # 与文件出口存在相同的 diagnose 风险：带标注的回溯会把局部变量（入站消息正文、
+        # 发送方 ID、令牌）输出到标准错误。
         logger.add(sys.stderr, level=terminal_level, backtrace=False, diagnose=False)
     if os.environ.get("PICO_CLI_DEBUG"):
         logger.add(sys.stderr, level="DEBUG")
@@ -113,7 +112,7 @@ def _strip_tty_stream_handlers() -> None:
 
     for obj in list(_stdlib_logging.Logger.manager.loggerDict.values()):
         if not isinstance(obj, _stdlib_logging.Logger):
-            continue  # skip PlaceHolder entries
+            continue  # 跳过 PlaceHolder 条目
         _strip_from(obj)
 
 

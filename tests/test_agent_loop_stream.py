@@ -35,7 +35,7 @@ def _bind_helper(provider: _FakeProvider):
 
 
 # ---------------------------------------------------------------------------
-# _llm_call_stream basic content accumulation
+
 # ---------------------------------------------------------------------------
 
 
@@ -97,7 +97,7 @@ async def test_llm_call_stream_skips_none_content_chunks() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Usage propagation
+
 # ---------------------------------------------------------------------------
 
 
@@ -145,7 +145,7 @@ async def test_llm_call_stream_preserves_actual_model_identity() -> None:
 
 
 # ---------------------------------------------------------------------------
-# tool_call_delta accumulation (best-effort v0.1)
+
 # ---------------------------------------------------------------------------
 
 
@@ -202,7 +202,7 @@ async def test_llm_call_stream_collects_tool_call_fragments() -> None:
 
 
 # ---------------------------------------------------------------------------
-# kwargs propagation to chat_stream
+
 # ---------------------------------------------------------------------------
 
 
@@ -227,7 +227,7 @@ async def test_llm_call_stream_passes_messages_tools_model_to_provider() -> None
 
 
 # ---------------------------------------------------------------------------
-# Default LLMResponse shape (no chunks)
+
 # ---------------------------------------------------------------------------
 
 

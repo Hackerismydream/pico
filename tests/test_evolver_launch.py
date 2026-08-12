@@ -21,9 +21,6 @@ from pico.evolver.launch.contract import validate_whitelist
 from pico.evolver.launch.registry import load_bench
 from pico.evolver.launch.state import RunMeta, atomic_write_json, config_fingerprint
 
-# The appworld bench plugin lives at the repo root (benchmarks/), outside the
-# installed Pico package; load_bench imports it via the subject repo root,
-# and the direct `import benchmarks...` statements below need it on sys.path.
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -205,7 +202,7 @@ class TestRunSpec:
         spec = load_run_spec(path, smoke=True)
         assert spec.funnel.k_confirm == SMOKE_BUILTIN["funnel"]["k_confirm"]
         assert spec.funnel.budget.max_why_per_round == 1
-        assert spec.funnel.termination.max_rounds == 2  # user overlay wins
+        assert spec.funnel.termination.max_rounds == 2
         assert spec.work_dir.name.endswith("_smoke")
 
     def test_non_smoke_ignores_smoke_section(self, tmp_path, subject_repo):
@@ -322,9 +319,9 @@ class TestAppWorldEntry:
         build = load_bench("appworld", repo_root=REPO_ROOT)
         bundle = build(self._ctx(tmp_path, subject_repo, self._bench_config(tmp_path)))
         assert bundle.root_node_id == "C0"
-        assert bundle.cold_start_total == 2 * 3  # 2 tasks x k_confirm=3
+        assert bundle.cold_start_total == 2 * 3
         assert bundle.cold_start_done() == 0
-        assert bundle.unseal is None  # no test ids -> no sealed test
+        assert bundle.unseal is None
 
     def test_cold_start_counts_existing_trials(self, tmp_path, subject_repo):
         build = load_bench("appworld", repo_root=REPO_ROOT)
@@ -548,7 +545,7 @@ class TestColdStartPrecheck:
             for k in range(3):
                 (van / f"{tid}_k{k}.json").write_text(json.dumps({"task_id": tid, "success": True}))
         bundle.run_cold_start()
-        assert calls["precheck"] == 1  # complete + infra-clean: no probe
+        assert calls["precheck"] == 1
         assert calls["eval"] == 2
 
     def test_precheck_fires_when_ladder_has_salvage_work(self, tmp_path, subject_repo, monkeypatch):
@@ -563,7 +560,7 @@ class TestColdStartPrecheck:
                     rec["infra_error"] = "runner: TimeoutExpired"
                 (van / f"{tid}_k{k}.json").write_text(json.dumps(rec))
         bundle.run_cold_start()
-        assert calls["precheck"] == 1  # infra residue -> probe before reruns
+        assert calls["precheck"] == 1
 
 
 class TestBatchTrialResume:
@@ -611,7 +608,7 @@ class TestBatchTrialResume:
 
         got = batch._run_one("t1", 0, 9999, Args(), str(tmp_path))
         assert calls, "corrupt file must trigger a re-run"
-        assert got.get("infra_error")  # agent_cli never wrote a fresh result
+        assert got.get("infra_error")
 
 
 class TestCli:
@@ -689,7 +686,7 @@ class TestCli:
         from pico.evolver.launch.runner import cmd_run
 
         repo, sha = subject_repo
-        path = _write_spec(tmp_path, repo, sha)  # no bench_config -> build fails
+        path = _write_spec(tmp_path, repo, sha)
         with pytest.raises(SystemExit):
             cmd_run(str(path))
         assert RunMeta.load(tmp_path / "work") is None

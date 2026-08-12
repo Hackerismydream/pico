@@ -2,7 +2,7 @@
 // Copyright (c) 2026 EverMind.
 // See NOTICES.md.
 //
-// Production TUI client over the Python-owned JSON-RPC socket.
+// 基于 Python 所有的 JSON-RPC 套接字实现生产环境 TUI 客户端。
 
 import { EventEmitter } from 'node:events'
 
@@ -11,22 +11,20 @@ import type { GatewayEvent } from './gatewayTypes.js'
 import { RpcClient } from './rpc/index.js'
 
 const CLIENT_VERSION = '0.0.2'
-// Mirrors the negotiated capability list sent during `system.hello`.
-// Server-side does not yet enforce these, but we send the canonical set
-// so future capability negotiation has a stable baseline.
+// 与 `system.hello` 期间发送的协商能力列表保持一致。服务端尚未强制校验，
+// 但发送规范集合可为后续能力协商提供稳定基线。
 const CLIENT_CAPABILITIES: string[] = ['chat', 'config', 'confirm', 'attachments', 'sessions']
 
 export interface TuiRpcClientOptions {
-  /** Unix socket path. Defaults to env `PICO_RPC_SOCKET`. */
+  /** Unix 套接字路径，默认读取环境变量 `PICO_RPC_SOCKET`。 */
   socketPath?: string
-  /** Injected RpcClient (test seam). Owns its own lifecycle when supplied. */
+  /** 注入的 RpcClient（测试接缝）；传入后由其自行管理生命周期。 */
   rpcClient?: RpcClient
 }
 
 export class TuiRpcClient extends EventEmitter {
-  // Chat streaming subscribes through this same client while server
-  // notifications flow through the EventEmitter adapter. Sharing one client
-  // keeps the socket count at one and avoids handshake races.
+  // 聊天流通过同一客户端订阅，服务端通知则流经 EventEmitter 适配器。共享客户端
+  // 可将套接字数量维持为一个，并避免握手竞争。
   public readonly rpcClient: RpcClient
   private bufferedEvents: GatewayEvent[] = []
   private subscribed = false
@@ -39,31 +37,30 @@ export class TuiRpcClient extends EventEmitter {
     this.rpcClient =
       opts.rpcClient ??
       new RpcClient({
-        // Bridge first-class top-level notifications (confirm.request and
-        // clarify.request) onto the
-        // `'event'` bus that `createGatewayEventHandler` consumes. Subscription
-        // -stream `event` notifications keep flowing through the typed registry.
+        // 将一等顶层通知（confirm.request 和 clarify.request）桥接到
+        // `createGatewayEventHandler` 消费的 `'event'` 总线；订阅流中的 `event`
+        // 通知仍通过带类型的注册表流转。
         onNotification: (method, params) => this.publishServerNotification(method, params),
         socketPath: opts.socketPath
       })
   }
 
   /**
-   * Map a top-level server notification (`{method, params}`) to a
-   * `GatewayEvent` (`{type, payload}`) and publish it. `createGatewayEventHandler`
-   * switches on `type` and ignores unknown ones, so this is forward-compatible.
+   * 将顶层服务端通知（`{method, params}`）映射为 `GatewayEvent`
+   * （`{type, payload}`）并发布。`createGatewayEventHandler` 按 `type` 分派且
+   * 忽略未知类型，因此保持向前兼容。
    */
   private publishServerNotification(method: string, params: unknown): void {
     this.publish({ payload: params, type: method } as GatewayEvent)
   }
 
   /**
-   * Boot sequence:
-   *   1. await `system.hello` (5s server-side timeout per Phase 2 RpcServer).
-   *   2. synthesize the transport-ready event.
-   *   3. buffer (or emit, if `drain()` already called) the event.
+   * 启动顺序：
+   *   1. 等待 `system.hello`（RpcServer 服务端超时为 5 秒）。
+   *   2. 合成传输就绪事件。
+   *   3. 缓冲事件；若已调用 `drain()`，则直接发出。
    *
-   * Repeated calls return the same promise.
+   * 重复调用返回同一个 Promise。
    */
   start(): Promise<void> {
     if (this.startPromise) {
@@ -89,7 +86,7 @@ export class TuiRpcClient extends EventEmitter {
   }
 
   /**
-   * Switch to direct event delivery and replay boot-time buffered events.
+   * 切换为直接投递事件，并重放启动期间缓冲的事件。
    */
   drain(): void {
     this.subscribed = true
@@ -101,14 +98,14 @@ export class TuiRpcClient extends EventEmitter {
     }
   }
 
-  /** Invoke an RPC method. Pure delegate to `RpcClient.rpc()`. */
+  /** 调用 RPC 方法，直接委托给 `RpcClient.rpc()`。 */
   async request<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
     return this.rpcClient.rpc<T>(method, params)
   }
 
   /**
-   * Tear down: close the RPC socket, emit `exit` so `useMainApp.ts` clears
-   * UI state. Safe to call multiple times.
+   * 拆除客户端：关闭 RPC 套接字并发出 `exit`，让 `useMainApp.ts` 清理界面
+   * 状态。可安全重复调用。
    */
   kill(): void {
     if (this.killed) {
@@ -126,8 +123,8 @@ export class TuiRpcClient extends EventEmitter {
   }
 
   /**
-   * The RPC transport has no buffered child-process stdout to tail; server
-   * logs are written by Python `loguru` to its own files.
+   * RPC 传输没有可追踪的子进程 stdout 缓冲区；服务端日志由 Python 的
+   * `loguru` 写入其自身文件。
    */
   getLogTail(_limit = 20): string {
     return '(RPC server logs are available through the Python loguru sink)'

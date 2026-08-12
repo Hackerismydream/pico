@@ -25,15 +25,13 @@ export const getDelegationState = () => $delegationState.get()
 
 export const resetDelegationState = () => $delegationState.set(buildState())
 
-// ── Overlay accordion open-state ──────────────────────────────────────
+// ── 浮层手风琴展开状态 ──────────────────────────────────────
 //
-// Lifted out of OverlaySection's local useState so collapse choices
-// survive:
-//   - navigating to a different subagent (Detail remounts)
-//   - switching list ↔ detail mode (Detail unmounts in list mode)
-//   - walking history (←/→)
-// Keyed by section title; missing entries fall back to the section's
-// `defaultOpen` prop.
+// 将状态从 OverlaySection 的局部 useState 中提升，使折叠选择在以下操作后保留：
+//   - 导航到其他子智能体（Detail 重新挂载）；
+//   - 在列表与详情模式之间切换（列表模式会卸载 Detail）；
+//   - 使用 ←/→ 浏览历史。
+// 以分区标题为键；缺失项回退到分区的 `defaultOpen` 属性。
 
 export const $overlaySectionsOpen = atom<Record<string, boolean>>({})
 

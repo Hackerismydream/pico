@@ -5,11 +5,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from pico.memory_engine.skill_local.local_pool import (
-    LocalPool,
-    _BM25Okapi,
-    _tokenize,
-)
+from pico.memory_engine.skill_local.local_pool import LocalPool
 from pico.memory_engine.skill_local.registry import SkillRegistry
 from pico.memory_engine.skill_local.types import SkillMeta
 
@@ -45,76 +41,6 @@ class _StubRegistry:
 
 
 # ----------------------------------------------------------------------
-# Tokenizer
-# ----------------------------------------------------------------------
-
-
-def test_tokenize_alphanumeric_lowercased() -> None:
-    assert _tokenize("Generate PDF Report") == ["generate", "pdf", "report"]
-
-
-def test_tokenize_drops_one_char_words() -> None:
-    # "a" filtered; "ai" kept; "OK" kept.
-    assert _tokenize("a ai OK x y") == ["ai", "ok"]
-
-
-def test_tokenize_handles_chinese_per_char() -> None:
-    out = _tokenize("天气查询 weather")
-    assert "天" in out and "气" in out and "查" in out and "询" in out
-    assert "weather" in out
-
-
-def test_tokenize_empty_returns_empty() -> None:
-    assert _tokenize("") == []
-    assert _tokenize("   ") == []
-
-
-# ----------------------------------------------------------------------
-# BM25 core
-# ----------------------------------------------------------------------
-
-
-def test_bm25_empty_corpus() -> None:
-    bm25 = _BM25Okapi([])
-    assert bm25.get_scores(["foo"]) == []
-
-
-def test_bm25_empty_query_returns_zeros() -> None:
-    bm25 = _BM25Okapi([["foo", "bar"]])
-    assert bm25.get_scores([]) == [0.0]
-
-
-def test_bm25_term_frequency_increases_score() -> None:
-    bm25 = _BM25Okapi(
-        [
-            ["pdf"],
-            ["pdf", "pdf"],
-            ["unrelated"],
-        ]
-    )
-    s = bm25.get_scores(["pdf"])
-    assert s[1] > s[0] > 0
-    assert s[2] == 0
-
-
-def test_bm25_rare_term_outweighs_common() -> None:
-    """A rare term should win over a common one — that's the IDF point."""
-    bm25 = _BM25Okapi(
-        [
-            ["common", "rare"],
-            ["common"],
-            ["common"],
-            ["common"],
-        ]
-    )
-    score_rare = bm25.get_scores(["rare"])[0]
-    score_common = bm25.get_scores(["common"])[0]
-    assert score_rare > score_common
-
-
-# ----------------------------------------------------------------------
-# LocalPool
-# ----------------------------------------------------------------------
 
 
 def test_localpool_empty_registry() -> None:
@@ -140,7 +66,6 @@ def test_localpool_zero_score_skills_are_dropped() -> None:
         _meta("b", description="beta beta"),
     ]
     pool = LocalPool(_StubRegistry(metas))
-    # Query with no overlap → no hits at all (not zero-score noise).
     assert pool.search("nothingmatches", top_k=10) == []
 
 
@@ -215,7 +140,7 @@ def test_localpool_concurrent_search_safe_during_rebuild() -> None:
     pool = LocalPool(_StubRegistry(metas))
 
     n_threads = 16
-    barrier = threading.Barrier(n_threads + 1)  # +1 for the rebuilder
+    barrier = threading.Barrier(n_threads + 1)
     errors: list[BaseException] = []
 
     def searcher() -> None:
@@ -255,19 +180,16 @@ def test_localpool_excludes_always_skills() -> None:
         _meta("self-improving", description="learning capture", body="capture learnings"),
         _meta("pdf-gen", description="generate pdf files", body="generate pdf with reportlab"),
     ]
-    # Mark memory + self-improving as always-true, like the real builtins.
     metas[0].always = True
     metas[1].always = True
     pool = LocalPool(_StubRegistry(metas))
 
-    # Query that matches memory directly — without the filter, memory would top the list.
     hits = pool.search("memory", top_k=10)
     assert all(h.name != "memory" for h in hits), (
         f"always-true skill 'memory' leaked into BM25 results: {[h.name for h in hits]}"
     )
     assert all(h.name != "self-improving" for h in hits)
 
-    # Non-always skill still retrievable.
     hits = pool.search("pdf", top_k=10)
     assert hits and hits[0].name == "pdf-gen"
 

@@ -129,8 +129,7 @@ class LLMGateFilter:
         lines: list[str] = []
         by_id: dict[str, RouterHit] = {}
         for h in candidates:
-            # qualified_id is the natural selection key — globally
-            # unique and what the segment builder consumes for feedback.
+            # qualified_id 是天然的选择键：全局唯一，也是分段构建器用于反馈的值。
             sid = h.qualified_id
             desc = (h.meta.get("description") or "").strip().replace("\n", " ")
             if not desc:
@@ -151,8 +150,7 @@ class LLMGateFilter:
         catalog: str,
         available_tools: list[str] | None,
     ) -> str:
-        # Selection uses qualified ids so multiple physical Local Skill
-        # sources remain unambiguous.
+        # 选择使用限定 ID，使多个物理本地 Skill 来源仍无歧义。
         tools_block = ""
         if available_tools:
             tools_block = (
@@ -214,7 +212,7 @@ class LLMGateFilter:
     def _parse_response(content: str) -> tuple[str, list[str]]:
         if not content:
             raise ValueError("empty content")
-        # Strip <think> blocks (qwen3.5 reasoning).
+        # 移除 <think> 块（qwen3.5 推理内容）。
         content = re.sub(r"<think>[\s\S]*?</think>", "", content).strip()
         m = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", content, re.DOTALL)
         if m:

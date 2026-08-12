@@ -33,12 +33,18 @@ def test_rejects_cjk_and_full_width_punctuation() -> None:
     assert "must be ASCII-only English" in result.errors
 
 
-def test_rejects_uppercase_subject_and_trailing_period() -> None:
+def test_accepts_uppercase_subject() -> None:
+    result = check_commit_message("docs: Update README")
+
+    assert result.ok
+    assert result.errors == []
+
+
+def test_rejects_trailing_period() -> None:
     result = check_commit_message("docs: Update README.")
 
     assert not result.ok
-    assert "subject must start lowercase" in result.errors
-    assert "subject must not end with punctuation" in result.errors
+    assert result.errors == ["subject must not end with punctuation"]
 
 
 def test_rejects_subject_over_commit_limit() -> None:
@@ -81,8 +87,6 @@ def test_pr_body_accepts_ascii_markdown() -> None:
 
 
 def test_pr_body_rejects_em_dash() -> None:
-    # The em-dash (U+2014) is the char that slipped past the CJK-only grep and
-    # failed the post-merge commit lint once the PR body became the squash body.
     result = check_pr_body("drops the hint only — empty submits still ignored")
 
     assert not result.ok

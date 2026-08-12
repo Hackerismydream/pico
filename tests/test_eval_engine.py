@@ -35,7 +35,7 @@ from pico.eval_engine.adapter.adapter import EvalAdapter
 from pico.eval_engine.judge.judge import EvalJudge
 
 # ---------------------------------------------------------------------------
-# Shared fixtures
+
 # ---------------------------------------------------------------------------
 
 
@@ -52,7 +52,7 @@ def ctx_with_messages():
 
 
 # ===========================================================================
-# Default config — everything must be no-op
+
 # ===========================================================================
 
 
@@ -63,10 +63,10 @@ class TestDefaultDisabledBehavior:
 
     def test_config_subflags_have_safe_defaults(self):
         cfg = EvalEngineConfig()
-        # on_task_completion defaults True so that flipping just
-        # `enabled=True` activates the most useful hook.
+
+
         assert cfg.on_task_completion is True
-        # Expensive hooks default off.
+
         assert cfg.on_tool_audit is False
         assert cfg.on_iteration_gate is False
 
@@ -77,14 +77,14 @@ class TestDefaultDisabledBehavior:
 
     async def test_tool_audit_is_noop_when_disabled(self, ctx_with_messages):
         hook = ToolAuditHook(EvalEngineConfig(tool_denylist=["dangerous"]))
-        # response has a denylisted tool call but enabled=False
+
         ctx_with_messages.response = {"tool_calls": [{"name": "dangerous", "arguments": {}}]}
         decision = await hook.before_execute_tools(ctx_with_messages)
         assert decision.short_circuit_result is None
 
 
 # ===========================================================================
-# BeforeIterationHook
+
 # ===========================================================================
 
 
@@ -112,26 +112,26 @@ class TestBeforeIterationHook:
         assert decision.short_circuit_result is None
 
     async def test_gate_off_keeps_passthrough_even_with_huge_messages(self, ctx_with_messages):
-        # enabled=True but gate-flag off
+
         cfg = EvalEngineConfig(enabled=True, on_iteration_gate=False, max_iteration_tokens=1)
         hook = BeforeIterationHook(cfg)
         decision = await hook.before_iteration(ctx_with_messages)
         assert decision.short_circuit_result is None
 
     def test_estimator_handles_unserializable_payload(self):
-        # Object that defies json.dumps — fall back to 0 estimate
-        # rather than crashing.
+
+
         cfg = EvalEngineConfig(enabled=True, on_iteration_gate=True)
         hook = BeforeIterationHook(cfg)
         weird = object()
-        # default=str in the estimator catches this; should return some int
+
         result = hook._estimate_tokens([{"weird": weird}])
         assert isinstance(result, int)
         assert result >= 0
 
 
 # ===========================================================================
-# ToolAuditHook
+
 # ===========================================================================
 
 
@@ -163,7 +163,7 @@ class TestToolAuditHook:
         assert decision.short_circuit_result is not None
 
     async def test_function_nested_tool_name_supported(self, ctx_with_messages):
-        # OpenAI-style nested name (function.name)
+
         cfg = EvalEngineConfig(enabled=True, on_tool_audit=True, tool_denylist=["banned"])
         hook = ToolAuditHook(cfg)
         ctx_with_messages.response = {"tool_calls": [{"function": {"name": "banned"}}]}
@@ -173,12 +173,12 @@ class TestToolAuditHook:
     async def test_no_response_is_passthrough(self):
         cfg = EvalEngineConfig(enabled=True, on_tool_audit=True, tool_denylist=["banned"])
         hook = ToolAuditHook(cfg)
-        ctx = AgentHookContext(session_key="cli:test")  # response=None
+        ctx = AgentHookContext(session_key="cli:test")
         decision = await hook.before_execute_tools(ctx)
         assert decision.short_circuit_result is None
 
     async def test_audit_off_with_denylisted_call_is_passthrough(self, ctx_with_messages):
-        # enabled=True but on_tool_audit=False
+
         cfg = EvalEngineConfig(enabled=True, on_tool_audit=False, tool_denylist=["banned"])
         hook = ToolAuditHook(cfg)
         ctx_with_messages.response = {"tool_calls": [{"name": "banned"}]}
@@ -187,7 +187,7 @@ class TestToolAuditHook:
 
 
 # ===========================================================================
-# EvalJudge
+
 # ===========================================================================
 
 
@@ -231,7 +231,7 @@ class TestEvalJudge:
 
 
 # ===========================================================================
-# EvalAdapter
+
 # ===========================================================================
 
 
@@ -263,7 +263,7 @@ class TestEvalAdapter:
         memory = MagicMock()
         memory.append_history.side_effect = RuntimeError("io error")
         adapter = EvalAdapter(memory)
-        # Should NOT raise.
+
         adapter.record_task_completion(JudgeVerdict.failed, user_goal="x", session_key="cli:c")
 
     def test_truncates_long_goal(self):
@@ -272,13 +272,13 @@ class TestEvalAdapter:
         long_goal = "x" * 500
         adapter.record_task_completion(JudgeVerdict.completed, user_goal=long_goal, session_key="cli:c")
         entry = memory.append_history.call_args[0][0]
-        # Goal got truncated to <=160 chars within the quoted segment.
+
         quoted = entry.split('goal="', 1)[1].rsplit('"', 1)[0]
         assert len(quoted) <= 160
 
 
 # ===========================================================================
-# AfterIterationHook
+
 # ===========================================================================
 
 
@@ -304,7 +304,7 @@ class TestAfterIterationHook:
         kwargs = adapter.record_task_completion.call_args.kwargs
         assert kwargs["verdict"] is JudgeVerdict.completed
         assert "summarize" in kwargs["user_goal"]
-        # Hook never short-circuits — evaluator must not interrupt the reply.
+
         assert decision.short_circuit_result is None
 
     async def test_unknown_verdict_skips_adapter(self, cfg_enabled, adapter, ctx_with_messages):
@@ -316,7 +316,7 @@ class TestAfterIterationHook:
 
     async def test_disabled_is_full_noop(self, fake_judge, adapter, ctx_with_messages):
         hook = AfterIterationHook(
-            EvalEngineConfig(),  # disabled
+            EvalEngineConfig(),
             fake_judge,
             adapter,
         )
@@ -326,7 +326,7 @@ class TestAfterIterationHook:
 
     async def test_missing_user_or_assistant_is_noop(self, cfg_enabled, fake_judge, adapter):
         hook = AfterIterationHook(cfg_enabled, fake_judge, adapter)
-        # No assistant message
+
         ctx = AgentHookContext(
             session_key="cli:test",
             messages=[{"role": "user", "content": "hi"}],
@@ -339,13 +339,13 @@ class TestAfterIterationHook:
         judge.judge = AsyncMock(side_effect=RuntimeError("boom"))
         hook = AfterIterationHook(cfg_enabled, judge, adapter)
         decision = await hook.after_iteration(ctx_with_messages)
-        # No write through, no crash.
+
         adapter.record_task_completion.assert_not_called()
         assert decision.short_circuit_result is None
 
 
 # ===========================================================================
-# EvalEngine orchestrator
+
 # ===========================================================================
 
 
@@ -354,11 +354,11 @@ class TestEvalEngineOrchestrator:
         engine = EvalEngine()
         hooks = engine.hooks()
         assert len(hooks) == 3
-        # Order is canonical: before_iteration → tool_audit → after_iteration
+
         assert isinstance(hooks[0], BeforeIterationHook)
         assert isinstance(hooks[1], ToolAuditHook)
-        # When no MemoryEngine is wired, the after-iteration slot is a noop.
-        # We just assert that *some* AgentHook subclass occupies it.
+
+
         from pico.agent.hook.base import AgentHook
 
         assert isinstance(hooks[2], AgentHook)
@@ -380,7 +380,7 @@ class TestEvalEngineOrchestrator:
         with default config and AgentLoop behavior must be unchanged."""
         from pico.agent.hook import CompositeHook
 
-        engine = EvalEngine()  # default config — disabled
+        engine = EvalEngine()
         composite = CompositeHook(engine.hooks())
 
         for phase in (

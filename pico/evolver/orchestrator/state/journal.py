@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:  # avoid a runtime import cycle with loop
+if TYPE_CHECKING:  # 避免与 loop 形成运行时导入环
     from pico.evolver.orchestrator.loop import RoundResult
 
 
@@ -40,13 +40,11 @@ class RoundJournal:
             "parent_id": rr.parent_id,
             "next_parent_id": rr.next_parent_id,
             "promoted": rr.promoted,
-            # the two termination signals (SOP: patience compares to VANILLA;
-            # errored rounds have their own counter) — resume replays these.
+    # 两个终止信号：SOP 规定耐心与原始版本比较，错误轮次另有计数器；恢复时会重放这些状态。
             "beat_vanilla": rr.beat_vanilla,
             "errored": rr.errored,
             "verdict": rr.verdict,
-            # for the post-hoc sealed unseal (C3): the deliverable's commit +
-            # train pass@1, so its test curve is reconstructable after the run.
+    # 用于事后密封解封（C3）：记录可交付项的提交和训练 pass@1，使运行后可重建测试曲线。
             "next_parent_sha": rr.next_parent_sha,
             "next_parent_train": rr.next_parent_train,
             "candidates": [

@@ -38,10 +38,8 @@ const MULTI_CLICK_MS = 500
 const invert = (s: string) => INV + s + INV_OFF
 const dim = (s: string) => DIM + s + DIM_OFF
 
-// Cursor cell: inverse video, optionally tinted. Setting the fg under inverse
-// makes the inverted block render in `color` (inverse swaps fg→bg), giving a
-// primary-colored block cursor with the glyph cut out — without it the cursor
-// is the plain text-colored inverse block.
+// 光标单元格：反色显示，可选着色。在反色下设置前景色会让反色块以 `color` 渲染，因为反色会把
+// 前景交换为背景，从而得到主色块状光标并镂空字形；不设置时只是普通文本色反色块。
 const cursorCell = (s: string, color?: string) =>
   color ? INV + Ink.colorize(s, color, 'foreground') + INV_OFF : invert(s)
 
@@ -153,10 +151,9 @@ function wordRight(s: string, p: number) {
 }
 
 /**
- * Move cursor one logical line up or down inside `s` while preserving the
- * column offset from the current line's start. Returns `null` when the cursor
- * is already on the first line (up) or last line (down) — callers use that
- * signal to fall through to history cycling instead of eating the arrow key.
+ * 在 `s` 中将光标上移或下移一个逻辑行，同时保留相对当前行首的列偏移。向上时
+ * 已位于首行或向下时已位于末行则返回 `null`，调用方借此回退到历史记录循环，
+ * 而不是吞掉方向键。
  */
 export function lineNav(s: string, p: number, dir: -1 | 1): null | number {
   const pos = snapPos(s, p)
@@ -188,12 +185,11 @@ export function lineNav(s: string, p: number, dir: -1 | 1): null | number {
 export { offsetFromPosition }
 
 /**
- * True when the keypress sequence is a bare LF byte (`\n`, 0x0A), which on
- * raw stdin universally indicates ctrl+enter (or ctrl+j) — never plain enter
- * (which is `\r`, 0x0D, in raw mode across xterm / WT / VSCode / iTerm /
- * etc.). Exported for unit testing; used by the main return-key dispatch to
- * insert newline without depending on Kitty/modifyOtherKeys protocol push
- * (which many SSH+zellij+VSCode chains don't honor end-to-end).
+ * 按键序列是单独的 LF 字节（`\n`，0x0A）时返回 true。在原始 stdin 中它始终
+ * 表示 Ctrl+Enter 或 Ctrl+J，而普通回车在 xterm、WT、VS Code、iTerm 等的
+ * 原始模式中都是 `\r`（0x0D）。此函数导出供单元测试使用；主回车键分派借此
+ * 插入换行，无需依赖许多 SSH、zellij、VS Code 链路无法端到端支持的
+ * Kitty/modifyOtherKeys 协议推送。
  */
 export function isLfReturn(sequence: string | undefined): boolean {
   return sequence === '\n'
@@ -321,10 +317,8 @@ export function TextInput({
     active: focus && termFocus && !selected
   })
 
-  // Hide the hardware cursor while a selection is active (prevents
-  // auto-wrap onto the next row when inverted text fills the column
-  // exactly) or when the terminal loses focus (suppresses the hollow-rect
-  // ghost most terminals draw at the parked position).
+  // 选区活动时隐藏硬件光标，避免反色文本恰好填满一列时自动换到下一行；终端失去焦点时也隐藏，
+  // 抑制多数终端在停驻位置绘制的空心矩形残影。
   const hideHardwareCursor = focus && !!stdout?.isTTY && (!!selected || !termFocus)
 
   useEffect(() => {
@@ -341,10 +335,8 @@ export function TextInput({
 
   const nativeCursor = focus && termFocus && !selected && !!stdout?.isTTY
 
-  // Placeholder text is just a hint, not a selection — render it dim
-  // without inverse styling. In a TTY the hardware cursor parks at column
-  // 0 and visually marks the input start. Non-TTY surfaces still need the
-  // synthetic inverse first-char to draw a cursor at all.
+    // 占位文本只是提示而非选区，应以暗色、非反色样式渲染。TTY 中硬件光标停在第 0 列，直观标记
+    // 输入起点；非 TTY 表面仍需要合成的首字符反色才能绘制光标。
   const rendered = useMemo(() => {
     if (!focus) {
       return display || dim(placeholder)
@@ -568,8 +560,7 @@ export function TextInput({
               return
             }
 
-            // User typed while async paste was in-flight; insert the resolved
-            // paste payload at the live cursor so it is not silently lost.
+        // 异步粘贴进行时用户又输入了内容；在当前光标处插入已解析的粘贴载荷，避免静默丢失。
             const cur = curRef.current
             const v = vRef.current
             commit(v.slice(0, cur) + fallbackText + v.slice(cur), cur + fallbackText.length)
@@ -786,16 +777,12 @@ export function TextInput({
       }
 
       if (k.return) {
-        // LF byte (\n, 0x0a) on raw stdin is universally ctrl+enter (also
-        // historically ctrl+j); CR byte (\r, 0x0d) is plain enter. This
-        // byte-level distinction is the only cross-stack reliable way to
-        // detect ctrl+enter — Kitty keyboard / xterm modifyOtherKeys
-        // protocol push is not honored across many SSH + zellij + VSCode
-        // chains. Treating LF as ctrl+enter also makes ctrl+j insert
-        // newline, semantically compatible (ctrl+j has no other binding
-        // in chat composer). Independent of and complementary to the CSI
-        // u path (k.shift / k.ctrl from kitty/modifyOtherKeys parser) —
-        // that path stays first for terminals that DO honor protocol push.
+    // 原始标准输入中的 LF 字节（\n, 0x0a）普遍表示 Ctrl+Enter，历史上也表示 Ctrl+J；CR 字节
+    // （\r, 0x0d）表示普通 Enter。字节级区别是跨技术栈可靠检测 Ctrl+Enter 的唯一方式；
+    // 许多 SSH + zellij + VSCode 链路不遵守 Kitty 键盘/xterm modifyOtherKeys 协议推送。
+    // 将 LF 视为 Ctrl+Enter 也会让 Ctrl+J 插入换行，语义兼容，因为聊天编辑器未给 Ctrl+J
+    // 其他绑定。该路径独立且补充 CSI u 路径（Kitty/modifyOtherKeys 解析器的 k.shift/k.ctrl）；
+    // 对遵守协议推送的终端仍优先使用后者。
         const lfByteAsCtrlEnter = isLfReturn(event.keypress.sequence)
 
         if (k.shift || k.ctrl || (isMac ? isActionMod(k) : k.meta) || lfByteAsCtrlEnter) {
@@ -1006,7 +993,7 @@ export function TextInput({
           return
         }
 
-        // Right-click → copy active selection if any, otherwise paste.
+  // 右键：有活动选区时复制，否则粘贴。
         if (e.button === 2) {
           e.stopImmediatePropagation?.()
           const decision = decideRightClickAction(vRef.current, selRange())
@@ -1088,15 +1075,15 @@ interface TextInputProps {
 export type RightClickDecision = { action: 'copy'; text: string } | { action: 'paste' }
 
 /**
- * Decide what right-click should do on the composer:
- *   - non-empty selection → copy that text to the clipboard
- *   - no selection (or empty/collapsed range) → fall through to paste
+ * 决定在编辑框中右键时执行的操作：
+ *   - 非空选择范围：将文本复制到剪贴板；
+ *   - 无选择范围或范围为空、已折叠：回退到粘贴。
  *
- * Mirrors terminal-native behavior (xterm, iTerm, gnome-terminal) where
- * right-click pastes only when there is nothing selected to copy.
+ * 与 xterm、iTerm、gnome-terminal 等终端原生行为一致：只有没有可复制的选中
+ * 内容时，右键才粘贴。
  *
- * Callers pass the already-normalized range from `selRange()` (start <= end,
- * or null when collapsed), so this helper does not need to re-normalize.
+ * 调用方传入 `selRange()` 已归一化的范围（start <= end，折叠时为 null），
+ * 因此本辅助函数无需再次归一化。
  */
 export function decideRightClickAction(
   value: string,

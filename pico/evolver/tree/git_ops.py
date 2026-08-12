@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import Iterator, Optional
 
 # ---------------------------------------------------------------------------
-# Exceptions
+# 异常
 # ---------------------------------------------------------------------------
 
 
@@ -89,7 +89,7 @@ class GitOpError(RuntimeError):
 
 
 # ---------------------------------------------------------------------------
-# Core runner
+# 核心运行器
 # ---------------------------------------------------------------------------
 
 
@@ -127,7 +127,7 @@ def _run(
 
 
 # ---------------------------------------------------------------------------
-# Read operations
+# 读取操作
 # ---------------------------------------------------------------------------
 
 
@@ -248,7 +248,7 @@ def changed_paths_between(
 
 
 # ---------------------------------------------------------------------------
-# Write — construct commits WITHOUT touching the working tree
+# 写入——不触碰工作树地构造提交
 # ---------------------------------------------------------------------------
 
 
@@ -258,7 +258,7 @@ def _temp_index() -> Iterator[Path]:
     fd, name = tempfile.mkstemp(prefix="evolver-idx-", suffix=".tmp")
     os.close(fd)
     path = Path(name)
-    # ``git read-tree`` requires the file not to exist yet; remove it.
+        # ``git read-tree`` 要求文件尚不存在，因此先将其移除。
     if path.exists():
         path.unlink()
     try:
@@ -305,28 +305,25 @@ def apply_patch_as_commit(
         raise ValueError(f"parent_sha {parent_sha!r} is not a known commit in {repo_root}")
 
     with _temp_index() as idx:
-        # The custom index file is selected via GIT_INDEX_FILE env var
-        # for the duration of each plumbing call.
+        # 每次底层命令调用期间，通过 GIT_INDEX_FILE 环境变量选择自定义索引文件。
         env = {"GIT_INDEX_FILE": str(idx)}
-        # Step 1: load parent tree into temp index
+        # 步骤 1：将父树加载到临时索引。
         _run(repo_root, "read-tree", parent_sha, env=env)
-        # Step 2: apply the diff to the temp index (no working-tree touch)
+        # 步骤 2：把差异应用到临时索引，不触碰工作树。
         _run(
             repo_root,
             "apply",
             "--cached",
             "--allow-empty",
-            "-",  # read patch from stdin
+                "-",  # 从标准输入读取补丁
             env=env,
             input_text=unified_diff,
         )
-        # Step 3: write a tree object from the temp index
+        # 步骤 3：从临时索引写入树对象。
         tree_sha = _run(repo_root, "write-tree", env=env).strip()
 
-    # Step 4: commit-tree to create the actual commit. Use environment
-    # variables for author / committer so the call doesn't depend on
-    # the global git config (which might not have user.name/email set
-    # on a CI box).
+        # 步骤 4：通过 commit-tree 创建真实提交。作者和提交者使用环境变量，使调用不依赖
+        # 全局 Git 配置；CI 机器可能未设置 user.name/email。
     commit_env = {
         "GIT_AUTHOR_NAME": author_name,
         "GIT_AUTHOR_EMAIL": author_email,
@@ -464,7 +461,7 @@ def worktree_at(repo_root: Path, sha: str) -> Iterator[Path]:
 
 
 # ---------------------------------------------------------------------------
-# Branch / ref management (lightweight; tag-style use only)
+# 分支/引用管理（轻量，仅用于标签式用途）
 # ---------------------------------------------------------------------------
 
 
@@ -515,7 +512,7 @@ def delete_branch(repo_root: Path, branch_name: str, *, force: bool = True) -> N
 
 
 # ---------------------------------------------------------------------------
-# Worktree management (for future eval runs; not used by commit construction)
+# 工作树管理（供后续评测运行使用，提交构造不使用）
 # ---------------------------------------------------------------------------
 
 
@@ -536,7 +533,7 @@ def remove_worktree(repo_root: Path, target_path: Path, *, force: bool = True) -
     if force:
         args.insert(2, "--force")
     _run(repo_root, *args)
-    # On rare interrupt cases git may leave the directory; clean up.
+            # 极少数中断情况下 Git 可能留下目录，需要清理。
     if target_path.exists():
         shutil.rmtree(target_path, ignore_errors=True)
 

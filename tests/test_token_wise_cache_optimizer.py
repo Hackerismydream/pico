@@ -8,9 +8,8 @@ import pytest
 
 from pico.token_wise.cache_optimizer import CacheOptimizer
 
-# Anthropic models support cache_control per the provider registry.
 ANTHROPIC_MODEL = "anthropic/claude-sonnet-4-5"
-# A model that does NOT support prompt caching → strategy must be a no-op.
+
 NON_CACHE_MODEL = "deepseek/deepseek-chat"
 
 
@@ -56,7 +55,7 @@ def _count_breakpoints(messages: list[dict], tools: list[dict] | None) -> int:
 
 
 # -----------------------------------------------------------------------------
-# Behaviour
+
 # -----------------------------------------------------------------------------
 
 
@@ -90,11 +89,11 @@ async def test_marks_tools_and_system_for_cache_capable_model():
     tools = [_tool("a"), _tool("b")]
     out_m, out_t, _ = await opt.before_llm_call(msgs, tools, ANTHROPIC_MODEL)
 
-    # Last tool marked.
+
     assert _has_cache_control(out_t[-1])
-    # Earlier tool NOT marked.
+
     assert not _has_cache_control(out_t[0])
-    # System content has cache_control on a content block.
+
     sys_msg = next(m for m in out_m if m["role"] == "system")
     assert _content_blocks_with_cache(sys_msg) == 1
 
@@ -148,7 +147,7 @@ async def test_long_history_uses_more_breakpoints():
     """A long conversation should consume up to 4 breakpoints."""
     opt = CacheOptimizer(max_breakpoints=4)
     msgs = [_system_msg()]
-    # 5 prior turns to give the optimizer somewhere to place breakpoints.
+
     for i in range(5):
         msgs.append(_user_msg(f"q{i}"))
         msgs.append(_assistant_msg(f"a{i}"))
@@ -156,7 +155,7 @@ async def test_long_history_uses_more_breakpoints():
     tools = [_tool()]
     out_m, out_t, _ = await opt.before_llm_call(msgs, tools, ANTHROPIC_MODEL)
     n = _count_breakpoints(out_m, out_t)
-    # tools(1) + system(1) + before-current-user(1) + mid(1) = 4
+
     assert n == 4
 
 
@@ -171,7 +170,7 @@ async def test_max_breakpoints_is_respected():
     tools = [_tool()]
     out_m, out_t, _ = await opt.before_llm_call(msgs, tools, ANTHROPIC_MODEL)
     n = _count_breakpoints(out_m, out_t)
-    # With budget=2 and tools present: tools(1) + system(1) = 2, no room for rolling tail.
+
     assert n == 2
 
 
@@ -180,7 +179,7 @@ async def test_short_conversation_uses_fewer_breakpoints():
     opt = CacheOptimizer(max_breakpoints=4)
     msgs = [_system_msg(), _user_msg("hi")]
     out_m, out_t, _ = await opt.before_llm_call(msgs, None, ANTHROPIC_MODEL)
-    # No tools: system(1) + rolling tail marks the one non-system msg(1) = 2
+
     n = _count_breakpoints(out_m, out_t)
     assert n == 2
 
@@ -190,7 +189,7 @@ async def test_no_system_no_tools_no_history():
     opt = CacheOptimizer()
     msgs = [_user_msg("hi")]
     out_m, out_t, _ = await opt.before_llm_call(msgs, None, ANTHROPIC_MODEL)
-    # One non-system msg → 1 rolling breakpoint (prepares cache for next iteration).
+
     assert _count_breakpoints(out_m, out_t) == 1
 
 
@@ -215,5 +214,5 @@ async def test_idempotent_repeated_application():
     msgs = [_system_msg(), _user_msg("hi")]
     once_m, _, _ = await opt.before_llm_call(msgs, None, ANTHROPIC_MODEL)
     twice_m, _, _ = await opt.before_llm_call(once_m, None, ANTHROPIC_MODEL)
-    # Same cache count; the marker is overwritten not duplicated.
+
     assert _count_breakpoints(once_m, None) == _count_breakpoints(twice_m, None)

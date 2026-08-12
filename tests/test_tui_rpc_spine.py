@@ -80,7 +80,7 @@ def _collect():
     return events, emit
 
 
-# --- protocol conformance ---
+
 
 
 def test_pieces_satisfy_their_spine_protocols():
@@ -91,7 +91,7 @@ def test_pieces_satisfy_their_spine_protocols():
     assert outlet.capabilities.streaming is True
 
 
-# --- TuiTurnRunner (drives run_turn stream=True; stashes rich usage) ---
+
 
 
 async def test_runner_drives_run_turn_and_stashes_rich_usage():
@@ -111,10 +111,10 @@ async def test_runner_drives_run_turn_and_stashes_rich_usage():
 
     outcome = await runner.run(req, emit, lambda: [])
 
-    # run_turn's events pass straight through emit (the outlet maps them to wire).
+
     assert [e.delta for e in events] == ["he", "llo"]
-    # The full usage_sink (cost / context, richer than 3-field Usage) is stashed
-    # for the sink to attach to message.complete.
+
+
     assert usages[id(req)] == rich
     assert outcome.explicit_reply is True
 
@@ -124,7 +124,7 @@ async def test_runner_emits_eve22_synthetic_tool_complete_when_message_tool_fire
     loop = _RunTurnLoop(tools={"message": message_tool})
 
     async def _run_turn(req, emit, drain, *, stream, usage_sink=None):
-        # the message tool replied this turn (turn-local sent flag)
+
         message_tool._turn.set(replace(message_tool._cur(), sent=True))
         return TurnOutcome(usage=Usage(0, 0, 0), explicit_reply=True)
 
@@ -142,14 +142,14 @@ async def test_runner_emits_eve22_synthetic_tool_complete_when_message_tool_fire
 
     await runner.run(req, emit, lambda: [])
 
-    # A lone synthetic ToolEvent(COMPLETE) keyed by the turn id (no matching start;
-    # the loop skips the message tool on its general path).
+
+
     assert len(events) == 1 and isinstance(events[0], ToolEvent)
     assert events[0].phase is ToolPhase.COMPLETE and events[0].tool_call_id == "msg-T7"
 
 
 async def test_runner_no_synthetic_when_message_tool_did_not_fire():
-    loop = _RunTurnLoop(tools={"message": MessageTool()})  # sent flag stays False
+    loop = _RunTurnLoop(tools={"message": MessageTool()})
     req = TurnRequest(origin=Origin.USER, source=_src(), text="hi", conversation="tui:c1")
     runner = TuiTurnRunner(
         loop,
@@ -161,13 +161,13 @@ async def test_runner_no_synthetic_when_message_tool_did_not_fire():
     )
     events, emit = _collect()
     await runner.run(req, emit, lambda: [])
-    assert events == []  # no synthetic completion
+    assert events == []
 
 
 async def test_runner_cron_captures_reply_non_streaming():
-    # A CRON turn runs non-streaming and its reply is read back for the cron
-    # fan-out (the cron:<job_id> conversation has no subscriber, so streaming it
-    # would deliver nowhere). Mirrors the gateway's GatewayTurnRunner read-back.
+
+
+
     loop = _RunTurnLoop(reply_text="reminder fired")
     readback: dict[str, str] = {}
     runner = TuiTurnRunner(loop, FakeEmitter(), {}, {}, readback)
@@ -176,8 +176,8 @@ async def test_runner_cron_captures_reply_non_streaming():
 
     await runner.run(req, emit, lambda: [])
 
-    assert loop.last_stream is False  # CRON runs non-streaming
-    assert readback["cron:job1"] == "reminder fired"  # reply captured for fan-out
+    assert loop.last_stream is False
+    assert readback["cron:job1"] == "reminder fired"
 
 
 async def test_runner_delivers_subagent_reply_without_user_turn_correlation():
@@ -217,7 +217,7 @@ async def test_runner_delivers_subagent_reply_without_user_turn_correlation():
     ]
 
 
-# --- TuiOutlet.deliver: maps each spine event to its wire event ---
+
 
 
 async def test_outlet_deliver_reasoning_to_thinking_delta():
@@ -283,9 +283,9 @@ async def test_outlet_marks_failed_tool_completion():
 
 
 async def test_outlet_deliver_text_to_token_delta():
-    # A non-streamed reply (clarification / hook short-circuit) rides one
-    # token.delta — previously dropped on the TUI (the earlier dual-path runner ignored the
-    # direct path's return value).
+
+
+
     emitter = FakeEmitter()
     outlet = TuiOutlet("tui", emitter)
     await outlet.deliver(Text(content="please clarify", conversation_id="tui:c1"))
@@ -299,7 +299,7 @@ async def test_outlet_deliver_eats_notice_and_media():
     await outlet.deliver(
         MediaOut(media=(Media(path="/tmp/x.png", mime="image/png", kind="image"),), conversation_id="tui:c1")
     )
-    assert emitter.emitted == []  # no wire event for either today
+    assert emitter.emitted == []
 
 
 async def test_outlet_emits_token_delta_on_a_chunk():
@@ -313,7 +313,7 @@ async def test_outlet_done_chunk_is_a_noop():
     emitter = FakeEmitter()
     outlet = TuiOutlet("tui", emitter)
     await outlet.send_stream_chunk("c1", "tui:c1", "", done=True)
-    assert emitter.emitted == []  # front-end has no stream-done event; complete is the sink's
+    assert emitter.emitted == []
 
 
 async def test_outlet_eats_empty_delta():
@@ -356,10 +356,10 @@ async def test_outlet_emit_complete_and_error_shapes():
     ]
 
 
-# --- build_tui: real Scheduler + DeliveryHub + TuiOutlet, only the edges faked ---
-# (faking the spine path would make the ordering / deadlock tests pass trivially;
-#  message.complete-after-token and the empty-turn finalize only hold on the real
-#  async path through the hub's per-outlet queue + wait_idle barrier.)
+
+
+
+
 
 
 async def test_build_tui_defaults_to_single_slot_pools():
@@ -642,8 +642,8 @@ async def test_preceding_subagent_cannot_emit_settle_or_clear_queued_user_turn(s
         on_turn_end=turn_module.clear_active,
     )
 
-    # Bypass the production admission gate so this test keeps exercising the
-    # runner/sink's independent per-request isolation defense.
+
+
     class _UncheckedScheduler:
         def submit(self, req):
             return scheduler.submit(req)
@@ -719,14 +719,14 @@ async def test_streaming_turn_emits_token_deltas_then_message_complete():
     scheduler, hub, turn_ids, submission_ids, teardown = build_tui(loop, emitter)
     try:
         req = TurnRequest(origin=Origin.USER, source=_src(), text="hi", conversation="tui:c1")
-        turn_ids[id(req)] = "t1"  # turn.send binds this; emulate here
+        turn_ids[id(req)] = "t1"
         submission_ids[id(req)] = "submission-1"
         handle = scheduler.submit(req)
         await handle.result()
     finally:
         await teardown()
 
-    # message.complete lands AFTER both token.delta events (wait_idle barrier).
+
     assert emitter.types() == ["message.start", "token.delta", "token.delta", "message.complete"]
     last_key, last = emitter.emitted[-1]
     assert last_key == "tui:c1"
@@ -738,9 +738,9 @@ async def test_streaming_turn_emits_token_deltas_then_message_complete():
 
 
 async def test_interleaved_events_keep_emit_order_through_one_queue():
-    # Folding reasoning/tool into the hub (no dual StreamAdapter path) means
-    # token/reasoning/tool share one per-outlet FIFO, so the wire order matches
-    # the emit order — the cross-type ordering the earlier dual path could not promise.
+
+
+
     emitter = FakeEmitter()
     loop = _RunTurnLoop(
         events=[
@@ -771,8 +771,8 @@ async def test_interleaved_events_keep_emit_order_through_one_queue():
 
 
 async def test_non_streamed_text_reaches_the_wire_as_a_token_delta():
-    # A clarification / hook short-circuit reply (a Text, not a stream) now renders
-    # on the TUI — the earlier runner dropped it (it ignored the direct path's return value).
+
+
     emitter = FakeEmitter()
     loop = _RunTurnLoop(events=[Text(content="which file?")])
     scheduler, hub, turn_ids, submission_ids, teardown = build_tui(loop, emitter)
@@ -790,8 +790,8 @@ async def test_non_streamed_text_reaches_the_wire_as_a_token_delta():
 
 
 async def test_empty_stream_turn_still_emits_message_complete():
-    # Deadlock regression: a turn that streams nothing must STILL finalize, or the
-    # front-end's turn slot never clears and the next turn is rejected forever.
+
+
     emitter = FakeEmitter()
     scheduler, hub, turn_ids, submission_ids, teardown = build_tui(_RunTurnLoop(events=[]), emitter)
     try:
@@ -803,16 +803,16 @@ async def test_empty_stream_turn_still_emits_message_complete():
     finally:
         await teardown()
 
-    assert emitter.types() == ["message.start", "message.complete"]  # no token.delta, but still finalized
+    assert emitter.types() == ["message.start", "message.complete"]
     assert emitter.emitted[-1][1]["payload"]["turn_id"] == "t9"
 
 
 async def test_cron_turn_deliverables_key_to_dead_conversation_not_user_session():
-    # No-double-delivery: a CRON turn's spine deliverables key to its
-    # cron:<job_id> conversation (no user subscriber -> no-op in the real
-    # emitter), so a user session never sees a stray token.delta/message.complete.
-    # The only delivery to a user session is the wrapper's cron.delivered fan-out
-    # (tested separately). The reply is read back for that fan-out.
+
+
+
+
+
     emitter = FakeEmitter()
     loop = _RunTurnLoop(events=[Text(content="reminder")], reply_text="reminder")
     readback: dict[str, str] = {}
@@ -832,7 +832,7 @@ async def test_cron_turn_deliverables_key_to_dead_conversation_not_user_session(
         await teardown()
 
     assert emitter.emitted == []
-    assert readback["cron:job1"] == "reminder"  # captured for the fan-out
+    assert readback["cron:job1"] == "reminder"
 
 
 async def test_failed_turn_emits_error():
@@ -859,8 +859,8 @@ async def test_failed_turn_emits_error():
 
 
 async def test_cancelled_turn_does_not_emit_error():
-    # A cancelled turn's error is turn.cancel's to emit; the sink must stay silent
-    # so the client does not get two error frames.
+
+
     import asyncio
 
     started = asyncio.Event()
@@ -881,4 +881,4 @@ async def test_cancelled_turn_does_not_emit_error():
     finally:
         await teardown()
 
-    assert emitter.emitted == []  # no error from the sink on cancellation
+    assert emitter.emitted == []

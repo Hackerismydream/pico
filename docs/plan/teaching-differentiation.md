@@ -206,4 +206,4 @@ Pico 是从 [EverMind-AI/Raven](https://github.com/EverMind-AI/Raven)（Apache-2
 本次配套修改 `AGENTS.md`：
 
 - 目录表 §1 行补充「(teaching modules: §1.4)」；
-- 新增 **§1.4 教学注释规范**（v2 修订）：教学模块 = **allowlist + docstring marker 双条件**（防自声明豁免），由 CI 校验一致性；教学模块放宽 §1.1/§1.2，允许中文详细注释；其余模块维持原规则。
+- 新增 **§1.4 教学注释规范**（v2 修订）：教学模块 = **allowlist + docstring marker 双条件**（防自声明豁免），由 CI 校验一致性；教学模块放宽 §1.1，允许增加详细教学注释。§1.2 后续已调整为全仓注释语言不限，普通模块仍须遵守“只解释为什么”的稀疏注释规则。

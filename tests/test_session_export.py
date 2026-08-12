@@ -19,7 +19,7 @@ def _session(key: str = "tui:20260622_120000_abcdef", **kw) -> Session:
     return Session(key=key, **kw)
 
 
-# ── render_transcript ──────────────────────────────────────────────────
+
 
 
 def test_header_reflects_metadata():
@@ -34,7 +34,7 @@ def test_header_reflects_metadata():
     assert s.key in out
     assert "My chat" in out
     assert "2026-06-22" in out
-    assert "2" in out  # message count
+    assert "2" in out
 
 
 def test_user_and_assistant_headings():
@@ -44,7 +44,7 @@ def test_user_and_assistant_headings():
     out = render_transcript(s)
     assert "question?" in out
     assert "answer." in out
-    # distinct headings for the two roles
+
     lower = out.lower()
     assert "user" in lower and "assistant" in lower
 
@@ -70,7 +70,7 @@ def test_reasoning_block_absent_when_unset():
     s.add_message("assistant", "plain answer")
     out = render_transcript(s)
     assert "plain answer" in out
-    # no reasoning marker leaks when none was recorded
+
     assert "think" not in out.lower()
 
 
@@ -111,14 +111,14 @@ def test_empty_session_renders_header_only():
     assert isinstance(out, str) and out.strip()
 
 
-# ── default_export_path / write_transcript ─────────────────────────────
+
 
 
 def test_default_export_path_is_workspace_relative(tmp_path: Path):
     p = default_export_path(tmp_path, "tui:20260622_120000_abcdef")
     assert p.parent == tmp_path / "exports"
     assert p.name.endswith(".pico-session.json")
-    # ':' is folded to a filesystem-safe filename
+
     assert ":" not in p.name
 
 
@@ -174,7 +174,7 @@ def test_write_transcript_overwrites(tmp_path: Path):
     write_transcript(s, dest)
     body = dest.read_text(encoding="utf-8")
     assert "first" in body and "second" in body
-    # overwrite, not append: the user line appears once
+
     assert body.count("first") == 1
 
 

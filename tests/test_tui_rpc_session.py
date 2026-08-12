@@ -48,21 +48,21 @@ from pico.utils.atomic_io import StorageCorruptionError
 
 _SESSION_ID_RE = re.compile(r"^tui:\d{8}_\d{6}_[0-9a-f]{6}$")
 
-# Required by SessionPanel (``ui-tui/src/components/branding.tsx``):
-#   * ``info.model``  — line 231  ``info.model.split('/').pop()``
-#   * ``info.skills`` — line 138  ``Object.entries(info.skills)``
-#   * ``info.tools``  — line 166  ``Object.entries(info.tools)``
+
+
+
+
 _SESSION_PANEL_REQUIRED_KEYS = {"model", "skills", "tools"}
 
 
 def _assert_session_info(info: dict) -> None:
     """Assert that ``info`` matches the TS ``SessionInfo`` wire shape that
     ``SessionPanel`` consumes (``ui-tui/src/types.ts:148``)."""
-    # Must contain everything SessionPanel reads without optional-chaining.
+
     assert _SESSION_PANEL_REQUIRED_KEYS.issubset(set(info)), (
         f"missing SessionPanel-required keys; got {set(info)}, missing {_SESSION_PANEL_REQUIRED_KEYS - set(info)}"
     )
-    # Types: skills / tools must be dicts so ``Object.entries`` works in JS.
+
     assert isinstance(info["skills"], dict), "info.skills must be a dict (Object.entries target)"
     assert isinstance(info["tools"], dict), "info.tools must be a dict (Object.entries target)"
     assert isinstance(info["model"], str) and info["model"], "info.model must be a non-empty str"
@@ -176,7 +176,7 @@ async def test_session_create_accepts_title_param_without_error() -> None:
 
 
 # ---------------------------------------------------------------------------
-# P2-B new tests: session.resume with real transcript + session.close flush
+
 # ---------------------------------------------------------------------------
 
 
@@ -413,8 +413,8 @@ async def test_session_resume_unknown_id_does_not_create_file(tmp_path: Path, mo
         await session_resume({"session_id": "tui:totally_unknown_id"})
 
     after = set(sessions_dir.rglob("*")) if sessions_dir.exists() else set()
-    # Manager construction ensure_dirs the sessions dir, so directories are
-    # expected; only files indicate actual persistence.
+
+
     new_files = {p for p in after - before if p.is_file()}
     assert not new_files, f"resume of unknown id must not write files; got: {new_files}"
 
@@ -557,7 +557,7 @@ async def test_session_close_returns_ok_without_session_key() -> None:
 
 
 # ---------------------------------------------------------------------------
-# P2-C new tests: session.list / session.delete / session.most_recent / session.title
+
 # ---------------------------------------------------------------------------
 
 
@@ -1226,7 +1226,7 @@ async def test_session_most_recent_via_dispatcher(tmp_path: Path, monkeypatch: p
 
 
 # ---------------------------------------------------------------------------
-# _manager_for: shared-loop preference vs fresh-manager fall-through
+
 # ---------------------------------------------------------------------------
 
 
@@ -1542,7 +1542,7 @@ async def test_session_undo_rejects_when_turn_active(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# session.branch — fork the session
+
 # ---------------------------------------------------------------------------
 
 
@@ -1733,7 +1733,7 @@ async def test_session_branch_empty_source_preserves_pending_images(
     assert pending_images(source_key)
 
 
-# ── session.export ─────────────────────────────────────────────────────
+
 
 
 async def test_session_export_writes_verified_portable_artifact(

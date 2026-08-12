@@ -1,6 +1,6 @@
 export const shortCwd = (cwd: string, max = 28) => {
-  // Windows has no HOME; fall back to USERPROFILE so the cwd collapses to ~
-  // instead of showing the full C:\Users\... path in the status bar.
+  // Windows 没有 HOME，因此回退到 USERPROFILE，使状态栏中的当前目录折叠为 ~，
+  // 而不是显示完整的 C:\Users\... 路径。
   const h = process.env.HOME || process.env.USERPROFILE
   const p = h && cwd.startsWith(h) ? `~${cwd.slice(h.length)}` : cwd
 

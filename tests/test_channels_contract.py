@@ -12,8 +12,6 @@ from pico.channels import (
 from pico.channels.contract import capability_violations
 from pico.channels.intake import Intake
 
-# ── minimal conforming channel + opt-in variants (test doubles) ───────
-
 
 class _Min:
     name = "min"
@@ -38,7 +36,7 @@ class _WithStreaming(_Min):
     async def send_stream_chunk(self, chat_id, stream_id, delta, *, done=False) -> None: ...
 
 
-# ── Capabilities / ChannelSpec ────────────────────────────────────────
+
 
 
 def test_capabilities_defaults_all_false():
@@ -53,15 +51,15 @@ def test_channel_spec_fields_and_factory():
         capabilities=Capabilities(interactive_login=True),
     )
     assert spec.display_name == "WeChat" and spec.capabilities.interactive_login is True
-    assert isinstance(spec.factory("cfg", "bus"), _Min)  # factory builds a channel
+    assert isinstance(spec.factory("cfg", "bus"), _Min)
 
 
 def test_channel_spec_capabilities_default_empty():
     spec = ChannelSpec(display_name="X", factory=lambda cfg, bus: _Min())
-    assert spec.capabilities == Capabilities()  # omitted -> all-False
+    assert spec.capabilities == Capabilities()
 
 
-# ── runtime-checkable protocols ───────────────────────────────────────
+
 
 
 def test_min_satisfies_channel_protocol():
@@ -75,7 +73,7 @@ def test_supports_protocols_are_opt_in():
     assert isinstance(_WithStreaming(), SupportsStreaming)
 
 
-# ── capability proof ──────────────────────────────────────────────────
+
 
 
 def test_capability_violations_consistent():
@@ -85,26 +83,26 @@ def test_capability_violations_consistent():
 
 
 def test_capability_violations_declared_but_missing():
-    # declares interactive_login but no login() method
+
     bad_login = _Min()
     bad_login.capabilities = Capabilities(interactive_login=True)
     assert any("interactive_login" in m for m in capability_violations(bad_login))
 
-    # symmetric: declares streaming but no send_stream_chunk()
+
     bad_stream = _Min()
     bad_stream.capabilities = Capabilities(streaming=True)
     assert any("streaming" in m for m in capability_violations(bad_stream))
 
 
 def test_capability_violations_implemented_but_undeclared():
-    # implements login() but forgot to declare interactive_login
+
     class _SneakyLogin(_Min):
         async def login(self, force: bool = False) -> bool:
             return True
 
     assert any("SupportsLogin" in m for m in capability_violations(_SneakyLogin()))
 
-    # symmetric: implements streaming but forgot to declare streaming
+
     class _SneakyStream(_Min):
         async def send_stream_chunk(self, chat_id, stream_id, delta, *, done=False) -> None: ...
 

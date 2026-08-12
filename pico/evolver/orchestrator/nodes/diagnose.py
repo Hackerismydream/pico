@@ -77,7 +77,7 @@ def diagnose_round(
                     max_retries=max_retries,
                 )
             )
-        except Exception:  # noqa: BLE001 — record and continue; see docstring
+        except Exception:  # noqa: BLE001 — 记录后继续，详见文档字符串
             failures.append(trajectory_id)
 
     failure_map = build_failure_map(results, min_why_classes=min_why_classes)

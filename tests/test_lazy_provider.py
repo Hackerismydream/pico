@@ -39,10 +39,10 @@ def test_construction_and_config_reads_do_not_build() -> None:
     calls: list = []
     lp = _lazy(calls)
 
-    assert calls == []  # constructing did not call the factory
-    assert lp.get_default_model() == "cfg-model"  # from config, not the built provider
-    assert lp.generation.temperature == 0.5  # from config
-    assert calls == []  # neither read triggered a build
+    assert calls == []
+    assert lp.get_default_model() == "cfg-model"
+    assert lp.generation.temperature == 0.5
+    assert calls == []
 
 
 def test_first_chat_builds_and_memoizes() -> None:
@@ -52,7 +52,7 @@ def test_first_chat_builds_and_memoizes() -> None:
     assert asyncio.run(lp.chat([])) == "chat"
     assert calls == [1]
     assert asyncio.run(lp.chat([])) == "chat"
-    assert calls == [1]  # not rebuilt
+    assert calls == [1]
 
 
 def test_chat_stream_and_retry_delegate() -> None:
@@ -64,14 +64,14 @@ def test_chat_stream_and_retry_delegate() -> None:
 
     assert asyncio.run(_drain()) == ["delta"]
     assert asyncio.run(lp.chat_with_retry([])) == "retry"
-    assert calls == [1]  # one build shared across both
+    assert calls == [1]
 
 
 def test_built_is_thread_safe() -> None:
     calls: list = []
 
     def factory() -> _FakeProvider:
-        time.sleep(0.05)  # widen the race window
+        time.sleep(0.05)
         calls.append(1)
         return _FakeProvider()
 
@@ -82,7 +82,7 @@ def test_built_is_thread_safe() -> None:
     for t in threads:
         t.join()
 
-    assert calls == [1]  # built exactly once despite concurrent access
+    assert calls == [1]
 
 
 def test_prewarm_builds_in_background() -> None:
@@ -103,8 +103,8 @@ def test_prewarm_swallows_build_error() -> None:
         raise RuntimeError("boom")
 
     lp = LazyProvider(factory, "cfg-model", GenerationSettings())
-    lp.prewarm()  # must not raise
+    lp.prewarm()
     time.sleep(0.05)
-    # the error surfaces on a real call instead
+
     with pytest.raises(RuntimeError, match="boom"):
         asyncio.run(lp.chat([]))

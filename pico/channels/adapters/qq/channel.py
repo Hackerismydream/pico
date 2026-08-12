@@ -37,8 +37,8 @@ def _make_bot_class(channel: "QQChannel") -> "type[botpy.Client]":
 
     class _Bot(botpy.Client):
         def __init__(self):
-            # Disable botpy's file log (default botpy.log fails on a read-only
-            # fs); Pico logs through loguru.
+            # 禁用 botpy 文件日志（默认 botpy.log 在只读文件系统上会失败）；
+            # Pico 统一通过 loguru 记录日志。
             super().__init__(intents=intents, ext_handlers=False)
 
         async def on_ready(self):
@@ -70,7 +70,7 @@ class QQChannel(ChannelBase):
         self._msg_seq: int = 1
         self._chat_type_cache: dict[str, str] = {}
 
-    # ── lifecycle ─────────────────────────────────────────────────────
+    # ── 生命周期 ───────────────────────────────────────────────────
 
     async def start(self) -> None:
         if not self.config.app_id or not self.config.secret:
@@ -97,7 +97,7 @@ class QQChannel(ChannelBase):
                 pass
         logger.info("QQ bot stopped")
 
-    # ── inbound ───────────────────────────────────────────────────────
+    # ── 入站 ──────────────────────────────────────────────────────
 
     async def _on_message(self, data: "C2CMessage | GroupMessage", is_group: bool = False) -> None:
         try:
@@ -111,7 +111,7 @@ class QQChannel(ChannelBase):
             self._processed_ids.append(message_id)
 
             chat_id, user_id, chat_type = parsing.resolve_route(data, is_group)
-            if not self.is_allowed(user_id):  # reject before caching route state or publishing
+            if not self.is_allowed(user_id):  # 在缓存路由状态或发布前拒绝
                 logger.warning("QQ inbound rejected by allowlist: sender={}", user_id)
                 return
 
@@ -131,7 +131,7 @@ class QQChannel(ChannelBase):
         except Exception:
             logger.exception("QQ inbound dropped: event handling failed")
 
-    # ── outbound ──────────────────────────────────────────────────────
+    # ── 出站 ──────────────────────────────────────────────────────
 
     async def send(self, chat_id: str, content: str, media: list[str] | None = None) -> None:
         if not self._client:
@@ -139,14 +139,14 @@ class QQChannel(ChannelBase):
             return
         media = media or []
         if media:
-            # The reply endpoints used here are text-only; surface the dropped
-            # attachments to the user instead of losing them silently.
+            # 此处使用的回复端点只支持文本；应向用户说明附件被丢弃，
+            # 而不是静默丢失。
             logger.warning("QQ reply is text-only; {} attachment(s) not sent", len(media))
             notes = "\n".join(
                 f"[Attachment not sent: {safe_name(m)}]" for m in media if isinstance(m, str) and m.strip()
             )
             content = f"{content}\n{notes}".strip()
-        # Bump the per-message sequence number so QQ's API doesn't dedup replies.
+        # 递增每条消息的序号，避免 QQ API 对回复去重。
         self._msg_seq += 1
         chat_type = self._chat_type_cache.get(chat_id, "c2c")
         try:
@@ -159,8 +159,8 @@ class QQChannel(ChannelBase):
                     msg_seq=self._msg_seq,
                 )
             elif chat_type == "guild_dm":
-                # Guild DMs reply through the DM session (post_dms); the C2C
-                # endpoint rejects guild user ids. post_dms has no msg_seq.
+                # Guild 私信通过 DM session（post_dms）回复；C2C 端点会拒绝
+                # guild user id。post_dms 没有 msg_seq。
                 await self._client.api.post_dms(
                     guild_id=chat_id,
                     content=content,
@@ -177,5 +177,5 @@ class QQChannel(ChannelBase):
             logger.info("QQ message sent: chat_id={} chat_type={}", chat_id, chat_type)
         except Exception as e:
             if isinstance(e, ServerError) or transient_network(e):
-                raise  # 5xx / network drop: let manager._send_with_retry back off
+                raise  # 5xx 或网络中断：交给 manager._send_with_retry 退避
             logger.error("Error sending QQ message: {}", e)

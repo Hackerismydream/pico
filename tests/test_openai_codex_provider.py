@@ -32,5 +32,5 @@ def test_headers_declare_experimental_responses_beta():
 def test_provider_default_model_is_codex():
     provider = OpenAICodexProvider(default_model="openai-codex/gpt-5.1-codex")
     assert provider.get_default_model() == "openai-codex/gpt-5.1-codex"
-    # OAuth-based: constructed without an API key.
+
     assert provider.api_key is None

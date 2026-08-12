@@ -46,8 +46,7 @@ class QuestionBroker:
     def __init__(self, send_frame: SendFrame) -> None:
         self._send_frame = send_frame
         self._pending: dict[str, _PendingQuestion] = {}
-        # Reverse index request_id -> conversation_id so :meth:`reply` can
-        # accept either handle.
+        # 建立 request_id -> conversation_id 反向索引，使 :meth:`reply` 能接受任一句柄。
         self._by_request: dict[str, str] = {}
 
     async def await_question(
@@ -84,10 +83,9 @@ class QuestionBroker:
         self._pending[conversation_id] = _PendingQuestion(future=future, request_id=request_id, default=default)
         self._by_request[request_id] = conversation_id
         try:
-            # ``clarify.request`` is the ui-tui frontend's existing multi-choice
-            # prompt contract ({question, choices, request_id} -> ClarifyPrompt ->
-            # clarify.respond); the broker reuses it. conversation_id is carried
-            # for the gateway channel route (the frontend ignores extra keys).
+        # ``clarify.request`` 是 ui-tui 前端已有的多选提示协议：
+        # {question, choices, request_id} -> ClarifyPrompt -> clarify.respond。代理器复用它；
+        # conversation_id 供网关通道路由使用，前端会忽略额外键。
             await self._send_frame(
                 {
                     "jsonrpc": "2.0",
@@ -103,12 +101,11 @@ class QuestionBroker:
             return await asyncio.wait_for(future, timeout_s)
         except asyncio.TimeoutError:
             return default
-        except Exception:  # noqa: BLE001 — fail-safe: the loop needs a string back
+        except Exception:  # noqa: BLE001 — 失效保护：循环必须得到字符串
             logger.exception("question_broker: await_question failed for {}", conversation_id)
             return default
         finally:
-            # Only retract our own entry: an overlapping question may have
-            # already replaced it under the same conversation_id.
+            # 只撤回当前请求自己的记录；重叠问题可能已在同一 conversation_id 下替换了它。
             current = self._pending.get(conversation_id)
             if current is not None and current.request_id == request_id:
                 self._pending.pop(conversation_id, None)

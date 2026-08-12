@@ -78,7 +78,7 @@ class TestSpawn:
         ]
         h = Harness()
         h.spawn("/bin/cat")
-        # Second call: tui-use use sid
+
         use_call = mock_run.call_args_list[1]
         cmd = use_call.args[0]
         assert cmd[:3] == ["tui-use", "use", "sid"]
@@ -110,7 +110,7 @@ class TestSpawn:
         h.env_set({"FORCE_COLOR": "1", "FOO": "bar"})
         h.spawn("uv run pico")
         start_call = mock_run.call_args_list[0]
-        # env passed as kwarg to subprocess.run
+
         env = start_call.kwargs.get("env")
         assert env is not None
         assert env["FORCE_COLOR"] == "1"
@@ -121,7 +121,7 @@ class TestSpawn:
         h = Harness()
         h.spawn("uv run pico")
         env = mock_run.call_args_list[0].kwargs.get("env")
-        # FORCE_COLOR default = "1" per specs/tui-autotest.md §S5.1
+
         assert env["FORCE_COLOR"] == "1"
         assert env["TERM"] == "xterm-256color"
 
@@ -180,7 +180,7 @@ class TestWait:
 
     def test_wait_returns_false_on_timeout(self, mock_run):
         spawn_calls = [_completed(stdout="sid\n"), _completed()]
-        # Many polls all without the target — wait should timeout fast
+
         no_match = _completed(stdout="empty screen\n")
         mock_run.side_effect = spawn_calls + [no_match] * 100
         h = Harness()
@@ -202,8 +202,8 @@ class TestDump:
         h.spawn("/bin/cat")
         rows = h.dump()
         assert "row one" in rows
-        assert "row two trailing" in rows  # trailing whitespace stripped
-        # Banner/separator rows (those bracketed with ─── markers) excluded
+        assert "row two trailing" in rows
+
         for row in rows:
             assert "───" not in row
 
@@ -283,7 +283,7 @@ class TestKill:
         h = Harness()
         h.spawn("/bin/cat")
         exit_code = h.kill()
-        # tui-use kill called
+
         kill_calls = [c for c in mock_run.call_args_list if c.args[0][:2] == ["tui-use", "kill"]]
         assert len(kill_calls) >= 1
         assert exit_code == 0
@@ -300,10 +300,10 @@ class TestKill:
         h = Harness()
         h.spawn("/bin/cat")
         h.kill()
-        h.kill()  # no raise
+        h.kill()
 
     def test_kill_before_spawn_noop(self):
         h = Harness()
-        # Should not raise; just no-op
+
         result = h.kill()
         assert result == -1

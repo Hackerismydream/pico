@@ -233,7 +233,7 @@ function isPrivateOrLocalHost(hostname: string): boolean {
     return isPrivateIpv6(normalized)
   }
 
-  // Single-label hostnames are usually LAN names or enterprise intranet aliases.
+  // 单标签主机名通常是局域网名称或企业内网别名。
   return !normalized.includes('.')
 }
 
@@ -304,7 +304,7 @@ async function readResponseSnippet(response: Response): Promise<string> {
       try {
         await reader.cancel()
       } catch {
-        // Ignore stream teardown failures.
+        // 忽略流拆除失败。
       }
     }
   }

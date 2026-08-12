@@ -113,9 +113,8 @@ def build_appworld_orchestrator(
     if analysis_mode not in ("mapreduce", "agentic"):
         raise ValueError(f"unknown analysis_mode {analysis_mode!r}")
     if analysis_mode == "agentic":
-        # Fail fast at build time: agentic analysis only runs on Claude models
-        # via a present, logged-in claude CLI — never mid-run, never on other
-        # drivers (their arms use mapreduce).
+# 构建时快速失败：智能体分析只通过已安装且已登录的 Claude CLI 在 Claude 模型上
+# 运行，不能运行到中途才失败，也不适用于使用 mapreduce 分支的其他驱动。
         from pico.evolver.orchestrator.providers.claude_agentic import (
             require_claude_for_agentic,
         )
@@ -127,21 +126,18 @@ def build_appworld_orchestrator(
     runs_root = Path(runs_root)
     ws_root = Path(ws_root)
     if runs_root != aw_cfg.out_dir_root:
-        # Diagnosis reads a promoted parent's confirm out-dir under runs_root;
-        # the gate writes it under aw_cfg.out_dir_root. Split roots would make
-        # every round-2+ diagnosis silently come up empty.
+# 诊断从 runs_root 下读取已晋升父节点的确认输出目录，而门禁写入
+# aw_cfg.out_dir_root；根目录分裂会使第二轮及之后的诊断静默为空。
         raise ValueError(f"runs_root ({runs_root}) must equal aw_cfg.out_dir_root ({aw_cfg.out_dir_root})")
-    # Same contract on the session side: diagnosis looks for session jsonls
-    # under ws_root, so the batch runner must actually write them there.
+# 会话侧遵循同一约定：诊断在 ws_root 下查找会话 JSONL，因此批量执行器必须实际
+# 写入该位置。
     if aw_cfg.workspace is None:
         aw_cfg = _dc_replace(aw_cfg, workspace=ws_root)
     elif Path(aw_cfg.workspace) != ws_root:
         raise ValueError(f"ws_root ({ws_root}) must equal aw_cfg.workspace ({aw_cfg.workspace})")
 
-    # ① diagnose (W1-W7) over the parent's baseline failing trajectories: the
-    # root diagnoses the vanilla out-dir (by ITS name); a promoted parent
-    # diagnoses its OWN confirm out-dir (confirm_job_name — the naming contract
-    # shared with the gate policies).
+# ① 针对父节点基线失败轨迹执行 W1-W7 诊断：根节点按名称诊断原版输出目录；
+# 已晋升父节点诊断自身确认输出目录。confirm_job_name 是与门禁策略共享的命名约定。
     exp_of = exp_of or (
         lambda parent: vanilla_out_dir.name if parent.node_id == root_node_id else confirm_job_name(parent.node_id)
     )
@@ -149,8 +145,8 @@ def build_appworld_orchestrator(
         runs_root=runs_root, ws_root=ws_root, exp_of=exp_of, k=config.k_confirm
     )
 
-    # ⑤ eval: worktree checkout of the candidate commit, batch.py with cwd=worktree.
-    # vanilla_node lets cold_start run the vanilla ledger if it is missing (SOP §1).
+# ⑤ 评测：在候选提交的工作树检出中，以 cwd=worktree 运行 batch.py。
+# vanilla_node 允许 cold_start 在缺少原版账本时运行该账本（SOP §1）。
     backend = make_appworld_backend(
         aw_cfg,
         vanilla_out_dir=vanilla_out_dir,
@@ -169,9 +165,8 @@ def build_appworld_orchestrator(
         precheck=precheck or make_appworld_precheck(aw_cfg),
     )
 
-    # Captured by diagnose_of for the verdict's next_target constraint and the
-    # driver's WHY selection — with induction the keys/definitions only exist
-    # after the first diagnose resolves them.
+# diagnose_of 捕获这些值，供判决的 next_target 约束和驱动的 WHY 选择使用；启用
+# 归纳时，键与定义只有在首次诊断解析后才存在。
     taxonomy_keys: list[str] = []
     taxonomy_why_defs: dict[str, str] = {}
 
@@ -211,9 +206,8 @@ def build_appworld_orchestrator(
             seed,
         )
 
-    # ② design (bash-editor) off the parent commit. The designer's
-    # read_trajectory action renders the CURRENT parent's failing attempts by
-    # default; sha_of (owned by the assembler) resolves the parent commit.
+# ② 从父提交开始设计（Bash 编辑器）。设计器的 read_trajectory 默认渲染当前
+# 父节点失败尝试；由装配器拥有的 sha_of 解析父提交。
     def design_of(sha_of, history, archive_summary_of):
         return make_bash_editor_design_fn(
             design_call_fn,
@@ -241,12 +235,10 @@ def build_appworld_orchestrator(
             why_defs_of=lambda: dict(taxonomy_why_defs) or None,
         )
 
-    # baseline: default "frozen" = per-parent frozen, seeded with the vanilla
-    # ledger through the infra-rerun KEPT overlay (control sees the same
-    # salvage rule candidate evals get, SOP §0); resume fallback re-reads a
-    # parent's confirm out-dir. Frozen is the cost-bound choice and is
-    # cross-time-shift blind (see gates.policy); "same_session" re-measures
-    # the parent every round (~2x eval cost, drift-immune).
+# 基线：默认 "frozen" 表示按父节点冻结，并通过基础设施重跑 KEPT 覆盖以原版账本
+# 初始化；控制组使用与候选评测相同的挽救规则（SOP §0）。恢复回退会重新读取父
+# 节点确认输出目录。冻结模式受成本约束但无法感知跨时间漂移，参见 gates.policy；
+# "same_session" 每轮重新测量父节点，评测成本约两倍，但不受漂移影响。
     if baseline_mode not in ("frozen", "same_session"):
         raise ValueError(f"baseline_mode must be 'frozen' or 'same_session', got {baseline_mode!r}")
 
@@ -269,8 +261,8 @@ def build_appworld_orchestrator(
             seed_label="van0",
         )
 
-    # Gate-b read-back: which train tasks a beacon-carrying candidate actually
-    # fired on, unioned over its confirm out-dir + infra-rerun ladder siblings.
+# Gate-b 回读：携带信标的候选实际在哪些训练任务上触发，结果取确认输出目录与基础
+# 设施重跑阶梯兄弟目录的并集。
     from pico.evolver.activation.ledger import read_fired_tasks
 
     def fired_source_of(node: HarnessNode, task_ids: list[str]):

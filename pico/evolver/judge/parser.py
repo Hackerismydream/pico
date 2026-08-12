@@ -46,7 +46,7 @@ class JudgeParseError(ValueError):
 
 
 # ---------------------------------------------------------------------------
-# Text → JSON dict
+# 文本转 JSON 字典
 # ---------------------------------------------------------------------------
 
 
@@ -130,7 +130,7 @@ def _parse_components(action_obj: dict[str, Any]) -> list[ProposedComponent]:
     """
     raw_components = action_obj.get("components")
 
-    # Path A: new schema — explicit components list
+    # 路径 A：新模式，显式组件列表。
     if raw_components is not None:
         if not isinstance(raw_components, list):
             raise JudgeParseError(f"proposed_action.components must be a list, got {type(raw_components).__name__}")
@@ -162,7 +162,7 @@ def _parse_components(action_obj: dict[str, Any]) -> list[ProposedComponent]:
             )
         return parsed
 
-    # Path B: legacy flat schema — synthesize a single component
+    # 路径 B：旧扁平模式，合成单个组件。
     target_file = action_obj.get("target_file")
     patch_summary = action_obj.get("patch_summary")
     if target_file is None or patch_summary is None:
@@ -201,7 +201,7 @@ def _parse_evidence_range(raw: Any) -> Optional[tuple[int, int]]:
 
 
 # ---------------------------------------------------------------------------
-# Top-level parser
+# 顶层解析器
 # ---------------------------------------------------------------------------
 
 
@@ -234,14 +234,11 @@ def parse_judge_output(
     if not isinstance(trajectory_id, str):
         raise JudgeParseError("trajectory_id must be a string")
     if expected_trajectory_id is not None:
-        # Judges occasionally echo the trajectory_id back with a wrapper-
-        # path suffix copied from the task description, e.g.
-        #   expected: 'swe-vanilla-500/django__django-11292'
-        #   got:      'swe-vanilla-500/django__django-11292-t1-exec'
-        # (the '-t1-exec' came from WRAPPER_PATH in the user message).
-        # Accept the parsed id if it starts with the expected id so the
-        # batch doesn't lose otherwise-valid records over a cosmetic
-        # suffix. Strict mismatch (different task entirely) still raises.
+        # 评判器偶尔会回显 trajectory_id，并附上从任务描述复制的包装路径后缀，例如：
+        #   预期：'swe-vanilla-500/django__django-11292'
+        #   实际：'swe-vanilla-500/django__django-11292-t1-exec'
+        # 其中 '-t1-exec' 来自用户消息中的 WRAPPER_PATH。若解析出的 ID 以预期 ID 开头则接受，
+        # 避免批处理因装饰性后缀丢失其他方面有效的记录；完全不同任务的严格不匹配仍会抛错。
         if trajectory_id != expected_trajectory_id and not trajectory_id.startswith(expected_trajectory_id):
             raise JudgeParseError(f"trajectory_id mismatch: expected {expected_trajectory_id!r}, got {trajectory_id!r}")
 
@@ -268,7 +265,7 @@ def parse_judge_output(
     if not isinstance(reasoning, str):
         raise JudgeParseError("proposed_action.reasoning must be a string")
 
-    # Patch-fields: required iff kind=patch_proposal.
+    # 补丁字段仅在 kind=patch_proposal 时必填。
     patch_where = None
     patch_why = None
     patch_why_extra = None
@@ -286,7 +283,7 @@ def parse_judge_output(
             "proposed_action.patch_why",
         )
         components = _parse_components(action_obj)
-        # patch_why=other requires a sub-name
+    # patch_why=other 时必须提供子名称。
         patch_why_extra_raw = action_obj.get("patch_why_extra")
         if patch_why == PatchWhy.other:
             if not patch_why_extra_raw or not isinstance(patch_why_extra_raw, str):
@@ -305,7 +302,7 @@ def parse_judge_output(
     except ValueError as exc:
         raise JudgeParseError(str(exc)) from exc
 
-    # JudgeResult.__post_init__ enforces the cross-field invariants.
+    # JudgeResult.__post_init__ 负责强制跨字段不变量。
     return JudgeResult(
         trajectory_id=trajectory_id,
         issue_type=issue_type,

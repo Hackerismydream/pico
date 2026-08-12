@@ -1,20 +1,18 @@
 #!/usr/bin/env node
-// One-off generator for the reduced-tier color palettes in src/theme.ts.
+// src/theme.ts 中降级调色板的一次性生成器。
 //
-// The truecolor (tier 3) palettes are the source of truth, hand-authored as
-// hex in theme.ts. The 256-color (tier 2) and 16-color (tier 1) palettes are
-// DERIVED from them by this script and FROZEN as literals in theme.ts — so no
-// RGB->ANSI conversion runs at app start-up. Re-run this and paste the output
-// when the truecolor palette changes:
+// 真彩色（第 3 级）调色板是事实来源，以十六进制形式手工写在 theme.ts 中。
+// 256 色（第 2 级）和 16 色（第 1 级）调色板由本脚本派生，并以字面量冻结到
+// theme.ts，避免应用启动时执行 RGB 到 ANSI 的转换。真彩色调色板变化时重新运行
+// 本脚本并粘贴输出：
 //
 //   node scripts/gen-color-palettes.mjs
 //
-// 256-color mapping uses a hue-preserving algorithm (the same one hermes-ink
-// historically used for legacy Apple Terminal) so dark greens stay green
-// instead of collapsing onto the olive cube cell that chalk's naive
-// rgbToAnsi256 picks. 16-color mapping is nearest-of-16 by RGB distance.
+// 256 色映射采用保留色相的算法，与 hermes-ink 曾用于旧版 Apple Terminal 的
+// 算法相同，使深绿色保持绿色，而不是折叠到 Chalk 朴素 rgbToAnsi256 选择的
+// 橄榄色色块。16 色映射按 RGB 距离选取最接近的颜色。
 
-// --- truecolor source palettes (keep in sync with theme.ts) ---------------
+// --- 真彩色源调色板（与 theme.ts 保持同步）----------------------------------
 
 const DARK = {
   primary: '#7CC950',
@@ -78,7 +76,7 @@ const LIGHT = {
   shellDollar: '#1565C0'
 }
 
-// --- parsing ---------------------------------------------------------------
+// --- 解析 ------------------------------------------------------------------
 
 function toRgb(value) {
   const hex = /^#([0-9a-f]{6})$/i.exec(value)
@@ -93,7 +91,7 @@ function toRgb(value) {
   throw new Error(`unparseable color: ${value}`)
 }
 
-// --- 256-color (hue preserving) -------------------------------------------
+// --- 256 色（保留色相）-----------------------------------------------------
 
 function ansi256(red, green, blue) {
   const rn = red / 255
@@ -117,7 +115,7 @@ function ansi256(red, green, blue) {
   return 16 + 36 * Math.round(sixRed) + 6 * Math.round(sixGreen) + Math.round(sixBlue)
 }
 
-// --- 16-color (nearest by RGB distance) -----------------------------------
+// --- 16 色（按 RGB 距离取最近值）--------------------------------------------
 
 const ANSI16 = [
   ['ansi:black', [0, 0, 0]],
@@ -151,7 +149,7 @@ function nearest16(red, green, blue) {
   return best
 }
 
-// --- emit ------------------------------------------------------------------
+// --- 输出 ------------------------------------------------------------------
 
 function block(palette, mode) {
   const lines = []

@@ -34,9 +34,8 @@ from pydantic import (
     model_validator,
 )
 
-# A factory reference is ``module.path:callable``. The regex is
-# deliberately loose: any non-empty module-like path, a single colon,
-# any non-empty identifier-ish suffix.
+# 工厂引用格式为 ``module.path:callable``。正则有意保持宽松：
+# 非空的模块式路径、一个冒号以及非空的近似标识符后缀即可。
 _FACTORY_REF_RE = re.compile(r"^[A-Za-z_][\w.]*:[A-Za-z_]\w*$")
 
 
@@ -113,9 +112,8 @@ class PluginManifest(_ManifestBase):
 
     @model_validator(mode="after")
     def _contribution_names_unique(self) -> "PluginManifest":
-        # Uniqueness is enforced *within each kind*; a backend and a tool
-        # may share a name (different slots). The registry separately
-        # enforces uniqueness across manifests.
+        # 唯一性只在同一 kind 内约束；后端和工具可以同名，因为占用不同槽位。
+        # registry 另行约束跨 manifest 的唯一性。
         for kind, items in (
             ("memory_backend", self.contributes.memory_backends),
             ("tool", self.contributes.tools),
@@ -128,7 +126,7 @@ class PluginManifest(_ManifestBase):
                 )
         return self
 
-    # ── Constructors ────────────────────────────────────────────────
+    # ── 构造方法 ───────────────────────────────────────────────────
 
     @classmethod
     def from_toml_str(cls, data: str) -> "PluginManifest":
@@ -150,9 +148,8 @@ class PluginManifest(_ManifestBase):
 
     @classmethod
     def _from_raw(cls, raw: dict[str, Any]) -> "PluginManifest":
-        # Manifests nest everything under [plugin]. Unwrap before
-        # handing to pydantic so the schema talks in plugin-relative
-        # fields.
+        # manifest 把所有内容嵌套在 [plugin] 下。交给 pydantic 前先解包，
+        # 使 schema 使用相对于 plugin 的字段。
         if "plugin" not in raw:
             raise ValueError(
                 "manifest missing top-level [plugin] table",

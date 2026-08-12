@@ -13,7 +13,7 @@ merely importing a provider module.
 
 import logging
 
-# litellm attaches its stderr handler to all three (litellm/_logging.py).
+# litellm 会把 stderr handler 挂到这三个 logger 上（litellm/_logging.py）。
 _LITELLM_LOGGERS = ("LiteLLM", "LiteLLM Router", "LiteLLM Proxy")
 
 

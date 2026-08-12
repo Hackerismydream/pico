@@ -16,7 +16,6 @@ from pico.token_wise.pricing import (
     resolve_context_window,
 )
 
-# The real fetch, captured before conftest's autouse guard stubs it to {}.
 _REAL_FETCH = pricing._fetch_openrouter_models
 
 
@@ -88,7 +87,7 @@ def test_fallback_pricing_used_when_litellm_misses():
     p_rate, c_rate = _FALLBACK_PRICING[model]
     cost = estimate_cost_usd(model, 1000, 500)
     assert cost is not None
-    # Should equal the fallback exactly (or be at least that much, if LiteLLM also has it).
+
     expected = 1000 * p_rate + 500 * c_rate
     assert cost == pytest.approx(expected, rel=0.01)
 
@@ -98,7 +97,7 @@ def test_cache_read_is_cheaper_than_fresh_input():
     base = estimate_cost_usd("anthropic/claude-sonnet-4-5", 1000, 0)
     cached = estimate_cost_usd("anthropic/claude-sonnet-4-5", 0, 0, cache_read_tokens=1000)
     assert base is not None and cached is not None
-    # Cache read is 10% of base prompt rate.
+
     assert cached == pytest.approx(base * 0.1, rel=0.01)
 
 
@@ -306,7 +305,7 @@ def test_resolve_context_window_unknown_returns_none(monkeypatch):
     assert resolve_context_window("openrouter/some/model-not-listed") is None
 
 
-# --- Disk persistence of the OpenRouter catalog ---
+
 
 _DEEPSEEK_PRICE = (0.0000005, 0.0000015)
 
@@ -382,7 +381,7 @@ def test_version_mismatch_ignored(monkeypatch, disk_cache):
 
     assert counter["calls"] == 1
     assert cost == pytest.approx(1000 * _DEEPSEEK_PRICE[0] + 500 * _DEEPSEEK_PRICE[1], rel=1e-9)
-    # The bad-version file is overwritten with a current-version envelope.
+
     assert json.loads(disk_cache.read_text(encoding="utf-8"))["version"] == model_catalog_cache.CACHE_VERSION
 
 
@@ -395,7 +394,7 @@ def test_corrupt_disk_degrades_to_network(monkeypatch, disk_cache):
 
     assert counter["calls"] == 1
     assert cost is not None
-    # The corrupt file is replaced by a clean, parseable envelope.
+
     assert json.loads(disk_cache.read_text(encoding="utf-8"))["version"] == model_catalog_cache.CACHE_VERSION
 
 

@@ -15,7 +15,7 @@ from pico.plugin import (
 )
 
 # ---------------------------------------------------------------------------
-# Round-trip: minimal valid manifest
+
 # ---------------------------------------------------------------------------
 
 
@@ -29,7 +29,7 @@ class TestMinimalManifest:
         mf = PluginManifest.from_toml_str(toml)
         assert mf.id == "example-memory"
         assert mf.version == "0.1.0"
-        # Defaults
+
         assert mf.bundled is False
         assert mf.enabled_by_default is False
         assert mf.contributes.memory_backends == []
@@ -52,7 +52,7 @@ class TestMinimalManifest:
 
 
 # ---------------------------------------------------------------------------
-# Top-level [plugin] table required
+
 # ---------------------------------------------------------------------------
 
 
@@ -64,7 +64,7 @@ class TestTopLevelTable:
 
 
 # ---------------------------------------------------------------------------
-# memory_backends contributions
+
 # ---------------------------------------------------------------------------
 
 
@@ -144,7 +144,7 @@ class TestMemoryBackends:
 
 
 # ---------------------------------------------------------------------------
-# Bundled / enabled_by_default / config_schema passthrough
+
 # ---------------------------------------------------------------------------
 
 
@@ -174,8 +174,8 @@ class TestFlagsAndSchema:
         assert mf.config_schema == {"mode": "string"}
 
     def test_extra_top_level_fields_silently_dropped(self) -> None:
-        # Forward-compat: a newer manifest with extra fields should
-        # still parse against the older host.
+
+
         toml = textwrap.dedent("""
             [plugin]
             id = "x"
@@ -184,11 +184,11 @@ class TestFlagsAndSchema:
             another_field = 42
         """)
         mf = PluginManifest.from_toml_str(toml)
-        assert mf.id == "x"  # parsed cleanly
+        assert mf.id == "x"
 
 
 # ---------------------------------------------------------------------------
-# File-on-disk parsing
+
 # ---------------------------------------------------------------------------
 
 
@@ -212,7 +212,7 @@ class TestFromTomlPath:
 
 
 # ---------------------------------------------------------------------------
-# Direct model construction (for tests that don't go through TOML)
+
 # ---------------------------------------------------------------------------
 
 
@@ -230,8 +230,8 @@ class TestDirectConstruction:
         assert mf.contributes.memory_backends[0].name == "x"
 
     def test_frozen_model(self) -> None:
-        # frozen=True on the base class — assignment after construction
-        # must fail. Catches accidental mutation in registry code.
+
+
         mf = PluginManifest(id="x", version="0.1")
         with pytest.raises(ValidationError):
             mf.id = "y"  # type: ignore[misc]

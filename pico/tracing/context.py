@@ -23,11 +23,11 @@ class TraceCtx:
     chat_id: str | None = None
     parent_span_id: str | None = None
     turn_span_id: str | None = None
-    # Name of the nearest enclosing non-model span — the purpose a model call is
-    # made on behalf of (turn / memory.extract / skill.gate / ...). Model-kind
-    # spans inherit it rather than becoming a source themselves, so a nested
-    # ``llm.call`` can self-label without walking the tree. Generic: no adopter
-    # names are hard-coded here.
+    # 最近一层非模型 span 的名称，表示模型调用服务的目的
+    #（turn / memory.extract / skill.gate / ...）。模型类 span 继承该来源，
+    # 而不是把自身作为来源，因此嵌套调用
+    # ``llm.call`` 无需遍历树即可自行标记；通用跨度没有采用方。
+    # 的名称无需硬编码在此处。
     source: str | None = None
 
 

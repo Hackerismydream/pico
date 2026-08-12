@@ -26,9 +26,8 @@ export function ensureEmojiPresentation(text: string): string {
     return text
   }
 
-  // Lazy output: only start building when we actually need to insert VS16.
-  // Short-circuits the whole walk for strings where every text-default emoji
-  // is already followed by VS16/VS15, avoiding per-codepoint string growth.
+  // 延迟构建输出，仅在确实需要插入 VS16 时开始。若字符串中所有默认文本样式的
+  // emoji 后都已有 VS16/VS15，则直接结束遍历，避免逐码点扩展字符串。
   let out: null | string = null
   let last = 0
   let i = 0
@@ -40,12 +39,9 @@ export function ensureEmojiPresentation(text: string): string {
     if (TEXT_DEFAULT_EMOJI.has(cp)) {
       const next = text.codePointAt(i + size)
 
-      // Skip only when the sequence already carries an explicit presentation
-      // selector.  VS16 means the user (or a prior pass) already requested
-      // emoji presentation; VS15 is an explicit text-presentation request so
-      // leave it alone and don't pile VS16 on top of it.  Inject before ZWJ
-      // and KEYCAP so ZWJ-joined sequences (e.g. ❤️‍🔥) and digit keycaps
-      // both render as emoji rather than text.
+      // 仅当序列已带显式呈现选择符时跳过。VS16 表示用户或前序处理已要求 emoji
+      // 呈现；VS15 明确要求文本呈现，因此保持不变且不再叠加 VS16。在 ZWJ 和
+      // KEYCAP 前插入，使 ZWJ 连接序列（如 ❤️‍🔥）和数字键帽都按 emoji 渲染。
       if (next !== VS16 && next !== VS15) {
         out ??= ''
         out += text.slice(last, i + size) + '\uFE0F'

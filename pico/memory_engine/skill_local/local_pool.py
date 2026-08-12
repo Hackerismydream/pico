@@ -44,7 +44,7 @@ def _format_skill_text(meta: SkillMeta, body_max: int = 4000) -> str:
     fields (name, description) than body — ``"weather"`` should fire on
     the weather skill even when the body talks about HTTP and caching."""
     body = (meta.content or "")[:body_max]
-    # Repeat name + description so they outweigh a long body in BM25 TF.
+    # 重复名称和描述，使它们在 BM25 词频中的权重高于较长正文。
     return f"{meta.name} {meta.name} {meta.description or ''} {body}"
 
 
@@ -68,10 +68,10 @@ class LocalPool:
         self._registry = registry
         self._metas: list[SkillMeta] = []
         self._bm25: _BM25Okapi | None = None
-        # Plain Lock (not RLock): no method re-enters another.
+        # 使用普通 Lock 而非 RLock，因为方法之间不会重入。
         self._lock = threading.Lock()
-        # Eager initial build — matches the rest of the service which
-        # pays disk-walk cost up front rather than at first user query.
+        # 急切执行首次构建，与服务其余部分一致：提前支付磁盘遍历成本，
+        # 不让第一次用户查询承担。
         self.rebuild_index()
 
     def rebuild_index(self) -> None:
@@ -92,10 +92,8 @@ class LocalPool:
             return
         tokenized_corpus = [_tokenize(_format_skill_text(m)) for m in metas]
         bm25 = _BM25Okapi(tokenized_corpus)
-        # Defensive copy: registry's ``list_all`` hands out its cached
-        # list by reference, and a future rebuild replaces (not mutates)
-        # it — copying decouples us so the snapshot we serve to readers
-        # cannot diverge from the BM25 we paired it with.
+        # 防御性复制：注册表的 ``list_all`` 按引用返回缓存列表，后续重建会替换而非就地修改它。
+        # 复制后即可解耦，保证向读取方提供的快照不会与配对的 BM25 索引分离。
         metas_snapshot = list(metas)
         with self._lock:
             self._metas = metas_snapshot
@@ -112,14 +110,11 @@ class LocalPool:
         if bm25 is None or not metas:
             return []
         scores = bm25.get_scores(query_tokens)
-        # Drop zero-score docs and order by descending score, then take top_k.
-        # Exclude ``m.always`` skills: they're already injected by
-        # ``ContextBuilder`` via ``get_always_skills()`` → ``# Active Skills``
-        # block. Letting them ALSO surface here would duplicate the same
-        # body in the system prompt (once as Active, once as top-K).
-        # Mass-pool entries can't double-inject — ``get_always_skills``
-        # only reads ``_registry``, never ``_mass_registry`` — so the
-        # filter is only meaningful on the local pool side.
+        # 丢弃零分文档，按分数降序排列后取 top_k。排除 ``m.always`` Skill，因为它们已由
+        # ``ContextBuilder`` 通过 ``get_always_skills()`` 注入 ``# Active Skills`` 块。如果仍在此处出现，
+        # 同一正文会在系统提示词中重复：一次作为 Active，一次作为 top-K。Mass pool 项
+        # 不会重复注入，因为 ``get_always_skills`` 只读取 ``_registry``，从不读取 ``_mass_registry``，
+        # 所以该过滤仅对本地池有意义。
         ranked = sorted(
             ((s, m) for s, m in zip(scores, metas) if s > 0.0 and not m.always),
             key=lambda x: x[0],

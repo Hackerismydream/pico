@@ -26,9 +26,8 @@ class ToolRegistry:
     Allows dynamic registration and execution of tools.
     """
 
-    # Backstop ceiling for tools that don't set their own ``timeout_seconds``.
-    # Generous on purpose: it exists to break an infinite hang (a tool with no
-    # internal timeout that never returns), not to enforce a tight per-tool SLA.
+# 为未设置自身 ``timeout_seconds`` 的工具提供兜底上限。刻意设得宽裕：它用于打断
+# 没有内部超时且永不返回的无限挂起，而不是强制严格的单工具 SLA。
     DEFAULT_TOOL_TIMEOUT_S = 300.0
     DEFAULT_MAX_PARALLEL = 4
 
@@ -89,10 +88,10 @@ class ToolRegistry:
             )
 
         try:
-            # Attempt to cast parameters to match schema types
+            # 尝试转换参数以匹配模式类型
             params = tool.cast_params(params)
 
-            # Validate parameters
+            # 校验参数
             errors = tool.validate_params(params)
             if errors:
                 return ToolResult(
@@ -102,7 +101,7 @@ class ToolRegistry:
 
             ceiling = tool.timeout_seconds or self.DEFAULT_TOOL_TIMEOUT_S
             if tool.blocking_interaction:
-                # Intentionally waits on a human — must not be timer-killed.
+                # 该工具有意等待人类，不得被超时计时器终止。
                 result = await tool.execute_with_context(invocation.context, **params)
             else:
                 result = await asyncio.wait_for(

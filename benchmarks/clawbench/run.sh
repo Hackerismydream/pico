@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# ClawBench for Pico - streaming Runtime runner.
+# Pico 的 ClawBench 流式运行时执行器。
 #
-# Usage:
+# 用法：
 #   CLAW_BENCH_ROOT=/path/to/claw-bench ./benchmarks/clawbench/run.sh --limit 80
 
 set -euo pipefail

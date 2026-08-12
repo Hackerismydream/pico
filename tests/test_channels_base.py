@@ -10,10 +10,10 @@ class _StubChannel(ChannelBase):
     name = "stub"
     display_name = "Stub"
 
-    async def start(self) -> None:  # pragma: no cover - not exercised
+    async def start(self) -> None:  # pragma: no cover - 未覆盖
         pass
 
-    async def stop(self) -> None:  # pragma: no cover - not exercised
+    async def stop(self) -> None:  # pragma: no cover - 未覆盖
         pass
 
     async def send(self, chat_id, content, media=None) -> None:  # pragma: no cover
@@ -28,8 +28,8 @@ def _stub(allow_from=None):
 def test_channelbase_init_plumbing():
     ch = _StubChannel(SimpleNamespace(allow_from=["*"]))
     assert ch._running is False and ch.is_running is False
-    assert ch.transcription_api_key == ""  # class default, set by manager
-    assert ch.intake.channel_name == "stub"  # base wired Intake for this channel
+    assert ch.transcription_api_key == ""
+    assert ch.intake.channel_name == "stub"
 
 
 def test_channelbase_is_running_reflects_flag():
@@ -39,8 +39,8 @@ def test_channelbase_is_running_reflects_flag():
 
 
 def test_channelbase_default_is_allowed():
-    assert _stub([]).is_allowed("u1") is False  # empty = deny all
-    assert _stub(["*"]).is_allowed("u1") is True  # wildcard
+    assert _stub([]).is_allowed("u1") is False
+    assert _stub(["*"]).is_allowed("u1") is True
     assert _stub(["u1"]).is_allowed("u1") is True
     assert _stub(["u1"]).is_allowed("u2") is False
 

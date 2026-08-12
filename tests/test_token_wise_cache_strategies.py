@@ -67,7 +67,7 @@ def api_key() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Workspace seeding
+
 # ---------------------------------------------------------------------------
 
 
@@ -118,7 +118,7 @@ def _seed_workspace(workspace: Path, soul: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Custom tools
+
 # ---------------------------------------------------------------------------
 
 _BLOB = "\n".join(f"  field_{i:02d}: value_{i:02d}_aaaa_bbbb_cccc_dddd_eeee_ffff_gggg" for i in range(35))
@@ -177,7 +177,7 @@ class _DataLookup(Tool):
 
 
 # ---------------------------------------------------------------------------
-# Recording tracker
+
 # ---------------------------------------------------------------------------
 
 
@@ -194,7 +194,7 @@ class _RecordingTracker(UsageTracker):
 
 
 # ---------------------------------------------------------------------------
-# Data structures
+
 # ---------------------------------------------------------------------------
 
 
@@ -249,7 +249,7 @@ class ScenarioResult:
 
 
 # ---------------------------------------------------------------------------
-# Unified variant runner
+
 # ---------------------------------------------------------------------------
 
 
@@ -318,7 +318,7 @@ async def _run_variant(
         strategies=StrategyRegistry(strategies),
     )
 
-    # Configure tools
+
     loop.tools._tools.clear()
     if register_tools:
         for t in register_tools:
@@ -339,7 +339,7 @@ async def _run_variant(
                 pytest.fail(f"Cost guard at ${sum(cost_so_far.values()):.4f}")
             before_count = len(tracker.history)
             await _run_user_turn(loop, q, session_key=session_key, chat_id=variant_name)
-            # Collect ALL LLM calls this turn produced (may be >1 for tool chains)
+
             for snap in tracker.history[before_count:]:
                 result.calls.append(
                     CallResult(
@@ -358,7 +358,7 @@ async def _run_variant(
 
 
 # ---------------------------------------------------------------------------
-# Report writer
+
 # ---------------------------------------------------------------------------
 
 
@@ -421,7 +421,7 @@ def _write_report(scenarios: list[ScenarioResult]) -> str:
                 )
             lines.append("")
 
-        # Per-scenario conclusion
+
         v1 = sc.variants[0]
         lines.append("### Conclusion\n")
         for v in sc.variants[1:]:
@@ -434,7 +434,7 @@ def _write_report(scenarios: list[ScenarioResult]) -> str:
                 winner = v3.name if vs > 0 else v2.name
                 lines.append(f"- **Winner: {winner}** (Pico vs Hermes: {vs:+.1f}%)\n")
 
-    # Final verdict
+
     lines.append("\n---\n\n## Overall verdict\n")
     lines.append("| Scenario | Winner | Margin |")
     lines.append("|:---------|:-------|-------:|")
@@ -491,7 +491,7 @@ def _write_report(scenarios: list[ScenarioResult]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# The experiment
+
 # ---------------------------------------------------------------------------
 
 
@@ -501,7 +501,7 @@ async def test_hermes_vs_pico(api_key: str, tmp_path: Path):
     scenarios: list[ScenarioResult] = []
 
     # ================================================================
-    # S1 — Pure conversation (no tools), 8 turns
+
     # ================================================================
     s1_questions = [
         f"Reply with only the word '{w}'." for w in ["OK", "YES", "DONE", "AFFIRM", "ACK", "READY", "CHECK", "END"]
@@ -540,7 +540,7 @@ async def test_hermes_vs_pico(api_key: str, tmp_path: Path):
     )
 
     # ================================================================
-    # S2 — Intra-turn tool chain (3 tools sequentially per turn, 3 turns)
+
     # ================================================================
     s2_questions = [
         "Investigate item_01.",
@@ -584,7 +584,7 @@ async def test_hermes_vs_pico(api_key: str, tmp_path: Path):
     )
 
     # ================================================================
-    # S3 — Mixed: multi-turn, one tool per turn, 6 turns
+
     # ================================================================
     s3_questions = [f"Look up id 'item_{i:02d}' and confirm in one word." for i in range(1, 7)]
     s3_variants = []
@@ -621,12 +621,12 @@ async def test_hermes_vs_pico(api_key: str, tmp_path: Path):
         )
     )
 
-    # Write report
+
     body = _write_report(scenarios)
     print(f"\nReport: {REPORT_PATH}\n")
     print(body[:5000])
 
-    # ---- Assertions ----
+
     for sc in scenarios:
         for v in sc.variants:
             assert v.error is None, f"{sc.name}/{v.name}: {v.error}"

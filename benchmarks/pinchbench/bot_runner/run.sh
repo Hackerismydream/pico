@@ -1,33 +1,33 @@
 #!/usr/bin/env bash
-# PinchBench for Pico - Bot Mode runner
+# Pico 的 PinchBench 机器人模式执行器。
 #
-# This runner runs a full bot (AgentLoop run_turn) for each task,
-# testing the complete turn flow through the spine.
+# 此执行器为每个任务运行完整机器人（AgentLoop run_turn），测试通过 Spine 的
+# 完整轮次流程。
 #
-# Usage:
-#   ./benchmarks/pinchbench/bot_runner/run.sh                                    # Run all tasks
-#   ./benchmarks/pinchbench/bot_runner/run.sh --model anthropic/claude-sonnet-4  # Specify model
-#   ./benchmarks/pinchbench/bot_runner/run.sh --suite task_00_sanity             # Single task
-#   ./benchmarks/pinchbench/bot_runner/run.sh --suite automated-only             # Automated-only
-#   ./benchmarks/pinchbench/bot_runner/run.sh --verbose                          # Verbose output
+# 用法：
+#   ./benchmarks/pinchbench/bot_runner/run.sh                                    # 运行所有任务
+#   ./benchmarks/pinchbench/bot_runner/run.sh --model anthropic/claude-sonnet-4  # 指定模型
+#   ./benchmarks/pinchbench/bot_runner/run.sh --suite task_00_sanity             # 运行单个任务
+#   ./benchmarks/pinchbench/bot_runner/run.sh --suite automated-only             # 仅运行自动化任务
+#   ./benchmarks/pinchbench/bot_runner/run.sh --verbose                          # 输出详细信息
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# cd to project root: bot_runner -> pinchbench -> benchmarks -> project root
+# 切换到项目根目录：bot_runner -> pinchbench -> benchmarks -> 项目根目录。
 cd "$SCRIPT_DIR/../../.."
 
 echo "=================================================="
 echo "  PinchBench for Pico (BOT MODE)"
 echo "=================================================="
 
-# Use anaconda Python 3.13 (Pico requires >=3.11)
+# 使用 Anaconda Python 3.13（Pico 要求 >=3.11）。
 PYTHON="${PYTHON:-$HOME/anaconda3/bin/python3}"
 if [ ! -x "$PYTHON" ]; then
     PYTHON="python3"
 fi
 
-# Ensure yaml is available
+# 确保 yaml 可用。
 "$PYTHON" -c "import yaml" 2>/dev/null || "$PYTHON" -m pip install pyyaml -q
 
 exec "$PYTHON" benchmarks/pinchbench/bot_runner/benchmark.py "$@"

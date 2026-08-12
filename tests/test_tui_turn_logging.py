@@ -91,7 +91,7 @@ def _capture(level: str = "DEBUG"):
 
 
 # ---------------------------------------------------------------------------
-# REQ-1: Tool result log emitted after tool execution
+
 # ---------------------------------------------------------------------------
 
 
@@ -141,12 +141,12 @@ async def test_tool_result_preview_truncated(workspace) -> None:
         logger.remove(sink_id)
     result_lines = [c for c in captured if "Tool result:" in c]
     assert len(result_lines) == 1
-    # Preview truncated to ~200 chars — full 500-char result must not appear.
+
     assert "X" * 500 not in result_lines[0]
 
 
 # ---------------------------------------------------------------------------
-# REQ-2: iteration boundary log
+
 # ---------------------------------------------------------------------------
 
 
@@ -167,13 +167,13 @@ async def test_iteration_boundary_logged(workspace) -> None:
     finally:
         logger.remove(sink_id)
     iter_lines = [c for c in captured if "Iteration" in c]
-    # Two iterations ran (tool dispatch + final).
+
     assert len(iter_lines) >= 2, captured
     assert any("model=" in c for c in iter_lines)
 
 
 # ---------------------------------------------------------------------------
-# REQ-3: rust-notify DEBUG spam suppression (watchfiles logger)
+
 # ---------------------------------------------------------------------------
 
 
@@ -182,10 +182,10 @@ def test_suppress_noisy_watchers_raises_watchfiles_level() -> None:
 
     from pico.cli.tui_commands import _suppress_noisy_watchers
 
-    # Simulate watchfiles emitting at DEBUG (the 'rust notify timeout' spam).
+
     logging.getLogger("watchfiles.main").setLevel(logging.DEBUG)
     _suppress_noisy_watchers()
     for name in ("watchfiles", "watchfiles.main", "watchdog"):
         assert logging.getLogger(name).level >= logging.INFO, name
-    # A DEBUG record on watchfiles.main is now below the logger's threshold.
+
     assert not logging.getLogger("watchfiles.main").isEnabledFor(logging.DEBUG)

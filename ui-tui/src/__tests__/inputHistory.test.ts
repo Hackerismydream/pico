@@ -2,13 +2,11 @@
 // Copyright (c) 2026 EverMind.
 // See NOTICES.md.
 //
-// R14: the composer's up/down history cycling (cycleHistory in
-// useInputHandlers.ts) is a closure inside the hook and not exported, so it
-// walks the backing store returned by useInputHistory -> lib/history.ts. These
-// tests pin that store's contract: insertion order (oldest first, newest last),
-// consecutive dedup, and the on-disk `+`-prefixed round-trip that load() parses
-// back. cycleHistory relies on this ordering: dir<0 starts at the last index
-// (newest) and walks toward index 0 (oldest); dir>0 walks forward again.
+// 编辑框的上下历史循环（useInputHandlers.ts 中的 cycleHistory）是钩子内未导出的
+// 闭包，因此它遍历 useInputHistory -> lib/history.ts 返回的后备存储。这些测试
+// 固定该存储的约定：按从旧到新插入、连续项去重，以及磁盘上以 `+` 为前缀并由
+// load() 解析回来的往返格式。cycleHistory 依赖此顺序：dir<0 从最后一个索引
+// （最新）走向索引 0（最旧），dir>0 再向前移动。
 
 import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -49,9 +47,9 @@ describe('input history store (backs cycleHistory)', () => {
     const entries = history.load()
 
     expect(entries).toEqual(['first command', 'second command', 'third command'])
-    // cycle-up (dir<0) surfaces the newest first...
+    // 向上循环（dir<0）先显示最新项……
     expect(entries.at(-1)).toBe('third command')
-    // ...and walks down to the oldest at index 0.
+    // ……再走到索引 0 的最旧项。
     expect(entries[0]).toBe('first command')
     expect(existsSync(join(picoDir, '.pico_history'))).toBe(true)
   })

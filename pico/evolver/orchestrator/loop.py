@@ -99,17 +99,16 @@ class ApplyFn(Protocol):
     def __call__(self, parent_id: str, patch: AppliedPatch, round_index: int) -> HarnessNode: ...
 
 
-# (candidate, parent) -> keep? The parent gives preflight its historical
-# corpus (the trajectories a trigger predicate is checked against).
+# （候选项，父节点）-> 是否保留？父节点向预检提供历史语料，即触发谓词要检查的轨迹。
 PreflightFn = Callable[[AppliedPatch, HarnessNode], bool]
 VerdictFn = Callable[["RoundResult"], str]
 OutcomeHook = Callable[[DecisionContext, CandidateOutcome], None]
 
-# (candidate, outcome) for a preflight-pruned candidate: it was never applied,
-# so there is no node/DecisionContext — the raw candidate is all there is.
+# 对预检裁剪候选项使用（候选项，结果）：它从未应用，因此没有节点或 DecisionContext，
+# 只有原始候选项。
 InertHook = Callable[[Any, CandidateOutcome], None]
-# Materialise a cell elite's edit onto the parent as a bench candidate; None =
-# the pairing cannot be built (commit gone / nothing to stack) -> skip it.
+# 将单元精英的编辑实体化到父节点，作为基准候选项；None 表示无法构建组合
+# （提交丢失或没有内容可叠加），应跳过。
 RecombineFn = Callable[[HarnessNode, CellElite], Optional[object]]
 
 
@@ -121,14 +120,12 @@ class RoundResult:
     promoted: bool
     outcomes: list[CandidateOutcome] = field(default_factory=list)
     verdict: Optional[str] = None
-    # SOP patience signal: some candidate's full-train confirm beat the FIXED
-    # vanilla mean this round (independent of the gate's own baseline).
+    # SOP 耐心信号：本轮某候选项的完整训练确认超过固定的原始均值，与门控自身基线无关。
     beat_vanilla: bool = False
-    # Every candidate ended failed or inconclusive, so no real decision was made.
+    # 所有候选项最终均失败或无结论，因此没有作出真实决策。
     errored: bool = False
-    # Recorded for the post-hoc sealed unseal (C3, approach B): the deliverable
-    # harness's commit + its train pass@1, so its test curve is reconstructable
-    # after evolution without any decision-time test scoring.
+    # 为事后密封解封（C3，方案 B）记录：可交付评测框架的提交及其训练 pass@1，
+    # 使演化结束后无需决策期测试评分也能重建测试曲线。
     next_parent_sha: Optional[str] = None
     next_parent_train: Optional[float] = None
 
@@ -138,7 +135,7 @@ class RunResult:
     rounds: list[RoundResult] = field(default_factory=list)
     stop_reason: Optional[str] = None
     final_parent_id: Optional[str] = None
-    resumed_rounds: int = 0  # rounds replayed from a journal, not re-run
+    resumed_rounds: int = 0  # 从日志重放而非重新运行的轮次数
 
 
 def summarize_round(rr: RoundResult) -> str:
@@ -208,8 +205,7 @@ class EvolutionOrchestrator:
         self._outcome_hook = outcome_hook
         self._evidence_hook = evidence_hook
         self._inert_hook = inert_hook
-        # GSME: the per-cell elite bank + the cross-cell recombiner. The archive
-        # loads its persisted state itself, so a resumed run keeps its elites.
+        # GSME：逐单元精英库与跨单元重组器。归档会自行加载持久化状态，因此恢复运行仍保留精英。
         self._archive = archive
         self._recombine = recombine_fn
 
@@ -218,22 +214,18 @@ class EvolutionOrchestrator:
             raise ValueError("backend.cold_start() returned an empty baseline")
         self._train_task_ids = list(backend.train_task_ids) or sorted(self._vanilla_stability)
         self._sentinel_task_ids = self._sample_sentinels(config.anchor.n_sentinel)
-        # The FIXED comparison anchor for the patience signal (SOP: candidate
-        # train mean vs VANILLA, never vs the previous round's parent) — the
-        # same for every benchmark no matter which baseline provider gates
-        # promotion.
+        # 耐心信号使用固定比较锚点（SOP：候选项训练均值与原始版本比较，绝不与上一轮父节点
+        # 比较）；无论哪个基线提供器负责晋升门控，所有基准都使用同一锚点。
         self._vanilla_train_mean = train_mean(_vanilla_control(self._vanilla_stability), self._train_task_ids)
 
-        # Default policy = the SWE paired-2σ line; default baseline = frozen
-        # cold-start (cost-bound; cross-time-invalid — see gates.policy). AppWorld
-        # / same-session runs inject their own.
+        # 默认策略为 SWE 配对 2σ 线；默认基线为冻结冷启动（受成本约束，跨时间无效，见
+        # gates.policy）。AppWorld 或同会话运行会注入自己的策略和基线。
         self._gate: GatePolicy = gate_policy or PairedTwoSigmaGate(k_screen=config.k_screen, k_confirm=config.k_confirm)
         self._baselines: BaselineProvider = baseline_provider or FrozenColdStartBaseline(
             _vanilla_control(self._vanilla_stability)
         )
 
-        # Sealed-test iron law as a mechanism: fail loudly if a held-out id has
-        # crept into the anchor or train sets (SOP §0).
+        # 以机制落实密封测试铁律：若留出 ID 混入锚点或训练集，立即明确失败（SOP 第 0 节）。
         if backend.test_task_ids:
             assert_no_test_leak(
                 anchor_task_ids=self.select_anchor().task_ids,
@@ -241,20 +233,17 @@ class EvolutionOrchestrator:
                 sealed_test_ids=list(backend.test_task_ids),
             )
 
-        # Cross-round live failure map (SOP §2 ①): accumulated, not frozen.
-        # ``seed_failure_map`` pre-populates it (taxonomy induction's seed, with
-        # the root in ``_diagnosed_parents`` so round 1 skips re-judging the very
-        # trajectories induction judged); a journal resume overrides it from disk.
+        # 跨轮实时失败图（SOP 第 2 节第 1 项）：持续累积，而非冻结。``seed_failure_map``
+        # 会预填充它（分类归纳的种子，并把根加入 ``_diagnosed_parents``，使第 1 轮不再评判
+        # 归纳阶段已判断的同一批轨迹）；从日志恢复时则以磁盘状态覆盖。
         self._failure_map: dict = dict(seed_failure_map) if seed_failure_map else {}
 
-        # Real applied nodes by id (seeded with the root when run() gets one).
-        # A promoted parent must resolve to its real node — with its commit SHA
-        # and patch — not a shim, or a same-session baseline / worktree eval
-        # would check out the wrong (or an "unknown") commit.
+        # 按 ID 保存真实已应用节点（run() 收到根节点时以它初始化）。晋升后的父节点必须解析为
+        # 含提交 SHA 和补丁的真实节点，而不是垫片；否则同会话基线或工作树评测会检出错误
+        # 提交，甚至 "unknown" 提交。
         self._node_registry: dict[str, HarnessNode] = {}
-        # Ledger metadata for non-AppliedPatch candidates (the wired bench
-        # lines), where node.patch is None and the WHERE/WHY/files/activation
-        # info would otherwise never reach the node record.
+        # 非 AppliedPatch 候选项（接入的基准线路）的账本元数据。此时 node.patch 为 None，
+        # 若不另存，WHERE/WHY/文件/激活信息就永远不会进入节点记录。
         self._cand_meta: dict[str, dict] = {}
 
     @property
@@ -335,8 +324,8 @@ class EvolutionOrchestrator:
         )
         result = RunResult()
         parent_id = root_node_id
-        # The incumbent's train score — the argmax bar a challenger must beat to
-        # take over as parent (Alg.1 L135). The root's score is vanilla's mean.
+        # 现任节点的训练分数——挑战者必须超过该最大值门槛才能接任父节点（算法 1 第 135 行）。
+        # 根节点分数取原始版本均值。
         parent_score = self._vanilla_train_mean
         round_index = 0
         if root_node is not None:
@@ -400,18 +389,16 @@ class EvolutionOrchestrator:
         return result
 
     def _run_round(self, round_index: int, parent_id: str, parent_score: float) -> RoundResult:
-        # Gate0 (SOP §0, before any scoring): verify the environment before scoring anything
-        # this round. A dirty env (sandbox down / network unroutable / verifier
-        # can't emit results) makes every score invalid, so let it raise — fix
-        # the box, then resume. Benches with no precheck wired skip this.
+            # 门控 0（SOP 第 0 节，所有评分之前）：本轮评分前验证环境。脏环境（沙箱停机、
+            # 网络不可路由、验证器无法输出结果）会使所有分数失效，因此允许抛错；修复环境后
+            # 再恢复。未接入预检的基准跳过此步。
         if self._backend.precheck is not None:
             self._backend.precheck()
         parent = self._load_parent(parent_id)
         anchor = self.select_anchor()
-        # The control arm may itself be an eval (same-session pairing) or a disk
-        # rebuild — a transient failure here is round-scoped like any other eval
-        # failure: record an errored round and let the error counter decide,
-        # instead of aborting an unattended run with no journal record.
+                # 对照组本身可能是评测（同会话配对）或磁盘重建；此处的暂时失败和其他评测失败
+                # 一样仅影响本轮：记录错误轮次并交由错误计数器决定，而不是中止无人值守运行且
+                # 不留下日志记录。
         try:
             baseline = self._baselines.for_round(
                 round_index,
@@ -420,7 +407,7 @@ class EvolutionOrchestrator:
                 train_task_ids=self._train_task_ids,
                 anchor=anchor,
             )
-        except Exception as exc:  # noqa: BLE001 — record + continue, don't abort
+        except Exception as exc:  # noqa: BLE001 — 记录后继续，不中止
             outcome = CandidateOutcome(
                 f"r{round_index}-baseline",
                 NodeStatus.errored,
@@ -436,15 +423,11 @@ class EvolutionOrchestrator:
                 next_parent_sha=_sha_or_none(parent.git_commit_sha),
             )
 
-        # ① diagnose -> merge into the cross-round live failure map, ② design,
-        # ③ preflight prune. A parent already diagnosed in an earlier round (no
-        # promotion since) is NOT re-diagnosed: its trajectories haven't changed,
-        # re-judging them would only re-spend the driver and double-count the
-        # same failures in the accumulated map. A diagnose/design failure must
-        # not abort the whole run (same discipline as the per-candidate catch
-        # below): record the reason on an errored outcome and finish the round
-        # with no candidates; the tracker's error counter stops a persistent
-        # outage with an honest reason instead of burning patience.
+            # ① 诊断并合入跨轮实时失败图；② 设计；③ 预检裁剪。若父节点在早先轮次已诊断且
+            # 此后未晋升，则不重复诊断：其轨迹未变化，重判只会重复消耗驱动器，并在累积图中
+            # 重复计算同一失败。诊断/设计失败不得中止整个运行（与下方逐候选项捕获原则一致）：
+            # 在错误结果上记录原因，以无候选项结束本轮；持续故障由追踪器的错误计数器带着
+            # 真实原因停止，而不是消耗耐心额度。
         outcomes: list[CandidateOutcome] = []
         try:
             diagnosed = set(self._failure_map.get("_diagnosed_parents") or [])
@@ -458,8 +441,7 @@ class EvolutionOrchestrator:
                 if self._preflight(c, parent):
                     candidates.append(c)
                 else:
-                    # ③ zero-inference prune, recorded (never silently dropped):
-                    # a pruned-inert candidate is a real decision this round.
+                # ③ 零推理裁剪，必须记录（绝不静默丢弃）：裁掉无作用候选项也是本轮真实决策。
                     outcome = CandidateOutcome(
                         f"r{round_index}-preflight{i}",
                         NodeStatus.pruned_inert,
@@ -473,9 +455,9 @@ class EvolutionOrchestrator:
                     if self._inert_hook is not None:
                         try:
                             self._inert_hook(c, outcome)
-                        except Exception:  # noqa: BLE001 — advisory learning hook, non-fatal
+                        except Exception:  # noqa: BLE001 — 建议性学习钩子，失败不致命
                             pass
-        except Exception as exc:  # noqa: BLE001 — record + continue, don't abort
+        except Exception as exc:  # noqa: BLE001 — 记录后继续，不中止
             outcomes.append(
                 CandidateOutcome(
                     f"r{round_index}-design",
@@ -485,10 +467,9 @@ class EvolutionOrchestrator:
             )
             candidates = []
 
-        # GSME cross-cell recombination: stack elites from cells the parent's
-        # lineage has not covered onto the parent, as ordinary candidates through
-        # the same apply -> gate pipeline. Deliberately OUTSIDE the design
-        # try/except — a driver outage does not stop deterministic recombination.
+            # GSME 跨单元重组：把父节点谱系尚未覆盖单元的精英叠加到父节点，作为普通候选项
+            # 通过相同的应用 -> 门控流水线。刻意放在设计阶段的 try/except 之外；驱动器故障
+            # 不应阻止确定性重组。
         if self._archive is not None and self._recombine is not None:
             try:
                 elites = self._archive.eligible_elites(parent_id, limit=self._cfg.budget.recombinations_per_round)
@@ -498,7 +479,7 @@ class EvolutionOrchestrator:
                         self._archive.record_pairing(parent_id, elite.node_id, "recombine_failed")
                         continue
                     candidates.append(recomb)
-            except Exception as exc:  # noqa: BLE001 — record + continue
+            except Exception as exc:  # noqa: BLE001 — 记录后继续
                 outcomes.append(
                     CandidateOutcome(
                         f"r{round_index}-recombine",
@@ -511,8 +492,8 @@ class EvolutionOrchestrator:
         best_score = -1.0
 
         for idx, patch in enumerate(candidates):
-            # A single candidate's apply/eval crash must not sink the round: catch
-            # it, record the reason on an ``errored`` outcome, and move on (C).
+                # 单个候选项的应用/评测崩溃不得拖垮整轮：捕获异常，在 ``errored`` 结果上记录
+                # 原因，然后继续（C）。
             elite_id = getattr(patch, "elite_node_id", None)
             try:
                 node = self._apply(parent_id, patch, round_index)  # ④
@@ -532,7 +513,7 @@ class EvolutionOrchestrator:
                     except Exception:  # noqa: BLE001
                         pass
                 continue
-            except Exception as exc:  # noqa: BLE001 — record + skip, don't abort
+            except Exception as exc:  # noqa: BLE001 — 记录后跳过，不中止
                 if elite_id and self._archive is not None:
                     self._archive.record_pairing(parent_id, elite_id, "errored")
                 outcome = CandidateOutcome(
@@ -564,8 +545,8 @@ class EvolutionOrchestrator:
                 fired_source=self._fired_source,
             )
             try:
-                outcome = self._gate.decide(ctx)  # ⑤⑥ delegated to the policy
-            except Exception as exc:  # noqa: BLE001 — record + skip, don't abort
+                    outcome = self._gate.decide(ctx)  # ⑤⑥ 委托给策略
+            except Exception as exc:  # noqa: BLE001 — 记录后跳过，不中止
                 if elite_id and self._archive is not None:
                     self._archive.record_pairing(parent_id, elite_id, "errored")
                 outcome = CandidateOutcome(
@@ -587,10 +568,8 @@ class EvolutionOrchestrator:
                 continue
             if elite_id:
                 outcome.stats["recombination_of"] = elite_id
-            # Flip table (SOP §2 ①: which tasks flipped): rescued/regressed vs
-            # this round's control, recorded on the ledger and the live failure
-            # map so the next diagnose/design sees CAUSAL feedback, not just the
-            # static failure set.
+                    # 翻转表（SOP 第 2 节第 1 项：哪些任务发生翻转）：相对本轮对照组获救/退化，
+                    # 同时记录到账本和实时失败图，使下一轮诊断/设计看到因果反馈，而非只有静态失败集。
             if outcome.confirm_evals:
                 flips = flip_summary(outcome.confirm_evals, baseline.evals, self._train_task_ids)
                 outcome.stats["flips"] = flips
@@ -620,12 +599,12 @@ class EvolutionOrchestrator:
                         round_index=round_index,
                         vanilla_train_mean=self._vanilla_train_mean,
                     )
-                except Exception:  # noqa: BLE001 — bank-keeping must not sink a round
+                except Exception:  # noqa: BLE001 — 维护候选库不能拖垮本轮
                     pass
             if self._outcome_hook is not None:
                 try:
                     self._outcome_hook(ctx, outcome)
-                except Exception:  # noqa: BLE001 — advisory learning hook, non-fatal
+                except Exception:  # noqa: BLE001 — 建议性学习钩子，失败不致命
                     pass
             if outcome.promoted:
                 self._baselines.on_promote(node, outcome, train_task_ids=self._train_task_ids)
@@ -634,14 +613,12 @@ class EvolutionOrchestrator:
                     best_node_id = node.node_id
 
         if any(o.confirm_evals for o in outcomes):
-            self._persist_failure_map()  # the round's flips joined the live map
+            self._persist_failure_map()  # 本轮翻转已合入实时失败图
 
-        # ⑦ select parent — Alg.1 L135 argmax: the round's best gate-passer takes
-        # over only when it beats the incumbent's train score; a tie keeps the
-        # incumbent (no churn without improvement). A gate-passer that loses the
-        # argmax still banks (status/archive) — it just doesn't become parent.
-        # Under the ratcheted baseline the gate already implies this; under a
-        # frozen-vanilla control this keeps the champion chain monotone.
+            # ⑦ 选择父节点——算法 1 第 135 行的最大值：本轮最佳门控通过者只有超过现任节点的
+            # 训练分数才接任；平局保留现任节点（无改进则不抖动）。未赢得最大值的门控通过者
+            # 仍会入库（状态/归档），只是不会成为父节点。棘轮基线下门控已隐含此规则；冻结
+            # 原始对照下，该规则保持冠军链单调。
         promoted = best_node_id is not None and best_score > parent_score
         next_parent_id = best_node_id if promoted else parent_id
         next_parent_node = self._node_registry.get(next_parent_id) or parent
@@ -696,7 +673,7 @@ class EvolutionOrchestrator:
             ndir.mkdir(parents=True, exist_ok=True)
             for o in rr.outcomes:
                 node = self._node_registry.get(o.node_id)
-                if node is None:  # errored pseudo-candidates never got a node
+                if node is None:  # 出错的伪候选项从未得到节点
                     continue
                 patch = node.patch
                 patch_to_dict = getattr(patch, "to_dict", None)
@@ -743,10 +720,9 @@ class EvolutionOrchestrator:
             pass
 
     def _load_parent(self, parent_id: str) -> HarnessNode:
-        # A promoted parent was applied in an earlier round (or re-registered
-        # from the journal on resume), so it is in the registry with its real
-        # commit SHA; return that. Only the root (never applied) falls back to a
-        # shim — pass ``root_node`` to run() to give it a real SHA too.
+        # 晋升父节点已在早先轮次应用（或恢复时从日志重新注册），因此注册表中有带真实提交 SHA
+        # 的节点，直接返回。只有从未应用的根节点回退为垫片；向 run() 传入 ``root_node``
+        # 也能为它提供真实 SHA。
         node = self._node_registry.get(parent_id)
         if node is not None:
             return node

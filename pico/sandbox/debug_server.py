@@ -32,8 +32,8 @@ class SandboxDebugServer:
     StreamReader buffer limit passed to asyncio.start_unix_server().
     """
 
-    # How long start() waits when probing an existing socket file to decide
-    # whether it belongs to a live server (refuse) or is stale (unlink).
+    # start() 探测已有套接字文件的最长等待时间，用于判断它属于
+    # 正在运行的服务器（拒绝启动），还是可删除的过期文件。
     _PROBE_TIMEOUT_SEC = 0.5
 
     def __init__(
@@ -114,7 +114,7 @@ class SandboxDebugServer:
         logger.info("Sandbox debug server stopped")
 
     # ------------------------------------------------------------------
-    # Per-connection dispatch
+    # 按连接分派
     # ------------------------------------------------------------------
 
     async def _handle_client(
@@ -195,12 +195,12 @@ class SandboxDebugServer:
                 pass
 
     # ------------------------------------------------------------------
-    # list
+    # 列出虚拟机
     # ------------------------------------------------------------------
 
     async def _handle_list(self, writer: asyncio.StreamWriter) -> None:
         try:
-            import boxlite  # noqa: F401 — availability probe
+            import boxlite  # noqa: F401 — 可用性探测
         except ImportError:
             await _send(writer, {"type": "error", "message": "boxlite is not installed."})
             return
@@ -231,7 +231,7 @@ class SandboxDebugServer:
         await _send(writer, {"type": "vm_list", "vms": vms})
 
     # ------------------------------------------------------------------
-    # VM resolution (shared by exec and shell)
+    # 虚拟机解析（exec 和 shell 共用）
     # ------------------------------------------------------------------
 
     async def _resolve_vm(
@@ -245,7 +245,7 @@ class SandboxDebugServer:
         boxes is the result of runtime.list() — passed in so callers can reuse it.
         """
         if vm_ref is None:
-            # Auto-select: owned + running
+            # 自动选择当前进程拥有且正在运行的虚拟机
             candidates = [b for b in boxes if b.id in self._owned_ids and b.state.status == "running"]
             if not candidates:
                 await _send(writer, {"type": "error", "message": "No running VMs. Start pico run/gateway first."})
@@ -255,7 +255,7 @@ class SandboxDebugServer:
                 return None
             return candidates[0]
 
-        # ID match (all VMs)
+        # 在全部虚拟机中匹配 ID
         by_id = [b for b in boxes if b.id == vm_ref]
         if by_id:
             box = by_id[0]
@@ -267,7 +267,7 @@ class SandboxDebugServer:
                 return None
             return box
 
-        # Name match (owned VMs only)
+        # 只在当前进程拥有的虚拟机中匹配名称
         by_name = [b for b in boxes if getattr(b, "name", None) == vm_ref]
         if len(by_name) > 1:
             await _send(
@@ -295,7 +295,7 @@ class SandboxDebugServer:
         returned.
         """
         try:
-            import boxlite  # noqa: F401 — availability probe (consistent with _handle_list)
+            import boxlite  # noqa: F401 — 可用性探测（与 _handle_list 保持一致）
         except ImportError:
             await _send(writer, {"type": "error", "message": "boxlite is not installed."})
             return None
@@ -320,7 +320,7 @@ class SandboxDebugServer:
             return None
 
     # ------------------------------------------------------------------
-    # exec
+    # 执行命令
     # ------------------------------------------------------------------
 
     async def _handle_exec(
@@ -362,11 +362,9 @@ class SandboxDebugServer:
                 pass
 
         async def _watch_disconnect():
-            # P1.3: client disconnect detector. The exec protocol does not expect
-            # any client→server traffic after the initial command, so a successful
-            # readline() (stray data) is ignored, and an empty result means the
-            # client closed its half of the socket — at which point we must stop
-            # waiting on the long-running VM process and kill it.
+            # P1.3：客户端断开检测。exec 协议在初始命令后不再期待客户端向服务端发送数据，
+            # 因此忽略 readline() 成功读到的意外数据；空结果表示客户端关闭了它的套接字，
+            # 此时必须停止等待长时间运行的虚拟机进程，并终止该进程。
             try:
                 while await reader.readline():
                     pass
@@ -377,9 +375,8 @@ class SandboxDebugServer:
             await asyncio.gather(_stream_stdout(), _stream_stderr())
 
         async def _do_wait():
-            # boxlite's Execution.wait() returns a Future (not a coroutine), so
-            # create_task() can't take it directly — wrap in an async fn that
-            # awaits it. This also keeps unit-test AsyncMock paths working.
+            # boxlite 的 Execution.wait() 返回 Future 而非协程，create_task() 不能直接接收；
+            # 因此用异步函数包装后再 await，同时保持单元测试的 AsyncMock 路径可用。
             return await execution.wait()
 
         streams_task = asyncio.create_task(_both_streams())
@@ -389,9 +386,8 @@ class SandboxDebugServer:
         try:
             done, _ = await asyncio.wait({wait_task, watcher}, return_when=asyncio.FIRST_COMPLETED)
             if wait_task in done:
-                # Process exited first — drain remaining stdout/stderr (bounded so
-                # a misbehaving stream can't keep the connection open forever),
-                # then send the exit code.
+                # 进程先退出时，先有界地排空剩余标准输出和标准错误，避免异常流永久占用连接，
+                # 然后发送退出码。
                 try:
                     await asyncio.wait_for(asyncio.shield(streams_task), timeout=1.0)
                 except (asyncio.TimeoutError, asyncio.CancelledError):
@@ -409,7 +405,7 @@ class SandboxDebugServer:
                     except (ConnectionResetError, BrokenPipeError):
                         pass
             else:
-                # Client disconnected first — stop the VM process so we don't leak it.
+                # 客户端先断开时，停止虚拟机进程，避免泄漏。
                 try:
                     await execution.kill()
                 except Exception:
@@ -420,7 +416,7 @@ class SandboxDebugServer:
             await asyncio.gather(streams_task, wait_task, watcher, return_exceptions=True)
 
     # ------------------------------------------------------------------
-    # shell
+    # 交互式 Shell
     # ------------------------------------------------------------------
 
     async def _handle_shell(
@@ -460,10 +456,9 @@ class SandboxDebugServer:
         async def _wait_task():
             try:
                 result = await execution.wait()
-                # P1.4: drain remaining stdout before announcing exit. Without this,
-                # the client breaks on `exit` and loses the last few stdout chunks
-                # that are still queued in stdout_task. Bound the wait so a stuck
-                # stdout iterator can't deadlock the session forever.
+                # P1.4：通知退出前先排空剩余标准输出。否则客户端在收到 `exit` 后就会中断，
+                # 丢失仍排队在 stdout_task 中的最后几个数据块。等待必须有界，
+                # 避免卡住的标准输出迭代器永久死锁会话。
                 if stdout_task is not None:
                     try:
                         await asyncio.wait_for(asyncio.shield(stdout_task), timeout=1.0)
@@ -477,30 +472,26 @@ class SandboxDebugServer:
             finally:
                 done_event.set()
 
-        # Outstanding fire-and-forget resize tasks. Tracked here so the
-        # outer cleanup can cancel/await them — otherwise a slow resize_tty
-        # pending at teardown would keep `execution` alive past the handler.
+        # 记录尚未完成的即发即忘 resize 任务，以便外层清理取消并等待它们；
+        # 否则销毁时仍在等待的慢速 resize_tty 会让 `execution` 比处理器活得更久。
         resize_tasks: list[asyncio.Task] = []
 
         async def _stdin_task():
             stdin_writer = execution.stdin()
 
             async def _do_resize(r: int, c: int) -> None:
-                # Resize is fire-and-forget — never block stdin forwarding on it,
-                # since a slow/hung resize_tty (e.g. during shell startup) would
-                # otherwise stall every keystroke behind it.
+                # Resize 采用即发即忘，绝不用它阻塞标准输入转发；否则慢速或卡住的
+                # resize_tty（例如 Shell 启动期间）会让后续每次按键都停滞。
                 try:
                     await execution.resize_tty(rows=r, cols=c)
                 except Exception:
                     pass
 
-            # P1.2: any path out of this loop — clean EOF, exception, cancellation —
-            # must fire done_event so an idle shell whose client just walked away
-            # is torn down instead of becoming an orphan inside the VM.
+            # P1.2：无论因正常 EOF、异常还是取消离开此循环，都必须触发 done_event，
+            # 使客户端已离开的空闲 Shell 被销毁，而不是成为虚拟机内的孤儿进程。
             #
-            # Race each readline() against done_event.wait() so an exit triggered
-            # by _wait_task is observed immediately instead of after a polling
-            # tick.
+            # 让每次 readline() 与 done_event.wait() 竞速，使 _wait_task 触发的退出能立即被观察到，
+            # 而不必等到下一个轮询周期。
             done_wait = asyncio.create_task(done_event.wait())
             try:
                 while True:
@@ -554,7 +545,7 @@ class SandboxDebugServer:
 
 
 # ------------------------------------------------------------------
-# Shared framing helper (used by exec/shell handlers too)
+# 共用分帧辅助函数（exec 和 shell 处理器也使用）
 # ------------------------------------------------------------------
 
 

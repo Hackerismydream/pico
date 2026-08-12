@@ -27,7 +27,7 @@ def tmp_config(tmp_path: Path) -> Path:
 
 
 # ============================================================================
-# --help surfaces
+
 # ============================================================================
 
 
@@ -66,7 +66,7 @@ def test_skills_subcommand_help_works(subcmd: str) -> None:
 
 
 # ============================================================================
-# skills list / get  (mock SkillService)
+
 # ============================================================================
 
 
@@ -85,7 +85,7 @@ def test_skill_list_renders_table(tmp_config: Path, monkeypatch: pytest.MonkeyPa
     assert r.exit_code == 0
     assert "alpha" in r.stdout
     assert "beta" in r.stdout
-    assert "Skills" in r.stdout  # table title
+    assert "Skills" in r.stdout
 
 
 def test_skill_list_empty_message(tmp_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:

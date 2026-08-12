@@ -11,9 +11,8 @@ export interface CountdownTick {
 }
 
 /**
- * Pure one-second step of the confirm countdown.  Returns the next
- * `remaining` value (floored at 0) and whether the floor was reached —
- * at which point the caller must auto-cancel (answer false).
+ * 确认倒计时每秒执行一次的纯函数步骤。返回下一个 `remaining` 值（下限为 0）
+ * 以及是否触底；触底时调用方必须自动取消，即回答 false。
  */
 export const tickCountdown = (remaining: number): CountdownTick => {
   const next = Math.max(0, remaining - 1)

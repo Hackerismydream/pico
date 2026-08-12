@@ -1,22 +1,20 @@
 /**
- * Color-capability override, applied BEFORE chalk / supports-color initialize.
+ * 颜色能力覆盖设置，必须在 Chalk 和 supports-color 初始化前应用。
  *
- * Detection of the actual terminal capability is left to chalk (mainstream
- * `supports-color`), corrected by hermes-ink's vscode/tmux level tweaks. This
- * module only handles user *overrides*, by translating them into the
- * `HERMES_TUI_LEVEL` env var that hermes-ink reads to pin chalk's level
- * EXACTLY. (FORCE_COLOR is only a floor — supports-color still returns 3 when
- * COLORTERM=truecolor, so it can't force a downgrade to 256/16.)
+ * 实际终端能力交由 Chalk（主流 `supports-color`）探测，再由 hermes-ink 针对
+ * VS Code/tmux 修正级别。本模块只处理用户覆盖值，将其转换为 hermes-ink 读取的
+ * `HERMES_TUI_LEVEL` 环境变量，以精确固定 Chalk 级别。FORCE_COLOR 只能设置
+ * 下限；当 COLORTERM=truecolor 时 supports-color 仍返回 3，无法强制降级为
+ * 256 色或 16 色。
  *
- * Channels:
- *   - `PICO_TUI_COLOR` = auto | truecolor | 256 | 16 | none  (the `--color`
- *     flag forwards here).
- *   - `PICO_TUI_TRUECOLOR` = 1/true/... — legacy alias for
- *     `PICO_TUI_COLOR=truecolor`.
+ * 配置渠道：
+ *   - `PICO_TUI_COLOR` = auto | truecolor | 256 | 16 | none（`--color`
+ *     参数会转发到这里）；
+ *   - `PICO_TUI_TRUECOLOR` = 1/true/...，是
+ *     `PICO_TUI_COLOR=truecolor` 的旧版别名。
  *
- * Precedence (highest first): NO_COLOR > PICO_TUI_COLOR > legacy
- * PICO_TUI_TRUECOLOR > chalk auto-detect. Per product decision, a typed
- * `--color` does NOT outrank `NO_COLOR`.
+ * 优先级从高到低为 NO_COLOR、PICO_TUI_COLOR、旧版 PICO_TUI_TRUECOLOR、
+ * Chalk 自动探测。根据产品约定，显式 `--color` 也不能覆盖 `NO_COLOR`。
  */
 
 export type ColorTier = 0 | 1 | 2 | 3
@@ -24,8 +22,8 @@ export type ColorTier = 0 | 1 | 2 | 3
 const TRUE_RE = /^(?:1|true|yes|on)$/i
 
 /**
- * Parse the requested tier from the Pico color env vars. Returns the
- * forced tier, or `null` for "auto" (defer to chalk's detection).
+ * 从 Pico 颜色环境变量解析请求的级别。返回强制级别；“auto”则返回 `null`，
+ * 交由 Chalk 探测。
  */
 export function parseColorOverride(env: NodeJS.ProcessEnv = process.env): ColorTier | null {
   const raw = (env.PICO_TUI_COLOR ?? '').trim().toLowerCase()
@@ -55,7 +53,7 @@ export function parseColorOverride(env: NodeJS.ProcessEnv = process.env): ColorT
       break
   }
 
-  // Legacy alias: PICO_TUI_TRUECOLOR=1 == PICO_TUI_COLOR=truecolor.
+  // 兼容旧别名：PICO_TUI_TRUECOLOR=1 等价于 PICO_TUI_COLOR=truecolor。
   if (TRUE_RE.test((env.PICO_TUI_TRUECOLOR ?? '').trim())) {
     return 3
   }
@@ -64,13 +62,12 @@ export function parseColorOverride(env: NodeJS.ProcessEnv = process.env): ColorT
 }
 
 /**
- * Apply the override to `env` by setting `HERMES_TUI_LEVEL` (mutates in
- * place). Must run before chalk / hermes-ink are imported. Returns the tier
- * that was pinned, or `null` when left on auto.
+ * 通过设置 `HERMES_TUI_LEVEL` 将覆盖值原地应用到 `env`。必须在导入 Chalk 或
+ * hermes-ink 前执行。返回固定的级别；保持自动探测时返回 `null`。
  */
 export function applyColorOverride(env: NodeJS.ProcessEnv = process.env): ColorTier | null {
-  // NO_COLOR (any value, per no-color.org) beats every override, including a
-  // typed --color — colors off.
+  // 按 no-color.org 约定，NO_COLOR 设置为任意值都优先于其他覆盖项，包括显式
+  // --color，此时关闭颜色。
   if ('NO_COLOR' in env) {
     env.HERMES_TUI_LEVEL = '0'
     env.FORCE_COLOR = '0'
@@ -83,9 +80,9 @@ export function applyColorOverride(env: NodeJS.ProcessEnv = process.env): ColorT
     return null
   }
 
-  // Pin chalk's level exactly (hermes-ink reads HERMES_TUI_LEVEL).
+  // 精确固定 Chalk 颜色级别，hermes-ink 会读取 HERMES_TUI_LEVEL。
   env.HERMES_TUI_LEVEL = String(tier)
-  // Also drop FORCE_COLOR to off for `none` so any non-hermes chalk goes dark.
+  // 选择 `none` 时也关闭 FORCE_COLOR，使非 Hermes 的 Chalk 实例同样停止着色。
   if (tier === 0) {
     env.FORCE_COLOR = '0'
   }

@@ -18,7 +18,7 @@ def _hit(qid: str, name: str, score: float = 0.5) -> RouterHit:
 
 
 # ---------------------------------------------------------------------------
-# rrf_merge_weighted
+
 # ---------------------------------------------------------------------------
 
 
@@ -67,7 +67,7 @@ class TestRrfMergeAcrossSources:
             k=5,
         )
         assert len(out) == 1
-        # Representative is the higher-scoring single-source hit.
+
         assert out[0].score == 0.9
 
     def test_contributing_sources_recorded(self) -> None:
@@ -82,7 +82,7 @@ class TestRrfMergeAcrossSources:
     def test_rrf_score_written_to_meta(self) -> None:
         hits = [_hit("a/1", "x")]
         out = rrf_merge_weighted([("a", 1.0, hits)], k=5)
-        # RRF score for rank-1 of single source with w=1: 1/(60+1) ~= 0.01639
+
         assert out[0].meta["rrf_score"] == pytest.approx(1.0 / 61.0)
 
     def test_weight_affects_relative_ranking(self) -> None:
@@ -91,18 +91,18 @@ class TestRrfMergeAcrossSources:
         high_w_hits = [
             _hit("local/a", "alpha"),
             _hit("local/b", "beta"),
-            _hit("local/c", "gamma"),  # rank 3 at weight 1.0
+            _hit("local/c", "gamma"),
         ]
         low_w_hits = [
-            _hit("mass/d", "delta"),  # rank 1 at weight 0.01
+            _hit("mass/d", "delta"),
         ]
         out = rrf_merge_weighted(
             [("local", 1.0, high_w_hits), ("mass", 0.01, low_w_hits)],
             k=5,
         )
         names = [h.name for h in out]
-        # local rank-3 (1/63 = ~0.0159) > mass rank-1 (0.01/61 = ~0.00016)
-        # so 'gamma' must outrank 'delta'.
+
+
         assert names.index("gamma") < names.index("delta")
 
 
@@ -127,12 +127,12 @@ class TestRrfRepresentativeStability:
         a_hits = [_hit("local/x", "x")]
         original_meta = a_hits[0].meta
         rrf_merge_weighted([("local", 1.0, a_hits)], k=5)
-        # Input hit's meta is unchanged.
+
         assert original_meta == {}
 
 
 # ---------------------------------------------------------------------------
-# SkillForgeRouter — concurrent fan-out, safety, k cap
+
 # ---------------------------------------------------------------------------
 
 
@@ -196,7 +196,7 @@ class TestSkillForgeRouterSelect:
         bad = _FailingSource("remote")
         router = SkillForgeRouter([good, bad])
         out = await router.select("q", history=[], k=5)
-        # Failed source contributed nothing; good source still surfaces.
+
         assert [h.name for h in out] == ["x"]
 
     async def test_all_failing_returns_empty(self) -> None:
@@ -217,8 +217,8 @@ class TestSkillForgeRouterSelect:
         t0 = time.monotonic()
         out = await router.select("q", history=[], k=5)
         elapsed = time.monotonic() - t0
-        # If they ran serially this would be ~0.20s. Concurrent ~0.10.
-        # Loose bound at 0.15 to accommodate scheduler jitter.
+
+
         assert elapsed < 0.15
         assert len(out) == 2
 

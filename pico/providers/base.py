@@ -65,11 +65,10 @@ class LLMResponse:
     tool_calls: list[ToolCallRequest] = field(default_factory=list)
     finish_reason: str = "stop"
     usage: dict[str, int] = field(default_factory=dict)
-    reasoning_content: str | None = None  # Kimi, DeepSeek-R1 etc.
-    thinking_blocks: list[dict] | None = None  # Anthropic extended thinking
-    # Set when finish_reason == "error". Providers that have the live exception
-    # attach a precise classification here; otherwise the retry layer fills it
-    # in from the error string.
+    reasoning_content: str | None = None  # Kimi、DeepSeek-R1 等
+    thinking_blocks: list[dict] | None = None  # Anthropic 扩展思考内容
+    # finish_reason == "error" 时设置。持有实时异常的 Provider 在此附加精确分类；
+    # 否则由重试层根据错误字符串补全。
     error_classification: "ErrorClassification | None" = None
     model: str | None = None
     call_record: Any | None = None
@@ -94,7 +93,7 @@ class StreamDelta:
     content: str | None
     tool_call_delta: dict[str, Any] | None = None
     usage: dict[str, Any] | None = None
-    reasoning_content: str | None = None  # Kimi, DeepSeek-R1, qwen, o-series thinking stream
+    reasoning_content: str | None = None  # Kimi、DeepSeek-R1、qwen、o-series 的思考流
     finish_reason: str | None = None
     error_classification: ErrorClassification | None = None
     model: str | None = None
@@ -328,9 +327,8 @@ class LLMProvider(ABC):
         def has(*needles: str) -> bool:
             return any(n in msg for n in needles)
 
-        # Context-window overflow → compress and retry, NOT fallback (a smaller
-        # window won't help; the same model after compaction will). Detected by
-        # class name first — a bare 400 otherwise looks like invalid_request.
+        # 上下文窗口溢出：压缩后重试，不做 fallback。更小窗口无济于事，压缩后的
+        # 同一模型可以恢复。优先按异常类名检测，否则裸 400 看起来像 invalid_request。
         if "contextwindowexceedederror" in names or has(
             "context length",
             "context window",
@@ -340,7 +338,7 @@ class LLMProvider(ABC):
         ):
             return ErrorClassification("context_overflow", should_compress=True)
 
-        # Rate limit → wait and retry; a different provider may not be throttled.
+        # 频率限制：等待并重试；其他 Provider 可能未被限流。
         if (
             status == 429
             or "ratelimiterror" in names
@@ -352,7 +350,7 @@ class LLMProvider(ABC):
         ):
             return ErrorClassification("rate_limit", retryable=True, should_fallback=True)
 
-        # Transient server / capacity → retry + fallback.
+        # 暂时性服务/容量错误：重试并 fallback。
         if (
             status in (500, 502, 503, 504)
             or {"internalservererror", "serviceunavailableerror", "badgatewayerror"} & names
@@ -369,7 +367,7 @@ class LLMProvider(ABC):
         ):
             return ErrorClassification("server", retryable=True, should_fallback=True)
 
-        # Timeout / connection → retry + fallback.
+        # 超时/连接错误：重试并 fallback。
         if {"timeout", "apitimeouterror", "apiconnectionerror", "oserror"} & names or has(
             "timeout",
             "timed out",
@@ -377,7 +375,7 @@ class LLMProvider(ABC):
         ):
             return ErrorClassification("network", retryable=True, should_fallback=True)
 
-        # Auth / permission → fatal config; retry & fallback won't fix it.
+        # 认证/权限错误：属于致命配置问题，重试和 fallback 都无法修复。
         if (
             status in (401, 403)
             or {"authenticationerror", "permissiondeniederror"} & names
@@ -389,7 +387,7 @@ class LLMProvider(ABC):
         ):
             return ErrorClassification("auth")
 
-        # Billing / quota → same model can't recover, a different provider might.
+        # 账单/配额错误：同一模型无法恢复，其他 Provider 可能可用。
         if status == 402 or has(
             "billing",
             "quota",
@@ -400,7 +398,7 @@ class LLMProvider(ABC):
         ):
             return ErrorClassification("billing", should_fallback=True)
 
-        # Model unavailable / not found → no point retrying it; try another model.
+        # 模型不可用/不存在：重试没有意义，尝试其他模型。
         if (
             status == 404
             or "notfounderror" in names
@@ -414,7 +412,7 @@ class LLMProvider(ABC):
         ):
             return ErrorClassification("model_unavailable", should_fallback=True)
 
-        # Generic bad request (non-context 400) → fatal; no model swap helps.
+        # 普通 bad request（非上下文 400）：致命错误，切换模型也无济于事。
         if status == 400 or "badrequesterror" in names or has("invalid request", "invalid_request"):
             return ErrorClassification("invalid_request")
 
@@ -488,8 +486,8 @@ class LLMProvider(ABC):
                     await response_observer(response, model)
                 return response
 
-            # Prefer a provider-attached classification (it had the live
-            # exception); else classify the exception we caught, else the string.
+            # 优先使用 Provider 附加的分类，因为它持有实时异常；其次分类捕获到的异常，
+            # 最后才根据字符串分类。
             classification = response.error_classification or self.classify_error(exc, response.content)
             response.error_classification = classification
             if response_observer is not None:
@@ -511,7 +509,7 @@ class LLMProvider(ABC):
             )
             await asyncio.sleep(delay)
 
-        return last_response  # type: ignore[return-value]  # loop always returns on the last attempt
+        return last_response  # type: ignore[return-value]  # 循环总会在最后一次尝试时返回
 
     @trace.instrument("llm.call", extract=semconv.llm_call)
     async def chat_with_retry(
@@ -594,7 +592,7 @@ class LLMProvider(ABC):
                 continue
             return response
 
-        return response  # type: ignore[return-value]  # chain always non-empty
+        return response  # type: ignore[return-value]  # 调用链始终非空
 
     @abstractmethod
     def get_default_model(self) -> str:

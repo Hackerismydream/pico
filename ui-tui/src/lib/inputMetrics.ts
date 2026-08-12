@@ -113,8 +113,7 @@ function widthBetween(value: string, start: number, end: number) {
 }
 
 /**
- * Mirrors the word-wrap behavior used by the composer TextInput.
- * Returns the zero-based visual line and column of the cursor cell.
+ * 与编辑框 TextInput 使用的自动换行行为一致。返回光标单元格从零开始的视觉行列。
  */
 export function cursorLayout(value: string, cursor: number, cols: number) {
   const pos = Math.max(0, Math.min(cursor, value.length))
@@ -133,7 +132,7 @@ export function cursorLayout(value: string, cursor: number, cols: number) {
   const line = lines[lineIndex]!
   let column = widthBetween(value, line.start, Math.min(pos, line.end))
 
-  // trailing cursor-cell overflows to the next row at the wrap column
+  // 尾部光标单元格会在换行列溢出到下一行。
   if (column >= w) {
     lineIndex++
     column = 0

@@ -86,7 +86,7 @@ class SubscriptionEmitter:
             await self.unregister(sub.sub_id)
 
     # ------------------------------------------------------------------
-    # internals
+    # 内部状态
     # ------------------------------------------------------------------
 
     def _mark_closed(self, sub: Subscription) -> None:

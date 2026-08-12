@@ -2,9 +2,9 @@ import { accessSync, constants } from 'node:fs'
 import { delimiter, join } from 'node:path'
 
 /**
- * Editor fallback chain when neither $VISUAL nor $EDITOR is set. Mirrors
- * prompt_toolkit's `Buffer.open_in_editor()` picker so the classic CLI and
- * the TUI launch the same editor on a given box.
+ * 未设置 $VISUAL 和 $EDITOR 时的编辑器回退链。与 prompt_toolkit 的
+ * `Buffer.open_in_editor()` 选择逻辑一致，使传统 CLI 和 TUI 在同一机器上启动
+ * 相同编辑器。
  */
 const FALLBACKS = ['editor', 'nano', 'pico', 'vi', 'emacs']
 
@@ -19,12 +19,12 @@ const isExecutable = (path: string): boolean => {
 }
 
 /**
- * Resolve the editor invocation argv (without the file argument).
+ * 解析编辑器调用参数，不包含文件参数。
  *
- *   1. $VISUAL / $EDITOR, shell-tokenized so `EDITOR="code --wait"` works
- *   2. on POSIX: first FALLBACKS entry resolvable on $PATH
- *   3. on Windows: `notepad.exe`
- *   4. literal `['vi']` as the last-resort POSIX floor
+ *   1. $VISUAL/$EDITOR，按 shell 规则分词以支持 `EDITOR="code --wait"`；
+ *   2. POSIX：$PATH 中首个可解析的 FALLBACKS 条目；
+ *   3. Windows：`notepad.exe`；
+ *   4. POSIX 最终回退值 `['vi']`。
  */
 export const resolveEditor = (
   env: NodeJS.ProcessEnv = process.env,

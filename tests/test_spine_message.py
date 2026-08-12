@@ -11,8 +11,8 @@ def test_chat_type_is_closed_two_value_str_enum():
 
 
 def test_chat_type_str_renders_as_value():
-    # StrEnum (not (str, Enum)): str() yields the value, not "ChatType.DM".
-    # Reverting to (str, Enum) turns this red — the reason the switch was made.
+
+
     assert str(ChatType.DM) == "dm"
     assert str(ChatType.GROUP) == "group"
 
@@ -50,9 +50,9 @@ def test_source_extras_are_independent_per_instance():
 
 
 def test_source_is_intentionally_not_hashable():
-    # frozen advertises __hash__, but the live `extras` mapping makes Source
-    # deliberately unhashable: lanes key by the conversation_id string, never
-    # by a Source instance. Pinned so the property is known, not a surprise.
+
+
+
     s = Source(channel="cli", chat_id="c", sender_id="u", chat_type=ChatType.DM)
     with pytest.raises(TypeError):
         hash(s)

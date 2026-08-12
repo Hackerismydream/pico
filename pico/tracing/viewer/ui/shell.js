@@ -1,5 +1,5 @@
-// Served by server.js for `/`. The dashboard shell lives here as a JS
-// module (not an .html asset) so the viewer ships as plain JS/CSS only.
+// 由 server.js 在 `/` 提供。仪表盘外壳以 JS 模块而非 .html 资源存放于此，
+// 使查看器只需分发纯 JS/CSS。
 module.exports = String.raw`<!doctype html>
 <html lang="en">
   <head>

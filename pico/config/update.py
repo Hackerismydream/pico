@@ -255,9 +255,8 @@ def set_sandbox_backend(
     """
     path = config_path or get_config_path()
     data = read_raw_or_raise(path)
-    # sandbox lives under tools (Config.tools.sandbox), not at the root — the
-    # root Config forbids extras, so a top-level "sandbox" key fails schema
-    # validation on the next load.
+    # sandbox 位于 tools 下（Config.tools.sandbox），而不是根节点。根 Config
+    # 禁止额外字段，因此顶层 "sandbox" 键会在下次加载时导致 schema 校验失败。
     section = data.setdefault("tools", {}).setdefault("sandbox", {})
     prev = section.get("backend")
     section["backend"] = backend

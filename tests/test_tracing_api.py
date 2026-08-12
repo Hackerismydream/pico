@@ -21,7 +21,7 @@ from pico.tracing import trace
 def trace_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("PICO_TRACING", "1")
     monkeypatch.setenv("PICO_TRACING_DIR", str(tmp_path))
-    _spans._store = None  # force the store to re-init against the temp dir
+    _spans._store = None
     yield tmp_path
     _spans._store = None
 
@@ -42,9 +42,9 @@ def test_nesting_kinds_and_attributes(trace_dir):
     spans = _spans_written(trace_dir)
     by = {sp["name"]: sp for sp in spans}
     assert len(spans) == 2
-    assert len({sp["traceId"] for sp in spans}) == 1  # one trace
-    assert by["session.turn"]["parentSpanId"] is None  # root
-    assert by["llm.call"]["parentSpanId"] == root_id  # nests under root
+    assert len({sp["traceId"] for sp in spans}) == 1
+    assert by["session.turn"]["parentSpanId"] is None
+    assert by["llm.call"]["parentSpanId"] == root_id
     assert by["session.turn"]["attributes"]["span.type"] == "session"
     assert by["llm.call"]["attributes"]["span.type"] == "model"
     assert by["llm.call"]["attributes"]["llm.provider"] == "openrouter"
@@ -55,8 +55,8 @@ def test_nesting_kinds_and_attributes(trace_dir):
 def test_invocation_source_derives_from_enclosing_purpose(trace_dir):
     from pico.tracing import semconv
 
-    # A model call nested under a purpose span self-labels with that purpose;
-    # a model span never becomes its own source (model-under-model inherits).
+
+
     with trace.span("skill.gate", kind="skill"):
         with trace.span("llm.call") as s:
             assert s.invocation_source == "skill.gate"
@@ -82,7 +82,7 @@ def test_purpose_spans_record_input_and_output(trace_dir):
     sp = _spans_written(trace_dir)[0]
     a = sp["attributes"]
     assert a["skill.rewrite.need_retrieval"] is True
-    # Wrapper node self-reports input/output as artifacts, like llm/tool/memory nodes.
+
     assert "skill.rewrite.input.artifact_path" in a
     assert "skill.rewrite.output.artifact_path" in a
 
@@ -161,8 +161,8 @@ def test_attach_rejoins_a_trace_from_another_task(trace_dir):
         with trace.span("spine.turn") as root:
             captured = (root.trace_id, root.span_id)
 
-        # A resident worker task: no inherited context, so without attach the
-        # span below would mint an unrelated trace.
+
+
         async def worker():
             with trace.attach(*captured):
                 with trace.span("channel.deliver", kind="channel"):
@@ -181,7 +181,7 @@ def test_attach_without_a_trace_id_is_a_noop(trace_dir):
     with trace.attach(None, None):
         with trace.span("channel.deliver", kind="channel") as s:
             attached_trace = s.trace_id
-    assert attached_trace  # a fresh trace, not a crash
+    assert attached_trace
     assert _spans_written(trace_dir)[0]["parentSpanId"] is None
 
 
@@ -367,7 +367,7 @@ def test_memory_consolidate_extractor(trace_dir):
 def test_subagent_children_nest(trace_dir):
     from pico.tracing import semconv
 
-    # A subagent span; its inner primitives nest under it via context propagation.
+
     with trace.span("subagent.run") as sa:
         semconv.subagent(
             sa, {"task_id": "t1", "task": "do x", "label": "worker", "origin": {"session_key": "cli:p"}}, None, None
@@ -379,13 +379,13 @@ def test_subagent_children_nest(trace_dir):
     by = {sp["name"]: sp for sp in spans}
     assert by["subagent.run"]["attributes"]["span.type"] == "subagent"
     assert by["subagent.run"]["attributes"]["subagent.label"] == "worker"
-    assert inner_parent == sa_id  # inner llm.call nests under the subagent node
+    assert inner_parent == sa_id
 
 
 # ---------------------------------------------------------------------------
-# Contract gates (standard-api.v1). These freeze the adopter/viewer contract
-# and the "tracing can never break the host" invariant. A change that trips
-# them is a deliberate contract change: update the snapshot + bump the schema.
+
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -416,8 +416,8 @@ def test_audit_span_v1_record_shape_is_frozen(trace_dir):
 def test_span_kind_vocabulary_is_frozen():
     from pico.tracing import trace as _t
 
-    # ``channel`` is the additive v1 entry carrying delivery evidence; adding a
-    # kind is a deliberate contract change (see TRACING_STANDARD_API.md).
+
+
     assert set(_t._KIND_BY_DOMAIN.values()) == {
         "session",
         "model",
@@ -490,8 +490,8 @@ def test_tracing_internal_failure_never_breaks_host(trace_dir, monkeypatch):
     async def app_error():
         raise ValueError("APP")
 
-    # tracing's own crash must not surface to the host
+
     assert asyncio.run(ok(41)) == 42
-    # the host's own exception must propagate unchanged
+
     with pytest.raises(ValueError, match="APP"):
         asyncio.run(app_error())

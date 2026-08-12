@@ -37,7 +37,7 @@ async def _wait_for_frame(frames: list[dict], timeout: float = 1.0) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# ConfirmBroker (CAP-CONF-1 / CAP-CONF-3)
+
 # ---------------------------------------------------------------------------
 
 
@@ -81,7 +81,7 @@ async def test_confirm_respond_resolves_future() -> None:
 
     assert broker.resolve(rid, False) is True
     assert await task is False
-    # registry cleaned up — a second resolve is a no-op
+
     assert broker.resolve(rid, True) is False
 
 
@@ -97,10 +97,10 @@ async def test_confirm_hard_limit_returns_false(monkeypatch: pytest.MonkeyPatch)
     frames, send_frame = _frame_collector()
     broker = ConfirmBroker(send_frame)
 
-    # No resolve ever arrives → hard limit fires → fail-safe to default.
+
     result = await broker.await_confirm("Continue?", default=False)
     assert result is False
-    await _wait_for_frame(frames)  # it did emit the request first
+    await _wait_for_frame(frames)
 
 
 async def test_confirm_task_cancellation_propagates() -> None:
@@ -127,7 +127,7 @@ async def test_broker_cancel_all_failsafe() -> None:
 
 
 # ---------------------------------------------------------------------------
-# confirm.respond handler + registration (CAP-CONF-2)
+
 # ---------------------------------------------------------------------------
 
 

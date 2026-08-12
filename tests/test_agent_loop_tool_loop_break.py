@@ -27,7 +27,7 @@ def workspace():
 
 
 # --------------------------------------------------------------------------- #
-# unit: _is_hard_tool_failure                                                  #
+
 # --------------------------------------------------------------------------- #
 
 
@@ -36,19 +36,19 @@ def workspace():
     [
         ("Error: Tool 'x' not found. Available: a, b", True),
         ("Error: file does not exist", True),
-        ("No matches found.", False),  # empty search = success, not a failure
-        ("No files found", False),  # find empty result
-        ("route not found in cache, using local fallback", False),  # success mentioning the phrase
+        ("No matches found.", False),
+        ("No files found", False),
+        ("route not found in cache, using local fallback", False),
         ("Exit code: 1\nboom", True),
-        ("Exit code: 0\nok", False),  # exit 0 = success
+        ("Exit code: 0\nok", False),
         ("ok, wrote 3 files", False),
         ("No error: the fallback completed", False),
         ("(MCP tool call failed: RuntimeError)", True),
         ('{"error": "URL validation failed", "url": "http://localhost"}', True),
         (ToolResult("opaque provider failure", failed=True), True),
         (ToolResult("Error: quoted source text", failed=False), False),
-        ("Error: 429 rate limit, retry later", False),  # transient → not hard
-        ("request timed out", False),  # transient → not hard
+        ("Error: 429 rate limit, retry later", False),
+        ("request timed out", False),
     ],
 )
 def test_is_hard_tool_failure(result, expected):
@@ -56,7 +56,7 @@ def test_is_hard_tool_failure(result, expected):
 
 
 # --------------------------------------------------------------------------- #
-# loop level: repeated same-tool failure -> bounded nudges                     #
+
 # --------------------------------------------------------------------------- #
 
 
@@ -78,7 +78,7 @@ class _AlwaysFailsSameToolProvider(LLMProvider):
         tool_choice=None,
     ):
         self.loop_marker_counts.append(sum(1 for m in messages if "[loop]" in str(m.get("content", ""))))
-        if tools is None:  # max-iter synthesis call
+        if tools is None:
             return LLMResponse(content="done", finish_reason="stop")
         return LLMResponse(
             content="",
@@ -110,5 +110,5 @@ async def test_repeated_tool_failure_nudges_bounded(workspace):
         session_key="s1",
     )
 
-    # A nudge fired (>=1 [loop] marker seen) but never exceeded the per-turn cap.
+
     assert max(provider.loop_marker_counts) == AgentLoop._LOOP_BREAK_MAX

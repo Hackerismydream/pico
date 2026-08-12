@@ -36,7 +36,7 @@ from pico.config.pico import (
 from pico.config.schema import Config
 
 __all__ = [
-    # Base layer
+    # 基础层
     "Config",
     "load_config",
     "get_config_path",
@@ -47,7 +47,7 @@ __all__ = [
     "get_logs_dir",
     "get_workspace_path",
     "get_cli_history_path",
-    # Pico feature layer
+    # Pico 功能层
     "PicoConfig",
     "load_pico_config",
     "ContextConfig",

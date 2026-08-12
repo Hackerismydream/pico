@@ -40,9 +40,8 @@ class MemorySegmentBuilder:
     async def build(self, ctx: AssemblyContext) -> Segment | None:
         if not self._enabled:
             return Segment(text="", meta={"memory_hits": 0})
-        # Host direct-read and plugin recall are combined. The
-        # recall propagates on hard failure so a backend outage surfaces
-        # at AgentLoop rather than silently dropping memory.
+        # 合并 Host 直接读取和插件召回。召回发生硬失败时继续向上传播，
+        # 让后端故障在 AgentLoop 暴露，而不是静默丢弃记忆。
         host = self._memory_store.get_memory_context(current_message=ctx.current_message)
         recall_hits = await self._recall(ctx.current_message)
         recall_bullets = render.render_recalled_memory(recall_hits)

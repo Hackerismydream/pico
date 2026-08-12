@@ -26,7 +26,7 @@ from pico.tui_rpc.methods import session as session_module
 from pico.tui_rpc.methods.session import _default_session_info
 
 # ---------------------------------------------------------------------------
-# Fake AgentLoop fixtures (minimal duck-typed handles)
+
 # ---------------------------------------------------------------------------
 
 
@@ -111,7 +111,7 @@ def config():
 
 
 # ---------------------------------------------------------------------------
-# Extended init-bundle tests (real tools/skills/usage/version)
+
 # ---------------------------------------------------------------------------
 
 
@@ -121,9 +121,9 @@ def test_default_session_info_contains_real_tools(fake_agent_loop, config) -> No
     assert isinstance(info["tools"], dict), "info.tools must be dict[str, list[str]]"
     assert "builtin" in info["tools"], "info.tools must have a 'builtin' bucket (handoff §3.4 lock)"
     assert len(info["tools"]["builtin"]) >= 1, "builtin tools list must be non-empty"
-    # sorted invariant
+
     assert info["tools"]["builtin"] == sorted(info["tools"]["builtin"]), "tool names within bucket must be sorted"
-    # lazy: False on happy path (agent_loop present)
+
     assert info["lazy"] is False, "lazy=False signals tools/skills are real values (vs placeholder True)"
 
 
@@ -131,13 +131,13 @@ def test_default_session_info_contains_real_skills(fake_agent_loop, config) -> N
     """T1.1.b (AC-2): ``info.skills`` groups skills by SkillMeta.source."""
     info = _default_session_info(fake_agent_loop, config)
     assert isinstance(info["skills"], dict), "info.skills must be dict[str, list[str]]"
-    # fake fixture has 2 builtin + 1 workspace
+
     assert "builtin" in info["skills"], "fake fixture should produce 'builtin' source group"
     assert "workspace" in info["skills"], "fake fixture should produce 'workspace' source group"
     assert info["skills"]["builtin"] == sorted(info["skills"]["builtin"]), (
         "skill names within source group must be sorted"
     )
-    # ensure each group has at least 1 entry
+
     for source, names in info["skills"].items():
         assert isinstance(names, list)
         assert len(names) >= 1, f"source group {source!r} has empty list"
@@ -148,12 +148,12 @@ def test_default_session_info_contains_real_usage_baseline(fake_agent_loop, conf
     info = _default_session_info(fake_agent_loop, config)
     usage = info["usage"]
     assert isinstance(usage, dict)
-    # boot-time: no turn run yet
+
     assert usage["input"] == 0
     assert usage["output"] == 0
     assert usage["cost_usd"] == 0.0
     assert usage["calls"] == 0
-    # context_max from config (NOT a hardcoded 200000)
+
     assert usage["context_max"] == config.agents.defaults.context_window_tokens
     assert usage["context_used"] == 0
     assert usage["context_percent"] == 0
@@ -176,7 +176,7 @@ def test_context_window_reads_config_not_hardcoded_200k(fake_agent_loop, config)
         "context_window must equal config.agents.defaults.context_window_tokens "
         "(default 65536; the old stub 200000 must be gone)"
     )
-    # Sanity check the default is what we expect
+
     assert config.agents.defaults.context_window_tokens == 65_536, (
         "schema default for context_window_tokens should be 65536 (schema.py:258)"
     )
@@ -185,17 +185,17 @@ def test_context_window_reads_config_not_hardcoded_200k(fake_agent_loop, config)
 def test_default_session_info_falls_back_when_agent_loop_none(config) -> None:
     """T1.1.g (AC-7): agent_loop=None graceful fallback per D3 — does not raise."""
     info = _default_session_info(None, config)
-    # tools/skills empty (placeholder semantics)
+
     assert info["tools"] == {}, "tools must fall back to empty dict when agent_loop is None"
     assert info["skills"] == {}, "skills must fall back to empty dict when agent_loop is None"
-    # usage all-zero with context_max from config
+
     assert info["usage"]["input"] == 0
     assert info["usage"]["output"] == 0
     assert info["usage"]["calls"] == 0
     assert info["usage"]["context_max"] == config.agents.defaults.context_window_tokens
-    # version still real (importlib doesn't need agent_loop)
+
     assert info["version"] == importlib.metadata.version("pico-harness")
-    # lazy=True signals UI that tools/skills are placeholder (not "0 reality")
+
     assert info["lazy"] is True, "lazy=True on agent_loop=None fallback signals UI that tools/skills are placeholder"
 
 
@@ -206,14 +206,14 @@ def test_default_session_info_falls_back_when_no_usage_tracker(fake_agent_loop_n
     context_max from config (not raise).
     """
     info = _default_session_info(fake_agent_loop_no_tracker, config)
-    # tools/skills still real (agent_loop present)
+
     assert info["tools"] != {}
     assert info["skills"] != {}
-    # usage baseline all-zero (tracker absent)
+
     assert info["usage"]["input"] == 0
     assert info["usage"]["calls"] == 0
     assert info["usage"]["context_max"] == config.agents.defaults.context_window_tokens
-    # lazy=False (tools/skills are real, only usage degraded)
+
     assert info["lazy"] is False
 
 
@@ -249,19 +249,19 @@ def test_default_session_info_key_set_matches_expected_v030(fake_agent_loop, con
     """
     info = _default_session_info(fake_agent_loop, config)
     expected_keys = {
-        # backward-compat / existing
+
         "model",
         "skills",
         "tools",
         "cwd",
         "version",
         "mcp_servers",
-        # init bundle
+
         "provider",
         "memory",
         "context_window",
         "lazy",
-        # extended bundle
+
         "usage",
     }
     assert set(info) == expected_keys, (
@@ -270,7 +270,7 @@ def test_default_session_info_key_set_matches_expected_v030(fake_agent_loop, con
 
 
 # ---------------------------------------------------------------------------
-# Init-bundle field tests adapted to the extended signature
+
 # ---------------------------------------------------------------------------
 
 
@@ -281,8 +281,8 @@ def test_default_session_info_contains_real_model(fake_agent_loop, config) -> No
     assert info["model"] == config.agents.defaults.model
     assert info["provider"] == config.agents.defaults.provider
     assert info["memory"] in {"enabled", "disabled", "unknown"}
-    # NOTE: context_window assertion moved to test_context_window_reads_config_not_hardcoded_200k
-    # NOTE: lazy assertion moved to test_default_session_info_contains_real_tools
+
+
 
 
 def test_placeholder_model_constant_removed() -> None:

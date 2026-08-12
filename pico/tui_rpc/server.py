@@ -32,8 +32,8 @@ if TYPE_CHECKING:
     from pico.tui_rpc.dispatcher import Dispatcher
 
 
-# Per specs/tui-ipc.md §2.5
-MAX_FRAME_BYTES = 1 * 1024 * 1024  # 1 MiB
+# 按 specs/tui-ipc.md §2.5 的规定
+MAX_FRAME_BYTES = 1 * 1024 * 1024  # 1 MiB 上限
 
 
 class RpcServer:
@@ -59,14 +59,12 @@ class RpcServer:
         self._request_fd = request_fd
         self._notify_fd = notify_fd
         self._dispatcher = dispatcher
-        # Cross-platform production transport: a single connected TCP-loopback
-        # socket passed as an object (no os.dup of a socket fd, which is not
-        # supported on Windows). When set it takes precedence over the fd pair.
+        # 跨平台生产传输：以对象形式传入单个已连接的 TCP 回环套接字，
+        # 不对套接字文件描述符执行 Windows 不支持的 os.dup。设置后优先于 fd 对。
         self._sock = sock
-        # Optional shared-secret line the peer MUST send first. TCP loopback is
-        # reachable by any local process (unlike an AF_UNIX file guarded by
-        # 0600 perms), so the token restores the "only our spawned child can
-        # talk to us" trust boundary. None disables the check (pipe/test paths).
+        # 对端必须首先发送的可选共享密钥行。任何本地进程都能访问 TCP 回环，
+        # 不像由 0600 权限保护的 AF_UNIX 文件，因此令牌用于恢复“只有我们启动的子进程
+        # 才能通信”这一信任边界。None 禁用检查，供管道和测试路径使用。
         self._auth_token = auth_token
 
         self._reader: asyncio.StreamReader | None = None
@@ -82,7 +80,7 @@ class RpcServer:
         """Set once the read pump has attached to the FD; useful for tests."""
         return self._started
 
-    # ----- write side -------------------------------------------------------
+    # ----- 写入端 -------------------------------------------------------
 
     async def send_frame(self, frame: dict) -> None:
         """Serialize and write a single JSON frame + newline to `notify_fd`.
@@ -96,7 +94,7 @@ class RpcServer:
         async with self._write_lock:
             self._write_transport.write(data)
 
-    # ----- main loop --------------------------------------------------------
+    # ----- 主循环 --------------------------------------------------------
 
     async def serve_forever(self) -> None:
         """Run the read/dispatch/write pump until EOF or `stop()`."""
@@ -105,23 +103,18 @@ class RpcServer:
         reader = asyncio.StreamReader(limit=MAX_FRAME_BYTES)
         reader_protocol = asyncio.StreamReaderProtocol(reader)
 
-        # P0 fix (2026-05-15): the production transport in
-        # ``tui_commands.run_subprocess_with_rpc`` dups the same accepted unix
-        # socket fd into ``request_fd`` and ``notify_fd``. CPython's
-        # ``connect_write_pipe`` builds a ``_UnixWritePipeTransport`` whose
-        # ``__init__`` registers a reader callback on the WRITE fd to detect
-        # "peer closed the pipe" (read-end EOF) — this works for real pipes
-        # but is fatal for a bidirectional SOCK_STREAM socket: any inbound
-        # byte (e.g. ``system.hello``) makes the reader callback fire,
-        # ``_close()`` runs, and every subsequent ``send_frame`` becomes a
-        # silent no-op. After 5 such drops asyncio also logs ``"pipe closed
-        # by peer or os.write(pipe, data) raised exception."`` — which is the
-        # exact symptom seen during ``/cha`` slash autocomplete.
+        # P0 修复（2026-05-15）：``tui_commands.run_subprocess_with_rpc`` 的生产传输
+        # 将同一已接受的 Unix 套接字 fd 复制为 ``request_fd`` 和 ``notify_fd``。
+        # CPython 的 ``connect_write_pipe`` 会创建 ``_UnixWritePipeTransport``，并在写 fd 上
+        # 注册读回调，以检测“对端关闭管道”（读端 EOF）。这对真管道有效，
+        # 但对双向 SOCK_STREAM 套接字是致命的：任何入站字节（如 ``system.hello``）都会
+        # 触发读回调，继而执行 ``_close()``，后续 ``send_frame`` 全部静默失效。
+        # 连续丢弃 5 次后，asyncio 还会记录 ``"pipe closed by peer or os.write(pipe, data)
+        # raised exception."``，这正是 ``/cha`` 斜杠自动补全时观察到的症状。
         #
-        # Use ``connect_accepted_socket`` (full-duplex selector transport) on
-        # the same fd instead. The transport's ``.write()`` works without
-        # the spurious peer-close detection. We keep the pipe-based path as a
-        # fallback for tests/CI that wire bare ``os.pipe()`` pairs.
+        # 改为在同一 fd 上使用 ``connect_accepted_socket``（全双工选择器传输）。
+        # 该传输的 ``.write()`` 不会误判对端关闭。仍保留基于管道的路径，
+        # 作为测试和 CI 中直接连接 ``os.pipe()`` 对的回退。
         req_is_sock = notif_is_sock = False
         if self._sock is None:
             try:
@@ -131,19 +124,16 @@ class RpcServer:
                 req_is_sock = notif_is_sock = False
 
         if self._sock is not None:
-            # Cross-platform production path: full-duplex transport over a single
-            # connected socket object (TCP loopback). connect_accepted_socket is
-            # implemented on both the selector (POSIX) and proactor (Windows)
-            # event loops, and passing the socket object avoids os.dup of a
-            # socket fd -- which is unsupported on Windows.
+            # 跨平台生产路径：通过单个已连接的套接字对象（TCP 回环）进行全双工传输。
+            # 选择器（POSIX）和 Proactor（Windows）事件循环都实现了 connect_accepted_socket，
+            # 传入套接字对象也避免对 Windows 不支持的套接字 fd 执行 os.dup。
             self._sock.setblocking(False)
             transport, _ = await loop.connect_accepted_socket(lambda: reader_protocol, self._sock)
             self._write_transport = transport
             self._write_protocol = reader_protocol
         elif req_is_sock and notif_is_sock:
-            # Both fds are dups of the same accepted socket. Close the read
-            # dup and reclaim the write dup as a ``socket.socket`` — only one
-            # handle is needed for a full-duplex transport.
+            # 两个 fd 都是同一已接受套接字的副本。关闭读副本，将写副本回收为
+            # ``socket.socket``；全双工传输只需一个句柄。
             try:
                 os.close(self._request_fd)
             except OSError:
@@ -154,9 +144,8 @@ class RpcServer:
             self._write_transport = transport
             self._write_protocol = reader_protocol
         else:
-            # Legacy / test path: bare pipes via ``os.pipe()``.
-            # `os.fdopen` so the transport owns a Python file object; loop
-            # will close the underlying fd when the transport closes.
+            # 旧路径和测试路径：使用 ``os.pipe()`` 裸管道。通过 `os.fdopen` 让传输层
+            # 拥有 Python 文件对象；传输关闭时，事件循环会关闭底层 fd。
             await loop.connect_read_pipe(lambda: reader_protocol, os.fdopen(self._request_fd, "rb", buffering=0))
             write_transport, write_protocol = await loop.connect_write_pipe(
                 asyncio.BaseProtocol,
@@ -176,11 +165,10 @@ class RpcServer:
             "socket-obj" if self._sock is not None else ("socket" if req_is_sock else "pipe"),
         )
 
-        # Trust-boundary gate for the TCP-loopback transport: the peer must send
-        # the shared secret as the very first newline-terminated line before any
-        # JSON-RPC frame. Only our spawned Node child knows it (passed via env),
-        # so a rogue local process that connects to the port is rejected here
-        # before any dispatch. Disabled (None) for the pipe/test paths.
+        # TCP 回环传输的信任边界门禁：对端必须在任何 JSON-RPC 帧之前，
+        # 先发送以换行符结尾的共享密钥行。只有我们启动的 Node 子进程知道它
+        # （通过环境变量传递），因此会在分派前拒绝连入端口的恶意本地进程。
+        # 管道和测试路径通过 None 禁用此检查。
         if self._auth_token is not None:
             try:
                 first = await asyncio.wait_for(reader.readuntil(b"\n"), timeout=10.0)
@@ -198,7 +186,7 @@ class RpcServer:
                 try:
                     line = await reader.readuntil(b"\n")
                 except asyncio.IncompleteReadError as exc:
-                    # EOF — peer closed. Drain whatever partial bytes we have.
+                    # EOF 表示对端已关闭，需处理现有的不完整字节。
                     if exc.partial:
                         logger.warning(
                             "tui_rpc: incomplete final frame ({} bytes); dropping",
@@ -216,8 +204,7 @@ class RpcServer:
                     logger.error("tui_rpc: frame {} bytes > {} cap; closing", len(line), MAX_FRAME_BYTES)
                     break
 
-                # Spawn the dispatch as an independent task so streaming /
-                # slow handlers don't block subsequent reads.
+                # 将分派启动为独立任务，避免流式或慢处理器阻塞后续读取。
                 task = asyncio.create_task(self._handle_frame(line))
                 self._pending.add(task)
                 task.add_done_callback(self._pending.discard)
@@ -229,7 +216,7 @@ class RpcServer:
             try:
                 frame = json.loads(raw.decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-                # JSON-RPC §-32700 parse_error response (id unknown → null).
+                # JSON-RPC §-32700 parse_error 响应（ID 未知时为 null）。
                 resp = {
                     "jsonrpc": "2.0",
                     "id": None,
@@ -244,19 +231,17 @@ class RpcServer:
 
             response = await self._dispatcher.dispatch(frame)
 
-            # If the original frame omitted `id` (a notification per JSON-RPC
-            # 2.0), suppress the response — but dispatcher already echoed
-            # whatever it received as id, so we only suppress when id was
-            # explicitly absent in the inbound frame.
+            # 如果原始帧省略 `id`（JSON-RPC 2.0 通知），则禁止响应。分派器会原样回显
+            # 收到的 ID，因此只在入站帧明确不含 ID 时禁止。
             if isinstance(frame, dict) and "id" not in frame:
                 return
             await self.send_frame(response)
         except Exception:
-            # Last-resort guard so a single buggy handler can't kill the pump.
+            # 最后一道保护，避免单个有缺陷的处理器终止整个消息泵。
             logger.exception("tui_rpc: _handle_frame failed")
 
     async def _shutdown(self) -> None:
-        # Cancel any in-flight dispatch tasks.
+        # 取消所有正在执行的分派任务。
         for task in list(self._pending):
             if not task.done():
                 task.cancel()
@@ -277,9 +262,8 @@ class RpcServer:
     async def stop(self) -> None:
         """Signal the read loop to exit and wait for cleanup."""
         self._stopped.set()
-        # We can't easily interrupt `readuntil`, but closing the write side
-        # plus setting `_stopped` will cause the next iteration after EOF to
-        # bail. Caller typically just cancels the serve_forever task.
+        # 无法轻易中断 `readuntil`，但关闭写端并设置 `_stopped` 后，EOF 之后的下一次迭代
+        # 会退出。调用方通常只需取消 serve_forever 任务。
 
 
 __all__ = ["RpcServer", "MAX_FRAME_BYTES"]

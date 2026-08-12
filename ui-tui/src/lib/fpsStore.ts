@@ -3,12 +3,11 @@
 // Modifications Copyright (c) 2026 EverMind.
 // See NOTICES.md and LICENSES/MIT-hermes-agent.txt.
 
-// Tiny FPS tracker fed by ink's onFrame callback. Each entry is an Ink
-// frame (React commit + drain-only frames) — the right notion for
-// user-perceived motion.
+// 由 Ink 的 onFrame 回调供数的轻量 FPS 跟踪器。每个条目都是一个 Ink 帧
+// （React 提交帧加仅排空帧），与用户感知的运动更一致。
 //
-// Zero-cost when PICO_TUI_FPS is unset: trackFrame is undefined so the
-// onFrame callback short-circuits at the optional chain.
+// 未设置 PICO_TUI_FPS 时没有额外成本：trackFrame 为 undefined，onFrame
+// 回调会在可选链处短路。
 
 import { atom } from 'nanostores'
 
@@ -18,9 +17,9 @@ const WINDOW_SIZE = 30
 
 export type FpsState = {
   fps: number
-  /** Wraps at JS-safe int — diff pairs in a debug overlay safely. */
+/** 在 JavaScript 安全整数处回绕，使调试浮层可安全计算相邻差值。 */
   totalFrames: number
-  /** Ink render-phase total for the last frame. */
+/** 上一帧 Ink 渲染阶段的总次数。 */
   lastDurationMs: number
 }
 

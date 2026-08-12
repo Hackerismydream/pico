@@ -62,20 +62,17 @@ export interface Theme {
   brand: ThemeBrand
   bannerLogo: string
   bannerHero: string
-  // Brand yellow ramp (light → dark), resolved for the active tier. Used for
-  // the gradient banner art.
+  // 品牌黄色色阶（从亮到暗），按当前颜色层级解析，用于渐变横幅图案。
   yellow: readonly string[]
 }
 
 export type ColorScheme = 'dark' | 'light'
 
-// ── Color math ───────────────────────────────────────────────────────
+// ── 色彩计算 ─────────────────────────────────────────────────────────
 //
-// Only the helpers the truecolor palettes themselves need. There is NO
-// RGB->ANSI conversion at runtime: the reduced-tier palettes below are
-// pre-derived literals (see scripts/gen-color-palettes.mjs), so a level-2
-// terminal gets curated `ansi256(N)` values instead of chalk's lossy hex
-// downsample (which collapsed the dark-green border onto an olive cube cell).
+// 这里只保留真彩调色板自身所需的辅助方法。运行时不做 RGB 到 ANSI 转换：下方低层级调色板
+// 是预先推导的字面值（见 scripts/gen-color-palettes.mjs），因此二级终端会获得精选
+// `ansi256(N)` 值，而不是 Chalk 有损的十六进制降采样；后者曾把深绿色边框压到橄榄色色块。
 
 function parseHex(h: string): [number, number, number] | null {
   const m = /^#?([0-9a-f]{6})$/i.exec(h)
@@ -102,7 +99,7 @@ function mix(a: string, b: string, t: number) {
   return '#' + ((1 << 24) | (lerp(0) << 16) | (lerp(1) << 8) | lerp(2)).toString(16).slice(1)
 }
 
-// ── Brand ────────────────────────────────────────────────────────────
+// ── 品牌色 ───────────────────────────────────────────────────────────
 
 const BRAND: ThemeBrand = {
   name: 'Pico',
@@ -122,19 +119,17 @@ const cleanPromptSymbol = (s: string | undefined, fallback: string) => {
   return cleaned || fallback
 }
 
-// ── Brand yellow ramp (gradient logo / 3D shadow) ────────────────────
+// ── 品牌黄色色阶（渐变标志/立体阴影）────────────────────────────────
 //
-// A brand asset (pico-tui-design-system, "Brand ramp"), ordered light → dark.
-// Used for the gradient banner art. The .50/.300/.500/.700/.900 stops are the
-// documented title bands (docs/tui-color-problem/title-gradient-table.md);
-// other stops are interpolated. The banner only reads the first few entries
-// (hero bands) and falls back to the last, so ramp length isn't load-bearing.
+// 品牌资产（pico-tui-design-system 的“品牌色阶”），按从亮到暗排序，用于渐变横幅图案。
+// .50/.300/.500/.700/.900 是文档定义的标题色带
+// （docs/tui-color-problem/title-gradient-table.md），其他节点为插值。横幅只读取前几个主色带，
+// 并回退到最后一个，因此色阶长度不影响正确性。
 //
-// Truecolor carries an extra .600 stop for a smoother hero gradient (9 entries:
-// [.50,.100,.300,.500,.600,.700,.900,.950,.990]); the reduced 256/16 tiers keep
-// the 8-stop set ([.50,.100,.300,.500,.700,.900,.950,.990]) — the doc defines
-// no .600 there. Dark and light carry DISTINCT scales at truecolor and 256
-// (light re-derived around #B87900, not a dimmed dark scale); 16 is `yellow`.
+// 真彩额外包含 .600 节点，使主视觉渐变更平滑，共 9 项：
+// [.50,.100,.300,.500,.600,.700,.900,.950,.990]。256/16 色层级保留文档定义的 8 项集合，
+// 不含 .600。真彩和 256 色的深色/浅色色阶彼此独立；浅色围绕 #B87900 重新推导，不是暗色色阶
+// 降亮度。16 色统一使用 `yellow`。
 
 const YELLOW_RAMP_TC_DARK: readonly string[] = [
   '#fff7c2', // 50
@@ -203,7 +198,7 @@ function yellowRamp(tier: 0 | 1 | 2 | 3, scheme: ColorScheme): readonly string[]
   return scheme === 'light' ? YELLOW_RAMP_TC_LIGHT : YELLOW_RAMP_TC_DARK
 }
 
-// ── Tier 3: truecolor (source of truth) ──────────────────────────────
+// ── 第 3 层：真彩（权威来源）────────────────────────────────────────
 
 export const DARK_THEME: Theme = {
   color: {
@@ -254,9 +249,8 @@ export const DARK_THEME: Theme = {
   yellow: YELLOW_RAMP_TC_DARK
 }
 
-// Light-terminal palette: darker, higher-contrast values that stay legible on
-// white backgrounds. Same shape as DARK_THEME so `fromSkin` still layers on
-// top cleanly (#11300).
+// 浅色终端调色板：使用更深、对比更高且在白底上清晰的颜色。结构与 DARK_THEME 相同，
+// 使 `fromSkin` 仍能干净叠加（#11300）。
 export const LIGHT_THEME: Theme = {
   color: {
     primary: '#444444',
@@ -306,7 +300,7 @@ export const LIGHT_THEME: Theme = {
   yellow: YELLOW_RAMP_TC_LIGHT
 }
 
-// ── Tier 2: 256-color (per design tokens, docs/tui-color-problem/tokens.md) ──
+// ── 第 2 层：256 色（按设计令牌 docs/tui-color-problem/tokens.md）────────
 
 const DARK_256_COLORS: ThemeColors = {
   primary: 'ansi256(251)',
@@ -382,13 +376,12 @@ const LIGHT_256_COLORS: ThemeColors = {
   shellDollar: 'ansi256(136)'
 }
 
-// ── Tier 1: 16-color (per design tokens, docs/tui-color-problem/tokens.md) ──
+// ── 第 1 层：16 色（按设计令牌 docs/tui-color-problem/tokens.md）─────────
 //
-// Two caveats vs the token spec, which a single color string can't encode:
-//   - `reverse` highlights (completionCurrentBg/completionMetaCurrentBg/
-//     selectionBg) fall back to brightBlack — the spec's stated alternative.
-//   - statusCritical's `+ bold` is dropped (bold is a text style, not a
-//     color), leaving it `red` like the spec's base.
+// 与令牌规范相比有两点限制，单个颜色字符串无法编码：
+//   - `reverse` 高亮（completionCurrentBg/completionMetaCurrentBg/selectionBg）回退到
+//     brightBlack，这是规范指定的替代方案。
+//   - 丢弃 statusCritical 的 `+ bold`，因为粗体是文本样式而非颜色，保留规范基础色 `red`。
 
 const DARK_16_COLORS: ThemeColors = {
   primary: 'ansi:white',
@@ -470,9 +463,9 @@ const LIGHT_256: Theme = { ...LIGHT_THEME, color: LIGHT_256_COLORS, yellow: YELL
 const LIGHT_16: Theme = { ...LIGHT_THEME, color: LIGHT_16_COLORS, yellow: YELLOW_RAMP_16 }
 
 /**
- * Pick the palette for a scheme + color tier. Tier 3 (truecolor) and tier 0
- * (no color — chalk strips the codes anyway) both use the hex palette, so the
- * truecolor `Theme` reference is returned unchanged for identity checks.
+ * 根据配色模式和颜色级别选择调色板。第 3 级（真彩色）与第 0 级（无颜色，
+ * Chalk 最终会移除颜色码）都使用十六进制调色板，因此原样返回真彩色 `Theme`
+ * 引用，便于做同一性检查。
  */
 export function resolveTheme(scheme: ColorScheme, tier: 0 | 1 | 2 | 3): Theme {
   if (scheme === 'light') {
@@ -494,31 +487,24 @@ export function resolveTheme(scheme: ColorScheme, tier: 0 | 1 | 2 | 3): Theme {
   return DARK_THEME
 }
 
-// ── Light/dark detection ─────────────────────────────────────────────
+// ── 明暗检测 ─────────────────────────────────────────────────────────
 
 const TRUE_RE = /^(?:1|true|yes|on)$/
 const FALSE_RE = /^(?:0|false|no|off)$/
 
-// TERM_PROGRAM fallback allow-list for terminals whose default profile is
-// light and which may not expose COLORFGBG. Empty by default: a TERM_PROGRAM
-// alone can't tell a light profile from a dark one (Terminal.app ships both
-// and emits no COLORFGBG either way), and dark profiles are common, so an
-// undetectable terminal stays dark unless an explicit signal (PICO_TUI_THEME
-// / PICO_TUI_LIGHT / PICO_TUI_BACKGROUND / COLORFGBG) says light. Still
-// injectable so tests can exercise the precedence rules.
+// 默认配置为浅色但可能不暴露 COLORFGBG 的终端所用 TERM_PROGRAM 回退白名单。默认留空：
+// 单凭 TERM_PROGRAM 无法区分明暗配置，Terminal.app 两者都有且都不输出 COLORFGBG；暗色配置
+// 又很常见，因此无法检测时保持暗色，除非 PICO_TUI_THEME、PICO_TUI_LIGHT、
+// PICO_TUI_BACKGROUND 或 COLORFGBG 明确表示浅色。仍允许注入，供测试验证优先级规则。
 const LIGHT_DEFAULT_TERM_PROGRAMS = new Set<string>([])
 
-// Best-effort RGB → luminance check.  Currently only accepts a 3- or
-// 6-digit hex value (with or without a leading `#`); the env var name
-// `PICO_TUI_BACKGROUND` is intentionally generic so a future OSC11
-// query helper can cache its answer there too, but additional formats
-// (rgb()/hsl()/named colours) would need explicit parsing here first.
+// 尽力进行 RGB 到亮度检查。目前只接受 3 位或 6 位十六进制值，可带或不带前导 `#`。
+// 环境变量名 `PICO_TUI_BACKGROUND` 刻意保持通用，未来 OSC11 查询辅助方法也可在其中缓存结果；
+// 其他格式（rgb()/hsl()/具名颜色）需先在此显式解析。
 const LUMA_LIGHT_THRESHOLD = 0.6
 
-// Strict allow-list: parseInt(..., 16) silently truncates at the first
-// non-hex character (e.g. `fffgff` would parse as `fff` and yield a
-// false-positive "white" reading), so reject anything that doesn't match
-// the canonical 3- or 6-digit shape up front.
+  // 严格白名单：parseInt(..., 16) 会在首个非十六进制字符处静默截断，例如 `fffgff` 会解析为
+  // `fff` 并误判为白色，因此预先拒绝不符合规范 3 位或 6 位形态的值。
 const HEX_3_RE = /^[0-9a-f]{3}$/
 const HEX_6_RE = /^[0-9a-f]{6}$/
 
@@ -541,32 +527,24 @@ function backgroundLuminance(raw: string): null | number {
     return null
   }
 
-  // Rec. 709 luma — close enough for "is this background bright".
+  // 使用 Rec. 709 亮度，足以判断背景是否明亮。
   return (0.2126 * rgb[0]! + 0.7152 * rgb[1]! + 0.0722 * rgb[2]!) / 255
 }
 
-// Pick light vs dark with ordered, explainable signals (#11300):
+// 使用有序、可解释的信号选择浅色或暗色（#11300）：
 //
-//   1. `PICO_TUI_LIGHT` boolean — `1`/`true`/`yes`/`on` → light;
-//      `0`/`false`/`no`/`off` → dark.  Either explicit value wins
-//      regardless of any later signal.
-//   2. `PICO_TUI_THEME` named override — `light` / `dark` win over
-//      every signal below.
-//   3. `PICO_TUI_BACKGROUND` hex hint (3- or 6-digit) — luminance
-//      ≥ LUMA_LIGHT_THRESHOLD → light.
-//   4. `COLORFGBG` last field — XFCE / rxvt / Terminal.app emit
-//      slot 7 or 15 on light profiles; 0–15 ranges are otherwise
-//      treated as authoritatively dark so the TERM_PROGRAM
-//      allow-list below cannot override an explicit dark profile.
-//   5. `TERM_PROGRAM` light-default allow-list (empty by default; see
-//      LIGHT_DEFAULT_TERM_PROGRAMS).
+//   1. `PICO_TUI_LIGHT` 布尔值：`1`/`true`/`yes`/`on` 表示浅色，
+//      `0`/`false`/`no`/`off` 表示暗色；任一显式值都优先于后续信号。
+//   2. `PICO_TUI_THEME` 具名覆盖：`light` / `dark` 优先于下方所有信号。
+//   3. `PICO_TUI_BACKGROUND` 的 3 位或 6 位十六进制提示：亮度不低于阈值时为浅色。
+//   4. `COLORFGBG` 最后字段：XFCE、rxvt、Terminal.app 的浅色配置输出槽位 7 或 15；
+//      0 到 15 的其他值视为权威暗色，避免下方 TERM_PROGRAM 白名单覆盖显式暗色配置。
+//   5. `TERM_PROGRAM` 默认浅色白名单，默认留空，见 LIGHT_DEFAULT_TERM_PROGRAMS。
 //
-// Anything we can't decide stays dark — the default Pico palette
-// is the dark one.
+// 无法判断时保持暗色，因为 Pico 默认调色板为暗色。
 export function detectLightMode(
   env: NodeJS.ProcessEnv = process.env,
-  // Injectable so tests can prove the COLORFGBG-over-TERM_PROGRAM
-  // precedence rule even though the production allow-list is empty.
+  // 允许注入，使测试即使在生产白名单为空时也能验证 COLORFGBG 优先于 TERM_PROGRAM 的规则。
   lightDefaultTermPrograms: ReadonlySet<string> = LIGHT_DEFAULT_TERM_PROGRAMS
 ): boolean {
   const lightFlag = (env.PICO_TUI_LIGHT ?? '').trim().toLowerCase()
@@ -598,10 +576,8 @@ export function detectLightMode(
   const colorfgbg = (env.COLORFGBG ?? '').trim()
 
   if (colorfgbg) {
-    // Validate as a decimal integer before coercing — `Number('')` is 0,
-    // so a malformed `COLORFGBG='15;'` would otherwise look like an
-    // authoritative dark slot and incorrectly block the TERM_PROGRAM
-    // allow-list.  Anything that isn't pure digits falls through.
+    // 强制转换前先按十进制整数校验。`Number('')` 为 0，因此格式错误的 `COLORFGBG='15;'`
+    // 原本会像权威暗色槽位一样错误阻止 TERM_PROGRAM 白名单。非纯数字值均继续回退。
     const lastField = colorfgbg.split(';').at(-1) ?? ''
 
     if (/^\d+$/.test(lastField)) {
@@ -611,9 +587,8 @@ export function detectLightMode(
         return true
       }
 
-      // Slots 0–6 and 8–14 are the dark half of the 0–15 ANSI range.
-      // When COLORFGBG is set we trust it as authoritative — a non-light
-      // value here shouldn't get overridden by the TERM_PROGRAM allow-list.
+      // 槽位 0 到 6、8 到 14 是 ANSI 0 到 15 范围中的暗色半区。设置 COLORFGBG 后将其视为
+      // 权威信号；此处非浅色值不应被 TERM_PROGRAM 白名单覆盖。
       if (bg >= 0 && bg < 16) {
         return false
       }
@@ -630,40 +605,36 @@ const DEFAULT_SCHEME: ColorScheme = DEFAULT_LIGHT_MODE ? 'light' : 'dark'
 
 export const DEFAULT_THEME: Theme = resolveTheme(DEFAULT_SCHEME, activeColorTier())
 
-// Scheme detected at runtime by the OSC 11 background-color probe (see
-// applyDetectedBackground). Null until — or unless — the terminal answers the
-// query. When set it wins over the env-sniffed DEFAULT_SCHEME for every theme
-// built afterwards, so a late reply re-themes the whole app.
+// 运行时由 OSC 11 背景色探针检测的配色方案，见 applyDetectedBackground。终端回答查询前或始终
+// 不回答时为 null。设置后，它会在之后构建的所有主题中优先于环境探测的 DEFAULT_SCHEME，
+// 因此迟到的回复也会重新设置整个应用主题。
 let detectedScheme: ColorScheme | null = null
 
-/** Effective light/dark scheme: the OSC 11 probe result if we have one, else
- *  the env-sniffed default. Theme builders read this (not DEFAULT_SCHEME) so a
- *  late probe reply takes effect when the theme is rebuilt. */
+/** 实际生效的明暗配色：有 OSC 11 探测结果时使用该结果，否则采用环境探测默认值。
+ *  主题构建器读取此值而不是 DEFAULT_SCHEME，使迟到的探测响应能在重建主题时
+ *  生效。 */
 export function currentScheme(): ColorScheme {
   return detectedScheme ?? DEFAULT_SCHEME
 }
 
-/** Curated per-scheme palette for the current scheme + color tier, with no
- *  skin applied. Used to rebuild the theme when the probe flips the scheme
- *  before any gateway skin has arrived. */
+/** 当前配色模式和颜色级别对应的精选调色板，不应用皮肤。网关皮肤尚未到达而探针
+ *  已切换配色模式时，用它重建主题。 */
 export function resolveCurrentDefaultTheme(): Theme {
   return resolveTheme(currentScheme(), activeColorTier())
 }
 
-/** Truecolor hex for the OSC 12 hardware-cursor color. OSC 12 takes an RGB
- *  value, so we use the hex primary regardless of the text color tier — a
- *  256/16 terminal still renders its cursor in truecolor. A skin's hex primary
- *  (tier 3) is honored; otherwise the curated per-scheme title color. */
+/** OSC 12 硬件光标颜色使用的真彩色十六进制值。OSC 12 接收 RGB 值，因此无论
+ *  文本颜色级别如何都使用十六进制主色；256 色或 16 色终端仍以真彩色渲染光标。
+ *  若皮肤提供第 3 级十六进制主色则采用它，否则使用按配色精选的标题颜色。 */
 export function cursorColorHex(theme: Theme): string {
   const p = theme.color.primary
 
   return p.startsWith('#') ? p : currentScheme() === 'light' ? LIGHT_THEME.color.primary : DARK_THEME.color.primary
 }
 
-// Parse an OSC 11 background reply payload into a #rrggbb hex string.
-// xterm-class terminals answer `rgb:RRRR/GGGG/BBBB` (1-4 hex digits per
-// channel, scaled to that channel's max); a few reply `#RRGGBB`. Anything
-// else returns null so the caller keeps the env-based scheme.
+// 将 OSC 11 背景回复载荷解析为 #rrggbb 十六进制字符串。xterm 类终端返回
+// `rgb:RRRR/GGGG/BBBB`，每通道 1 到 4 位十六进制并按该通道最大值缩放；少数返回
+// `#RRGGBB`。其他格式返回 null，使调用方保留基于环境的方案。
 function oscColorToHex(data: string): null | string {
   const s = data.trim().toLowerCase()
   const m = /^rgba?:([0-9a-f]{1,4})\/([0-9a-f]{1,4})\/([0-9a-f]{1,4})/.exec(s)
@@ -688,14 +659,12 @@ function oscColorToHex(data: string): null | string {
 }
 
 /**
- * Fold an OSC 11 background-color reply into light/dark detection.
+ * 将 OSC 11 背景色响应纳入明暗模式探测。
  *
- * Caches the parsed color into PICO_TUI_BACKGROUND and re-runs
- * detectLightMode() so the existing precedence rules apply unchanged — an
- * explicit PICO_TUI_THEME / PICO_TUI_LIGHT still wins over the measured
- * background. Returns the resolved scheme and whether it differs from the
- * scheme that was in effect (so the caller knows whether to re-theme), or
- * null when the reply isn't a color we can parse.
+ * 将解析后的颜色缓存到 PICO_TUI_BACKGROUND，再次运行 detectLightMode()，使
+ * 现有优先级规则保持不变；显式 PICO_TUI_THEME/PICO_TUI_LIGHT 仍优先于实测
+ * 背景色。返回解析后的配色模式及其是否不同于当前模式，供调用方判断是否重设
+ * 主题；响应无法解析为颜色时返回 null。
  */
 export function applyDetectedBackground(oscData: string): { changed: boolean; scheme: ColorScheme } | null {
   const hex = oscColorToHex(oscData)
@@ -712,7 +681,7 @@ export function applyDetectedBackground(oscData: string): { changed: boolean; sc
   return { changed, scheme }
 }
 
-// ── Skin → Theme ─────────────────────────────────────────────────────
+// ── 皮肤转换为主题 ───────────────────────────────────────────────────
 
 function skinColors(colors: Record<string, string>): ThemeColors {
   const base = (currentScheme() === 'light' ? LIGHT_THEME : DARK_THEME).color
@@ -728,10 +697,8 @@ function skinColors(colors: Record<string, string>): ThemeColors {
     c('completion_menu_current_bg') ??
     (hasSkinColors ? mix(completionBg, bannerAccent, 0.25) : base.completionCurrentBg)
 
-  // Meta columns cascade off the matching skin key, then fall back to the
-  // palette's own (distinct) meta value — so an empty skin reproduces the
-  // default theme exactly while a skin that sets only the main completion bg
-  // still carries it into the meta column.
+  // 元数据列先继承匹配的皮肤键，再回退到调色板自身独立的元数据值。因此空皮肤能精确复现默认
+  // 主题，而只设置主补全背景的皮肤仍会把它带入元数据列。
   const completionMetaBg = c('completion_menu_meta_bg') ?? c('completion_menu_bg') ?? base.completionMetaBg
   const completionMetaCurrentBg =
     c('completion_menu_meta_current_bg') ??
@@ -801,10 +768,9 @@ export function fromSkin(
     helpHeader: branding.help_header ?? (helpHeader || d.brand.helpHeader)
   }
 
-  // Skins are authored in truecolor hex. The reduced tiers can't represent
-  // arbitrary hex, so fall back to the curated built-in palette for that tier
-  // (per product decision) — only branding + banner art carry over. The hex
-  // path covers tier 3 and, harmlessly, tier 0 (codes are stripped anyway).
+  // 皮肤以真彩十六进制编写。低颜色层级无法表示任意十六进制，因此按产品决策回退到该层级的
+  // 精选内置调色板，只继承品牌色和横幅图案。十六进制路径覆盖第 3 层，也无害地覆盖第 0 层，
+  // 因为颜色代码最终会被移除。
   const tier = activeColorTier()
   const color = tier === 1 || tier === 2 ? resolveTheme(currentScheme(), tier).color : skinColors(colors)
 

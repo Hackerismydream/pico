@@ -33,9 +33,8 @@ export const TodoPanel = memo(function TodoPanel({
   t: Theme
   todos: TodoItem[]
 }) {
-  // Fallback local state for archived todos in transcript where there's no
-  // external controller. Live TodoPanel passes collapsed+onToggle from the
-  // turn store so clicks still work there.
+  // 对话记录中的归档待办没有外部控制器，因此使用本地状态回退。实时 TodoPanel
+  // 从轮次存储传入 collapsed 和 onToggle，使点击仍能正常工作。
   const [localCollapsed, setLocalCollapsed] = useState(defaultCollapsed)
   const isControlled = typeof collapsed === 'boolean'
   const effectiveCollapsed = isControlled ? collapsed : localCollapsed

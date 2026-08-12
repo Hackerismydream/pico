@@ -14,19 +14,19 @@ def test_model_endpoint_defaults():
 
 def test_routing_defaults():
     cfg = RoutingConfig()
-    # Existing fields keep their original defaults (back-compat).
+
     assert cfg.enabled is False
     assert cfg.profile == "balanced"
     assert cfg.api_key == ""
-    # New backend switch defaults to the original ecoclaw router.
+
     assert cfg.backend == "ecoclaw"
-    # New knn fields have inert defaults.
+
     assert cfg.models == []
     assert cfg.memory_path == ""
     assert cfg.k == 30
     assert cfg.lambda_cost == 0.0
     assert cfg.embedding_endpoint == ""
-    # Safety-gate defaults: leave the default model only with enough evidence.
+
     assert cfg.min_similarity == 0.6
     assert cfg.min_similar_neighbors == 4
     assert cfg.min_memory_size == 10
@@ -52,12 +52,12 @@ def test_knn_config_construction():
     assert len(cfg.models) == 2
     assert all(isinstance(m, ModelEndpoint) for m in cfg.models)
     assert cfg.models[0].model == "small"
-    assert cfg.models[0].api_key == "EMPTY"  # default applied
+    assert cfg.models[0].api_key == "EMPTY"
     assert cfg.models[1].api_key == "K"
 
 
 def test_camel_case_aliases():
-    # Base uses a camelCase alias generator with populate_by_name.
+
     cfg = RoutingConfig(memoryPath="/x", lambdaCost=0.3, embeddingEndpoint="http://e")
     assert cfg.memory_path == "/x"
     assert cfg.lambda_cost == 0.3

@@ -14,9 +14,8 @@ from pathlib import Path
 
 from pico.routing.classifier import EMBEDDING_MODEL, fetch_embedding
 
-# Human-readable descriptions for each of the 23 PinchBench task categories.
-# These match the intent of each task — the same descriptions EcoClaw uses
-# as reference points for cosine similarity matching.
+# PinchBench 23 类任务各自的人类可读描述。
+# 描述与各任务意图一致，也是 EcoClaw 进行余弦相似度匹配时使用的参考点。
 TASK_DESCRIPTIONS: dict[str, str] = {
     "task_00_sanity": "Basic sanity check, simple greeting, hello world, or trivial question",
     "task_01_calendar": "Calendar management, scheduling meetings, checking availability, date and time planning",

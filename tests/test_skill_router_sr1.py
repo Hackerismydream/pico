@@ -23,7 +23,7 @@ from pico.memory_engine.skill_forge import (
 )
 
 # ---------------------------------------------------------------------------
-# RouterHit dataclass
+
 # ---------------------------------------------------------------------------
 
 
@@ -58,7 +58,7 @@ class TestRouterHitDataclass:
 
 
 # ---------------------------------------------------------------------------
-# SkillSource Protocol runtime check
+
 # ---------------------------------------------------------------------------
 
 
@@ -88,7 +88,7 @@ class TestSkillSourceProtocol:
 
 
 # ---------------------------------------------------------------------------
-# LocalSkillSource — end-to-end against real LocalPool + SkillRegistry
+
 # ---------------------------------------------------------------------------
 
 
@@ -148,7 +148,7 @@ class TestLocalSkillSource:
         pool, reg = pool_and_registry
         src = LocalSkillSource(pool, reg)
         hits = await src.search("pdf", history=[], k=5)
-        # The matching skill carries the body text we wrote.
+
         pdf_hit = next(h for h in hits if h.name == "pdf-tool")
         assert "generate pdf" in pdf_hit.content
 
@@ -174,14 +174,14 @@ class TestLocalSkillSource:
             ScoredSkill(name="ghost", score=1.0, source="workspace"),
         ]
         fake_registry = MagicMock()
-        fake_registry.get.return_value = None  # vanished
+        fake_registry.get.return_value = None
         src = LocalSkillSource(fake_pool, fake_registry)
         hits = await src.search("anything", history=[], k=5)
         assert hits == []
 
     async def test_k_passes_through(self, pool_and_registry) -> None:
         pool, reg = pool_and_registry
-        # Wrap pool.search to spy on the top_k it receives.
+
 
         spy = []
         orig = pool.search
@@ -233,7 +233,7 @@ class TestLocalSkillSource:
 
 
 # ---------------------------------------------------------------------------
-# LocalSkillCatalog — standalone owner of the local pool + rendering
+
 # ---------------------------------------------------------------------------
 
 
@@ -246,7 +246,7 @@ class TestLocalSkillCatalog:
         builtin = tmp_path / "builtin"
         builtin.mkdir()
         _write_skill(ws / "skills", "pdf-tool", body="generate pdf", desc="pdf gen")
-        # An always-on skill in the builtin layer.
+
         d = builtin / "memory"
         d.mkdir(parents=True)
         (d / "SKILL.md").write_text(
@@ -260,7 +260,7 @@ class TestLocalSkillCatalog:
         )
 
     def test_pool_and_registry_exposed(self, catalog) -> None:
-        # LocalSkillSource reuses these — they must be live, not None.
+
         assert catalog.pool is catalog._local_pool
         assert catalog.registry is catalog._registry
 

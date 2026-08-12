@@ -48,9 +48,9 @@ class KNNModelRouter:
         self._lambda = float(routing_cfg.lambda_cost)
         self._embed_url = routing_cfg.embedding_endpoint
         self._config_models = [m.model for m in routing_cfg.models if m.model]
-        # Agent's configured default model: the safe home the router only leaves
-        # with enough evidence. None -> the "already on default" / margin gates
-        # are inert (caller still falls back to its own model on a None return).
+        # Agent 配置的默认模型是安全基线，路由器仅在证据充分时才离开它。
+        # None 会使“已经是默认模型”和 margin 门禁失效；返回 None 时调用方
+        # 仍会回退到自己的模型。
         self._default_model = default_model
         self._min_similarity = float(getattr(routing_cfg, "min_similarity", 0.6))
         self._min_similar = max(1, int(getattr(routing_cfg, "min_similar_neighbors", 4)))
@@ -128,9 +128,8 @@ class KNNModelRouter:
         return np.array([cache[t] for t in texts], dtype=np.float32)
 
     def _emb_cache_path(self, path: str) -> Path:
-        # Cache in a user dir (not next to the memory file, which may be a
-        # read-only repo asset). Keyed by endpoint + memory path so a different
-        # embedder or memory file gets its own cache.
+        # 缓存在用户目录中，而不是可能只读的仓库记忆文件旁。
+        # 以 endpoint + memory path 为键，让不同嵌入器或记忆文件使用独立缓存。
         key = hashlib.sha1(f"{self._embed_url}|{Path(path).resolve()}".encode()).hexdigest()[:16]
         d = get_product_home() / "knn_embcache"
         try:
@@ -149,7 +148,7 @@ class KNNModelRouter:
         try:
             self._emb_cache_path(path).write_text(json.dumps(cache), encoding="utf-8")
         except Exception:
-            pass  # read-only location: skip caching, re-embed next load
+            pass  # 只读位置：跳过缓存，下次加载时重新嵌入
 
     async def _embed(self, prompt: str) -> np.ndarray | None:
         try:
@@ -164,8 +163,7 @@ class KNNModelRouter:
 
     async def select_model_chain(self, prompt: str) -> tuple[str | None, list[str]]:
         """Return ``(primary_model, [fallback_models])``; ``(None, [])`` to use default."""
-        # Cold-start / structural gate: too few candidates or too little memory
-        # to make a trustworthy decision -> keep the caller's default model.
+        # 冷启动/结构门禁：候选或记忆过少时无法可靠决策，保留调用方默认模型。
         if len(self._candidates) < 2 or self._embeddings.shape[0] < self._min_memory_size:
             return None, []
 
@@ -173,26 +171,24 @@ class KNNModelRouter:
         if q is None:
             return None, []
 
-        # Routing is an optional enhancement: never let a KNN/data error crash
-        # the turn -> any failure degrades to the caller's default model.
+        # 路由只是可选增强，KNN 或数据错误不得让 Turn 崩溃；
+        # 任何失败都降级到调用方默认模型。
         try:
             sims = self._embeddings @ q
             top = np.argsort(-sims)[: self._k]
 
-            # Similar-support gate: the pick is trusted only when enough
-            # retrieved neighbours are actually similar (cosine >=
-            # min_similarity). An off-distribution query (e.g. casual chat) has
-            # few similar neighbours and stays on the default. Scoring uses only
-            # these similar neighbours so far-away tasks do not dilute rewards.
+            # 相似样本门禁：只有足够多的检索邻居确实相似
+            #（cosine >= min_similarity）时才信任所选模型。分布外查询
+            #（如闲聊）的相似邻居很少，因此保留默认模型。评分只使用这些
+            # 相似邻居，避免无关任务稀释奖励。
             similar = [int(i) for i in top if float(sims[i]) >= self._min_similarity]
             if len(similar) < self._min_similar:
                 return None, []
 
             scores: dict[str, float] = {}
             for m in self._candidates:
-                # Average reward and cost over the SAME neighbours (those that
-                # carry this model's reward), so a neighbour missing the model
-                # does not dilute the cost with a zero.
+                # 在同一批邻居（包含该模型奖励的邻居）上计算平均奖励和成本，
+                # 避免缺少该模型数据的邻居用零值稀释成本。
                 pairs = [(self._rewards[i][m], self._costs[i].get(m, 0.0)) for i in similar if m in self._rewards[i]]
                 if not pairs:
                     continue
@@ -206,11 +202,11 @@ class KNNModelRouter:
             ranked = sorted(scores, key=lambda m: scores[m], reverse=True)
             primary = ranked[0]
 
-            # Already on the default model -> no switch needed.
+            # 已经选择默认模型，无需切换。
             if primary == self._default_model:
                 return None, []
 
-            # Margin gate: only leave the default if the pick beats it clearly.
+            # margin 门禁：只有所选模型明确胜出时才离开默认模型。
             baseline = scores.get(self._default_model)
             if baseline is not None and scores[primary] - baseline < self._min_margin:
                 return None, []

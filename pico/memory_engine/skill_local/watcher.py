@@ -66,9 +66,8 @@ class SkillFileWatcher:
         on_change: Callable[[str], None],
         resolve_source: Callable[[Path], str | None],
     ):
-        # Filter out None / missing entries so callers can hand us
-        # optional layer roots (e.g. ``external_skills``) without
-        # pre-checking.
+        # 过滤 None 和不存在的项，让调用方可以直接传入可选的分层根目录
+        # （如 ``external_skills``），无需预先检查。
         self._roots = [r for r in roots if r is not None and r.exists()]
         self._on_change = on_change
         self._resolve_source = resolve_source
@@ -128,8 +127,7 @@ class SkillFileWatcher:
     # ------------------------------------------------------------------
 
     def _run(self) -> None:
-        # Import inside the thread so ``start()``'s ImportError check is
-        # the single source of truth for "is the dep present".
+        # 在线程内导入，使 ``start()`` 的 ImportError 检查成为“依赖是否存在”的唯一事实来源。
         from watchfiles import watch
 
         try:
@@ -137,14 +135,11 @@ class SkillFileWatcher:
                 *self._roots,
                 watch_filter=_is_skill_md,
                 stop_event=self._stop,
-                # Daemon thread inside a larger app — don't let Ctrl+C
-                # in the main thread synthesize KeyboardInterrupt here.
+                # 这是大型应用内的守护线程，不让主线程中的 Ctrl+C 在此处合成 KeyboardInterrupt。
                 raise_interrupt=False,
             ):
-                # Collapse the batch to distinct sources before firing
-                # callbacks so a multi-file save (e.g. git checkout
-                # restoring many SKILL.md at once) costs one invalidate
-                # per source rather than per file.
+                # 触发回调前先将批次收敛为不重复的数据源，使多文件保存（如 git checkout
+                # 一次恢复多个 SKILL.md）每个数据源只需一次失效，而不是每个文件一次。
                 dirty: set[str] = set()
                 for _change, raw_path in changes:
                     source = self._resolve_source(Path(raw_path))
@@ -154,14 +149,12 @@ class SkillFileWatcher:
                     try:
                         self._on_change(source)
                     except Exception:
-                        # One bad callback must not kill the watcher —
-                        # the next batch may target a different source.
+                        # 单个异常回调不能终止监视器，下一批可能针对另一个数据源。
                         log.exception(
                             "SkillFileWatcher on_change failed for source=%s",
                             source,
                         )
         except Exception:
-            # Any other failure (watchfiles internal error, FS gone,
-            # etc.) leaves the thread dead but the registry usable in
-            # manual-invalidation mode.
+            # 其他任何失败（watchfiles 内部错误、文件系统消失等）都会让线程终止，
+            # 但注册表仍可以在手动失效模式下使用。
             log.exception("SkillFileWatcher crashed; auto-refresh disabled until restart")

@@ -140,8 +140,8 @@ def _check_epoch(
 
 def locked_read(path: Path) -> tuple[str | None, int, bool]:
     """Read bytes and generation state under the mutation lock."""
-    # Writers publish the known marker before the primary file, so this
-    # absence is a valid epoch-zero snapshot and need not materialize a lock.
+    # 写入方会先发布已知标记，再发布主文件，因此主文件缺失代表合法的
+    # epoch-zero 快照，无需实际创建锁。
     if not path.exists() and not epoch_is_known(path):
         return None, 0, False
     with _locked(path):
@@ -174,8 +174,8 @@ def locked_append(
         _ensure_epoch(path, epoch)
         with open(path, "a+b") as f:
             payload = "".join(line + "\n" for line in lines).encode("utf-8")
-            # A crashed writer can leave a partial line without a trailing
-            # newline; start on a fresh line so records never merge.
+            # 写入方崩溃后可能留下没有换行符的残缺行；从新行开始写入，
+            # 避免两条记录粘连。
             if f.tell() > 0:
                 f.seek(-1, os.SEEK_END)
                 if f.read(1) != b"\n":

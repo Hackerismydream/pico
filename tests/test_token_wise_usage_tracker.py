@@ -120,14 +120,14 @@ async def test_close_flushes_remaining_buffer(tmp_path: Path):
 
 async def test_disk_failure_does_not_crash(tmp_path: Path, caplog):
     """If the telemetry dir is unwritable, the tracker should warn and continue."""
-    # Point telemetry at a path under a regular file (so mkdir fails cleanly).
+
     blocker = tmp_path / "blocker"
     blocker.write_text("not a directory")
     tracker = UsageTracker(telemetry_dir=blocker / "telemetry", flush_every=1)
 
-    # Must not raise.
+
     await tracker.after_llm_call({}, _snap(input_tokens=1))
-    # In-memory accumulator still works.
+
     assert tracker.snapshot().input_tokens == 1
 
 
@@ -135,7 +135,7 @@ async def test_persist_false_skips_disk_writes(tmp_path: Path):
     tracker = UsageTracker(telemetry_dir=tmp_path, persist=False)
     await tracker.after_llm_call({}, _snap(input_tokens=99))
     assert not list(tmp_path.glob("*.jsonl"))
-    # Accumulator still updated.
+
     assert tracker.snapshot().input_tokens == 99
 
 
