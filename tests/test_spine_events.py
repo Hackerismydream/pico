@@ -34,7 +34,6 @@ def test_usage_is_frozen_with_three_int_fields():
 
 def test_notice_kind_is_closed_enum_with_progress_and_tool_hint():
 
-
     assert {k.value for k in NoticeKind} == {
         "progress",
         "tool_hint",
@@ -86,7 +85,6 @@ def test_turn_ended_carries_usage_latency_and_explicit_reply():
 
 def test_every_deliverable_defaults_source_to_none():
 
-
     m = Media(path="/tmp/a.jpg", mime="image/jpeg", kind="image")
     assert Text(content="hi").source is None
     assert MediaOut(media=(m,)).source is None
@@ -101,8 +99,6 @@ def test_every_deliverable_defaults_source_to_none():
 
 
 def test_every_turn_event_defaults_conversation_id_to_none():
-
-
 
     m = Media(path="/tmp/a.jpg", mime="image/jpeg", kind="image")
     deliverables = [

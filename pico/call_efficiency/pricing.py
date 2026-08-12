@@ -42,7 +42,7 @@ _FALLBACK_PRICING: dict[str, tuple[float, float]] = {
 # DeepSeek 2026-08-06“模型与定价”页面的快照。这些 Provider 直连费率
 # 优先于 LiteLLM，因为普通的 prompt/completion 费率对无法表达缓存命中价格。
 _DEEPSEEK_V4_PRICING: dict[str, tuple[float, float, float]] = {
-# 依次为未命中缓存输入、命中缓存输入、输出，单位为美元/令牌。
+    # 依次为未命中缓存输入、命中缓存输入、输出，单位为美元/令牌。
     "deepseek-v4-flash": (0.14e-6, 0.0028e-6, 0.28e-6),
     "deepseek-v4-pro": (0.435e-6, 0.003625e-6, 0.87e-6),
 }
@@ -52,7 +52,7 @@ _WARNED_UNKNOWN: set[str] = set()
 
 # 实时 OpenRouter 价格表，惰性获取并在进程内缓存 1 小时。
 # 同时映射完整 id（``deepseek/deepseek-v4-pro``）和不带命名空间的别名。
-    # （``deepseek-v4-pro``）映射到 OpenRouter 的逐令牌 ``pricing`` 字典。
+# （``deepseek-v4-pro``）映射到 OpenRouter 的逐令牌 ``pricing`` 字典。
 _OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 _OPENROUTER_CACHE_TTL = 3600
 _OPENROUTER_CACHE: dict[str, dict] = {}

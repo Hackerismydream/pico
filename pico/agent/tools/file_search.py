@@ -163,7 +163,6 @@ class GrepTool(_FsTool):
         except Exception as e:
             return f"Error running grep: {e}"
 
-
     async def _run_rg(
         self,
         rg: str,
@@ -229,7 +228,6 @@ class GrepTool(_FsTool):
 
         unit = "matching lines" if output_mode == "content" else "files"
         return self._format_lines(lines, cap, unit)
-
 
     def _run_python(
         self,

@@ -53,7 +53,6 @@ def test_run_without_api_key_exits_cleanly(tmp_config: Path) -> None:
 
     r = runner.invoke(app, ["run", "-m", "hello"])
 
-
     if r.exception is not None:
         assert not isinstance(r.exception, (NameError, AttributeError, ImportError)), (
             f"Crash-class exception leaked through: {r.exception!r}"
@@ -124,14 +123,9 @@ def _invoke_agent_capturing_session(
         async def close_mcp(self) -> None:
             pass
 
-
-
-
     monkeypatch.setattr(_os, "_exit", lambda code: (_ for _ in ()).throw(SystemExit(code)))
     monkeypatch.setattr("pico.cli.agent_commands.make_provider", lambda _: object())
     monkeypatch.setattr("pico.agent.loop.AgentLoop", _StubAgentLoop)
-
-
 
     monkeypatch.setattr(
         "pico.cli._plugin_stack.maybe_build_memory_backend",
@@ -511,7 +505,6 @@ def test_agent_message_mode_mocked_provider(tmp_config: Path, monkeypatch: pytes
     from pico.config.loader import save_config
     from pico.config.schema import Config
 
-
     cfg = Config()
     cfg.providers.openrouter.api_key = "stub-test-key"
     save_config(cfg)
@@ -520,9 +513,6 @@ def test_agent_message_mode_mocked_provider(tmp_config: Path, monkeypatch: pytes
         "pico.cli.agent_commands.make_provider",
         lambda _: (_ for _ in ()).throw(RuntimeError("mock-no-provider")),
     )
-
-
-
 
     r = runner.invoke(app, ["run", "-m", "hello"])
     if r.exception is not None:
@@ -616,7 +606,6 @@ def test_cron_config_write_is_shell_only(isolated_runtime: Path) -> None:
 def test_cron_list_runs_against_empty_store(isolated_runtime: Path) -> None:
     from pico.cli._repl_slash import handle_repl_slash
 
-
     assert handle_repl_slash("/cron list", console=_RecordingConsole()) is True
 
 
@@ -654,7 +643,6 @@ def test_cron_delete_with_yes_removes_job(isolated_runtime: Path) -> None:
 
     svc, job = _make_cron_job()
     assert handle_repl_slash(f"/cron delete {job.id} -y", console=_RecordingConsole()) is True
-
 
     fresh = CronService(get_cron_dir() / "jobs.json", allowed_channels=None)
     assert fresh.list_jobs(include_disabled=True) == []

@@ -88,7 +88,6 @@ async def test_analyze_empty_query_skips_retrieval() -> None:
     provider = _StubProvider(json.dumps({"need_retrieval": True}))
     result = await QueryRewriter(provider).analyze("   ")
 
-
     assert result.need_retrieval is False
     assert provider.calls == []
 

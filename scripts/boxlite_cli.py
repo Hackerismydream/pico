@@ -455,7 +455,7 @@ async def vm_shell(id_or_name: str, shell: str) -> None:
     old_attrs = termios.tcgetattr(fd)
     loop = asyncio.get_running_loop()
     stop = asyncio.Event()
-        # 默认为 1，使设置期失败（box.exec、resize_tty 等）即使从未绑定 `result`，仍传播非零退出码。
+    # 默认为 1，使设置期失败（box.exec、resize_tty 等）即使从未绑定 `result`，仍传播非零退出码。
     exit_code = 1
 
     try:
@@ -553,7 +553,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="resource", required=True)
 
-# ── 镜像 ──
+    # ── 镜像 ──
     img = sub.add_parser("image", help="OCI image management")
     img_sub = img.add_subparsers(dest="action", required=True)
 
@@ -579,7 +579,7 @@ def _build_parser() -> argparse.ArgumentParser:
     rm_p.add_argument("image", help="Image reference to remove")
     rm_p.add_argument("--force", action="store_true", help="Remove even if VMs reference it")
 
-# ── 虚拟机 ──
+    # ── 虚拟机 ──
     vm = sub.add_parser("vm", help="VM management")
     vm_sub = vm.add_subparsers(dest="action", required=True)
 

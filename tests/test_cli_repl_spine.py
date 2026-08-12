@@ -65,9 +65,6 @@ def _collect():
     return events, emit
 
 
-
-
-
 async def test_runner_delegates_to_run_turn_with_stream_false():
     loop = FakeAgentLoop("hi there")
     runner = AgentTurnRunner(loop, stream=False)
@@ -88,9 +85,6 @@ async def test_runner_stream_flag_is_forwarded():
     events, emit = _collect()
     await runner.run(TurnRequest(origin=Origin.USER, source=_src(), text="hi", conversation="cli:c1"), emit, lambda: [])
     assert loop.calls[0]["stream"] is True
-
-
-
 
 
 async def test_cli_outlet_renders_text():
@@ -125,9 +119,6 @@ async def test_cli_outlet_surfaces_failed_tool_completion():
     assert errors == ["Tool failed: Error: permission denied"]
 
 
-
-
-
 def _notice_outlet(*, send_progress: bool, send_tool_hints: bool):
     notices: list[str] = []
     outlet = CliOutlet(
@@ -147,8 +138,6 @@ async def test_cli_outlet_renders_progress_when_send_progress_on():
 
 
 async def test_cli_outlet_default_config_does_not_leak_tool_hints():
-
-
 
     notices, outlet = _notice_outlet(send_progress=True, send_tool_hints=False)
     await outlet.deliver(Notice(kind=NoticeKind.PROGRESS, detail="thinking"))
@@ -180,9 +169,6 @@ async def test_cli_outlet_eats_reasoning_without_progress():
     assert notices == []
 
 
-
-
-
 class FakeHub:
     def __init__(self) -> None:
         self.dispatched: list = []
@@ -200,11 +186,6 @@ async def test_sink_routes_deliverables_and_drops_lifecycle():
     await sink(TurnEnded(usage=Usage(0, 0, 0), latency_ms=1.0, explicit_reply=False))
     assert len(hub.dispatched) == 1
     assert isinstance(hub.dispatched[0], Text)
-
-
-
-
-
 
 
 class _EchoLoop:
@@ -301,7 +282,6 @@ async def test_repl_loop_handles_empty_reply_without_hanging():
     class EmptyLoop:
         async def run_turn(self, req, emit, drain, *, stream) -> TurnOutcome:
 
-
             return TurnOutcome(usage=Usage(0, 0, 0), explicit_reply=False)
 
     scheduler, hub, teardown = build_repl(EmptyLoop(), "cli", lambda t: events.append(f"render:{t!r}"))
@@ -358,8 +338,6 @@ async def test_repl_loop_slash_command_does_not_submit():
 
 
 async def test_build_repl_teardown_leaves_no_pending_tasks():
-
-
 
     baseline = asyncio.all_tasks()
     scheduler, hub, teardown = build_repl(_EchoLoop(), "cli", lambda t: None)

@@ -112,8 +112,6 @@ class TestExtensionKeys:
 
     def test_skill_router_nested_under_skill_forge(self) -> None:
 
-
-
         assert "skillRouter" not in EXTENSION_KEYS
         assert "skill_router" not in EXTENSION_KEYS
         assert "skillForge" in EXTENSION_KEYS
@@ -142,8 +140,6 @@ class TestLoaderIntegration:
                     "userId": "alice",
                     "memoryTopK": 10,
                 },
-
-
                 "skillRouter": {
                     "topK": 8,
                     "mass": {"endpoint": "http://mass.internal:9001"},
@@ -231,7 +227,6 @@ class TestMassLibraryDbDeprecation:
 class TestStrictness:
     def test_unknown_field_in_plugins_rejected(self) -> None:
         with pytest.raises(Exception):
-
             PluginsConfig.model_validate(
                 {
                     "disabled": [],

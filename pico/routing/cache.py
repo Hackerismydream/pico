@@ -141,7 +141,7 @@ class BenchmarkCache:
         try:
             return await self._do_refresh()
         except Exception:
-        # 4. 回退到快照。
+            # 4. 回退到快照。
             logger.warning("API unavailable, falling back to snapshot.json")
             self._data = _load_snapshot()
             return self._data

@@ -336,7 +336,7 @@ def make_zero_hit_preflight(trajectory_source: TrajectorySource):
         texts = corpus_cache.get(parent.node_id)
         if texts is None:
             try:
-    # 描述加转录：与 read_trajectory 向驱动器展示的表面一致，使基于该表面编写的谓词能够匹配。
+                # 描述加转录：与 read_trajectory 向驱动器展示的表面一致，使基于该表面编写的谓词能够匹配。
                 texts = [f"{t[1]}\n{t[2]}" for t in trajectory_source(0, parent)]
             except Exception:  # noqa: BLE001 — 没有语料库就没有剪枝信号
                 texts = []

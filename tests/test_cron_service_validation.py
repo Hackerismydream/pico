@@ -51,8 +51,6 @@ def test_invalid_cron_expr_is_rejected(svc: CronService) -> None:
 
 def test_runnable_schedules_still_created(tmp_path: Path) -> None:
 
-
-
     future_ms = int(time.time() * 1000) + 60_000
     for schedule in (
         CronSchedule(kind="at", at_ms=future_ms),

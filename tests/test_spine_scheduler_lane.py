@@ -37,9 +37,6 @@ def _lane(runner) -> Lane:
     return Lane(runner=runner, pools=OriginPools(user=1, system=1), sink=_collector()[1], conversation_id="c")
 
 
-
-
-
 class SuccessRunner:
     def __init__(self, outcome: TurnOutcome | None = None):
         self.outcome = outcome or TurnOutcome(usage=Usage(1, 2, 3), explicit_reply=True)
@@ -114,9 +111,6 @@ class StampProbeRunner:
         return TurnOutcome(usage=Usage(0, 0, 0), explicit_reply=False)
 
 
-
-
-
 async def test_lane_runs_fifo_one_at_a_time():
     runner = OrderRunner()
     events, sink = _collector()
@@ -140,7 +134,6 @@ async def test_success_emits_started_then_deliverables_then_ended():
 
 
 async def test_emit_guard_rejects_lifecycle_events_at_runtime():
-
 
     runner = LifecycleEmittingRunner()
     events, sink = _collector()
@@ -171,7 +164,6 @@ async def test_emit_stamps_source_when_absent_and_preserves_explicit():
 
 
 async def test_emit_stamps_source_on_a_non_text_deliverable():
-
 
     src = Source(channel="tg", chat_id="1", sender_id="u", chat_type=ChatType.DM)
     events, sink = _collector()
@@ -212,7 +204,6 @@ async def test_emit_stamps_conversation_id_and_preserves_explicit():
 
 
 async def test_worker_stamps_conversation_id_on_lifecycle_events():
-
 
     runner = SuccessRunner(TurnOutcome(usage=Usage(0, 0, 0), explicit_reply=False))
     events, sink = _collector()
@@ -282,9 +273,6 @@ async def test_cancel_resolves_future_with_cancelled_terminal():
 
 async def test_cancel_after_completion_does_not_double_resolve():
 
-
-
-
     runner = SuccessRunner()
     events, sink = _collector()
     lane = Lane(runner=runner, pools=OriginPools(user=1, system=1), sink=sink, conversation_id="c")
@@ -312,8 +300,6 @@ async def test_worker_clears_running_state_when_future_is_already_cancelled():
 
 async def test_cancel_drains_queue_resolving_pending_as_cancelled():
 
-
-
     runner = RecordingHangRunner()
     events, sink = _collector()
     lane = Lane(runner=runner, pools=OriginPools(user=1, system=1), sink=sink, conversation_id="c")
@@ -329,8 +315,6 @@ async def test_cancel_drains_queue_resolving_pending_as_cancelled():
 
 
 async def test_cancel_during_setup_window_stops_the_turn():
-
-
 
     ran: list[str] = []
     at_started = asyncio.Event()
@@ -357,8 +341,6 @@ async def test_cancel_during_setup_window_stops_the_turn():
 
 
 async def test_cancel_before_turnstarted_emits_no_lifecycle():
-
-
 
     ran: list[str] = []
     events, sink = _collector()
@@ -405,9 +387,6 @@ async def test_cancel_is_scoped_to_its_lane():
 
 async def test_worker_self_cancellation_drains_the_payload_leaving_no_zombie():
 
-
-
-
     runner = HangingRunner()
     events, sink = _collector()
     lane = Lane(runner=runner, pools=OriginPools(user=1, system=1), sink=sink, conversation_id="c")
@@ -422,7 +401,6 @@ async def test_worker_self_cancellation_drains_the_payload_leaving_no_zombie():
 
 
 async def test_scheduler_cancel_conversation_stops_running_and_returns_count():
-
 
     from pico.spine.scheduler import Scheduler
 
@@ -443,8 +421,6 @@ async def test_scheduler_cancel_conversation_stops_running_and_returns_count():
 
 
 async def test_scheduler_has_inflight_tracks_running_turn():
-
-
 
     from pico.spine.scheduler import Scheduler
 

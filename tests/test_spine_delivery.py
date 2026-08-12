@@ -94,7 +94,6 @@ async def test_register_rejects_a_duplicate_outlet_name(hub):
 
 async def _settle(predicate, *, tries: int = 2000) -> None:
 
-
     for _ in range(tries):
         if predicate():
             return
@@ -392,8 +391,6 @@ async def test_non_streaming_outlet_eats_stream_delta(hub):
 
 async def test_a_stream_reopens_cleanly_for_the_next_turn(hub):
 
-
-
     outlet = FakeStreamingOutlet("tg")
     hub.register(outlet)
     src = _src("tg")
@@ -680,9 +677,6 @@ async def test_drain_keeps_wait_idle_consistent(hub):
     assert hub.drain() == 1
     slow.gate.set()
     await hub.wait_idle("slow")
-
-
-
 
 
 @pytest.fixture

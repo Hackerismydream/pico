@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 # Turn 上下文的每一部分都由 :class:`SegmentBuilder` 产生。
 # seg1–5（identity / bootstrap / memory / active-skills / skills）和 Curator
 # 都是 SegmentBuilder，不再另设“lane”类别。
-    # :class:`ContextAssembler` 分两个阶段运行它们，并路由其
+# :class:`ContextAssembler` 分两个阶段运行它们，并路由其
 # 将输出写入 system / history 槽位。
 
 

@@ -27,9 +27,6 @@ def _channel(group_policy="open"):
     return FeishuChannel(cfg)
 
 
-
-
-
 def test_extract_post_direct():
     payload = {"title": "T", "content": [[{"tag": "text", "text": "hello"}]]}
     text, images = content.extract_post(payload)
@@ -63,9 +60,6 @@ def test_extract_post_empty():
     assert content.extract_post({}) == ("", [])
 
 
-
-
-
 def test_extract_share_chat():
     assert content.extract_share_card({"chat_id": "oc_x"}, "share_chat") == "[shared chat: oc_x]"
 
@@ -86,9 +80,6 @@ def test_extract_element_link():
     ]
 
 
-
-
-
 @pytest.mark.parametrize(
     "text, fmt",
     [
@@ -104,9 +95,6 @@ def test_extract_element_link():
 )
 def test_detect_format(text, fmt):
     assert cards.detect_format(text) == fmt
-
-
-
 
 
 def test_post_payload_renders_link():
@@ -134,9 +122,6 @@ def test_card_payloads_split_multiple_tables():
     assert len(payloads) == 2
 
 
-
-
-
 def test_mentioned_via_at_all():
     ch = _channel(group_policy="mention")
     msg = SimpleNamespace(content="hi @_all", mentions=None)
@@ -161,9 +146,6 @@ def test_open_policy_addresses_all():
     ch = _channel(group_policy="open")
     msg = SimpleNamespace(content="hey", mentions=None)
     assert ch._addressed_to_bot(msg) is True
-
-
-
 
 
 def test_transcribe_prefers_native_feishu_stt(monkeypatch):
@@ -197,9 +179,6 @@ def test_transcribe_skips_native_once_disabled(monkeypatch):
     assert calls == []
 
 
-
-
-
 def test_on_message_disallowed_sender_skips_react_and_download():
     """Denied sender is rejected before _react (network) and _extract (media
     download), not merely dropped at the central intake."""
@@ -215,9 +194,6 @@ def test_on_message_disallowed_sender_skips_react_and_download():
     ch._react.assert_not_awaited()
     ch._extract.assert_not_awaited()
     ch.intake.publish.assert_not_awaited()
-
-
-
 
 
 def test_send_text_reaches_sdk_with_chat_id_and_content():
@@ -307,9 +283,6 @@ async def test_feishu_business_failure_is_reported_as_dropped_delivery():
     ch._client.im.v1.message.create.assert_called_once()
 
 
-
-
-
 def test_stop_blocks_zombie_inbound(monkeypatch):
     """lark's ws client has no stop(); after stop() the socket may keep
     delivering — the sync bridge must drop those, or a restarted instance
@@ -355,9 +328,6 @@ async def test_quiesced_intake_drops_scheduled_handler_that_resumes_after_stop()
     submit.assert_not_awaited()
 
 
-
-
-
 def test_feishu_satisfies_channel_contract():
     from pico.channels import Channel
     from pico.channels.contract import capability_violations
@@ -381,9 +351,6 @@ def test_feishu_spec_import_is_cheap():
     )
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-
-
-
 
 
 def _capture_info_logs():

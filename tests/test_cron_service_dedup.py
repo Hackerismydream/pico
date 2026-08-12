@@ -112,7 +112,6 @@ def test_topic_tag_dedup_skipped_when_no_tag(svc):
         topic_tag=None,
     )
 
-
     assert j1.id == j2.id
 
 

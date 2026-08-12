@@ -39,8 +39,8 @@ const SPINNER_TICK_MS = 100
 interface IndicatorRender {
   frame: string
   intervalMs: number
-// 为 false 时，FaceTicker 隐藏轮换动词，只显示符号和时长。这样 `unicode` 保持极简，
-// 其他样式则保留用户与“运行中……”状态关联的动词轮换风格。
+  // 为 false 时，FaceTicker 隐藏轮换动词，只显示符号和时长。这样 `unicode` 保持极简，
+  // 其他样式则保留用户与“运行中……”状态关联的动词轮换风格。
   showVerb: boolean
 }
 
@@ -85,7 +85,7 @@ function FaceTicker({ color, startedAt }: { color: string; startedAt?: null | nu
   useEffect(() => {
     const glyph = setInterval(() => setTick(n => n + 1), intervalMs)
     const clock = setInterval(() => setNow(Date.now()), 1000)
-  // 动词计时器受 `showVerb` 控制；`unicode` 样式完全隐藏动词，轮换 `verbTick` 只会造成可避免的重渲染。
+    // 动词计时器受 `showVerb` 控制；`unicode` 样式完全隐藏动词，轮换 `verbTick` 只会造成可避免的重渲染。
     const verb = showVerb ? setInterval(() => setVerbTick(n => n + 1), FACE_TICK_MS) : null
 
     return () => {
@@ -115,7 +115,7 @@ function FaceTicker({ color, startedAt }: { color: string; startedAt?: null | nu
 }
 
 function SpawnHud({ t }: { t: Theme }) {
-// 仅在会话真实扇出时显示的紧凑 HUD。深度或并发接近上限时，颜色升级为警告/错误。
+  // 仅在会话真实扇出时显示的紧凑 HUD。深度或并发接近上限时，颜色升级为警告/错误。
   const delegation = useStore($delegationState)
   const subagents = useTurnSelector(state => state.subagents)
 
@@ -152,8 +152,8 @@ function SpawnHud({ t }: { t: Theme }) {
     pieces.push(`d${depthLabel}`)
 
     if (active > 0) {
-  // 标签把驱动上方 concRatio 的最宽层级计数与总活动数配对，提供上下文。`W/cap` 触发警告，
-  // `+N` 表示全树其他正在运行的内容。
+      // 标签把驱动上方 concRatio 的最宽层级计数与总活动数配对，提供上下文。`W/cap` 触发警告，
+      // `+N` 表示全树其他正在运行的内容。
       const extra = Math.max(0, active - widestLevel)
       const widthLabel = maxConc ? `${widestLevel}/${maxConc}` : `${widestLevel}`
       const suffix = extra > 0 ? `+${extra}` : ''

@@ -227,9 +227,7 @@ describe('RpcClient', () => {
     client = new RpcClient({ socketPath: mock.socketPath })
     await client.ready()
     const huge = 'x'.repeat(1024 * 1024 + 100) // JSON 序列化后大于 1 MiB。
-    await expect(
-      client.rpc('turn.send', { content: huge, session_key: 'tui:test' } as TurnSendParams)
-    ).rejects.toThrow(
+    await expect(client.rpc('turn.send', { content: huge, session_key: 'tui:test' } as TurnSendParams)).rejects.toThrow(
       /frame.*exceeds/
     )
   })

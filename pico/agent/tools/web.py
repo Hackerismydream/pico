@@ -131,8 +131,8 @@ class WebFetchTool(Tool):
 
         try:
             logger.debug("WebFetch: {}", "proxy enabled" if self.proxy else "direct connection")
-        # Reader 当前的 X-Base 合约在 JSON data.url 中返回快照链接。Reader 已完成抓取，
-        # Pico 只将验证用作返回内容的门禁。
+            # Reader 当前的 X-Base 合约在 JSON data.url 中返回快照链接。Reader 已完成抓取，
+            # Pico 只将验证用作返回内容的门禁。
             headers = {"Accept": "application/json", "X-Base": "final"}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"

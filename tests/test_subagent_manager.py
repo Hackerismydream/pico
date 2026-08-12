@@ -97,8 +97,6 @@ async def _drive(monkeypatch, *, max_concurrent: int, spawn_n: int) -> int:
         await mgr.spawn(task=f"task-{i}")
     tasks = list(mgr._running_tasks.values())
 
-
-
     await _settle(lambda: state["current"] == max_concurrent)
     await asyncio.sleep(0)
     peak = state["peak"]

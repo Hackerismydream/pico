@@ -144,6 +144,5 @@ class TestActiveSkills:
         b = ActiveSkillsSegmentBuilder(ContextBuilder(workspace=tmp_path).skills)
         seg = await b.build(_ctx(tmp_path))
 
-
         if seg is not None:
             assert seg.text.startswith("# Active Skills")

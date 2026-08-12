@@ -206,7 +206,6 @@ async def test_config_set_model_uses_atomic_runtime_replacement(fake_home: Path,
 
 async def test_config_set_model_bare_derives_provider(fake_home: Path) -> None:
 
-
     result = await config_set(
         {"key": "model", "value": "anthropic/claude-opus-4-8"},
         agent_loop_factory=lambda: None,
@@ -263,7 +262,6 @@ async def test_config_set_model_unconstructable_preserves_previous(fake_home: Pa
             agent_loop_factory=lambda: loop,
         )
 
-
     assert loop.model == "anthropic/claude-sonnet-4-5"
     assert loop.provider == "keep-prov"
     cfg = json.loads((fake_home / ".pico" / "config.json").read_text())
@@ -295,7 +293,6 @@ async def test_config_methods_registered_via_helper(fake_home: Path) -> None:
     resp = await d.dispatch({"jsonrpc": "2.0", "id": 2, "method": "config.get", "params": {"keys": ["tui.theme"]}})
     assert resp["result"]["config"]["tui.theme"] == "ok"
 
-
     resp = await d.dispatch(
         {
             "jsonrpc": "2.0",
@@ -308,7 +305,6 @@ async def test_config_methods_registered_via_helper(fake_home: Path) -> None:
 
 
 async def test_config_set_refuses_malformed_config_and_preserves_file(fake_home: Path) -> None:
-
 
     cfg = fake_home / ".pico" / "config.json"
     cfg.parent.mkdir(parents=True, exist_ok=True)

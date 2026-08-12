@@ -89,9 +89,6 @@ def _collect_events(send_frame_capture: AsyncMock) -> list[dict]:
     return events
 
 
-
-
-
 async def test_turn_cancel_active_turn_returns_cancelled_true(
     emitter: SubscriptionEmitter,
 ) -> None:
@@ -179,15 +176,9 @@ async def test_turn_cancel_keeps_subscription_open_for_next_turn(
     )
 
 
-
-
-
 async def test_turn_cancel_rejects_missing_session_key(emitter: SubscriptionEmitter) -> None:
     with pytest.raises(Exception):  # noqa: BLE001
         await turn_cancel({}, emitter=emitter)
-
-
-
 
 
 async def test_turn_cancel_dispatches_via_dispatcher_with_no_active_turn(

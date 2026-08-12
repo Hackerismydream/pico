@@ -43,9 +43,6 @@ def _receipts(level="INFO"):
         logger.remove(sink_id)
 
 
-
-
-
 def test_body_from_frame_attr():
     assert WecomChannel._body(SimpleNamespace(body={"x": 1})) == {"x": 1}
 
@@ -57,9 +54,6 @@ def test_body_from_dict():
 
 def test_body_other_type():
     assert WecomChannel._body(123) == {}
-
-
-
 
 
 def test_extract_text():
@@ -91,9 +85,6 @@ def test_extract_mixed():
     out = asyncio.run(ch._extract(body, "mixed"))
     assert "hi there" in out
     assert "[image]" in out
-
-
-
 
 
 def test_extract_image_downloads_and_labels(monkeypatch):
@@ -132,9 +123,6 @@ def test_extract_image_marks_failed_when_download_returns_no_data():
     assert out == "[image: image: download failed]"
 
 
-
-
-
 def test_process_dedup_skips_repeated_msgid():
     ch = _channel()
     frame = SimpleNamespace(
@@ -169,9 +157,6 @@ def test_frames_are_lru_capped(monkeypatch):
     assert len(ch._frames) == 2
     assert "c0" not in ch._frames
     assert "c2" in ch._frames
-
-
-
 
 
 def test_send_noop_without_client():
@@ -267,9 +252,6 @@ def test_send_logs_no_receipt_when_reply_fails():
     assert "WeCom message sent" not in "".join(lines)
 
 
-
-
-
 def test_on_enter_chat_sends_welcome_when_configured():
     ch = _channel(welcome_message="hello there")
     ch._client = AsyncMock()
@@ -286,9 +268,6 @@ def test_on_enter_chat_noop_without_welcome():
     ch._client = AsyncMock()
     asyncio.run(ch._on_enter_chat(SimpleNamespace(body={"chatid": "c1"})))
     ch._client.reply_welcome.assert_not_awaited()
-
-
-
 
 
 def test_process_disallowed_sender_skips_download_and_publish():
@@ -309,9 +288,6 @@ def test_process_disallowed_sender_skips_download_and_publish():
     ch._extract.assert_not_awaited()
     ch.intake.publish.assert_not_awaited()
     assert "WeCom inbound rejected by allowlist: sender=u1" in "".join(lines)
-
-
-
 
 
 def test_process_logs_accept_receipt():
@@ -336,9 +312,6 @@ def test_process_logs_empty_content_drop():
         asyncio.run(ch._process(_text_frame(text=""), "text"))
     ch.intake.publish.assert_not_awaited()
     assert "WeCom inbound dropped: message_id=m1 has no extractable content" in "".join(lines)
-
-
-
 
 
 def test_process_non_dict_body_is_dropped():
@@ -373,9 +346,6 @@ def test_process_unhandled_error_logs_and_does_not_raise():
     assert "WeCom inbound dropped: event handling failed" in "".join(lines)
 
 
-
-
-
 @pytest.mark.parametrize(
     "bot_id, secret",
     [("", "s"), ("b", ""), ("", "")],
@@ -389,9 +359,6 @@ def test_start_bails_out_without_credentials(bot_id, secret):
     assert ch._client is None
     assert ch.is_running is False
     assert "WeCom bot_id and secret not configured" in "".join(lines)
-
-
-
 
 
 def test_wecom_satisfies_channel_contract():

@@ -461,8 +461,8 @@ def bash_edit_candidate(
         try:
             raw = call_fn(convo)
         except Exception as exc:  # noqa: BLE001 — 驱动出错时跳过该候选项
-        # 在摘要槽显示 WHY：静默空返回会使失效驱动与“没有设计任何内容”无法区分；
-        # 曾有一整轮冒烟运行零候选且无追踪。
+            # 在摘要槽显示 WHY：静默空返回会使失效驱动与“没有设计任何内容”无法区分；
+            # 曾有一整轮冒烟运行零候选且无追踪。
             return None, [], f"driver error: {exc}"[:300]
         obj = _loose_json(raw)
         act = (obj or {}).get("action")
@@ -487,8 +487,8 @@ def bash_edit_candidate(
         else:
             fb = 'Respond with ONE JSON action: {"action":"bash"|"write_file"|"read_trajectory"|"done", ...}'
         edited = _has_edit()
-    # 只有 Bash 只读轮次计入强制阈值：read_trajectory 是协议本身要求的证据收集
-    # （读取两到三次），计入会惩罚遵循协议的驱动。
+        # 只有 Bash 只读轮次计入强制阈值：read_trajectory 是协议本身要求的证据收集
+        # （读取两到三次），计入会惩罚遵循协议的驱动。
         if edited:
             readonly = 0
         elif act == "bash":
@@ -520,9 +520,9 @@ def bash_edit_candidate(
         and not _has_beacon(changed)
         and any(p.endswith(".py") and _code_changed(sandbox.original(p), b) for p, b in changed.items())
     ):
-    # 没有信标的代码编辑无法由 Gate-b 测量，因为触发后不留下逐任务记录，因此在
-    # 花费评测预算前拒绝。提示词和配置编辑例外：包括 .md/.yaml，以及只修改字符串
-    # 常量的 .py（AppWorld 提示词位于 agent_cli.py）；它们按轨迹是否存在归因。
+        # 没有信标的代码编辑无法由 Gate-b 测量，因为触发后不留下逐任务记录，因此在
+        # 花费评测预算前拒绝。提示词和配置编辑例外：包括 .md/.yaml，以及只修改字符串
+        # 常量的 .py（AppWorld 提示词位于 agent_cli.py）；它们按轨迹是否存在归因。
         return None, [], "missing activation_beacon in python edit"
     default = f"edited {sorted(changed)}" + (f", deleted {deleted}" if deleted else "")
     return changed or {}, deleted, (last_summary or default)
@@ -582,7 +582,7 @@ def make_bash_editor_design_fn(
             )
             if not whys:
                 whys = formula
-    # 影子日志同时记录驱动选择与公式选择，使数轮数据即可判断哪个选择器应成为默认。
+            # 影子日志同时记录驱动选择与公式选择，使数轮数据即可判断哪个选择器应成为默认。
             print(f"[why-select] driver={whys} formula={formula} reasons={why_reasons}", flush=True)
         else:
             whys = formula

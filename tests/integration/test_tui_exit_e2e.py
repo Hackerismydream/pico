@@ -24,8 +24,6 @@ import pytest
 pytestmark = pytest.mark.external_runtime
 
 
-
-
 _BUILD_FAILED = 42
 
 _BUILD_LOOP = """
@@ -46,8 +44,6 @@ def _run(child_src: str) -> subprocess.CompletedProcess:
         text=True,
         timeout=120,
     )
-
-
 
 
 _HAZARD_ABSENT = 43
@@ -86,7 +82,5 @@ def test_normal_finalization_still_reproduces_the_crash():
         pytest.skip(f"agent loop unbuildable here: {result.stderr.strip()[-200:]}")
     if result.returncode == 0:
         pytest.skip("native finalization crash not reproducible in this environment")
-
-
 
     assert result.returncode < 0, f"expected a fatal-signal crash on finalization, got rc={result.returncode}"

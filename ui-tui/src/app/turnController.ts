@@ -181,12 +181,12 @@ class TurnController {
     resetFlowOverlays()
   }
 
-// 在转录中保留中断轮次已流出的内容，并丢弃实时轮次状态。旧 `interruptTurn` 与带类型的 spine
-// 取消路径 chatStream.restoreInputPrompt 共用该逻辑，避免两者对取消后保留内容产生分歧。
-// `appendMessage`/`sys` 可选；没有转录出口的旧调用方或空操作场景只执行空闲清理，不追加内容。
+  // 在转录中保留中断轮次已流出的内容，并丢弃实时轮次状态。旧 `interruptTurn` 与带类型的 spine
+  // 取消路径 chatStream.restoreInputPrompt 共用该逻辑，避免两者对取消后保留内容产生分歧。
+  // `appendMessage`/`sys` 可选；没有转录出口的旧调用方或空操作场景只执行空闲清理，不追加内容。
   finalizeInterruptedTurn({ appendMessage, sys }: FinalizeInterruptDeps) {
-// 重入调用（如第二次 Ctrl+C 强制重置与服务器取消错误竞速）会发现轮次状态已排空；不得重复发出
-// 第一次调用已显示的裸中断提示。
+    // 重入调用（如第二次 Ctrl+C 强制重置与服务器取消错误竞速）会发现轮次状态已排空；不得重复发出
+    // 第一次调用已显示的裸中断提示。
     const reentrant = this.interrupted
     this.interrupted = true
     this.closeReasoningSegment()
@@ -195,8 +195,8 @@ class TurnController {
     const partial = this.bufRef.trimStart()
     const tools = this.pendingSegmentTools
 
-  // 将保留快照写入转录前，先从 nanostore 排空流式/片段状态；否则每个已刷新片段会在一帧内
-  // 同时出现在 `turn.streamSegments` 和转录中。
+    // 将保留快照写入转录前，先从 nanostore 排空流式/片段状态；否则每个已刷新片段会在一帧内
+    // 同时出现在 `turn.streamSegments` 和转录中。
     this.idle()
     this.clearReasoning()
     this.turnTools = []
@@ -210,8 +210,8 @@ class TurnController {
       appendMessage(msg)
     }
 
-  // 始终显示中断提示：若有正在生成的 `partial` 或待处理工具，将其折叠成单条助手消息；否则
-  // 发出系统说明，使转录始终记录轮次已取消，即使只保留了此前 `segments`。
+    // 始终显示中断提示：若有正在生成的 `partial` 或待处理工具，将其折叠成单条助手消息；否则
+    // 发出系统说明，使转录始终记录轮次已取消，即使只保留了此前 `segments`。
     if (partial || tools.length) {
       appendMessage({
         role: 'assistant',
@@ -348,22 +348,22 @@ class TurnController {
   }
 
   pushInlineDiffSegment(diffText: string, tools: string[] = []) {
-  // 移除网关在统一差异前发出的 CLI 装饰，例如 `_emit_inline_diff` 为终端打印器写入的前导
-  // "┊ review diff" 标题。该标题只适合作为标准输出装饰，不应出现在 Markdown ```diff 块内。
+    // 移除网关在统一差异前发出的 CLI 装饰，例如 `_emit_inline_diff` 为终端打印器写入的前导
+    // "┊ review diff" 标题。该标题只适合作为标准输出装饰，不应出现在 Markdown ```diff 块内。
     const stripped = diffText.replace(/^\s*┊[^\n]*\n?/, '').trim()
 
     if (!stripped) {
       return
     }
 
-  // 先把正在生成的流式文本刷新为独立片段，使差异落在编辑前的助手叙述和之后的流式内容之间，
-  // 而不是粘到最终消息上。这正是片段锚定差异的目的：差异在编辑实际发生的位置渲染。
+    // 先把正在生成的流式文本刷新为独立片段，使差异落在编辑前的助手叙述和之后的流式内容之间，
+    // 而不是粘到最终消息上。这正是片段锚定差异的目的：差异在编辑实际发生的位置渲染。
     this.flushStreamingSegment()
 
     const block = `\`\`\`diff\n${stripped}\n\`\`\``
 
-  // 跳过连续重复项，例如同一工具触发两次 tool.complete，或两次编辑产生相同补丁。此处保持低成本；
-  // 与最终助手文本的深度去重在 message.complete 时执行。
+    // 跳过连续重复项，例如同一工具触发两次 tool.complete，或两次编辑产生相同补丁。此处保持低成本；
+    // 与最终助手文本的深度去重在 message.complete 时执行。
     if (this.segmentMessages.at(-1)?.text === block) {
       return
     }
@@ -422,9 +422,9 @@ class TurnController {
   recordMessageComplete(payload: { rendered?: string; reasoning?: string; text?: string }) {
     this.closeReasoningSegment()
 
-  // Ink 通过 <Md> 渲染 Markdown；网关的 Rich ANSI 结果（`payload.rendered`）供无法渲染的终端
-  // 使用。用户启用 `display.final_response_markdown: render` 时，若此处优先使用 `rendered`，
-  // 原始 ANSI 转义会进入 React 树并造成乱码。应优先原始文本，仅在网关未发送文本时回退（#16391）。
+    // Ink 通过 <Md> 渲染 Markdown；网关的 Rich ANSI 结果（`payload.rendered`）供无法渲染的终端
+    // 使用。用户启用 `display.final_response_markdown: render` 时，若此处优先使用 `rendered`，
+    // 原始 ANSI 转义会进入 React 树并造成乱码。应优先原始文本，仅在网关未发送文本时回退（#16391）。
     const rawText = (payload.text ?? payload.rendered ?? this.bufRef).trimStart()
     const split = splitReasoning(rawText)
     const finalText = finalTail(split.text, this.segmentMessages)
@@ -443,8 +443,8 @@ class TurnController {
       tools = []
     }
 
-  // 删除智能体即将在最终回复中叙述的纯差异片段。否则收尾“这是差异……”消息会堆叠渲染两份
-  // 相同补丁。仅处理 pushInlineDiffSegment 发出的 `kind: 'diff'` 片段，真实助手叙述保持不动。
+    // 删除智能体即将在最终回复中叙述的纯差异片段。否则收尾“这是差异……”消息会堆叠渲染两份
+    // 相同补丁。仅处理 pushInlineDiffSegment 发出的 `kind: 'diff'` 片段，真实助手叙述保持不动。
     const finalHasOwnDiffFence = /```(?:diff|patch)\b/i.test(finalText)
 
     const segments = this.segmentMessages.filter(msg => {
@@ -481,15 +481,15 @@ class TurnController {
 
     const wasInterrupted = this.interrupted
 
-  // 在 idle() 从 turnState 丢弃子智能体前，将轮次 spawn 树归档到历史。这样 /replay 和浮层历史
-  // 导航无需往返磁盘即可调出已完成的扇出。
+    // 在 idle() 从 turnState 丢弃子智能体前，将轮次 spawn 树归档到历史。这样 /replay 和浮层历史
+    // 导航无需往返磁盘即可调出已完成的扇出。
     const finishedSubagents = getTurnState().subagents
     const sessionId = getUiState().sid
 
     if (finishedSubagents.length > 0) {
       pushSnapshot(finishedSubagents, { sessionId, startedAt: null })
-  // 异步写入磁盘，使 /replay 在进程重启后仍可用。同一快照通过 spawnHistoryStore 保留在内存中
-  // 供立即召回；磁盘用于长期归档。
+      // 异步写入磁盘，使 /replay 在进程重启后仍可用。同一快照通过 spawnHistoryStore 保留在内存中
+      // 供立即召回；磁盘用于长期归档。
       void this.persistSpawnTree?.(finishedSubagents, sessionId)
     }
 
@@ -512,9 +512,9 @@ class TurnController {
     this.pruneTransient()
     this.endReasoningPhase()
 
-  // 始终累积原始文本增量。#16391 前的路径会用增量 Rich ANSI 片段 `rendered` 替换整个缓冲区，
-  // 每次 tick 都丢弃此前已流出的全部内容；启用 `display.final_response_markdown: render` 时表现为
-  // 彩色文本重叠和正文丢失。
+    // 始终累积原始文本增量。#16391 前的路径会用增量 Rich ANSI 片段 `rendered` 替换整个缓冲区，
+    // 每次 tick 都丢弃此前已流出的全部内容；启用 `display.final_response_markdown: render` 时表现为
+    // 彩色文本重叠和正文丢失。
     this.bufRef += text
 
     if (getUiState().streaming) {
@@ -742,16 +742,16 @@ class TurnController {
     patch: (current: SubagentProgress) => Partial<SubagentProgress>,
     opts: { createIfMissing?: boolean } = { createIfMissing: true }
   ) {
-  // 稳定 ID：优先使用服务器签发的 subagent_id，可跨嵌套孙节点和跨树关联保持稳定。旧网关省略
-  // 该字段时回退到复合键；这些网关只产生扁平列表。
+    // 稳定 ID：优先使用服务器签发的 subagent_id，可跨嵌套孙节点和跨树关联保持稳定。旧网关省略
+    // 该字段时回退到复合键；这些网关只产生扁平列表。
     const id = p.subagent_id || `sa:${p.task_index}:${p.goal || 'subagent'}`
 
     patchTurnState(state => {
       const existing = state.subagents.find(item => item.id === id)
 
-  // 迟到事件（message.complete 已触发 idle() 后到达的 subagent.complete/tool/progress）原本会
-  // 把已完成子智能体重新放入 turn.subagents，阻止 /agents 浮层显示“已完成”标题。
-  // `createIfMissing` 为 false 时静默丢弃。
+      // 迟到事件（message.complete 已触发 idle() 后到达的 subagent.complete/tool/progress）原本会
+      // 把已完成子智能体重新放入 turn.subagents，阻止 /agents 浮层显示“已完成”标题。
+      // `createIfMissing` 为 false 时静默丢弃。
       if (!existing && !opts.createIfMissing) {
         return state
       }
@@ -773,8 +773,8 @@ class TurnController {
         toolsets: p.toolsets
       }
 
-  // 将 snake_case 载荷键映射到 camelCase 状态。仅在事件实际携带字段时覆盖；`??` 会在只发出
-  // 部分载荷的流式事件之间保留旧值。
+      // 将 snake_case 载荷键映射到 camelCase 状态。仅在事件实际携带字段时覆盖；`??` 会在只发出
+      // 部分载荷的流式事件之间保留旧值。
       const outputTail = p.output_tail
         ? p.output_tail.map(e => ({
             isError: Boolean(e.is_error),
@@ -804,8 +804,8 @@ class TurnController {
         ...patch(base)
       }
 
-  // 稳定顺序按 spawn 的深度、父节点和索引，而非插入时间。若无此规则，高并发下事件乱序到达时，
-  // 孙节点会相对同级节点重新洗牌。
+      // 稳定顺序按 spawn 的深度、父节点和索引，而非插入时间。若无此规则，高并发下事件乱序到达时，
+      // 孙节点会相对同级节点重新洗牌。
       const subagents = existing
         ? state.subagents.map(item => (item.id === id ? next : item))
         : [...state.subagents, next].sort((a, b) => a.depth - b.depth || a.index - b.index)

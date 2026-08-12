@@ -172,8 +172,8 @@ def main() -> int:
         checks[name] = _run_check(name, tests, output_root)
 
     status = "passed" if all(check["status"] == "passed" for check in checks.values()) else "failed"
-# v2：v1 只有一个 "deterministic" 检查；v2 将其重命名为 "contract" 并增加 "security"，
-# 按模式版本规则属于破坏性结构变更。
+    # v2：v1 只有一个 "deterministic" 检查；v2 将其重命名为 "contract" 并增加 "security"，
+    # 按模式版本规则属于破坏性结构变更。
     report = {
         "checks": checks,
         "gate": "V-C0",

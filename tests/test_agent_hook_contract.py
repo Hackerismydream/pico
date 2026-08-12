@@ -294,7 +294,6 @@ class TestCompositeHookShortCircuit:
 
         await composite.before_user_inbound(ctx)
 
-
         await composite.before_iteration(ctx)
 
         assert called == [
@@ -325,7 +324,6 @@ class TestCompositeHookContentChain:
         decision = await composite.after_send(ctx)
 
         assert decision.modified_content == "original A B"
-
 
         assert ctx.outbound_content == "original A B"
 
@@ -375,9 +373,6 @@ class TestCompositeHookContentChain:
         composite = CompositeHook([WouldModify()])
         decision = await composite.after_iteration(ctx)
 
-
-
-
         assert decision.modified_content is None
         assert ctx.outbound_content == "starting"
 
@@ -403,7 +398,6 @@ class TestCompositeHookExceptionIsolation:
 
         composite = CompositeHook([Bad(), Good()])
         decision = await composite.before_iteration(ctx)
-
 
         assert called == ["bad", "good"]
         assert decision.short_circuit_result is None
@@ -519,19 +513,16 @@ class TestCompositeHookEndToEndScenario:
 
         composite = CompositeHook([CommandHook(), ObserverHook(), SuffixHook()])
 
-
         ctx.turn_request = _req("/pick 2")
         d1 = await composite.before_user_inbound(ctx)
         assert d1.short_circuit_result == "picked option"
         assert log == ["command.check", "command.short_circuit"]
-
 
         log.clear()
         ctx.turn_request = _req("hello")
         d2 = await composite.before_user_inbound(ctx)
         assert d2.short_circuit_result is None
         assert log == ["command.check", "observer.observe"]
-
 
         log.clear()
         ctx.outbound_content = "hi user"

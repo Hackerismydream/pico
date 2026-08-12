@@ -202,8 +202,6 @@ class TestEngineIdentity:
 
     def test_owns_compaction_is_true(self, builder: ContextBuilder) -> None:
 
-
-
         eng = _engine(builder, router=SkillForgeRouter([]), backend=_StubBackend())
         assert eng.owns_compaction is True
 
@@ -271,7 +269,6 @@ class TestTwoTrackConcurrency:
             memory_top_k=7,
         )
         await eng.assemble("s", [], _budget(), turn=_turn("q"))
-
 
         assert source.calls[0][1] == 6
         assert backend.recall_calls[0]["top_k"] == 7
@@ -346,7 +343,6 @@ class TestRendering:
         eng = _engine(builder, router=SkillForgeRouter([source]), backend=_StubBackend())
         ac = await eng.assemble("s", [], _budget(), turn=_turn())
         sys_content = ac.messages[0]["content"]
-
 
         assert ac.system_prompt_addition is None
         assert "# Retrieved skills" not in sys_content

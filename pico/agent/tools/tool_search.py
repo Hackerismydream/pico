@@ -298,8 +298,8 @@ class ToolSearchStrategy(TokenStrategy):
             return messages, out, model
         present = {t["function"]["name"] for t in tools}
         if not META_TOOL_NAMES.issubset(present):
-        # 元工具不可用时，例如被 disabled_tools 移除，直接暴露全部工具；
-        # 不要将已编目的工具困在模型无法调用的搜索之后。
+            # 元工具不可用时，例如被 disabled_tools 移除，直接暴露全部工具；
+            # 不要将已编目的工具困在模型无法调用的搜索之后。
             return messages, tools, model
         visible = self._ctrl.visible_names()
         out = [t for t in tools if t["function"]["name"] in visible]

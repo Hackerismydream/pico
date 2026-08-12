@@ -174,7 +174,7 @@ async def _segment_test(
         seg = await builder.build(ctx)
         ids = seg.meta.get("injected_skill_ids", [])
         print(f"  [{q['id']}] injected={ids}")
-    # 打印渲染片段的前两行标题。
+        # 打印渲染片段的前两行标题。
         head_lines = "\n".join(seg.text.splitlines()[:6])
         print(textwrap.indent(head_lines, "    "))
         print()

@@ -128,7 +128,6 @@ class AgentHook(ABC):
         """
         return type(self).__name__
 
-
     async def before_user_inbound(self, ctx: AgentHookContext) -> HookDecision:
         """Fires when a fresh user message arrives, before AgentLoop
         dispatches it to the LLM.
@@ -136,7 +135,6 @@ class AgentHook(ABC):
         Context fields populated: ``session_key``, ``turn_request``.
         """
         return HookDecision()
-
 
     async def before_iteration(self, ctx: AgentHookContext) -> HookDecision:
         """Fires before each LLM call in the ReAct loop.
@@ -176,7 +174,6 @@ class AgentHook(ABC):
         ``messages``, ``response``.
         """
         return HookDecision()
-
 
     async def after_send(self, ctx: AgentHookContext) -> HookDecision:
         """Fires when the final outbound content has been assembled,

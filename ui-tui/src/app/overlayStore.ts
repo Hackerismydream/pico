@@ -19,10 +19,8 @@ const buildOverlayState = (): OverlayState => ({
 
 export const $overlayState = atom<OverlayState>(buildOverlayState())
 
-export const $isBlocked = computed(
-  $overlayState,
-  ({ agents, clarify, confirm, modelPicker, pager, picker }) =>
-    Boolean(agents || clarify || confirm || modelPicker || pager || picker)
+export const $isBlocked = computed($overlayState, ({ agents, clarify, confirm, modelPicker, pager, picker }) =>
+  Boolean(agents || clarify || confirm || modelPicker || pager || picker)
 )
 
 export const getOverlayState = () => $overlayState.get()

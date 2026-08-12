@@ -31,9 +31,6 @@ def test_intake_custom_allow_check_gates_publish():
     submit.assert_not_awaited()
 
 
-
-
-
 def test_intake_submit_path_builds_turnrequest():
     from pico.spine import ChatType, Origin
 
@@ -133,9 +130,6 @@ async def test_wait_idle_blocks_until_publish_already_in_submit_finishes():
     finally:
         release_submit.set()
         await publish
-
-
-
 
 
 def test_transcribe_audio_delegates(monkeypatch):

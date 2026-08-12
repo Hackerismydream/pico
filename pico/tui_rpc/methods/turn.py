@@ -106,8 +106,8 @@ async def _emit_start_then_error(
     *,
     attachments_discarded: bool = False,
 ) -> None:
-            # 先发 message.start，让前端有可清理的 Turn；随后错误会通过 onError 重置 turnId，
-            # 与旧的单 Turn 任务保持相同形状。
+    # 先发 message.start，让前端有可清理的 Turn；随后错误会通过 onError 重置 turnId，
+    # 与旧的单 Turn 任务保持相同形状。
     await emitter.emit(
         session_key,
         {
@@ -214,8 +214,8 @@ async def turn_send(
         ),
         text=parsed.content,
         media=pending_images(parsed.session_key),
-    # conversation 等于前端订阅键，使运行器的流和 sink 的 message.complete
-    # 到达正确订阅。
+        # conversation 等于前端订阅键，使运行器的流和 sink 的 message.complete
+        # 到达正确订阅。
         conversation=parsed.session_key,
     )
     request_key = id(req)

@@ -58,7 +58,7 @@ export function ArtLines({ lines }: { lines: [string, string][] }) {
   return (
     <>
       {lines.map(([c, text], i) => (
-  // 使用 `truncate`，使宽横幅图案在 Box 边缘裁剪，而不是在窄终端中把每行换成难以阅读的散块。
+        // 使用 `truncate`，使宽横幅图案在 Box 边缘裁剪，而不是在窄终端中把每行换成难以阅读的散块。
         <Text color={c} key={i} wrap="truncate">
           {text}
         </Text>
@@ -104,8 +104,8 @@ const PROVIDER_LABELS: Record<string, string> = {
 export function formatProvider(slug?: string, modelId?: string): string {
   let effective = slug ?? ''
   if (!effective || effective === 'auto') {
-  // 仅当模型带 `/` 前缀（如 "openrouter/qwen/qwen3.6-plus"）时才视为携带提供商信息。
-  // 裸 "sonnet" 是模型名而非提供商，应回退到 '—'。
+    // 仅当模型带 `/` 前缀（如 "openrouter/qwen/qwen3.6-plus"）时才视为携带提供商信息。
+    // 裸 "sonnet" 是模型名而非提供商，应回退到 '—'。
     const id = modelId ?? ''
     effective = id.includes('/') ? (id.split('/')[0] ?? '') : ''
   }

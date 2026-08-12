@@ -40,12 +40,6 @@ def test_non_openrouter_provider_has_no_attribution():
     assert "X-OpenRouter-Categories" not in provider.extra_headers
 
 
-
-
-
-
-
-
 def test_extra_msg_keys_anthropic_spec_preserves_thinking_blocks():
     keys = LiteLLMProvider._extra_msg_keys("anthropic/claude-opus-4-5", "anthropic/claude-opus-4-5")
     assert keys == _ANTHROPIC_EXTRA_KEYS

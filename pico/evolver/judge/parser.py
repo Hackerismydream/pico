@@ -283,7 +283,7 @@ def parse_judge_output(
             "proposed_action.patch_why",
         )
         components = _parse_components(action_obj)
-    # patch_why=other 时必须提供子名称。
+        # patch_why=other 时必须提供子名称。
         patch_why_extra_raw = action_obj.get("patch_why_extra")
         if patch_why == PatchWhy.other:
             if not patch_why_extra_raw or not isinstance(patch_why_extra_raw, str):

@@ -19,9 +19,6 @@ def _session(key: str = "tui:20260622_120000_abcdef", **kw) -> Session:
     return Session(key=key, **kw)
 
 
-
-
-
 def test_header_reflects_metadata():
     s = _session(
         created_at=datetime(2026, 6, 22, 12, 0, 0),
@@ -109,9 +106,6 @@ def test_empty_session_renders_header_only():
     out = render_transcript(s)
     assert s.key in out
     assert isinstance(out, str) and out.strip()
-
-
-
 
 
 def test_default_export_path_is_workspace_relative(tmp_path: Path):

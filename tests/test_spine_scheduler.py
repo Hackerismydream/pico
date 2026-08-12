@@ -77,9 +77,6 @@ def _scheduler(runner) -> Scheduler:
     return Scheduler(runner, OriginPools(user=1, system=1), _sink)
 
 
-
-
-
 async def test_submit_result_returns_the_outcome():
     sched = _scheduler(SuccessRunner(TurnOutcome(usage=Usage(5, 7, 12), explicit_reply=True)))
     handle = sched.submit(_req())
@@ -112,9 +109,6 @@ async def test_terminal_sink_failure_does_not_kill_lane_worker():
     assert not sched._lanes["t:c"].has_pending_or_running()
 
 
-
-
-
 def test_submit_with_no_running_loop_fails_fast():
     loop = asyncio.new_event_loop()
     try:
@@ -126,7 +120,6 @@ def test_submit_with_no_running_loop_fails_fast():
 
 
 def test_submit_from_a_different_loop_fails_fast():
-
 
     home = asyncio.new_event_loop()
     other = asyncio.new_event_loop()
@@ -147,9 +140,6 @@ async def _aconstruct() -> Scheduler:
     return Scheduler(SuccessRunner(), OriginPools(user=1, system=1), _sink)
 
 
-
-
-
 async def test_conversation_id_explicit_then_default():
     sched = _scheduler(SuccessRunner())
     assert sched._conversation_id(_req(conversation="cron:7")) == "cron:7"
@@ -157,8 +147,6 @@ async def test_conversation_id_explicit_then_default():
 
 
 async def test_different_conversations_run_concurrently():
-
-
 
     runner = ConcurrentProbe(target=2)
     sched = Scheduler(runner, OriginPools(user=2, system=1), _sink)
@@ -173,9 +161,6 @@ async def test_same_conversation_reuses_one_lane():
     await sched.submit(_req(channel="tg", chat_id="1")).result()
     await sched.submit(_req(channel="tg", chat_id="2")).result()
     assert set(sched._lanes) == {"tg:1", "tg:2"}
-
-
-
 
 
 async def test_handle_cancel_running_turn():
@@ -203,9 +188,6 @@ async def test_handle_cancel_is_idempotent_after_completion():
     handle = sched.submit(_req())
     await handle.result()
     handle.cancel()
-
-
-
 
 
 async def test_reap_then_resubmit_rebuilds_lane_without_losing_the_request():
@@ -262,9 +244,6 @@ async def test_resubmit_clears_the_idle_clock_so_a_reused_lane_is_not_reaped():
     assert sched._sweep(now=1e9) == 0
     assert "tg:1" in sched._lanes
     await handle.result()
-
-
-
 
 
 class RecordingHangRunner:
@@ -360,9 +339,6 @@ async def test_interrupt_on_an_idle_lane_runs_like_append():
     handle = sched.submit(_req(channel="tg", chat_id="1", busy=BusyPolicy.INTERRUPT, text="x"))
     assert isinstance(await asyncio.wait_for(handle.result(), timeout=1.0), TurnOutcome)
     assert runner.ran == ["x"]
-
-
-
 
 
 class MergingRunner:
@@ -489,7 +465,6 @@ async def test_cancel_on_a_mailboxed_inject_removes_it_before_merge():
 
 async def test_interrupt_runs_before_a_hosts_fallen_back_inject():
 
-
     gate = asyncio.Event()
     runner = NonDrainingRunner(gate)
     sched = Scheduler(runner, OriginPools(user=1, system=1), _sink)
@@ -505,8 +480,6 @@ async def test_interrupt_runs_before_a_hosts_fallen_back_inject():
 
 
 async def test_stop_after_drain_resolves_a_chained_inject_exactly_once():
-
-
 
     drain_gate = asyncio.Event()
 
@@ -534,9 +507,6 @@ async def test_stop_after_drain_resolves_a_chained_inject_exactly_once():
     assert stopped == 1
     assert await asyncio.wait_for(host.result(), timeout=1.0) is None
     assert await asyncio.wait_for(inject.result(), timeout=1.0) is None
-
-
-
 
 
 async def test_shutdown_seals_the_scheduler_then_submit_raises():
@@ -670,8 +640,6 @@ async def test_reap_loop_self_terminates_when_no_lanes():
 
 async def test_running_reaper_actually_sweeps_and_reaps_an_idle_lane(monkeypatch):
 
-
-
     monkeypatch.setattr("pico.spine.scheduler._SWEEP_INTERVAL", 0.01)
     monkeypatch.setattr("pico.spine.scheduler._DEFAULT_IDLE_TTL", 0.0)
     sched = _scheduler(SuccessRunner())
@@ -688,9 +656,6 @@ async def test_shutdown_on_an_idle_scheduler_is_a_clean_noop():
     await sched.shutdown(grace=1.0)
     with pytest.raises(SchedulerDrainingError):
         sched.submit(_req())
-
-
-
 
 
 async def test_submit_backlog_warns_when_pending_reaches_the_threshold(monkeypatch):
@@ -713,8 +678,6 @@ async def test_submit_backlog_warns_when_pending_reaches_the_threshold(monkeypat
 
 
 async def test_inject_fallback_re_enqueue_also_triggers_the_depth_warning(monkeypatch):
-
-
 
     monkeypatch.setattr("pico.spine.scheduler._DEPTH_WARN_THRESHOLD", 3)
     gate = asyncio.Event()

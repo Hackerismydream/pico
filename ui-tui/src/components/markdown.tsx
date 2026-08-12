@@ -95,23 +95,23 @@ export const AUDIO_DIRECTIVE_RE = /^\s*\[\[audio_as_voice\]\]\s*$/
 // 最少一个字符且分隔符旁不得有空格的规则，可避免吞掉 `$5 to $10` 等货币正文。
 export const INLINE_RE = new RegExp(
   [
-  `!\\[(.*?)\\]\\(${MD_URL_RE}\\)`, // 1、2：图片
-  `\\[(.+?)\\]\\(${MD_URL_RE}\\)`, // 3、4：链接
-  `<((?:https?:\\/\\/|mailto:)[^>\\s]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,})>`, // 5：自动链接
-  `~~(.+?)~~`, // 6：删除线
-  `\`([^\\\`]+)\``, // 7：代码
-  `\\*\\*(.+?)\\*\\*`, // 8：星号粗体
-  `(?<!\\w)__(.+?)__(?!\\w)`, // 9：下划线粗体
-  `\\*(.+?)\\*`, // 10：星号斜体
-  `(?<!\\w)_(.+?)_(?!\\w)`, // 11：下划线斜体
-  `==(.+?)==`, // 12：高亮
-  `\\[\\^([^\\]]+)\\]`, // 13：脚注引用
-  `\\^([^^\\s][^^]*?)\\^`, // 14：上标
-  `~([A-Za-z0-9]{1,8})~`, // 15：下标
-  `(https?:\\/\\/[^\\s<]+)`, // 16：裸 URL；单独包装以拥有自己的捕获组，
-  // 否则下方数学片段会落入 m[16]，MdInline 分发器会将其当作裸 URL 并渲染为自动链接。
-  `(?<!\\$)\\$([^\\s$](?:[^$\\n]*?[^\\s$])?)\\$(?!\\$)`, // 17：行内数学 $...$
-  `\\\\\\(([^\\n]+?)\\\\\\)` // 18：行内数学 \(...\)
+    `!\\[(.*?)\\]\\(${MD_URL_RE}\\)`, // 1、2：图片
+    `\\[(.+?)\\]\\(${MD_URL_RE}\\)`, // 3、4：链接
+    `<((?:https?:\\/\\/|mailto:)[^>\\s]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,})>`, // 5：自动链接
+    `~~(.+?)~~`, // 6：删除线
+    `\`([^\\\`]+)\``, // 7：代码
+    `\\*\\*(.+?)\\*\\*`, // 8：星号粗体
+    `(?<!\\w)__(.+?)__(?!\\w)`, // 9：下划线粗体
+    `\\*(.+?)\\*`, // 10：星号斜体
+    `(?<!\\w)_(.+?)_(?!\\w)`, // 11：下划线斜体
+    `==(.+?)==`, // 12：高亮
+    `\\[\\^([^\\]]+)\\]`, // 13：脚注引用
+    `\\^([^^\\s][^^]*?)\\^`, // 14：上标
+    `~([A-Za-z0-9]{1,8})~`, // 15：下标
+    `(https?:\\/\\/[^\\s<]+)`, // 16：裸 URL；单独包装以拥有自己的捕获组，
+    // 否则下方数学片段会落入 m[16]，MdInline 分发器会将其当作裸 URL 并渲染为自动链接。
+    `(?<!\\$)\\$([^\\s$](?:[^$\\n]*?[^\\s$])?)\\$(?!\\$)`, // 17：行内数学 $...$
+    `\\\\\\(([^\\n]+?)\\\\\\)` // 18：行内数学 \(...\)
   ].join('|'),
   'g'
 )
@@ -192,9 +192,9 @@ export const stripInlineMarkup = (v: string) =>
     .replace(/\\\(([^\n]+?)\\\)/g, '$1')
 
 const renderTable = (k: number, rows: string[][], t: Theme) => {
-// 列宽按显示单元格而非 UTF-16 代码单元计算。中日韩字形和多数表情符号渲染为两个单元格，
-// 但 `String#length` 只计为一个，会使中日韩表格逐行错位。`stringWidth` 使用
-// Bun.stringWidth 快速路径和感知东亚字符宽度的回退，并在 @hermes/ink 中记忆化，返回真实单元格数。
+  // 列宽按显示单元格而非 UTF-16 代码单元计算。中日韩字形和多数表情符号渲染为两个单元格，
+  // 但 `String#length` 只计为一个，会使中日韩表格逐行错位。`stringWidth` 使用
+  // Bun.stringWidth 快速路径和感知东亚字符宽度的回退，并在 @hermes/ink 中记忆化，返回真实单元格数。
   const cellWidth = (raw: string) => stringWidth(stripInlineMarkup(raw))
 
   const widths = rows[0]!.map((_, ci) => Math.max(...rows.map(r => cellWidth(r[ci] ?? ''))))
@@ -258,17 +258,17 @@ function MdInline({ t, text }: { t: Theme; text: string }) {
         </Text>
       )
     } else if (m[7]) {
-  // 代码是唯一不递归的包装；行内 `code` 按定义应原样显示。让 MdInline 再处理会破坏正则示例和
-  // Shell 片段。
+      // 代码是唯一不递归的包装；行内 `code` 按定义应原样显示。让 MdInline 再处理会破坏正则示例和
+      // Shell 片段。
       parts.push(
         <Text color={t.color.accent} dimColor key={parts.length}>
           {m[7]}
         </Text>
       )
     } else if (m[8] ?? m[9]) {
-  // 递归粗体、斜体、删除线和高亮，使 `**bolded statement with $\mathbb{Z}$ math**` 内嵌的
-  // `$...$` 数学及其他行内令牌真正渲染。否则内部内容会原样放入单个 `<Text bold>`，
-  // 数学渲染器永远看不到它。
+      // 递归粗体、斜体、删除线和高亮，使 `**bolded statement with $\mathbb{Z}$ math**` 内嵌的
+      // `$...$` 数学及其他行内令牌真正渲染。否则内部内容会原样放入单个 `<Text bold>`，
+      // 数学渲染器永远看不到它。
       parts.push(
         <Text bold key={parts.length}>
           <MdInline t={t} text={m[8] ?? m[9]!} />
@@ -315,10 +315,10 @@ function MdInline({ t, text }: { t: Theme; text: string }) {
         parts.push(<Text key={parts.length}>{m[16].slice(url.length)}</Text>)
       }
     } else if (m[17] ?? m[18]) {
-  // 行内数学通过 `texToUnicode` 处理希腊字母、ℕℤℚℝ、运算符、上下标和分数，并以斜体强调色
-  // 渲染。斜体用于消除歧义；链接使用强调色加下划线，若无斜体，读者无法区分数学
-  // `\mathbb{R}` 和超链接词。`texToUnicode` 无法识别的内容原样保留，使陌生命令显示为原始
-  // LaTeX 而不是消失。
+      // 行内数学通过 `texToUnicode` 处理希腊字母、ℕℤℚℝ、运算符、上下标和分数，并以斜体强调色
+      // 渲染。斜体用于消除歧义；链接使用强调色加下划线，若无斜体，读者无法区分数学
+      // `\mathbb{R}` 和超链接词。`texToUnicode` 无法识别的内容原样保留，使陌生命令显示为原始
+      // LaTeX 而不是消失。
       parts.push(
         <Text color={t.color.accent} italic key={parts.length}>
           {renderMath(texToUnicode(m[17] ?? m[18]!))}
@@ -528,8 +528,8 @@ function MdImpl({ compact, t, text }: MdProps) {
         const headRest = mathOpen[2] ?? ''
         const block: string[] = []
 
-      // 单行块：`$$x + y = z$$` 或 `\[x\]`。捕获内部内容并立即输出块。否则关闭扫描循环会
-      // 跳过第 `i` 行，把下一个起始符当成当前关闭符，吞掉中间所有段落。
+        // 单行块：`$$x + y = z$$` 或 `\[x\]`。捕获内部内容并立即输出块。否则关闭扫描循环会
+        // 跳过第 `i` 行，把下一个起始符当成当前关闭符，吞掉中间所有段落。
         const sameLineClose = headRest.match(closeRe)
 
         if (sameLineClose) {
@@ -546,8 +546,8 @@ function MdImpl({ compact, t, text }: MdProps) {
           continue
         }
 
-      // 多行块：提交前向前扫描真实关闭符。若文档余下部分不存在关闭符，则把当前行渲染为段落，
-      // 而不是吞掉后续全部内容。
+        // 多行块：提交前向前扫描真实关闭符。若文档余下部分不存在关闭符，则把当前行渲染为段落，
+        // 而不是吞掉后续全部内容。
         let closeIdx = -1
 
         for (let j = i + 1; j < lines.length; j++) {

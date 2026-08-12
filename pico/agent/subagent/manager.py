@@ -178,7 +178,7 @@ class SubagentManager:
         executor: Any,
     ) -> SubagentOutcome:
         try:
-                # 构建子 Agent 工具，不包含 message 和 spawn
+            # 构建子 Agent 工具，不包含 message 和 spawn
             tools = ToolRegistry()
             allowed_dir = self.workspace if self.restrict_to_workspace else None
             tools.register(ReadFileTool(workspace=self.workspace, allowed_dir=allowed_dir))
@@ -203,7 +203,7 @@ class SubagentManager:
                 {"role": "user", "content": task},
             ]
 
-                # 在有限迭代次数内运行 Agent Loop
+            # 在有限迭代次数内运行 Agent Loop
             max_iterations = 15
             iteration = 0
             final_result: str | None = None

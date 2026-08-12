@@ -22,7 +22,6 @@ if TYPE_CHECKING:
     from pico.providers.base import LLMProvider
 
 
-
 # 第 1 步：请求分流，判断是否需要澄清
 _CLASSIFY_PROMPT = """\
 Classify whether this user request ABSOLUTELY CANNOT be answered without \
@@ -121,8 +120,6 @@ Legacy format (flat list of strings with a `section` field) is still accepted
 for backwards compatibility — category defaults to "preference" in that case."""
 
 
-
-
 class Personalizer:
     """Implements the 4-step PAHF-inspired personalization flow.
 
@@ -134,7 +131,6 @@ class Personalizer:
         self.memory = memory
         self.provider = provider
         self.model = model
-
 
     @trace.instrument("personalize.classify", kind="memory", extract=semconv.personalize)
     async def classify(self, message: str, history: list[dict] | None = None) -> dict:
@@ -175,7 +171,6 @@ class Personalizer:
             logger.exception("Personalizer.classify failed, skipping clarification")
             return {"needs_clarification": False, "domain": ""}
 
-
     @trace.instrument("personalize.question", kind="memory", extract=semconv.personalize)
     async def generate_question(self, message: str, domain: str) -> str:
         """Generate a single focused clarifying question for the given request.
@@ -205,7 +200,6 @@ class Personalizer:
         except Exception:
             logger.exception("Personalizer.generate_question failed, skipping clarification")
             return ""
-
 
     @trace.instrument("personalize.extract", kind="memory", extract=semconv.personalize)
     async def extract_and_store_preference(self, original_message: str, question: str, answer: str) -> bool:
@@ -246,7 +240,6 @@ class Personalizer:
         except Exception:
             logger.exception("Personalizer.extract_and_store_preference failed")
             return False
-
 
     @trace.instrument("personalize.postlearn", kind="memory", extract=semconv.personalize)
     async def post_learn(self, message: str, response_summary: str) -> bool:
@@ -333,7 +326,6 @@ class Personalizer:
                 continue
             grouped.setdefault(section, []).append(text)
         return grouped
-
 
     @staticmethod
     def _format_history(history: list[dict], max_messages: int = 4) -> str:

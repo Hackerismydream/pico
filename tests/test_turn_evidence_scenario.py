@@ -67,7 +67,6 @@ def evidence_root(tmp_path, monkeypatch) -> Path:
     monkeypatch.setattr(delivery_mod, "_RETRY_BASE_DELAY", 0)
     _spans._store = None
 
-
     (root.parent / MANIFEST_FILENAME).write_text(
         json.dumps(
             {
@@ -236,8 +235,6 @@ async def test_turn_evidence_scenario(evidence_root: Path) -> None:
         "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in notices),
         encoding="utf-8",
     )
-
-
 
     assert (evidence_root / SPANS_RELPATH).exists()
     assert list((evidence_root / TELEMETRY_DIRNAME).glob("usage-*.jsonl"))

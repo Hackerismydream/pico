@@ -28,7 +28,6 @@ from pico.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 # ---------------------------------------------------------------------------
 
 
-
 class TestForesightBulletFormat:
     def test_renders_all_fields_inline(self):
         s = _format_foresight_bullet(
@@ -73,7 +72,6 @@ class TestForesightBulletFormat:
 
 
 # ---------------------------------------------------------------------------
-
 
 
 @pytest.fixture
@@ -212,12 +210,7 @@ class TestSpliceAtEndHelper:
         assert out.index("## Projects") < out.index("## Foresight")
 
     def test_moves_section_to_end_when_already_present_in_middle(self):
-        content = (
-            "# Title\n\n"
-            "## Projects\n\n- p\n\n"
-            "## Foresight\n\n- f-old\n\n"
-            "## Habits\n\n- h\n"
-        )
+        content = "# Title\n\n## Projects\n\n- p\n\n## Foresight\n\n- f-old\n\n## Habits\n\n- h\n"
         out = _splice_h2_section_at_end(content, "## Foresight", "- f-new")
 
         assert out.index("## Habits") < out.index("## Foresight")
@@ -230,11 +223,7 @@ class TestSpliceAtEndHelper:
         assert "- h\n" in out
 
     def test_keeps_at_end_when_already_at_end(self):
-        content = (
-            "# Title\n\n"
-            "## Projects\n\n- p\n\n"
-            "## Foresight\n\n- f-old\n"
-        )
+        content = "# Title\n\n## Projects\n\n- p\n\n## Foresight\n\n- f-old\n"
         out = _splice_h2_section_at_end(content, "## Foresight", "- f-new")
         assert out.index("## Projects") < out.index("## Foresight")
         assert "f-old" not in out
@@ -268,7 +257,6 @@ def test_foresight_section_lands_at_end_after_refresh_runs(tmp_path: Path):
     to the bottom."""
     store = MemoryStore(tmp_path, now_fn=lambda: datetime(2026, 5, 7, 17, 32))
 
-
     store.append_foresight([_FS_A])
 
     from pico.memory_engine.consolidate.consolidator import _splice_h2_section
@@ -282,7 +270,6 @@ def test_foresight_section_lands_at_end_after_refresh_runs(tmp_path: Path):
 
     pre = store.read_long_term()
     assert pre.index("## Foresight") < pre.index("## Projects")
-
 
     store.append_foresight([_FS_B])
     post = store.read_long_term()

@@ -75,22 +75,22 @@ def find_node() -> Tuple[Optional[str], Optional[Tuple[int, int, int]]]:
     if env_node := os.environ.get("PICO_NODE"):
         candidates.append(env_node)
     else:
-    # 优先级 2：当前虚拟环境
+        # 优先级 2：当前虚拟环境
         if venv := os.environ.get("VIRTUAL_ENV"):
             if sys.platform == "win32":
                 candidates.append(str(Path(venv) / "Scripts" / "node.exe"))
             else:
                 candidates.append(str(Path(venv) / "bin" / "node"))
 
-    # 优先级 3：PATH
+        # 优先级 3：PATH
         if path_node := shutil.which("node"):
             candidates.append(path_node)
 
-    # 优先级 4：一行安装器安装到 ~/.pico/runtime/ 的 Pico 私有运行时。这是零配置回退，
-    # 即使用户没有系统 Node，安装器在此配置私有 Node 后仍可正常运行 `pico`。使用 glob
-    # 以兼容带版本号的目录名。磁盘布局因操作系统而异：POSIX 压缩包把二进制放在 bin/
-    # 下（node-v22.x.y-darwin-arm64/bin/node），Windows zip 则把 node.exe 放在顶层
-    # （node-v22.x.y-win-x64/node.exe）；install.ps1 配置的是后者。
+        # 优先级 4：一行安装器安装到 ~/.pico/runtime/ 的 Pico 私有运行时。这是零配置回退，
+        # 即使用户没有系统 Node，安装器在此配置私有 Node 后仍可正常运行 `pico`。使用 glob
+        # 以兼容带版本号的目录名。磁盘布局因操作系统而异：POSIX 压缩包把二进制放在 bin/
+        # 下（node-v22.x.y-darwin-arm64/bin/node），Windows zip 则把 node.exe 放在顶层
+        # （node-v22.x.y-win-x64/node.exe）；install.ps1 配置的是后者。
         runtime_root = get_product_home() / "runtime"
         if runtime_root.is_dir():
             if sys.platform == "win32":
@@ -157,7 +157,7 @@ def run_subprocess(
     try:
         return proc.wait()
     except KeyboardInterrupt:
-    # 上方已转发信号；短暂等待优雅退出。
+        # 上方已转发信号；短暂等待优雅退出。
         try:
             return proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
@@ -298,8 +298,8 @@ def _build_tui_runtime():
         if isinstance(registered_cron_tool, CronTool):
             registered_cron_tool.set_context("tui", "default")
 
-    # spine 调度器就绪后，_run_rpc_server_until_done 才连接 cron.on_job：提醒以 CRON
-    # 轮次通过调度器运行，其回复再扇出为 cron.delivered 事件。
+        # spine 调度器就绪后，_run_rpc_server_until_done 才连接 cron.on_job：提醒以 CRON
+        # 轮次通过调度器运行，其回复再扇出为 cron.delivered 事件。
 
         return runtime
     except PluginNotFoundError as e:
@@ -562,7 +562,7 @@ async def _run_rpc_server_until_done(
         await runtime_host.close()
 
     try:
-    # 包装 system.hello 以锁存握手事件；下方总入口注册保留的会话 RPC 接口。
+        # 包装 system.hello 以锁存握手事件；下方总入口注册保留的会话 RPC 接口。
         dispatcher.register("system.hello", hello_then_signal)
         dispatcher.register("system.ping", system_ping)
         dispatcher.register("system.version", system_version)
@@ -587,7 +587,7 @@ async def _run_rpc_server_until_done(
             runtime_services_task = asyncio.create_task(_start_runtime_services())
 
             try:
-        # 等待握手完成、超时或子进程退出，任一发生即结束等待。
+                # 等待握手完成、超时或子进程退出，任一发生即结束等待。
                 done, pending = await asyncio.wait(
                     {
                         asyncio.create_task(handshake_done.wait()),
@@ -598,7 +598,7 @@ async def _run_rpc_server_until_done(
                 )
                 for t in pending:
                     t.cancel()
-        # 等待已取消任务收尾，避免产生警告。
+                # 等待已取消任务收尾，避免产生警告。
                 for t in pending:
                     try:
                         await t
@@ -607,7 +607,7 @@ async def _run_rpc_server_until_done(
 
                 if not handshake_done.is_set():
                     return False
-        # 持续服务直到子进程退出。
+                # 持续服务直到子进程退出。
                 await proc_done.wait()
                 return True
             finally:
@@ -889,9 +889,9 @@ def launch_tui(
     # --check / --print-colors / --preview-colors 都是不使用 RPC、仅使用标准输入输出的启动方式。
     no_rpc = check or print_colors or preview_colors
 
-        # 将父进程 loguru 重定向到文件，避免 RPC 服务器日志破坏 Ink 协调器。无 RPC 路径会在
-        # Ink 渲染前退出，因此跳过此操作。文件在此启动时创建；正常运行/退出只写入 INFO
-        # 生命周期记录，所以仅在子进程异常退出时向用户显示路径（见下方）。
+    # 将父进程 loguru 重定向到文件，避免 RPC 服务器日志破坏 Ink 协调器。无 RPC 路径会在
+    # Ink 渲染前退出，因此跳过此操作。文件在此启动时创建；正常运行/退出只写入 INFO
+    # 生命周期记录，所以仅在子进程异常退出时向用户显示路径（见下方）。
     if not no_rpc:
         _suppress_noisy_watchers()
         log_path = redirect_loguru_to_file(

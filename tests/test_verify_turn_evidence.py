@@ -119,9 +119,6 @@ def _detector_names(check):
     return sorted(f["detector"] for f in check["findings"])
 
 
-
-
-
 def test_a_healthy_scenario_passes_every_detector():
     for name, check in _detectors().items():
         assert check["status"] == "passed", (name, check["findings"])
@@ -134,13 +131,11 @@ def test_an_empty_artifact_set_is_inconclusive_not_passed():
     assert checks["usage_join"]["status"] == "inconclusive"
     assert checks["delivery_join"]["status"] == "inconclusive"
 
-
     assert checks["terminal_states"]["status"] == "inconclusive"
     assert checks["scenario_deliveries"]["status"] == "inconclusive"
 
 
 def test_a_contradiction_outranks_an_empty_unit_count():
-
 
     root_without_outcome = [
         _span("spine.turn", "t-x-root", None, trace_id="t-x", attributes={"spine.conversation_id": "scenario:x"})
@@ -154,9 +149,6 @@ def test_a_contradiction_outranks_an_empty_unit_count():
     assert delivery["observed"] == 0
     assert delivery["status"] == "failed"
     assert _detector_names(delivery) == ["notice_without_dropped_delivery"]
-
-
-
 
 
 def test_a_trace_without_a_spine_root_is_detected():
@@ -200,9 +192,6 @@ def test_a_parented_spine_root_is_detected():
     assert "spine_root_not_a_root" in _detector_names(check)
 
 
-
-
-
 def test_a_usage_row_without_a_trace_id_is_detected():
     check = _detectors(usage=[{"trace_id": None, "turn_span_id": None}])["usage_join"]
     assert check["status"] == "failed"
@@ -217,9 +206,6 @@ def test_a_usage_row_pointing_at_an_unknown_trace_is_detected():
 def test_a_usage_row_pointing_at_a_foreign_span_is_detected():
     check = _detectors(usage=[{"trace_id": "t-ok", "turn_span_id": "t-tool-session"}])["usage_join"]
     assert _detector_names(check) == ["usage_row_unjoinable_span"]
-
-
-
 
 
 def test_a_delivery_span_on_an_unknown_trace_is_detected():
@@ -269,9 +255,6 @@ def test_a_no_outlet_delivery_needs_no_turn():
     ]
     check = _detectors(spans=spans)["delivery_join"]
     assert check["status"] == "passed"
-
-
-
 
 
 def test_a_turn_with_no_terminal_state_is_detected():
@@ -338,9 +321,6 @@ def test_channel_outcome_vocabulary_matches_the_runtime():
 
     assert set(CHANNEL_OUTCOMES) == set(semconv.CHANNEL_OUTCOMES)
     assert set(SPINE_OUTCOMES) == set(semconv.SPINE_OUTCOMES)
-
-
-
 
 
 def test_dedupe_keeps_the_last_write_of_a_checkpointed_span():

@@ -102,7 +102,6 @@ class TestRrfMergeAcrossSources:
         )
         names = [h.name for h in out]
 
-
         assert names.index("gamma") < names.index("delta")
 
 
@@ -217,7 +216,6 @@ class TestSkillForgeRouterSelect:
         t0 = time.monotonic()
         out = await router.select("q", history=[], k=5)
         elapsed = time.monotonic() - t0
-
 
         assert elapsed < 0.15
         assert len(out) == 2

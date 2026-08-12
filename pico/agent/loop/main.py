@@ -476,9 +476,9 @@ class AgentLoop:
         # 通过 set_broker 延迟绑定。
         self.tools.register(AskUserTool())
         if self.cron_service:
-        # 延迟导入：CronTool 所在模块会导入 pico.agent.tools.base，触发 pico.agent.__init__，
-        # 后者又导入当前循环模块。在函数作用域导入可打破循环，因为执行
-        # _register_default_tools 时 loop.py 已完全加载。
+            # 延迟导入：CronTool 所在模块会导入 pico.agent.tools.base，触发 pico.agent.__init__，
+            # 后者又导入当前循环模块。在函数作用域导入可打破循环，因为执行
+            # _register_default_tools 时 loop.py 已完全加载。
             from pico.proactive_engine.schedulers.cron.tool import CronTool
 
             self.tools.register(CronTool(self.cron_service))
@@ -508,8 +508,8 @@ class AgentLoop:
             )
             self.tools.register(ToolSearchTool(self.tool_search_controller))
             self.tools.register(ToolCallTool(self.tool_search_controller))
-        # ``first=True`` 表示在 CacheOptimizer 用 ``cache_control`` 标记最后一个工具前先过滤列表；
-        # 否则已标记的工具可能被过滤，导致缓存断点丢失。
+            # ``first=True`` 表示在 CacheOptimizer 用 ``cache_control`` 标记最后一个工具前先过滤列表；
+            # 否则已标记的工具可能被过滤，导致缓存断点丢失。
             self.strategies.register(
                 ToolSearchStrategy(
                     self.tool_search_controller,
@@ -643,7 +643,7 @@ class AgentLoop:
             return
         last = messages[-1]
         if last.get("role") != "user":
-        # 最后一条消息不是用户 Turn 时，保持恢复待处理，使下次以用户消息结尾的组装注入它。
+            # 最后一条消息不是用户 Turn 时，保持恢复待处理，使下次以用户消息结尾的组装注入它。
             return
         content = last.get("content")
         files = recovery.get("files") or []
@@ -1169,14 +1169,14 @@ class AgentLoop:
                 },
                 usage_snapshot,
             )
-        # tui-chat L2-A 线路：流式调用方（turn.* 处理器）可能需要用最后一次迭代用量
-        # 按 CAP-CHAT-1 形状填充 `message.complete.payload.usage`。应使用线上合约 UsageSnapshot
-        # 的 prompt_tokens、completion_tokens 和 total_tokens，而非带模型、缓存和成本字段的
-        # Agent 内部快照。
+            # tui-chat L2-A 线路：流式调用方（turn.* 处理器）可能需要用最后一次迭代用量
+            # 按 CAP-CHAT-1 形状填充 `message.complete.payload.usage`。应使用线上合约 UsageSnapshot
+            # 的 prompt_tokens、completion_tokens 和 total_tokens，而非带模型、缓存和成本字段的
+            # Agent 内部快照。
             if usage_sink is not None and response.usage:
                 prompt_tokens = int(response.usage.get("prompt_tokens", 0) or 0)
                 completion_tokens = int(response.usage.get("completion_tokens", 0) or 0)
-        # LiteLLM 信息滞后时，从模型提供商表获取真实窗口；否则使用配置默认值。
+                # LiteLLM 信息滞后时，从模型提供商表获取真实窗口；否则使用配置默认值。
                 context_max = (
                     resolve_context_window(
                         call_record.accounting_model,
@@ -1197,9 +1197,9 @@ class AgentLoop:
                 usage_sink["context_used"] = context_used
                 usage_sink["context_percent"] = round(100 * context_used / context_max) if context_max else 0
 
-                    # 上下文窗口溢出恢复：结构化分类器标记 should_compress。更小窗口无济于事，
-                    # 但省略大量累积工具输出有效。就地收缩并重试当前迭代，而不暴露为致命错误；
-                    # 重试次数受限。
+                # 上下文窗口溢出恢复：结构化分类器标记 should_compress。更小窗口无济于事，
+                # 但省略大量累积工具输出有效。就地收缩并重试当前迭代，而不暴露为致命错误；
+                # 重试次数受限。
             cls_ = response.error_classification
             if (
                 response.finish_reason == "error"
@@ -1314,7 +1314,7 @@ class AgentLoop:
                 for tool_call, execution in zip(response.tool_calls, executions, strict=True):
                     result = execution.result
                     messages = self.context.add_tool_result(messages, tool_call.id, tool_call.name, result)
-                # 跟踪同一工具的连续确定性失败；排除可通过重试清除的短暂错误。
+                    # 跟踪同一工具的连续确定性失败；排除可通过重试清除的短暂错误。
                     if _is_hard_tool_failure(result):
                         if tool_call.name == loop_fail_tool:
                             loop_fail_streak += 1
@@ -1341,7 +1341,7 @@ class AgentLoop:
                 prev_had_tool_calls = True
             else:
                 clean = self._strip_think(response.content)
-            # 不将错误响应持久化到会话历史，因为它们可能污染上下文，导致永久 400 循环。
+                # 不将错误响应持久化到会话历史，因为它们可能污染上下文，导致永久 400 循环。
                 if response.finish_reason == "error":
                     logger.error("LLM returned error: {}", (clean or "")[:200])
                     final_content = clean or "Sorry, I encountered an error calling the AI model."
@@ -1353,9 +1353,9 @@ class AgentLoop:
                     error_category = classification.category if classification is not None else "unknown"
                     break
 
-            # 空响应恢复：如果不处理，空的 Assistant Turn 会在此退出，暴露“无回复可给”的无效结果。
-            # 放弃前先尝试恢复。合成脚手架用 ``_recovery_synthetic`` 标记，并在持久化和提取前移除，
-            # 避免污染未来上下文。
+                # 空响应恢复：如果不处理，空的 Assistant Turn 会在此退出，暴露“无回复可给”的无效结果。
+                # 放弃前先尝试恢复。合成脚手架用 ``_recovery_synthetic`` 标记，并在持久化和提取前移除，
+                # 避免污染未来上下文。
                 action = classify_empty_response(
                     response,
                     clean,
@@ -1372,8 +1372,8 @@ class AgentLoop:
                         prefill_retries,
                         self._recovery_limits.thinking_prefill_max_retries,
                     )
-                # 将模型自身未删减的推理回填，使其继续生成正文。消息标记为合成，
-                # 在持久化和提取前丢弃；提供商的键白名单会从线上请求中移除推理字段。
+                    # 将模型自身未删减的推理回填，使其继续生成正文。消息标记为合成，
+                    # 在持久化和提取前丢弃；提供商的键白名单会从线上请求中移除推理字段。
                     messages = self.context.add_assistant_message(
                         messages,
                         response.content,
@@ -1386,8 +1386,8 @@ class AgentLoop:
                 if action is RecoveryAction.NUDGE:
                     post_tool_nudges += 1
                     logger.warning("empty-recovery: post-tool empty nudge")
-                # 空 Assistant 消息必须位于工具结果和提示之间，因为多数 API 会对裸的
-                # tool → user 序列返回 400。
+                    # 空 Assistant 消息必须位于工具结果和提示之间，因为多数 API 会对裸的
+                    # tool → user 序列返回 400。
                     messages = self.context.add_assistant_message(messages, "(empty)")
                     messages[-1]["_recovery_synthetic"] = True
                     messages.append({"role": "user", "content": POST_TOOL_NUDGE, "_recovery_synthetic": True})
@@ -1446,8 +1446,8 @@ class AgentLoop:
             error_category=error_category,
         )
         if self._checkpoint is not None:
-        # 每轮快照：一次提交覆盖本轮全部编辑，正常退出和中断退出均如此
-        # （与 Claude Code/Cursor 的粒度一致）。这里只尽力而为，commit_turn 从不抛错。
+            # 每轮快照：一次提交覆盖本轮全部编辑，正常退出和中断退出均如此
+            # （与 Claude Code/Cursor 的粒度一致）。这里只尽力而为，commit_turn 从不抛错。
             label = f"turn {session_key or 'anon'} [{status}]"
             cid, changed = await self._checkpoint.commit_turn(label)
             outcome.checkpoint_id = cid
@@ -1655,14 +1655,14 @@ class AgentLoop:
                             session.key,
                         )
                         return (_question, [])
-                            # 问题生成失败时清除待处理状态，并按正常流程继续。
+                        # 问题生成失败时清除待处理状态，并按正常流程继续。
                     session.pending_clarification = None
 
                 else:
                     # 用户正在回答上一个问题；提取偏好并恢复原任务。
                     session.pending_clarification = None
 
-                        # 后台提取偏好并写入 MEMORY.md，不阻塞响应。
+                    # 后台提取偏好并写入 MEMORY.md，不阻塞响应。
                     async def _extract():
                         await _personalizer.extract_and_store_preference(
                             original_message=_pending["original_message"],
@@ -1864,7 +1864,7 @@ class AgentLoop:
                 entry["content"] = content[: self._TOOL_RESULT_MAX_CHARS] + "\n... (truncated)"
             elif role == "user":
                 if isinstance(content, str) and content.startswith(ContextBuilder._RUNTIME_CONTEXT_TAG):
-                # 去除运行时上下文前缀，只保留用户文本。
+                    # 去除运行时上下文前缀，只保留用户文本。
                     parts = content.split("\n\n", 1)
                     if len(parts) > 1 and parts[1].strip():
                         entry["content"] = parts[1]
@@ -2028,9 +2028,9 @@ class AgentLoop:
         if isinstance(message_tool, MessageTool):
 
             async def _route_to_stream(content: str, media: list[str]) -> None:
-        # message 工具的回复可以附带媒体；需独立发出以免丢失（工具回复会让
-        # _process_message 返回 None，下方边界看不到它）。内容与主回复遵循同一流式开关：
-        # 流式时使用 StreamDelta，否则使用单个 Text；不然非流式出口会吞掉增量。
+                # message 工具的回复可以附带媒体；需独立发出以免丢失（工具回复会让
+                # _process_message 返回 None，下方边界看不到它）。内容与主回复遵循同一流式开关：
+                # 流式时使用 StreamDelta，否则使用单个 Text；不然非流式出口会吞掉增量。
                 if media:
                     await _emit_media(media)
                 if text_sink is not None and content:

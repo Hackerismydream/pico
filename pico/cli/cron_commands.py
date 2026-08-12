@@ -540,7 +540,7 @@ def cron_run(
             f"{job.id[:6]}` for current state.[/yellow]"
         )
     else:
-    # 收尾消息反映实际发生的情况：投递被替换为桩，但状态已向前推进。
+        # 收尾消息反映实际发生的情况：投递被替换为桩，但状态已向前推进。
         if will_delete:
             tail = "Job has been REMOVED from the store."
         elif will_disable:
@@ -645,7 +645,7 @@ def cron_add(
         except Exception as exc:
             console.print(f"[red]Invalid cron expression {cron!r}: {exc}[/red]")
             raise typer.Exit(code=2)
-    # 若提供时区则进行校验。
+        # 若提供时区则进行校验。
         if tz:
             try:
                 from zoneinfo import ZoneInfo

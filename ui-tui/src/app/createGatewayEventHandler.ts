@@ -216,10 +216,7 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
 
         if (turnController.lastStatusNote !== p.text) {
           turnController.lastStatusNote = p.text
-          turnController.pushActivity(
-            p.text,
-            p.kind === 'error' ? 'error' : p.kind === 'warn' ? 'warn' : 'info'
-          )
+          turnController.pushActivity(p.text, p.kind === 'error' ? 'error' : p.kind === 'warn' ? 'warn' : 'info')
         }
 
         restoreStatusAfter(4000)

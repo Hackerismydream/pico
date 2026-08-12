@@ -131,7 +131,6 @@ class TestInfraRerunLadder:
 
     def test_keeps_measurement_with_fewest_infra(self):
 
-
         first = _te("t1", 1, 3, infra=1)
         fake = _ScriptedEval(
             [

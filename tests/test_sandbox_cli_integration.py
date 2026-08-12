@@ -25,9 +25,6 @@ from pico.sandbox.debug_server import SandboxDebugServer
 runner = CliRunner()
 
 
-
-
-
 @pytest.fixture
 def sock_dir():
     d = tempfile.mkdtemp(prefix="ec_cli_int_", dir="/tmp")
@@ -131,9 +128,6 @@ def _mock_runtime(boxes=(), box=None, execution=None):
     return rt
 
 
-
-
-
 class TestListIntegration:
     async def test_running_vm_appears_in_table(self, server):
         path, _ = server
@@ -198,9 +192,6 @@ class TestListIntegration:
         assert "1024" in result.output
 
 
-
-
-
 class TestExecIntegration:
     async def test_stdout_appears_in_output(self, server):
         path, _ = server
@@ -254,9 +245,6 @@ class TestExecIntegration:
             result = await _invoke(["exec", "--vm", "nope", "ls"], path)
         assert result.exit_code == 1
         assert "no vm found" in result.output.lower()
-
-
-
 
 
 class TestShellIntegration:

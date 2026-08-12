@@ -52,7 +52,7 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """List installed plugins + the active memory backend."""
-    # 延迟导入，避免每次调用 ``pico --help`` 都承担插件发现成本。
+        # 延迟导入，避免每次调用 ``pico --help`` 都承担插件发现成本。
         from pico.cli._plugin_stack import plugin_discovery_sources
         from pico.plugin import (
             PluginDiscovery,
@@ -61,8 +61,8 @@ def register(app: typer.Typer) -> None:
 
         ec_config = _load_ec_config(config_path)
 
-    # 将发现与激活分开，使表格不仅显示活跃集合，也能显示被遮蔽（低优先级）和已禁用插件。
-    # 扫描来源与实际启动时的四个来源相同。
+        # 将发现与激活分开，使表格不仅显示活跃集合，也能显示被遮蔽（低优先级）和已禁用插件。
+        # 扫描来源与实际启动时的四个来源相同。
         discovery = PluginDiscovery(**plugin_discovery_sources())
         discovered = discovery.discover()
 

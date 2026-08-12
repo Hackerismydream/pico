@@ -89,7 +89,6 @@ async def test_marks_tools_and_system_for_cache_capable_model():
     tools = [_tool("a"), _tool("b")]
     out_m, out_t, _ = await opt.before_llm_call(msgs, tools, ANTHROPIC_MODEL)
 
-
     assert _has_cache_control(out_t[-1])
 
     assert not _has_cache_control(out_t[0])

@@ -13,7 +13,7 @@ from pico.product import get_product_home
 
 # Pico 扩展配置块键名的唯一事实来源。
 # _migrate_config（在基础 Config 校验前 pop）和 load_pico_config
-#（提取到 overrides）都引用这里。新增扩展块只需改这一处，避免重复。
+# （提取到 overrides）都引用这里。新增扩展块只需改这一处，避免重复。
 EXTENSION_KEYS = (
     "context",
     "callEfficiency",

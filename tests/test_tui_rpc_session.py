@@ -49,9 +49,6 @@ from pico.utils.atomic_io import StorageCorruptionError
 _SESSION_ID_RE = re.compile(r"^tui:\d{8}_\d{6}_[0-9a-f]{6}$")
 
 
-
-
-
 _SESSION_PANEL_REQUIRED_KEYS = {"model", "skills", "tools"}
 
 
@@ -413,7 +410,6 @@ async def test_session_resume_unknown_id_does_not_create_file(tmp_path: Path, mo
         await session_resume({"session_id": "tui:totally_unknown_id"})
 
     after = set(sessions_dir.rglob("*")) if sessions_dir.exists() else set()
-
 
     new_files = {p for p in after - before if p.is_file()}
     assert not new_files, f"resume of unknown id must not write files; got: {new_files}"
@@ -1731,9 +1727,6 @@ async def test_session_branch_empty_source_preserves_pending_images(
 
     assert result == {"session_id": None, "title": None}
     assert pending_images(source_key)
-
-
-
 
 
 async def test_session_export_writes_verified_portable_artifact(

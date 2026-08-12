@@ -399,12 +399,13 @@ def _drop_bullets_without_src(body: str) -> tuple[str, int]:
             dropped += 1
     return "\n".join(kept), dropped
 
-
     # 预见预测持久化到 user.md 的 ## Foresight 分节。条目使用单行格式，
     # 与用户资料条目使用的 [src:] 式证据链接相呼应：
-        #   - <预测>（生成时间 <gen_ts>，窗口 <range>，置信度 <level>，来源 episodes.md @ <ep_ts>）
+    #   - <预测>（生成时间 <gen_ts>，窗口 <range>，置信度 <level>，来源 episodes.md @ <ep_ts>）
     # ``from`` 是 annotate() 输出该预测时的墙上时间；``src`` 是触发它的事件时间戳，
     # 由 LLM 以 src_ts 提供。
+
+
 _FORESIGHT_HEADING = "## Foresight"
 _FORESIGHT_BULLET_RE = re.compile(
     r"^-\s+(?P<prediction>.+?)\s+"
@@ -423,7 +424,7 @@ def _format_foresight_bullet(entry: dict[str, Any], generation_ts: str) -> str:
     """
     pred = (entry.get("prediction") or "").strip() or "?"
     window = (entry.get("window") or "").strip() or "?"
-        # 强制限定为 {low|medium|high}，枚举外的值渲染为 '?'。
+    # 强制限定为 {low|medium|high}，枚举外的值渲染为 '?'。
     confidence = _normalize_confidence(entry.get("confidence") or "")
     src_ts = (entry.get("src_ts") or "").strip() or "?"
     return f"- {pred} (from {generation_ts}, window: {window}, confidence: {confidence}, src: episodes.md @ {src_ts})"
@@ -501,7 +502,7 @@ def _splice_h2_section_at_end(content: str, heading: str, new_body: str) -> str:
             break
 
     if h_idx is not None:
-    # 查找下一个 H2 边界或 EOF，以确定当前分节范围。
+        # 查找下一个 H2 边界或 EOF，以确定当前分节范围。
         next_h2 = None
         for i in range(h_idx + 1, len(lines)):
             if lines[i].startswith("## "):
@@ -810,6 +811,7 @@ class MemoryStore:
         self.write_long_term(new)
 
         # 感知分节的读取。
+
     _SECTION_READ_TOP_K = 2
     _NOTES_HEADING_PREFIX = "## Notes"
 
@@ -1028,9 +1030,9 @@ episode_summary:
                 line = _ensure_text(ep).strip()
                 if not line:
                     continue
-        # 在边界处丢弃只描述过程的事件。提示词声明 #question、#habit 和 #answer 不能单独存在，
-        # 但 LLM 仍有约 5% 的概率输出它们。放行会污染 refresh_section：标签热度触发刷新，
-        # 却没有内容标签作为锚点，最终让 LLM 向 ## Projects 或 ## Notes 写入自由形式的猜测。
+                # 在边界处丢弃只描述过程的事件。提示词声明 #question、#habit 和 #answer 不能单独存在，
+                # 但 LLM 仍有约 5% 的概率输出它们。放行会污染 refresh_section：标签热度触发刷新，
+                # 却没有内容标签作为锚点，最终让 LLM 向 ## Projects 或 ## Notes 写入自由形式的猜测。
                 if _is_process_only_episode(line):
                     n_dropped_process_only += 1
                     continue
@@ -1045,8 +1047,8 @@ episode_summary:
             if enable_foresight:
                 foresights = args.get("foresight_hint") or []
                 if foresights:
-            # 在内存锁保护下持久化到 user.md 的 ## Foresight 分节；在线程中执行，
-            # 避免异步事件循环被文件 I/O 阻塞。
+                    # 在内存锁保护下持久化到 user.md 的 ## Foresight 分节；在线程中执行，
+                    # 避免异步事件循环被文件 I/O 阻塞。
                     written = await asyncio.to_thread(
                         self.append_foresight,
                         foresights,
@@ -1070,7 +1072,7 @@ episode_summary:
             return False
 
     # -------------------------------------------------------------------
-        # 重量路径：由标签频率触发用户资料分节刷新。
+    # 重量路径：由标签频率触发用户资料分节刷新。
     # -------------------------------------------------------------------
 
     @property
@@ -1389,9 +1391,9 @@ section_body: full new content for that H2, every bullet ending with
                 )
                 return False
 
-                    # 丢弃缺少 ``[src: episodes.md @ ts]`` 证据链接的用户资料条目。跳过 ## Foresight：
-                    # 它由 append_foresight 自动管理，使用圆括号形式的 src，方括号正则无法匹配；
-                    # 如果对它应用该过滤器，会清空整个分节。
+                # 丢弃缺少 ``[src: episodes.md @ ts]`` 证据链接的用户资料条目。跳过 ## Foresight：
+                # 它由 append_foresight 自动管理，使用圆括号形式的 src，方括号正则无法匹配；
+                # 如果对它应用该过滤器，会清空整个分节。
             if heading != _FORESIGHT_HEADING:
                 body, n_src_dropped = _drop_bullets_without_src(body)
                 if n_src_dropped:
@@ -1449,8 +1451,8 @@ section_body: full new content for that H2, every bullet ending with
                 logger.info("refresh_section: concurrent modification detected; skipping write (will retry next round)")
                 return False
             new_content = _splice_h2_section(current, heading, new_body)
-                # 无论 refresh_section 将新分节插入何处，都将自动管理的 ## Foresight 保持在 user.md 底部。
-                # 该操作幂等；Foresight 不存在或已位于最后时不执行任何操作。
+            # 无论 refresh_section 将新分节插入何处，都将自动管理的 ## Foresight 保持在 user.md 底部。
+            # 该操作幂等；Foresight 不存在或已位于最后时不执行任何操作。
             new_content = _ensure_foresight_at_end(new_content)
             if new_content != current:
                 self.write_long_term(new_content)
@@ -1481,7 +1483,7 @@ section_body: full new content for that H2, every bullet ending with
                 self.write_tag_offsets(offsets)
                 refreshed += 1
             else:
-            # 失败时不推进偏移量，下一轮将重试。
+                # 失败时不推进偏移量，下一轮将重试。
                 logger.warning(
                     "maybe_refresh_hot_tags: tag {!r} refresh failed; offset not advanced",
                     tag,
@@ -1494,8 +1496,8 @@ class MemoryConsolidator:
 
     _MAX_CONSOLIDATION_ROUNDS = 5
 
-        # 自上次刷新后，某标签累积足够多的新事件时，触发用户资料分节刷新。
-        # 低于阈值时事件仍会累积，但 user.md 保持不变。
+    # 自上次刷新后，某标签累积足够多的新事件时，触发用户资料分节刷新。
+    # 低于阈值时事件仍会累积，但 user.md 保持不变。
     _REFRESH_HOT_TAG_THRESHOLD = 5
 
     def __init__(
@@ -1669,7 +1671,7 @@ class MemoryConsolidator:
                 if estimated <= 0:
                     break
 
-        # 只要至少标注了一个块，就让活跃标签有机会刷新对应的用户资料分节。
-        # 无论触发多少轮标注，每次 ``maybe_consolidate_by_tokens`` 调用最多执行一次。
+            # 只要至少标注了一个块，就让活跃标签有机会刷新对应的用户资料分节。
+            # 无论触发多少轮标注，每次 ``maybe_consolidate_by_tokens`` 调用最多执行一次。
             if chunks_annotated:
                 await self.maybe_refresh_hot_tags()

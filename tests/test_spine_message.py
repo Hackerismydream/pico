@@ -12,7 +12,6 @@ def test_chat_type_is_closed_two_value_str_enum():
 
 def test_chat_type_str_renders_as_value():
 
-
     assert str(ChatType.DM) == "dm"
     assert str(ChatType.GROUP) == "group"
 
@@ -50,8 +49,6 @@ def test_source_extras_are_independent_per_instance():
 
 
 def test_source_is_intentionally_not_hashable():
-
-
 
     s = Source(channel="cli", chat_id="c", sender_id="u", chat_type=ChatType.DM)
     with pytest.raises(TypeError):

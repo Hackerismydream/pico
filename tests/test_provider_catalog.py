@@ -49,9 +49,6 @@ def test_provider_names_are_unique() -> None:
     assert len(names) == len(set(names))
 
 
-
-
-
 _SEEDED_DIRECT_PROVIDERS = [
     "deepseek",
     "openai",
@@ -93,7 +90,6 @@ def _concrete_provider_subclasses() -> set[type]:
 
 
 def test_exactly_six_concrete_backend_classes() -> None:
-
 
     from pico.providers.azure_openai_provider import AzureOpenAIProvider
     from pico.providers.custom_provider import CustomProvider

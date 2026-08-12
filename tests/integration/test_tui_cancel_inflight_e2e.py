@@ -77,7 +77,6 @@ async def _wire_paired_socket() -> tuple[socket.socket, socket.socket, Path]:
     conn, _ = await loop.sock_accept(server_sock)
     conn.setblocking(False)
 
-
     server_sock_keep = server_sock
     return client, conn, tmp, server_sock_keep  # type: ignore[return-value]
 
@@ -162,16 +161,13 @@ async def test_turn2_streams_after_turn1_cancel_over_real_rpc() -> None:
         serve_task = asyncio.create_task(server.serve_forever())
         await server.started.wait()
 
-
         await _send(client, "turn.subscribe", {"session_key": SESSION_KEY}, 1)
         await asyncio.sleep(0.05)
-
 
         await _send(client, "turn.send", {"session_key": SESSION_KEY, "content": "hang"}, 2)
         await asyncio.sleep(0.08)
         await _send(client, "turn.cancel", {"session_key": SESSION_KEY}, 3)
         await asyncio.sleep(0.08)
-
 
         await _send(client, "turn.send", {"session_key": SESSION_KEY, "content": "second"}, 4)
 

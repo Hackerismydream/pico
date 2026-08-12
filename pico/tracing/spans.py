@@ -51,7 +51,7 @@ def build_span(
         "span.type": span_type,
         "framework": FRAMEWORK,
         # session.id + channel.id 是共享 viewer 的分组键，
-    # （audit.span.v1 公共属性）。将 session_key/channel 同步写入其中。
+        # （audit.span.v1 公共属性）。将 session_key/channel 同步写入其中。
         # 使 Pico trace 与其他来源一样按 conversation -> turn 分组。
         "session.id": session_key,
         "session.key": session_key,

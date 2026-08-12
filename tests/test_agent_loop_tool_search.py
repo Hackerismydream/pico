@@ -73,7 +73,6 @@ def test_enabled_registers_meta_tools(workspace) -> None:
 
 def test_strategy_registered_first(workspace) -> None:
 
-
     registry = StrategyRegistry([_MarkerStrategy()])
     loop = _make_loop(workspace, ToolSearchConfig(enabled=True), strategies=registry)
     names = [s.name for s in loop.strategies.strategies]
@@ -109,9 +108,6 @@ def test_default_registry_excludes_media_generation_tools(workspace) -> None:
 
 @pytest.mark.asyncio
 async def test_enabled_loop_keeps_interaction_primitives_visible(workspace) -> None:
-
-
-
 
     loop = _make_loop(workspace, ToolSearchConfig(enabled=True, compaction_threshold=5))
     assert loop.tools.has("ask_user") and loop.tools.has("spawn") and loop.tools.has("web_search")

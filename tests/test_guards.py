@@ -51,7 +51,6 @@ def test_episode_without_tags_kept():
 
 def test_unparseable_line_kept():
 
-
     assert _is_process_only_episode("just a stray string with #habit") is False
 
 
@@ -61,8 +60,6 @@ def test_empty_input_kept():
 
 def test_uppercase_tag_not_recognized_as_tag():
 
-
-
     line = "[2026-05-12 14:00] uppercase tag test #QUESTION"
     assert _is_process_only_episode(line) is False
 
@@ -70,9 +67,6 @@ def test_uppercase_tag_not_recognized_as_tag():
 def test_multiple_process_tags_only_still_rejected():
     line = "[2026-05-12 14:00] mixed process tags #question #habit"
     assert _is_process_only_episode(line) is True
-
-
-
 
 
 def test_confidence_low_valid():
@@ -135,9 +129,6 @@ def test_format_foresight_bullet_keeps_valid_confidence():
     assert "confidence: medium" in bullet
 
 
-
-
-
 def test_token_set_lowercases_and_drops_short_words():
     tokens = _foresight_token_set("User runs every Saturday morning")
 
@@ -155,7 +146,6 @@ def test_token_set_drops_framing_stopwords_and_s_stems():
     assert "daily" in tokens
     assert "medication" in tokens
 
-
     assert "reminder" in tokens
     assert "reminders" not in tokens
 
@@ -163,9 +153,6 @@ def test_token_set_drops_framing_stopwords_and_s_stems():
 def test_token_set_empty_for_pure_stopword_text():
     tokens = _foresight_token_set("user will continue tomorrow")
     assert tokens == frozenset()
-
-
-
 
 
 def test_semantic_dup_reworded_saturday_run():
@@ -176,17 +163,12 @@ def test_semantic_dup_reworded_saturday_run():
 
 def test_semantic_dup_caregiver_medication_cluster():
 
-
-
     new = "User will set daily medication reminders for mom (amlodipine, donepezil, metoprolol) at similar times"
     existing = ["Daily medication reminders for mom (amlodipine, donepezil, metoprolol) - recurring care routine"]
     assert _is_semantic_duplicate_foresight(new, existing) is True
 
 
 def test_semantic_dup_misses_heavy_morphology():
-
-
-
 
     new = "User will remind mom about daily medications"
     existing = ["Daily medication reminders for mom"]
@@ -218,9 +200,6 @@ def test_semantic_dup_blocks_within_batch():
     assert _is_semantic_duplicate_foresight(first, existing) is False
     existing.append(first)
     assert _is_semantic_duplicate_foresight(second, existing) is True
-
-
-
 
 
 def test_drop_keeps_bullet_with_src_link():
@@ -272,9 +251,6 @@ def test_drop_rejects_src_with_wrong_format():
     assert "bullet b" not in cleaned
     assert "bullet c" in cleaned
     assert n_dropped == 2
-
-
-
 
 
 def test_process_tags_constant():

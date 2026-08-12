@@ -471,10 +471,10 @@ export function useMainApp(gw: TuiRpcClient, rpcClient?: ChatStreamRpcClient) {
   const die = useCallback(() => {
     gw.kill()
     exit()
-  // Ink 的 exit() 调用 unmount() 重置终端模式，但不会调用 process.exit()。若不显式退出，
-  // 标准输入监听器会保持事件循环，Node 进程继续存活，entry.tsx 中发送最终
-  // resetTerminalModes() 的 process.on('exit') 处理器永不触发，使父 Shell 仍启用 kitty 键盘
-  // 协议、鼠标模式等。见问题 #19194。
+    // Ink 的 exit() 调用 unmount() 重置终端模式，但不会调用 process.exit()。若不显式退出，
+    // 标准输入监听器会保持事件循环，Node 进程继续存活，entry.tsx 中发送最终
+    // resetTerminalModes() 的 process.on('exit') 处理器永不触发，使父 Shell 仍启用 kitty 键盘
+    // 协议、鼠标模式等。见问题 #19194。
     process.exit(0)
   }, [exit, gw])
 

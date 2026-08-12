@@ -30,8 +30,6 @@ def test_enum_str_renders_as_value():
 
 def test_message_id_and_conversation_are_independent_axes():
 
-
-
     base = dict(origin=Origin.USER, source=_src(), text="x")
     a = TurnRequest(**base, message_id="557")
     b = TurnRequest(**base, message_id="558")
@@ -61,16 +59,12 @@ def test_turn_request_is_frozen():
 
 def test_turn_request_is_not_hashable_via_source_extras():
 
-
-
     r = TurnRequest(origin=Origin.USER, source=_src(), text="x")
     with pytest.raises(TypeError):
         hash(r)
 
 
 def test_turn_request_has_no_conversation_id_derivation():
-
-
 
     assert not hasattr(TurnRequest, "conversation_id")
     fields = {f.name for f in dataclasses.fields(TurnRequest)}

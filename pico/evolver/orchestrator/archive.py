@@ -116,7 +116,7 @@ class RecombinantCandidate:
     focused_task_ids: list[str] = field(default_factory=list)
     summary: str = ""
     deletions: list[str] = field(default_factory=list)
-                # 从精英字节继承：携带信标的机制重新叠加后仍保留门控 b 归因，因为代码字节完全相同。
+    # 从精英字节继承：携带信标的机制重新叠加后仍保留门控 b 归因，因为代码字节完全相同。
     has_beacon: bool = False
 
 

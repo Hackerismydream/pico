@@ -150,8 +150,8 @@ class PicoSession:
             sandbox_config=self.config.tools.sandbox,
             channels_config=self.config.channels,
             context_config=context_config,
-    # 基准是非交互式批量运行，因此禁用 Bug2 的逐轮 shadow-git 检查点；既没有可
-    # 注入恢复信息的渠道，也不希望任务工作区出现 ``.pico/shadow.git``。
+            # 基准是非交互式批量运行，因此禁用 Bug2 的逐轮 shadow-git 检查点；既没有可
+            # 注入恢复信息的渠道，也不希望任务工作区出现 ``.pico/shadow.git``。
             interactive=False,
         )
 

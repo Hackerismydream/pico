@@ -42,9 +42,7 @@ from tests.tui.autotest.runner import BackendError
 pytestmark = pytest.mark.real_llm
 
 
-
 _PROMPT = "Reply with a short friendly sentence."
-
 
 
 _WORKING_RE = re.compile(
@@ -60,11 +58,7 @@ _READY_RE = re.compile(r"\bready\b", re.IGNORECASE)
 @pytest.mark.e2e
 def test_tui_chat_round_trip(harness):
 
-
     harness.spawn("uv run pico")
-
-
-
 
     assert harness.wait(r"Pico", timeout=25.0), (
         f"TUI Pico readiness banner not seen in 25s; screen=\n{harness.screen()}"
@@ -72,11 +66,6 @@ def test_tui_chat_round_trip(harness):
 
     harness.type(_PROMPT)
     harness.press("enter")
-
-
-
-
-
 
     started = False
     deadline = time.monotonic() + 20.0
@@ -100,9 +89,6 @@ def test_tui_chat_round_trip(harness):
         "pipeline liveness failed: the turn never completed (status bar did not "
         f"return to ready) within 60s.\nscreen=\n{harness.screen()}"
     )
-
-
-
 
     harness.press("ctrl+c")
     time.sleep(0.5)

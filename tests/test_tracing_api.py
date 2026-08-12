@@ -55,8 +55,6 @@ def test_nesting_kinds_and_attributes(trace_dir):
 def test_invocation_source_derives_from_enclosing_purpose(trace_dir):
     from pico.tracing import semconv
 
-
-
     with trace.span("skill.gate", kind="skill"):
         with trace.span("llm.call") as s:
             assert s.invocation_source == "skill.gate"
@@ -160,8 +158,6 @@ def test_attach_rejoins_a_trace_from_another_task(trace_dir):
     async def scenario():
         with trace.span("spine.turn") as root:
             captured = (root.trace_id, root.span_id)
-
-
 
         async def worker():
             with trace.attach(*captured):
@@ -367,7 +363,6 @@ def test_memory_consolidate_extractor(trace_dir):
 def test_subagent_children_nest(trace_dir):
     from pico.tracing import semconv
 
-
     with trace.span("subagent.run") as sa:
         semconv.subagent(
             sa, {"task_id": "t1", "task": "do x", "label": "worker", "origin": {"session_key": "cli:p"}}, None, None
@@ -383,7 +378,6 @@ def test_subagent_children_nest(trace_dir):
 
 
 # ---------------------------------------------------------------------------
-
 
 
 # ---------------------------------------------------------------------------
@@ -415,8 +409,6 @@ def test_audit_span_v1_record_shape_is_frozen(trace_dir):
 
 def test_span_kind_vocabulary_is_frozen():
     from pico.tracing import trace as _t
-
-
 
     assert set(_t._KIND_BY_DOMAIN.values()) == {
         "session",
@@ -489,7 +481,6 @@ def test_tracing_internal_failure_never_breaks_host(trace_dir, monkeypatch):
     @trace.instrument("tool.call")
     async def app_error():
         raise ValueError("APP")
-
 
     assert asyncio.run(ok(41)) == 42
 

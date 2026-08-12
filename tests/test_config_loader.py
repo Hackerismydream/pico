@@ -22,7 +22,6 @@ def test_missing_file_uses_defaults(tmp_path: Path) -> None:
     """No file → default Config — loader must not raise."""
     cfg = load_config(tmp_path / "does_not_exist.json")
 
-
     assert cfg.agents.defaults.max_tool_iterations == 40
 
 
@@ -117,8 +116,6 @@ def test_schema_validation_error_raises(tmp_path: Path) -> None:
     """A user / programmer config error must NOT silently fall back to
     defaults — that masks misconfig as "feature X did nothing"."""
     p = tmp_path / "config.json"
-
-
 
     _write(
         p,
@@ -244,9 +241,6 @@ def test_read_raw_or_raise_json_null_is_empty_dict(tmp_path: Path) -> None:
 
 
 def test_config_read_error_is_not_runtimeerror() -> None:
-
-
-
 
     from pico.config.loader import ConfigReadError
 

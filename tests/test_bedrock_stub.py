@@ -43,7 +43,6 @@ def test_no_bedrock_provider_in_registry():
     assert "bedrock" not in {spec.name for spec in PROVIDERS}
     assert find_by_name("bedrock") is None
 
-
     assert find_by_model("bedrock/amazon.titan-text-express-v1") is None
 
 

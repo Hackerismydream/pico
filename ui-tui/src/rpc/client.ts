@@ -65,8 +65,8 @@ export class RpcClient {
     this.warn = opts.warn ?? (m => process.stderr.write(`[rpc-client] ${m}\n`))
     this.onNotification = opts.onNotification
 
-  // 跨平台传输：父进程导出 TCP 回环 "host:port"（当前 Python 父进程，Windows 也支持），
-  // 旧配置则可导出 Unix 套接字路径。尾部 ":<数字>" 用于识别 TCP。
+    // 跨平台传输：父进程导出 TCP 回环 "host:port"（当前 Python 父进程，Windows 也支持），
+    // 旧配置则可导出 Unix 套接字路径。尾部 ":<数字>" 用于识别 TCP。
     const tcp = /^(.+):(\d+)$/.exec(target)
     if (tcp) {
       this.socket = createConnection({ host: tcp[1], port: Number(tcp[2]) })
@@ -82,7 +82,7 @@ export class RpcClient {
       const onConnect = () => {
         this.connected = true
         this.socket.off('error', onError)
-    // 必须是线路上的首批字节，先于所有 RPC 帧。
+        // 必须是线路上的首批字节，先于所有 RPC 帧。
         if (authToken) {
           this.socket.write(authToken + '\n')
         }
@@ -149,7 +149,7 @@ export class RpcClient {
     }
     const obj = frame as Record<string, unknown>
 
-      // 通知帧：没有 `id`，包含 `method`。
+    // 通知帧：没有 `id`，包含 `method`。
     if (obj.id === undefined && typeof obj.method === 'string') {
       if (obj.method === 'event') {
         const params = obj.params as EventNotificationParams<unknown> | undefined
@@ -167,7 +167,7 @@ export class RpcClient {
       return
     }
 
-      // 响应帧：包含 `id`。
+    // 响应帧：包含 `id`。
     const resp = frame as JsonRpcResponse<unknown>
     const id = resp.id
     if (typeof id !== 'number' && typeof id !== 'string') {

@@ -361,8 +361,6 @@ def test_test_command_unknown_provider_exits_1(tmp_config: Path) -> None:
 
 def test_provider_set_refuses_malformed_config_and_preserves_file(tmp_config: Path) -> None:
 
-
-
     original = '{\n  "providers": {"openai": {"apiKey": "sk-o"}},\n  // comment => invalid JSON\n}\n'
     tmp_config.write_text(original, encoding="utf-8")
     result = runner.invoke(app, ["provider", "set", "openrouter", "--api-key", "sk-x"])

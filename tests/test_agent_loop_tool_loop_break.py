@@ -110,5 +110,4 @@ async def test_repeated_tool_failure_nudges_bounded(workspace):
         session_key="s1",
     )
 
-
     assert max(provider.loop_marker_counts) == AgentLoop._LOOP_BREAK_MAX

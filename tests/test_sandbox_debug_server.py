@@ -641,13 +641,10 @@ class TestShellHandler:
             writer.write((json.dumps({"cmd": "shell", "vm_ref": None, "shell": "/bin/sh"}) + "\n").encode())
             await writer.drain()
 
-
             await asyncio.wait_for(reader.readline(), timeout=2.0)
-
 
             writer.write((json.dumps({"cmd": "resize", "rows": 40, "cols": 120}) + "\n").encode())
             await writer.drain()
-
 
             await asyncio.wait_for(reader.readline(), timeout=2.0)
             writer.close()
@@ -779,7 +776,6 @@ class TestSingleClientGuard:
         box_info.name = None
         box_info.state.status = "running"
 
-
         wait_started = asyncio.Event()
         wait_release = asyncio.Event()
 
@@ -812,11 +808,9 @@ class TestSingleClientGuard:
                 assert first["type"] == "ready"
                 await asyncio.wait_for(wait_started.wait(), timeout=2.0)
 
-
                 respB = await _client(path, {"cmd": "list"})
                 assert respB["type"] == "error"
                 assert "active client" in respB["message"].lower()
-
 
                 wait_release.set()
                 wA.close()
@@ -833,7 +827,6 @@ class TestSingleClientGuard:
         server = SandboxDebugServer(path, set())
         await server.start()
         try:
-
             r1 = await _client(path, {"cmd": "bogus"})
             assert r1["type"] == "error"
             r2 = await _client(path, {"cmd": "bogus"})
@@ -900,11 +893,8 @@ class TestExecDisconnectKillsExecution:
                 )
                 await writer.drain()
 
-
-
                 line = await asyncio.wait_for(reader.readline(), timeout=2.0)
                 assert json.loads(line)["type"] == "stdout"
-
 
                 writer.close()
                 try:
@@ -939,8 +929,6 @@ class TestExecHandlesFutureWait:
         loop = asyncio.get_event_loop()
         wait_future: asyncio.Future = loop.create_future()
         wait_future.set_result(MagicMock(exit_code=0))
-
-
 
         mock_execution = MagicMock()
         mock_execution.stdout = MagicMock(return_value=_async_iter(["hi\n"]))
@@ -1054,8 +1042,6 @@ class TestShellDisconnectKillsExecution:
                 first = json.loads(await asyncio.wait_for(reader.readline(), timeout=2.0))
                 assert first["type"] == "ready"
 
-
-
                 writer.close()
                 try:
                     await writer.wait_closed()
@@ -1082,9 +1068,6 @@ class TestShellDrainsStdoutBeforeExit:
         box_info.id = "b1"
         box_info.name = None
         box_info.state.status = "running"
-
-
-
 
         chunks = ["line1\n", "line2\n", "line3\n"]
         mock_execution = MagicMock()
@@ -1171,8 +1154,6 @@ class TestShellResizeTaskCleanup:
         box_info.name = None
         box_info.state.status = "running"
 
-
-
         resize_started = asyncio.Event()
         resize_cancelled = asyncio.Event()
 
@@ -1183,10 +1164,6 @@ class TestShellResizeTaskCleanup:
             except asyncio.CancelledError:
                 resize_cancelled.set()
                 raise
-
-
-
-
 
         wait_release = asyncio.Event()
 
@@ -1206,8 +1183,6 @@ class TestShellResizeTaskCleanup:
         mock_runtime = MagicMock()
         mock_runtime.list_info = AsyncMock(return_value=[box_info])
         mock_runtime.get = AsyncMock(return_value=mock_box)
-
-
 
         loop = asyncio.get_running_loop()
         unhandled: list[dict] = []
@@ -1235,14 +1210,9 @@ class TestShellResizeTaskCleanup:
                 first = json.loads(await asyncio.wait_for(reader.readline(), timeout=2.0))
                 assert first["type"] == "ready"
 
-
                 writer.write((json.dumps({"cmd": "resize", "rows": 40, "cols": 120}) + "\n").encode())
                 await writer.drain()
                 await asyncio.wait_for(resize_started.wait(), timeout=2.0)
-
-
-
-
 
                 writer.close()
                 try:
@@ -1252,11 +1222,7 @@ class TestShellResizeTaskCleanup:
 
                 await asyncio.wait_for(resize_cancelled.wait(), timeout=2.0)
         finally:
-
-
-
             await asyncio.wait_for(server.stop(), timeout=2.0)
             loop.set_exception_handler(original_handler)
-
 
         assert unhandled == [], f"unhandled task exceptions during cleanup: {unhandled}"

@@ -37,7 +37,6 @@ class MemoryBackendContractTests:
     leakage is impossible.
     """
 
-
     async def make_backend(self) -> MemoryBackend:
         """Construct a fresh backend for one test.
 
@@ -49,7 +48,6 @@ class MemoryBackendContractTests:
             "MemoryBackendContractTests subclass must override make_backend()",
         )
 
-
     @pytest.fixture
     async def backend(self):
         b = await self.make_backend()
@@ -58,7 +56,6 @@ class MemoryBackendContractTests:
             yield b
         finally:
             await b.stop()
-
 
     async def test_satisfies_protocol(self, backend) -> None:
         """The returned object must be recognized as a MemoryBackend."""

@@ -137,7 +137,6 @@ class TestSpliceH2Section:
     def test_preserves_h1_and_other_h2_byte_identical(self):
         new = _splice_h2_section(self.USER_MD, "## Projects", "- new\n")
 
-
         orig_tail = self.USER_MD[self.USER_MD.index("## Habits") :]
         new_tail = new[new.index("## Habits") :]
         assert new_tail == orig_tail

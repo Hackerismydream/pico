@@ -1382,9 +1382,6 @@ def test_undo_then_save_truncates_file_on_disk(tmp_path):
     assert reloaded.key == "tui:undome"
 
 
-
-
-
 def _seed(mgr: SessionManager, key: str, *turns: tuple[str, str]) -> Session:
     session = mgr.get_or_create(key)
     for role, content in turns:
@@ -1557,9 +1554,6 @@ def test_fork_explicit_title_overrides(tmp_path: Path):
     child = mgr.fork("cli:src12", title="Custom")
 
     assert child.metadata["title"] == "Custom"
-
-
-
 
 
 def test_resolve_key_full_key_passthrough(tmp_path: Path):

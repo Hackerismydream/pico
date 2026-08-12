@@ -42,8 +42,8 @@ _LLM_TRANSPORT_SIGNS = (
     "502 bad gateway",
     "503 service",
     "bad gateway",
-# LiteLLM 渲染供应商失败时可能不使用上方带空格或冒号的形式；曾观察到它以
-# INCOMPLETE 形式泄漏连接错误。
+    # LiteLLM 渲染供应商失败时可能不使用上方带空格或冒号的形式；曾观察到它以
+    # INCOMPLETE 形式泄漏连接错误。
     "error calling llm",
     "connection error",
     "internalservererror",
@@ -96,8 +96,8 @@ def grade_and_record(result: dict, *, env_url: str, task_id: str, response: str,
         raise RuntimeError("llm_transport_error: empty response and subject endpoint unreachable")
     ev = post(env_url, "/evaluate", {"task_id": task_id, "suppress_errors": True})
     done = post(env_url, "/task_completed", {"task_id": task_id})
-        # 捕获完整评测预言机（通过与失败）供 Evolver 诊断步骤使用；环境省略
-        # pass_count 时自行派生。
+    # 捕获完整评测预言机（通过与失败）供 Evolver 诊断步骤使用；环境省略
+    # pass_count 时自行派生。
     _passes = ev.get("passes") or []
     _failures = ev.get("failures") or []
     result.update(

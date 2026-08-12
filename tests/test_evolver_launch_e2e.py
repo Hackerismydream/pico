@@ -241,7 +241,6 @@ class TestInterruptResume:
         calls_before = fake_bench["design_calls"]
         assert runner_mod.cmd_run(str(spec_path)) == 0
 
-
         assert fake_bench["design_calls"] == calls_before + 1
         assert len(journal.read_text().splitlines()) == 2
 

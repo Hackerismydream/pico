@@ -249,19 +249,16 @@ def test_default_session_info_key_set_matches_expected_v030(fake_agent_loop, con
     """
     info = _default_session_info(fake_agent_loop, config)
     expected_keys = {
-
         "model",
         "skills",
         "tools",
         "cwd",
         "version",
         "mcp_servers",
-
         "provider",
         "memory",
         "context_window",
         "lazy",
-
         "usage",
     }
     assert set(info) == expected_keys, (
@@ -281,8 +278,6 @@ def test_default_session_info_contains_real_model(fake_agent_loop, config) -> No
     assert info["model"] == config.agents.defaults.model
     assert info["provider"] == config.agents.defaults.provider
     assert info["memory"] in {"enabled", "disabled", "unknown"}
-
-
 
 
 def test_placeholder_model_constant_removed() -> None:

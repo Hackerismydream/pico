@@ -36,9 +36,6 @@ class _WithStreaming(_Min):
     async def send_stream_chunk(self, chat_id, stream_id, delta, *, done=False) -> None: ...
 
 
-
-
-
 def test_capabilities_defaults_all_false():
     c = Capabilities()
     assert (c.interactive_login, c.streaming) == (False, False)
@@ -59,9 +56,6 @@ def test_channel_spec_capabilities_default_empty():
     assert spec.capabilities == Capabilities()
 
 
-
-
-
 def test_min_satisfies_channel_protocol():
     assert isinstance(_Min(), Channel)
 
@@ -71,9 +65,6 @@ def test_supports_protocols_are_opt_in():
     assert not isinstance(_Min(), SupportsStreaming)
     assert isinstance(_WithLogin(), SupportsLogin)
     assert isinstance(_WithStreaming(), SupportsStreaming)
-
-
-
 
 
 def test_capability_violations_consistent():
@@ -88,7 +79,6 @@ def test_capability_violations_declared_but_missing():
     bad_login.capabilities = Capabilities(interactive_login=True)
     assert any("interactive_login" in m for m in capability_violations(bad_login))
 
-
     bad_stream = _Min()
     bad_stream.capabilities = Capabilities(streaming=True)
     assert any("streaming" in m for m in capability_violations(bad_stream))
@@ -101,7 +91,6 @@ def test_capability_violations_implemented_but_undeclared():
             return True
 
     assert any("SupportsLogin" in m for m in capability_violations(_SneakyLogin()))
-
 
     class _SneakyStream(_Min):
         async def send_stream_chunk(self, chat_id, stream_id, delta, *, done=False) -> None: ...

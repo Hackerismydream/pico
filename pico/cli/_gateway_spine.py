@@ -69,7 +69,7 @@ class GatewayTurnRunner(AgentTurnRunner):
             return await self._loop.run_turn(req, emit, drain, stream=False)
         text_sink: dict[str, str] = {}
         outcome = await self._loop.run_turn(req, emit, drain, stream=False, text_sink=text_sink)
-            # 返回前存储：工作器只在 run() 返回后才解析 result()，因此提交方一定在此次写入后读取。
+        # 返回前存储：工作器只在 run() 返回后才解析 result()，因此提交方一定在此次写入后读取。
         if req.conversation is not None and (text := text_sink.get("text")) is not None:
             self._readback_texts[req.conversation] = text
         return outcome
@@ -140,8 +140,8 @@ def build_gateway(
         hub.register(ChannelOutletAdapter(channel))
     readback_texts: dict[str, str] = {}
     sources: dict[str, Source] = {}
-            # 轮次工具状态（消息路由、上下文）现已局部化到每轮，user>1 因而安全：并发用户轮次
-            # 不会再覆盖彼此的回复目标。system>1 则允许独立的 Cron 和子智能体轮次重叠。
+    # 轮次工具状态（消息路由、上下文）现已局部化到每轮，user>1 因而安全：并发用户轮次
+    # 不会再覆盖彼此的回复目标。system>1 则允许独立的 Cron 和子智能体轮次重叠。
     scheduler = Scheduler(
         GatewayTurnRunner(agent_loop, readback_texts, sources),
         OriginPools(user=user_pool, system=system_pool),

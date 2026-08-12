@@ -166,8 +166,8 @@ def load_run_spec(config_path: str | Path, *, smoke: bool = False) -> RunSpec:
         raise RunSpecError(f"{path}: missing required keys: {missing}")
 
     def _abs(value: str) -> Path:
-    # 相对路径以配置文件而非当前工作目录为基准；从其他目录恢复时必须找到同一 work_dir，
-    # 而不是静默开始新运行。
+        # 相对路径以配置文件而非当前工作目录为基准；从其他目录恢复时必须找到同一 work_dir，
+        # 而不是静默开始新运行。
         p = Path(value).expanduser()
         return p.resolve() if p.is_absolute() else (path.parent / p).resolve()
 

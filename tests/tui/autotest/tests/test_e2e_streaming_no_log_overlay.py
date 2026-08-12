@@ -46,9 +46,6 @@ def test_tui_chat_streaming_no_log_overlay(harness):
     harness.type("Reply in exactly 30 words about anything.")
     harness.press("enter")
 
-
-
-
     if harness.wait(r"error:\s*model_not_available", timeout=5.0):
         pytest.skip(
             "Default model returned model_not_available — streaming did not "
@@ -56,12 +53,8 @@ def test_tui_chat_streaming_no_log_overlay(harness):
             "accessible model configured as default (e.g. openrouter/qwen)."
         )
 
-
-
-
     leak_detected = harness.wait(_LEAK_RE, timeout=30.0)
     captured_frame = harness.screen()
-
 
     for key in ("escape", "ctrl+c"):
         try:

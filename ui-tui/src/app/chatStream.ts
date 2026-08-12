@@ -212,12 +212,7 @@ const onToolStart = (ev: ToolStartEvent): void => {
 const onToolComplete = (ev: ToolCompleteEvent): void => {
   const { tool_call_id, result_preview, failed, truncated } = ev.payload
   const summary = truncated ? `${result_preview} (truncated)` : result_preview
-  turnController.recordToolComplete(
-    tool_call_id,
-    undefined,
-    failed ? summary : undefined,
-    failed ? undefined : summary
-  )
+  turnController.recordToolComplete(tool_call_id, undefined, failed ? summary : undefined, failed ? undefined : summary)
 }
 
 const releaseAttemptImages = (attempt: SendAttempt, releaseSessionImages?: (claimId?: string) => void): void => {

@@ -58,11 +58,7 @@ async def _fake_stream(chunks: list[_FakeChunk]):
 
 def _make_provider() -> LiteLLMProvider:
 
-
     return LiteLLMProvider(api_key="test-key", default_model="openai/gpt-4o")
-
-
-
 
 
 @pytest.mark.asyncio
@@ -93,7 +89,6 @@ async def test_chat_stream_yields_stream_deltas_in_order(monkeypatch: pytest.Mon
     assert all(isinstance(d, StreamDelta) for d in out)
 
     assert captured_kwargs.get("stream") is True
-
 
     assert captured_kwargs.get("stream_options") == {"include_usage": True}
 

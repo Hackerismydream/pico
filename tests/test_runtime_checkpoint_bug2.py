@@ -42,7 +42,6 @@ async def test_checkpoint_commits_then_noops_when_unchanged(workspace):
     assert cid is not None
     assert "a.py" in changed
 
-
     cid2, changed2 = await svc.commit_turn("turn 2")
     assert cid2 is None
     assert changed2 == []
@@ -145,10 +144,6 @@ async def test_max_iter_interrupted_with_checkpoint(workspace):
     )
     assert outcome.status == "interrupted"
 
-
-
-
-
     assert "maximum number of tool call iterations" in (final or "")
 
     assert outcome.checkpoint_id is not None
@@ -161,28 +156,10 @@ async def test_max_iter_baseline_preserved_when_disabled(workspace):
         [{"role": "user", "content": "go"}],
     )
 
-
     assert outcome.status == "interrupted"
     assert "maximum number of tool call iterations" in (final or "")
     assert outcome.checkpoint_id is None
     assert outcome.edited_files == []
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 class _WriteThenStopProvider(LLMProvider):
@@ -303,9 +280,6 @@ def test_recovery_block_noop_without_pending(workspace):
     assert messages[-1]["content"] == "hello"
 
 
-
-
-
 async def test_checkpoint_captures_deletion(workspace):
     """add -A is edit-source-agnostic: a deletion (or any non-tool change) is
     still snapshotted — the advantage over edit-tool-triggered approaches."""
@@ -352,9 +326,6 @@ def test_recovery_block_kept_when_last_not_user(workspace):
     assert "s" in agent._pending_recovery
 
 
-
-
-
 async def test_recovery_flows_interrupt_to_next_assembly(workspace):
     """End-to-end: an interrupted turn stashes recovery (as the caller does),
     and the NEXT context assembly injects it into the user message — exercising
@@ -362,14 +333,12 @@ async def test_recovery_flows_interrupt_to_next_assembly(workspace):
     agent = _loop_agent(workspace, checkpoint_enabled=True)
     key = "tui:default"
 
-
     _f, _u, _m, outcome = await agent._run_agent_loop(
         [{"role": "user", "content": "go"}],
     )
     assert outcome.status == "interrupted"
     agent._stash_recovery(key, outcome)
     assert key in agent._pending_recovery
-
 
     session = agent.sessions.get_or_create(key)
     messages = await agent._assemble_context_messages(
@@ -410,9 +379,6 @@ async def test_recovery_consumed_once(workspace):
     )
     t2 = m2[-1]["content"]
     assert "interrupted" not in (t2 if isinstance(t2, str) else str(t2)).lower()
-
-
-
 
 
 async def test_checkpoint_degrades_when_git_missing(workspace, monkeypatch):

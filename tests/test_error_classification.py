@@ -30,9 +30,6 @@ def _c(exc=None, content=None) -> ErrorClassification:
     return LLMProvider.classify_error(exc, content)
 
 
-
-
-
 @pytest.mark.parametrize(
     "status,category,retry,fb,comp",
     [
@@ -52,9 +49,6 @@ def test_classify_by_status_code(status, category, retry, fb, comp):
     assert (c.retryable, c.should_fallback, c.should_compress) == (retry, fb, comp)
 
 
-
-
-
 def test_classify_by_class_name_rate_limit():
     c = _c(RateLimitError("slow down"))
     assert c.category == "rate_limit" and c.retryable and c.should_fallback
@@ -69,9 +63,6 @@ def test_classify_context_window_by_class_name_compresses_not_fallback():
     assert c.retryable is False
 
 
-
-
-
 def test_classify_follows_cause_chain():
     inner = _StatusError("upstream 429", 429)
     try:
@@ -82,9 +73,6 @@ def test_classify_follows_cause_chain():
     except Exception as outer:
         c = _c(outer)
     assert c.category == "rate_limit" and c.should_fallback
-
-
-
 
 
 @pytest.mark.parametrize(
@@ -108,9 +96,6 @@ def test_classify_by_string(text, category):
 def test_unknown_is_conservative():
     c = _c(content="???")
     assert not c.retryable and not c.should_fallback and not c.should_compress
-
-
-
 
 
 def test_jitter_within_ten_percent():

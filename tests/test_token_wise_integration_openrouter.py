@@ -41,11 +41,6 @@ TURNS = 6
 COST_GUARD_USD = 0.50
 
 
-
-
-
-
-
 _OPENROUTER_PIN = {"provider": {"order": ["Anthropic"], "allow_fallbacks": False}}
 
 pytestmark = pytest.mark.real_llm
@@ -195,7 +190,6 @@ async def _run_variant(
     for turn_idx, q in enumerate(user_questions, 1):
         messages = messages + [{"role": "user", "content": q}]
 
-
         if sum(cost_so_far.values()) > COST_GUARD_USD:
             pytest.fail(f"Cost guard tripped at ${sum(cost_so_far.values()):.4f} (cap=${COST_GUARD_USD}). Aborting.")
 
@@ -203,8 +197,6 @@ async def _run_variant(
         resp = await provider.chat_with_retry(messages=msgs, tools=tools, model=model_chosen)
         if resp.finish_reason == "error":
             pytest.fail(f"Variant {name} turn {turn_idx} failed: {resp.content}")
-
-
 
         snap = _build_snapshot(resp, MODEL, name)
 
@@ -222,9 +214,7 @@ async def _run_variant(
         )
         cost_so_far[name] = result.total_cost
 
-
         await registry.after_llm_call({"usage": resp.usage}, snap)
-
 
         messages = messages + [{"role": "assistant", "content": resp.content or ""}]
 
@@ -345,7 +335,6 @@ async def test_ablation_experiment(api_key: str, tmp_path: Path):
     """Run V1/V2/V3 against the same workload, write a report, assert savings."""
     sys_prompt = _long_system_prompt()
 
-
     questions = [
         "Reply with only the word OK.",
         "Now reply with only the word YES.",
@@ -357,7 +346,6 @@ async def test_ablation_experiment(api_key: str, tmp_path: Path):
     assert len(questions) == TURNS
 
     cost_so_far: dict[str, float] = {}
-
 
     v1_registry = StrategyRegistry([])
     v1 = await _run_variant(
@@ -371,9 +359,7 @@ async def test_ablation_experiment(api_key: str, tmp_path: Path):
         cost_so_far=cost_so_far,
     )
 
-
     await asyncio.sleep(2)
-
 
     v2_registry = StrategyRegistry([])
     v2 = await _run_variant(
@@ -389,7 +375,6 @@ async def test_ablation_experiment(api_key: str, tmp_path: Path):
 
     await asyncio.sleep(2)
 
-
     cfg = TokenWiseConfig(enabled=True, cache_optimization=True, usage_tracking=True, max_cache_breakpoints=4)
     v3_registry = install_from_config(cfg, telemetry_dir=tmp_path)
     v3 = await _run_variant(
@@ -403,7 +388,6 @@ async def test_ablation_experiment(api_key: str, tmp_path: Path):
         cost_so_far=cost_so_far,
     )
 
-
     tracker = v3_registry.get("usage_tracker")
     assert tracker is not None
     snap = tracker.snapshot("V3_tokenwise")
@@ -414,28 +398,18 @@ async def test_ablation_experiment(api_key: str, tmp_path: Path):
     rows = [r for r in files[0].read_text().splitlines() if r.strip()]
     assert len(rows) == TURNS, f"expected {TURNS} jsonl rows, got {len(rows)}"
 
-
     body = _write_report([v1, v2, v3], baseline_name="V1_baseline")
     print(f"\nReport written to: {REPORT_PATH}\n")
     print(body)
 
-
-
     assert v1.total_cache_read == 0, "V1 baseline must have zero cache reads"
     assert v1.total_cache_write == 0, "V1 baseline must have zero cache writes"
-
-
-
 
     assert v2.total_cache_read > 0, (
         f"V2 (provider auto-cache) had no cache hits; system_prompt cache "
         f"may not have been created. v2.turns={v2.turns}"
     )
     assert v3.total_cache_read > 0, f"V3 had no cache hits across {TURNS} turns. v3.turns={v3.turns}"
-
-
-
-
 
     assert v3.total_cost < v1.total_cost, (
         f"V3 (${v3.total_cost:.6f}) is not cheaper than V1 baseline "

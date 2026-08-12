@@ -56,9 +56,6 @@ def render(svc: LocalSkillCatalog, skill_dir: Path, body: str) -> str:
     return svc.load_skills_for_context([_meta(skill_dir, body)], max_inject=1)
 
 
-
-
-
 def test_md_link_existing_becomes_absolute(svc, skill_dir):
     out = render(svc, skill_dir, "see [Guide](references/GUIDE.md)")
     assert f"({skill_dir}/references/GUIDE.md)" in out
@@ -113,9 +110,6 @@ def test_md_link_in_code_fence_not_rewritten(svc, skill_dir):
     assert f"{skill_dir}/references/GUIDE.md" not in out
 
 
-
-
-
 def test_bare_ref_in_prose_untouched(svc, skill_dir):
     out = render(svc, skill_dir, "see references/GUIDE.md for details")
     assert "references/GUIDE.md for details" in out
@@ -125,9 +119,6 @@ def test_bare_ref_in_prose_untouched(svc, skill_dir):
 def test_bash_dotslash_ref_untouched(svc, skill_dir):
     out = render(svc, skill_dir, "run `./scripts/run.sh` now")
     assert "./scripts/run.sh" in out
-
-
-
 
 
 def test_dir_header_present_for_pathset(svc, skill_dir):
@@ -154,9 +145,6 @@ def test_dir_header_absent_when_dir_missing(svc, tmp_path):
     assert f"{gone.parent}/references/GUIDE.md" not in out
 
 
-
-
-
 def test_basedir_existing_ref_resolves(svc, skill_dir):
     out = render(svc, skill_dir, "cat {baseDir}/scripts/run.sh")
     assert f"{skill_dir}/scripts/run.sh" in out
@@ -178,9 +166,6 @@ def test_basedir_all_broken_no_header(svc, skill_dir):
     out = render(svc, skill_dir, "see {baseDir}/references/NOPE.md only")
     assert "Skill directory" not in out
     assert "{baseDir}/references/NOPE.md" in out
-
-
-
 
 
 def test_multi_skill_each_own_dir(svc, tmp_path):

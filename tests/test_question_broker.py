@@ -160,7 +160,6 @@ async def test_overlapping_question_replaces_stale() -> None:
 
     assert await first == "d1"
 
-
     while len(frames) < 2:
         await asyncio.sleep(0.005)
     broker.reply(CID, "q2-answer")

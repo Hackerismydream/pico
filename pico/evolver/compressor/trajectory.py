@@ -94,8 +94,8 @@ def _parse_event(obj: dict[str, Any]) -> Event:
     role = obj.get("role")
     if role in ("system", "user", "assistant", "tool"):
         content = obj.get("content")
-                # 一些 scorer/litellm 行把内容存为块列表（多模态）；压缩时将其展平为单个字符串，
-                # 但不压缩图片。
+        # 一些 scorer/litellm 行把内容存为块列表（多模态）；压缩时将其展平为单个字符串，
+        # 但不压缩图片。
         if isinstance(content, list):
             parts = []
             for part in content:
@@ -271,9 +271,9 @@ class TrajectoryCompressor:
             if asst_text:
                 out.append(self._indent(asst_text, "  "))
             elif ev.tool_calls:
-            # 使用工具但没有叙述文本是正常智能体行为（模型选择行动而非解释），不是空内容异常。
-            # 不要增加 empty_content_count；L1 触发器必须只用于完全静默的轮次（既无内容也无
-            # tool_calls），与 EmptyResponseAlertHook.is_empty_response 保持一致。
+                # 使用工具但没有叙述文本是正常智能体行为（模型选择行动而非解释），不是空内容异常。
+                # 不要增加 empty_content_count；L1 触发器必须只用于完全静默的轮次（既无内容也无
+                # tool_calls），与 EmptyResponseAlertHook.is_empty_response 保持一致。
                 out.append(f"  [tool-only turn, no narrative{fr_tag}]")
             # 查找紧随其后的工具调用和结果，并折叠连续相同调用。
             i += 1

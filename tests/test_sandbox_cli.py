@@ -180,7 +180,6 @@ class TestExecCommand:
         path = tmp_path / "debug.sock"
         path.touch()
 
-
         recv_responses = [
             {"type": "exit", "code": 0},
         ]
@@ -296,7 +295,6 @@ class TestShellCommand:
 # ---------------------------------------------------------------------------
 
 
-
 # ---------------------------------------------------------------------------
 
 
@@ -362,8 +360,6 @@ class TestRecvRobustness:
     def test_empty_response_exits_with_clean_error(self, tmp_path: Path) -> None:
         path = tmp_path / "debug.sock"
         path.touch()
-
-
 
         mock_reader = MagicMock()
         mock_reader.readline = AsyncMock(return_value=b"")

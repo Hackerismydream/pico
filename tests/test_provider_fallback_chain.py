@@ -61,7 +61,6 @@ async def test_exhausted_transient_falls_back_to_next_model():
     transient = LLMResponse(content="429 rate limit", finish_reason="error")
     provider = _ScriptedProvider(
         {
-
             "primary": [transient] * 4,
             "backup": [LLMResponse(content="recovered", finish_reason="stop")],
         }
@@ -79,7 +78,6 @@ async def test_exhausted_transient_falls_back_to_next_model():
 
 @pytest.mark.asyncio
 async def test_billing_error_now_falls_back():
-
 
     provider = _ScriptedProvider(
         {
@@ -159,7 +157,6 @@ async def test_chain_exhausted_returns_last_error():
     err = LLMResponse(content="503 overloaded", finish_reason="error")
     provider = _ScriptedProvider(
         {
-
             "primary": [err] * 4,
             "backup": [err] * 4,
         }
@@ -214,7 +211,6 @@ async def test_attempt_hooks_replan_and_observe_every_retry_and_fallback():
 
 @pytest.mark.asyncio
 async def test_should_fallback_classification():
-
 
     assert LLMProvider._should_fallback("429 rate limit") is True
     assert LLMProvider._should_fallback("503 overloaded") is True

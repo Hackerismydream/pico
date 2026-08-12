@@ -84,9 +84,6 @@ def _make_agent(workspace: Path, provider: LLMProvider) -> AgentLoop:
         model="stub",
         max_iterations=2,
         restrict_to_workspace=True,
-
-
-
         runtime_config=RuntimeConfig(checkpoint=CheckpointConfig(policy="never")),
     )
 
@@ -135,7 +132,6 @@ async def test_synthesized_reply_lands_in_history(workspace):
 
     assert messages[-1]["role"] == "assistant"
     assert messages[-1]["content"] == final
-
 
     assert not any("used up the tool-calling budget" in (m.get("content") or "") for m in messages)
 

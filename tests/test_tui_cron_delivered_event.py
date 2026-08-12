@@ -151,7 +151,6 @@ async def test_cron_callback_spine_fans_out_reply(emitter_spy: MagicMock) -> Non
     assert event["payload"]["text"] == "reminder body"
     assert event["payload"]["fired_at"]
 
-
     emitter_spy.emit.reset_mock()
     silent = SimpleNamespace(id="j8", name="silent", payload=SimpleNamespace(deliver=False))
     await wrapped(silent)

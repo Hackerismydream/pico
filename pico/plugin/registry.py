@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 MemoryBackendFactory = Callable[[Any], Any]
 
 # 工具工厂接收 PluginContext 并返回单个工具。
-    # ``pico.agent.tools.base.Tool``。此处标为 Any，使插件
+# ``pico.agent.tools.base.Tool``。此处标为 Any，使插件
 # 保持本层轻量导入，不依赖 agent 包。
 ToolFactory = Callable[[Any], Any]
 
@@ -327,7 +327,7 @@ class PluginRegistry:
 
 # 为上方类型提示提供前向导入。放在模块末尾，既延后导入成本，
 # 也避免模块加载时触发循环依赖（registry 会被
-    # 在上下文就绪前调用 __init__）。
+# 在上下文就绪前调用 __init__）。
 from pico.plugin.context import ServiceLocator  # noqa: E402
 
 __all__ = [

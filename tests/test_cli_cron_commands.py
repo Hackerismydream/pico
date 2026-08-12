@@ -54,9 +54,6 @@ def populated_cron(fake_cron_dir: Path) -> CronService:
     return svc
 
 
-
-
-
 def test_list_empty(runner, fake_cron_dir):
     result = runner.invoke(cron_app, ["list"])
     assert result.exit_code == 0
@@ -67,7 +64,6 @@ def test_list_empty(runner, fake_cron_dir):
 def test_list_shows_jobs(runner, populated_cron):
     result = runner.invoke(cron_app, ["list"])
     assert result.exit_code == 0
-
 
     for j in populated_cron.list_jobs():
         assert j.id in result.stdout
@@ -97,9 +93,6 @@ def test_list_all_includes_disabled(runner, populated_cron):
     assert result.exit_code == 0
     for j in populated_cron.list_jobs(include_disabled=True):
         assert j.id in result.stdout
-
-
-
 
 
 def test_get_full_detail(runner, populated_cron):
@@ -145,7 +138,6 @@ def test_get_shows_topic_tag_dash_when_absent(runner, populated_cron):
     r = runner.invoke(cron_app, ["get", job.id])
     assert r.exit_code == 0
     assert "topic_tag" in r.stdout
-
 
     topic_line = next(
         (line for line in r.stdout.splitlines() if "topic_tag" in line),
@@ -212,9 +204,6 @@ def test_get_ambiguous_prefix(runner, fake_cron_dir):
     assert "ab56ef78" in result.stdout
 
 
-
-
-
 def test_delete_with_yes_skips_confirm(runner, populated_cron):
     job = populated_cron.list_jobs()[0]
     result = runner.invoke(cron_app, ["delete", job.id, "--yes"])
@@ -241,9 +230,6 @@ def test_delete_unknown_id(runner, fake_cron_dir):
     assert "No job matching" in result.stdout
 
 
-
-
-
 def test_disable_then_enable(runner, populated_cron):
     job = populated_cron.list_jobs()[0]
 
@@ -252,7 +238,6 @@ def test_disable_then_enable(runner, populated_cron):
     assert "Disabled" in r1.stdout
     refreshed = [j for j in populated_cron.list_jobs(include_disabled=True) if j.id == job.id][0]
     assert refreshed.enabled is False
-
 
     r2 = runner.invoke(cron_app, ["enable", job.id])
     assert r2.exit_code == 0
@@ -303,9 +288,6 @@ def test_disable_already_disabled_is_noop(runner, populated_cron):
     r = runner.invoke(cron_app, ["disable", job.id, "--yes"])
     assert r.exit_code == 0
     assert "already disabled" in r.stdout
-
-
-
 
 
 def test_run_test_fire_on_recurring_job(runner, populated_cron):
@@ -363,8 +345,6 @@ def test_run_warns_when_active_claim_present(
     data["jobs"][0]["state"]["claimedAtMs"] = int(_time() * 1000) - 5_000
     jobs_path.write_text(json.dumps(data))
 
-
-
     r = runner.invoke(cron_app, ["run", j.id], input="n\n")
 
     assert r.exit_code == 1
@@ -391,7 +371,6 @@ def test_run_one_shot_at_with_delete_warns_about_removal(
         to="direct",
         delete_after_run=True,
     )
-
 
     r = runner.invoke(cron_app, ["run", j.id], input="n\n")
     assert r.exit_code == 1
@@ -458,13 +437,7 @@ def test_run_unknown_id(runner, fake_cron_dir):
     assert "No job matching" in r.stdout
 
 
-
-
-
 def test_add_requires_exactly_one_schedule(runner, fake_cron_dir, monkeypatch):
-
-
-
 
     r = runner.invoke(
         cron_app,
@@ -482,7 +455,6 @@ def test_add_requires_exactly_one_schedule(runner, fake_cron_dir, monkeypatch):
     )
     assert r.exit_code == 2
     assert "exactly one schedule flag" in r.stdout
-
 
     r = runner.invoke(
         cron_app,
@@ -675,9 +647,6 @@ def test_add_invalid_tz(runner, fake_cron_dir, monkeypatch):
     assert "Unknown timezone" in r.stdout
 
 
-
-
-
 from pico.cli.cron_commands import _parse_duration
 
 
@@ -711,8 +680,6 @@ def test_parse_duration_accepts(value, expected):
         ("", "empty"),
         ("abc", "invalid"),
         ("5x", "invalid"),
-
-
         ("1w", "invalid"),
         ("1mo", "invalid"),
         ("1y", "invalid"),
@@ -722,9 +689,6 @@ def test_parse_duration_rejects(value, hint_substr):
     with pytest.raises(typer.BadParameter) as exc_info:
         _parse_duration(value)
     assert hint_substr in str(exc_info.value)
-
-
-
 
 
 @pytest.fixture

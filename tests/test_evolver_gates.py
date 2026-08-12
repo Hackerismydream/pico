@@ -75,7 +75,6 @@ class TestPairedLift:
 
     def test_hand_computed_z(self):
 
-
         cand = _evals({"t1": (3, 3), "t2": (3, 3), "t3": (0, 3), "t4": (0, 3)})
         ctrl = _evals({t: (0, 3) for t in ("t1", "t2", "t3", "t4")})
         r = paired_lift(
@@ -399,7 +398,6 @@ class TestFocusedFisherGate:
 
     def test_fragile_sentinel_noise_is_tolerated(self):
 
-
         train = ["s1", "t2"]
         base = _evals({"s1": (1, 3), "t2": (0, 3)})
         fake = _FakeEval(
@@ -460,8 +458,6 @@ class TestPairedTwoSigmaGate:
         assert not outcome.promoted
 
     def test_fired_subset_cannot_promote_a_full_train_regression(self):
-
-
 
         train = ["t1", "t2", "t3"]
         base = _evals({"t1": (0, 3), "t2": (3, 3), "t3": (3, 3)})

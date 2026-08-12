@@ -153,8 +153,8 @@ class OpenRouterBackend(JudgeLLMBackend):
 
     DEFAULT_API_BASE = "https://openrouter.ai/api/v1"
     DEFAULT_API_KEY_ENV = "OPENROUTER_API_KEY"
-        # 对空内容和暂时性 HTTP 错误重试。OpenRouterBackend 绕过 Pico 提供商栈，无法直接获得
-        # chat_with_retry，因此添加最小内部重试以保持一致。
+    # 对空内容和暂时性 HTTP 错误重试。OpenRouterBackend 绕过 Pico 提供商栈，无法直接获得
+    # chat_with_retry，因此添加最小内部重试以保持一致。
     _RETRY_DELAYS = (1.0, 2.0, 4.0)
 
     def __init__(
@@ -207,7 +207,7 @@ class OpenRouterBackend(JudgeLLMBackend):
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-        # OpenRouter 建议标识调用方，以便进行路由分析：
+            # OpenRouter 建议标识调用方，以便进行路由分析：
             "HTTP-Referer": "https://github.com/Hackerismydream/pico-harness",
             "X-Title": "Pico Harness Evolver",
         }
@@ -232,7 +232,7 @@ class OpenRouterBackend(JudgeLLMBackend):
                 last_exc = exc
             await asyncio.sleep(delay)
 
-                # 最后一次尝试不再抑制异常。
+            # 最后一次尝试不再抑制异常。
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             resp = await client.post(url, json=payload, headers=headers)
             resp.raise_for_status()
@@ -343,7 +343,7 @@ class JudgeLLMConfig:
     patch_trajectory_format: TrajectoryFormat = "full"
     max_tokens: int = 4000
     temperature: float = 0.0
-        # 诊断：记录每次调用的输入长度和所用后端。默认关闭，使测试标准输出保持安静。
+    # 诊断：记录每次调用的输入长度和所用后端。默认关闭，使测试标准输出保持安静。
     debug_log: bool = False
 
 

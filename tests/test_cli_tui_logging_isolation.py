@@ -49,8 +49,6 @@ def _isolate_logging(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("PICO_CLI_DEBUG", raising=False)
 
-
-
     monkeypatch.setattr("pico.config.loader._current_config_path", None)
 
     root = logging.getLogger()

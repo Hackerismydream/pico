@@ -36,7 +36,6 @@ class TestMemoryDataclass:
 
     def test_metadata_default_is_independent_per_instance(self) -> None:
 
-
         a = Memory(text="a")
         b = Memory(text="b")
         a.metadata["key"] = "value"
@@ -88,7 +87,6 @@ class TestProtocolRuntimeCheck:
         assert isinstance(_CompleteBackend(), MemoryBackend)
 
     def test_incomplete_backend_fails_protocol(self) -> None:
-
 
         assert not isinstance(_IncompleteBackend(), MemoryBackend)
 

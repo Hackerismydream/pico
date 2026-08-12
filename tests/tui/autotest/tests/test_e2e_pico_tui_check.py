@@ -13,5 +13,4 @@ import pytest
 def test_tui_check_exits_clean(harness):
     harness.spawn("uv run pico --check")
 
-
     assert harness.expect_exit(0, timeout=20.0), f"`pico --check` did not exit 0 in 20s; screen=\n{harness.screen()}"

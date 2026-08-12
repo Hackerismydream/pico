@@ -77,7 +77,6 @@ async def test_options_unauthed_provider_marked(fake_home: Path) -> None:
     entry = _entry(result, "openai")
     assert entry["authenticated"] is False
 
-
     assert entry["models"] == common_models_for("openai")
     assert entry["total_models"] == len(common_models_for("openai"))
 
@@ -261,7 +260,6 @@ async def test_model_methods_registered_via_helper(fake_home: Path) -> None:
 
 async def test_options_accepts_session_id(fake_home: Path) -> None:
 
-
     _write_config(fake_home, {"agents": {"defaults": {"model": "anthropic/claude-sonnet-4-5"}}})
     result = await model_options({"session_id": "tui:default"})
     assert "providers" in result
@@ -279,7 +277,6 @@ async def test_save_key_custom_without_api_base_rejected(fake_home: Path) -> Non
 
 async def test_options_openrouter_seeds_common_models(fake_home: Path) -> None:
 
-
     _write_config(
         fake_home,
         {
@@ -294,7 +291,6 @@ async def test_options_openrouter_seeds_common_models(fake_home: Path) -> None:
 
 async def test_options_config_models_rank_before_common_and_dedup(fake_home: Path) -> None:
 
-
     dup = common_models_for("openrouter")[0]
     _write_config(
         fake_home,
@@ -307,9 +303,6 @@ async def test_options_config_models_rank_before_common_and_dedup(fake_home: Pat
     assert models[:2] == ["my/custom-model", dup]
     assert models.count(dup) == 1
     assert set(common_models_for("openrouter")).issubset(set(models))
-
-
-
 
 
 _SEEDED_DIRECT_PROVIDERS = [

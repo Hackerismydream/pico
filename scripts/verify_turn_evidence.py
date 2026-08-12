@@ -323,7 +323,7 @@ def check_usage_join(turns: dict[str, dict[str, Any]], usage_rows: list[dict[str
             findings.append(_finding("usage_row_without_trace_id", f"row {index} carries no trace id", row=index))
             continue
         turn = turns.get(trace_id)
-    # 没有 spine.turn 的追踪组不是轮次；对其解析会报告证据实际不支持的关联。
+        # 没有 spine.turn 的追踪组不是轮次；对其解析会报告证据实际不支持的关联。
         if turn is None or turn["root_count"] == 0:
             findings.append(
                 _finding("usage_row_unjoinable_trace", "trace id has no Turn", row=index, trace_id=trace_id)

@@ -47,9 +47,6 @@ async def test_gateway_does_not_claim_tui_job(tmp_path: Path) -> None:
     store = tmp_path / "jobs.json"
     job_id = _add_due_tui_job(store)
 
-
-
-
     fired = await _fired_ids({"weixin"}, store)
     assert job_id not in fired
 

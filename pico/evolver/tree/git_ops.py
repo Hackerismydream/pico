@@ -258,7 +258,7 @@ def _temp_index() -> Iterator[Path]:
     fd, name = tempfile.mkstemp(prefix="evolver-idx-", suffix=".tmp")
     os.close(fd)
     path = Path(name)
-        # ``git read-tree`` 要求文件尚不存在，因此先将其移除。
+    # ``git read-tree`` 要求文件尚不存在，因此先将其移除。
     if path.exists():
         path.unlink()
     try:
@@ -315,7 +315,7 @@ def apply_patch_as_commit(
             "apply",
             "--cached",
             "--allow-empty",
-                "-",  # 从标准输入读取补丁
+            "-",  # 从标准输入读取补丁
             env=env,
             input_text=unified_diff,
         )
@@ -533,7 +533,7 @@ def remove_worktree(repo_root: Path, target_path: Path, *, force: bool = True) -
     if force:
         args.insert(2, "--force")
     _run(repo_root, *args)
-            # 极少数中断情况下 Git 可能留下目录，需要清理。
+    # 极少数中断情况下 Git 可能留下目录，需要清理。
     if target_path.exists():
         shutil.rmtree(target_path, ignore_errors=True)
 

@@ -503,8 +503,8 @@ const LIGHT_DEFAULT_TERM_PROGRAMS = new Set<string>([])
 // 其他格式（rgb()/hsl()/具名颜色）需先在此显式解析。
 const LUMA_LIGHT_THRESHOLD = 0.6
 
-  // 严格白名单：parseInt(..., 16) 会在首个非十六进制字符处静默截断，例如 `fffgff` 会解析为
-  // `fff` 并误判为白色，因此预先拒绝不符合规范 3 位或 6 位形态的值。
+// 严格白名单：parseInt(..., 16) 会在首个非十六进制字符处静默截断，例如 `fffgff` 会解析为
+// `fff` 并误判为白色，因此预先拒绝不符合规范 3 位或 6 位形态的值。
 const HEX_3_RE = /^[0-9a-f]{3}$/
 const HEX_6_RE = /^[0-9a-f]{6}$/
 

@@ -40,9 +40,6 @@ def _receipts(level="INFO"):
         logger.remove(sink_id)
 
 
-
-
-
 def test_clean_content():
     assert qp.clean_content(SimpleNamespace(content="  hi  ")) == "hi"
     assert qp.clean_content(SimpleNamespace(content="")) == ""
@@ -75,9 +72,6 @@ def test_resolve_route_guild_dm():
     assert qp.resolve_route(data, is_group=False) == ("gld9", "u7", "guild_dm")
 
 
-
-
-
 def test_on_message_group_dispatch():
     ch = _channel()
     asyncio.run(ch._on_message(_group_msg(), is_group=True))
@@ -107,9 +101,6 @@ def test_on_message_empty_content_skipped():
     ch = _channel()
     asyncio.run(ch._on_message(_group_msg(content="   "), is_group=True))
     ch.intake.publish.assert_not_awaited()
-
-
-
 
 
 def _attachment(content_type="image/png", filename="pic.png"):
@@ -154,9 +145,6 @@ def test_on_message_attachment_only_still_dispatches():
     assert ch.intake.publish.await_args.kwargs["content"] == "[image: pic.png]"
 
 
-
-
-
 def test_on_message_disallowed_sender_rejected_before_side_effects():
     """A denied sender must not reach the route cache or the intake."""
     ch = _channel(allow_from=[])
@@ -197,9 +185,6 @@ def test_on_message_malformed_event_logs_and_does_not_raise():
         asyncio.run(ch._on_message(SimpleNamespace(id="m4", content="hi"), is_group=False))
     ch.intake.publish.assert_not_awaited()
     assert "QQ inbound dropped: event handling failed" in "".join(lines)
-
-
-
 
 
 def _client():
@@ -327,9 +312,6 @@ def test_send_swallows_api_error(error):
     asyncio.run(ch.send("u2", "x"))
 
 
-
-
-
 @pytest.mark.parametrize(
     "app_id, secret",
     [("", "s"), ("a", ""), ("", "")],
@@ -343,9 +325,6 @@ def test_start_bails_out_without_credentials(app_id, secret):
     assert ch._client is None
     assert ch.is_running is False
     assert "QQ app_id and secret not configured" in "".join(lines)
-
-
-
 
 
 def test_qq_satisfies_channel_contract():

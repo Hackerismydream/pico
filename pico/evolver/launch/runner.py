@@ -505,7 +505,7 @@ def _cmd_finalize(spec: RunSpec, *, yes: bool) -> int:
     bundle = _build_bundle(spec, with_models=False)
     if recompute:
         if bundle.unseal is None:
-        # 未执行密封测试便已最终化，因此没有报告可重建。
+            # 未执行密封测试便已最终化，因此没有报告可重建。
             _say(f"already finalized at {meta.unsealed_at} ({meta.finalize_reason}); no sealed test was configured")
             return 0
         _say(

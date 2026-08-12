@@ -13,7 +13,6 @@ def test_tokenize_drops_one_char_words() -> None:
 
 def test_tokenize_handles_chinese_per_char() -> None:
 
-
     out = tokenize("生成图片 image")
     assert "生" in out and "成" in out and "图" in out and "片" in out
     assert "image" in out

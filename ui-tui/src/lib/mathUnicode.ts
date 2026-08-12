@@ -19,7 +19,7 @@
 //     LaTeX，避免输出 `ⁿ+¹`；某些字体没有上标 `+`，显示效果反而比源码更差。
 
 const SYMBOLS: Record<string, string> = {
-// 小写希腊字母
+  // 小写希腊字母
   '\\alpha': 'α',
   '\\beta': 'β',
   '\\gamma': 'γ',
@@ -50,7 +50,7 @@ const SYMBOLS: Record<string, string> = {
   '\\psi': 'ψ',
   '\\omega': 'ω',
 
-// 大写希腊字母
+  // 大写希腊字母
   '\\Gamma': 'Γ',
   '\\Delta': 'Δ',
   '\\Theta': 'Θ',
@@ -63,7 +63,7 @@ const SYMBOLS: Record<string, string> = {
   '\\Psi': 'Ψ',
   '\\Omega': 'Ω',
 
-// 大型运算符
+  // 大型运算符
   '\\sum': '∑',
   '\\prod': '∏',
   '\\coprod': '∐',
@@ -78,12 +78,12 @@ const SYMBOLS: Record<string, string> = {
   '\\bigoplus': '⨁',
   '\\bigotimes': '⨂',
 
-// 微积分
+  // 微积分
   '\\partial': '∂',
   '\\nabla': '∇',
   '\\sqrt': '√',
 
-// 集合
+  // 集合
   '\\emptyset': '∅',
   '\\varnothing': '∅',
   '\\infty': '∞',
@@ -101,7 +101,7 @@ const SYMBOLS: Record<string, string> = {
   '\\setminus': '∖',
   '\\complement': '∁',
 
-// 逻辑
+  // 逻辑
   '\\forall': '∀',
   '\\exists': '∃',
   '\\nexists': '∄',
@@ -112,7 +112,7 @@ const SYMBOLS: Record<string, string> = {
   '\\therefore': '∴',
   '\\because': '∵',
 
-// 关系运算符
+  // 关系运算符
   '\\le': '≤',
   '\\leq': '≤',
   '\\ge': '≥',
@@ -135,18 +135,18 @@ const SYMBOLS: Record<string, string> = {
   '\\nmid': '∤',
   '\\divides': '∣',
 
-// 常用独立符号
+  // 常用独立符号
   '\\blacksquare': '■',
   '\\square': '□',
   '\\Box': '□',
   '\\qed': '∎',
   '\\bigstar': '★',
 
-// 模运算——带参数的 `\pmod{p}` 形式在下方处理；裸 `\bmod` / `\mod` 命令只做文本替换。
+  // 模运算——带参数的 `\pmod{p}` 形式在下方处理；裸 `\bmod` / `\mod` 命令只做文本替换。
   '\\bmod': 'mod',
   '\\mod': 'mod',
 
-// 括号/围栏（具名分隔符命令）；下方展开 `\left\X` / `\right\X` 后将它们留给符号阶段解析。
+  // 括号/围栏（具名分隔符命令）；下方展开 `\left\X` / `\right\X` 后将它们留给符号阶段解析。
   '\\langle': '⟨',
   '\\rangle': '⟩',
   '\\lceil': '⌈',
@@ -155,7 +155,7 @@ const SYMBOLS: Record<string, string> = {
   '\\rfloor': '⌋',
   '\\|': '‖',
 
-// 箭头
+  // 箭头
   '\\to': '→',
   '\\rightarrow': '→',
   '\\leftarrow': '←',
@@ -173,7 +173,7 @@ const SYMBOLS: Record<string, string> = {
   '\\downarrow': '↓',
   '\\updownarrow': '↕',
 
-// 二元运算符
+  // 二元运算符
   '\\cdot': '⋅',
   '\\cdots': '⋯',
   '\\ldots': '…',
@@ -198,7 +198,7 @@ const SYMBOLS: Record<string, string> = {
   '\\angle': '∠',
   '\\triangle': '△',
 
-// 间距——折叠为不同宽度的普通空格
+  // 间距——折叠为不同宽度的普通空格
   '\\,': ' ',
   '\\;': ' ',
   '\\:': ' ',
@@ -207,7 +207,7 @@ const SYMBOLS: Record<string, string> = {
   '\\quad': '  ',
   '\\qquad': '    ',
 
-// 函数（LaTeX 使用罗马体渲染；这里只保留名称）
+  // 函数（LaTeX 使用罗马体渲染；这里只保留名称）
   '\\sin': 'sin',
   '\\cos': 'cos',
   '\\tan': 'tan',
@@ -236,7 +236,7 @@ const SYMBOLS: Record<string, string> = {
   '\\arg': 'arg',
   '\\gcd': 'gcd',
 
-// 转义字面量——模型偶尔会为了显示而输出这些内容
+  // 转义字面量——模型偶尔会为了显示而输出这些内容
   '\\&': '&',
   '\\%': '%',
   '\\$': '$',

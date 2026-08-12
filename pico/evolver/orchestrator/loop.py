@@ -389,16 +389,16 @@ class EvolutionOrchestrator:
         return result
 
     def _run_round(self, round_index: int, parent_id: str, parent_score: float) -> RoundResult:
-            # 门控 0（SOP 第 0 节，所有评分之前）：本轮评分前验证环境。脏环境（沙箱停机、
-            # 网络不可路由、验证器无法输出结果）会使所有分数失效，因此允许抛错；修复环境后
-            # 再恢复。未接入预检的基准跳过此步。
+        # 门控 0（SOP 第 0 节，所有评分之前）：本轮评分前验证环境。脏环境（沙箱停机、
+        # 网络不可路由、验证器无法输出结果）会使所有分数失效，因此允许抛错；修复环境后
+        # 再恢复。未接入预检的基准跳过此步。
         if self._backend.precheck is not None:
             self._backend.precheck()
         parent = self._load_parent(parent_id)
         anchor = self.select_anchor()
-                # 对照组本身可能是评测（同会话配对）或磁盘重建；此处的暂时失败和其他评测失败
-                # 一样仅影响本轮：记录错误轮次并交由错误计数器决定，而不是中止无人值守运行且
-                # 不留下日志记录。
+        # 对照组本身可能是评测（同会话配对）或磁盘重建；此处的暂时失败和其他评测失败
+        # 一样仅影响本轮：记录错误轮次并交由错误计数器决定，而不是中止无人值守运行且
+        # 不留下日志记录。
         try:
             baseline = self._baselines.for_round(
                 round_index,
@@ -441,7 +441,7 @@ class EvolutionOrchestrator:
                 if self._preflight(c, parent):
                     candidates.append(c)
                 else:
-                # ③ 零推理裁剪，必须记录（绝不静默丢弃）：裁掉无作用候选项也是本轮真实决策。
+                    # ③ 零推理裁剪，必须记录（绝不静默丢弃）：裁掉无作用候选项也是本轮真实决策。
                     outcome = CandidateOutcome(
                         f"r{round_index}-preflight{i}",
                         NodeStatus.pruned_inert,
@@ -492,8 +492,8 @@ class EvolutionOrchestrator:
         best_score = -1.0
 
         for idx, patch in enumerate(candidates):
-                # 单个候选项的应用/评测崩溃不得拖垮整轮：捕获异常，在 ``errored`` 结果上记录
-                # 原因，然后继续（C）。
+            # 单个候选项的应用/评测崩溃不得拖垮整轮：捕获异常，在 ``errored`` 结果上记录
+            # 原因，然后继续（C）。
             elite_id = getattr(patch, "elite_node_id", None)
             try:
                 node = self._apply(parent_id, patch, round_index)  # ④
@@ -545,7 +545,7 @@ class EvolutionOrchestrator:
                 fired_source=self._fired_source,
             )
             try:
-                    outcome = self._gate.decide(ctx)  # ⑤⑥ 委托给策略
+                outcome = self._gate.decide(ctx)  # ⑤⑥ 委托给策略
             except Exception as exc:  # noqa: BLE001 — 记录后跳过，不中止
                 if elite_id and self._archive is not None:
                     self._archive.record_pairing(parent_id, elite_id, "errored")
@@ -568,8 +568,8 @@ class EvolutionOrchestrator:
                 continue
             if elite_id:
                 outcome.stats["recombination_of"] = elite_id
-                    # 翻转表（SOP 第 2 节第 1 项：哪些任务发生翻转）：相对本轮对照组获救/退化，
-                    # 同时记录到账本和实时失败图，使下一轮诊断/设计看到因果反馈，而非只有静态失败集。
+                # 翻转表（SOP 第 2 节第 1 项：哪些任务发生翻转）：相对本轮对照组获救/退化，
+                # 同时记录到账本和实时失败图，使下一轮诊断/设计看到因果反馈，而非只有静态失败集。
             if outcome.confirm_evals:
                 flips = flip_summary(outcome.confirm_evals, baseline.evals, self._train_task_ids)
                 outcome.stats["flips"] = flips

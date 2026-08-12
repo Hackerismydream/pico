@@ -54,8 +54,6 @@ def _require_runtime() -> None:
         pytest.skip(f"embedding endpoint {EMBED_URL} unreachable")
 
 
-
-
 _TASKS = [
     ("simple: answer a short factual question", {CHEAP: 0.95, STRONG: 0.97}, {CHEAP: 0.0002, STRONG: 0.006}),
     ("simple: a one-word fact or basic arithmetic", {CHEAP: 0.95, STRONG: 0.97}, {CHEAP: 0.0002, STRONG: 0.006}),
@@ -73,7 +71,6 @@ _TASKS = [
 
 
 def _build_memory(path: Path) -> None:
-
 
     mem = [{"task_name": t[0], "text": t[0], "rewards": t[1], "costs": t[2]} for t in _TASKS]
     path.write_text(json.dumps(mem))
@@ -104,7 +101,6 @@ async def test_knn_routing_end_to_end(tmp_path):
             ModelEndpoint(model=CHEAP, api_base=OR_BASE, api_key=key),
             ModelEndpoint(model=STRONG, api_base=OR_BASE, api_key=key),
         ],
-
         min_similarity=0.0,
         min_similar_neighbors=1,
         min_memory_size=1,
@@ -115,12 +111,8 @@ async def test_knn_routing_end_to_end(tmp_path):
     simple = "What is the capital of Japan? Answer in one word."
     hard = "Write a Python function using matrix exponentiation to compute the nth Fibonacci number in O(log n)."
 
-
-
     assert (await router.select_model_chain(simple)) == (None, [])
     assert (await router.select_model_chain(hard))[0] == STRONG
-
-
 
     loop = AgentLoop(
         provider=provider,

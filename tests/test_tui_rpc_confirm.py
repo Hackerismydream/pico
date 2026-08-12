@@ -97,7 +97,6 @@ async def test_confirm_hard_limit_returns_false(monkeypatch: pytest.MonkeyPatch)
     frames, send_frame = _frame_collector()
     broker = ConfirmBroker(send_frame)
 
-
     result = await broker.await_confirm("Continue?", default=False)
     assert result is False
     await _wait_for_frame(frames)

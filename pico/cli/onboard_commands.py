@@ -128,8 +128,8 @@ def _theme_questionary(questionary: Any) -> None:
     @functools.wraps(_orig_select)
     def _themed_select(*args: Any, **kwargs: Any) -> Any:
         kwargs.setdefault("pointer", _POINTER)
-    # instruction 为假值时，questionary 会显示 "(Use arrow keys)"；单空格为真值但视觉上
-    # 为空，因此可隐藏该提示（步骤标题已显示操作方法）。
+        # instruction 为假值时，questionary 会显示 "(Use arrow keys)"；单空格为真值但视觉上
+        # 为空，因此可隐藏该提示（步骤标题已显示操作方法）。
         kwargs.setdefault("instruction", " ")
         return _orig_select(*args, **kwargs)
 
@@ -582,7 +582,7 @@ def _run_oauth_login(provider: str) -> bool:
     try:
         handler()
     except typer.Exit as exc:
-    # 处理器以 Exit(1) 表示登录失败；Exit(0)（若有）表示成功。
+        # 处理器以 Exit(1) 表示登录失败；Exit(0)（若有）表示成功。
         if exc.exit_code:
             return False
     except Exception as exc:  # 网络、浏览器或令牌错误，可恢复
@@ -1326,7 +1326,7 @@ def _step1_provider(
         if action is None:
             raise typer.Exit(1)  # Ctrl+C 表示退出，绝不能视为“完成”
         if action == "done":
-        # 步骤 1 必填：至少有一个提供商且已设默认模型才能前进，避免删除所有提供商后漏过校验。
+            # 步骤 1 必填：至少有一个提供商且已设默认模型才能前进，避免删除所有提供商后漏过校验。
             if not (_configured_providers() and _load_current_default_model()):
                 console.print(
                     _t(
@@ -1720,9 +1720,9 @@ def _scancode_login(channel: str, *, non_interactive: bool = False) -> None:
             )
             from loguru import logger as _wiz_logger
 
-        # 向导会静音 Pico 日志以保持 UI 整洁，但扫码登录通过 loguru 输出二维码、链接、进度和
-        # 失败原因。登录尝试期间只重新启用当前渠道的适配器子树（而非整个 Pico，以免输出
-        # 无关噪声），随后恢复静音。
+            # 向导会静音 Pico 日志以保持 UI 整洁，但扫码登录通过 loguru 输出二维码、链接、进度和
+            # 失败原因。登录尝试期间只重新启用当前渠道的适配器子树（而非整个 Pico，以免输出
+            # 无关噪声），随后恢复静音。
             _login_log_scope = f"pico.channels.adapters.{channel}"
             try:
                 _wiz_logger.enable(_login_log_scope)
@@ -1764,8 +1764,8 @@ def _scancode_login(channel: str, *, non_interactive: bool = False) -> None:
             return
     finally:
         if not logged_in:
-        # 任何未登录的退出（跳过、无配置、子菜单 Ctrl+C、扫码中断）都会撤销启用，确保取消的
-        # 扫码不会持久化为“已连接”。配置段仍保留，供 `pico channels login` 使用。
+            # 任何未登录的退出（跳过、无配置、子菜单 Ctrl+C、扫码中断）都会撤销启用，确保取消的
+            # 扫码不会持久化为“已连接”。配置段仍保留，供 `pico channels login` 使用。
             disable_channel(channel)
 
 
@@ -2393,10 +2393,10 @@ def _run_wizard_body(
         result = screens[index]()
         if result is _BACK:
             if index == 0:
-            # 语言选择器在状态机前运行，因此步骤 1 是首个带编号页面，却不是用户看到的
-            # 第一个页面。从中后退会回到语言选择器：重新选择并持久化后，再以所选语言
-            # 显示步骤 1。步骤 1 始终必填，绝不能跳过；否则提供商/模型不会写入，启动门
-            # 会再次触发并陷入无限循环。
+                # 语言选择器在状态机前运行，因此步骤 1 是首个带编号页面，却不是用户看到的
+                # 第一个页面。从中后退会回到语言选择器：重新选择并持久化后，再以所选语言
+                # 显示步骤 1。步骤 1 始终必填，绝不能跳过；否则提供商/模型不会写入，启动门
+                # 会再次触发并陷入无限循环。
                 _pick_language()
                 from pico.config.update import set_language
 

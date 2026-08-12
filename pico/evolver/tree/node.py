@@ -557,7 +557,7 @@ class HarnessNode:
         if not self.git_commit_sha:
             raise ValueError("git_commit_sha must be non-empty")
         if not self.core_version:
-        # 空字符串无效；调用方必须传入 "1.0.0" 之类的真实版本或哨兵值 "unknown"。
+            # 空字符串无效；调用方必须传入 "1.0.0" 之类的真实版本或哨兵值 "unknown"。
             raise ValueError("core_version must be non-empty (use 'unknown' if not available)")
         # 根节点不变量：没有父节点就没有已应用补丁。
         if self.parent_id is None and self.patch is not None:

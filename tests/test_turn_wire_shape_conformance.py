@@ -124,9 +124,6 @@ async def test_subagent_delivery_uses_a_typed_uncorrelated_event() -> None:
     _assert_event_validates(events[0])
 
 
-
-
-
 async def test_message_complete_payload_has_turn_id_and_usage_only() -> None:
     """B1 regression: message.complete payload must be ``{turn_id, usage}``.
 
@@ -178,9 +175,6 @@ async def test_message_complete_payload_has_turn_id_and_usage_only() -> None:
     _assert_event_validates(completions[0])
 
 
-
-
-
 async def test_overflow_error_event_payload_shape() -> None:
     """B2 regression: overflow error must be ``{code: -32016, message, reason}``;
     no ``detail`` field per ``ErrorEventPayload`` additionalProperties: false."""
@@ -207,7 +201,6 @@ async def test_overflow_error_event_payload_shape() -> None:
     )
     assert "detail" not in err["payload"]
     _assert_event_validates(err)
-
 
     assert sub_id not in emitter._by_id
 

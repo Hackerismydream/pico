@@ -80,18 +80,12 @@ def _collect():
     return events, emit
 
 
-
-
-
 def test_pieces_satisfy_their_spine_protocols():
     assert isinstance(TuiTurnRunner(object(), FakeEmitter(), {}, {}, {}), TurnRunner)
     outlet = TuiOutlet("tui", FakeEmitter())
     assert isinstance(outlet, Outlet)
     assert isinstance(outlet, SupportsStreaming)
     assert outlet.capabilities.streaming is True
-
-
-
 
 
 async def test_runner_drives_run_turn_and_stashes_rich_usage():
@@ -111,9 +105,7 @@ async def test_runner_drives_run_turn_and_stashes_rich_usage():
 
     outcome = await runner.run(req, emit, lambda: [])
 
-
     assert [e.delta for e in events] == ["he", "llo"]
-
 
     assert usages[id(req)] == rich
     assert outcome.explicit_reply is True
@@ -142,8 +134,6 @@ async def test_runner_emits_eve22_synthetic_tool_complete_when_message_tool_fire
 
     await runner.run(req, emit, lambda: [])
 
-
-
     assert len(events) == 1 and isinstance(events[0], ToolEvent)
     assert events[0].phase is ToolPhase.COMPLETE and events[0].tool_call_id == "msg-T7"
 
@@ -165,8 +155,6 @@ async def test_runner_no_synthetic_when_message_tool_did_not_fire():
 
 
 async def test_runner_cron_captures_reply_non_streaming():
-
-
 
     loop = _RunTurnLoop(reply_text="reminder fired")
     readback: dict[str, str] = {}
@@ -215,9 +203,6 @@ async def test_runner_delivers_subagent_reply_without_user_turn_correlation():
             },
         )
     ]
-
-
-
 
 
 async def test_outlet_deliver_reasoning_to_thinking_delta():
@@ -283,8 +268,6 @@ async def test_outlet_marks_failed_tool_completion():
 
 
 async def test_outlet_deliver_text_to_token_delta():
-
-
 
     emitter = FakeEmitter()
     outlet = TuiOutlet("tui", emitter)
@@ -354,12 +337,6 @@ async def test_outlet_emit_complete_and_error_shapes():
             },
         ),
     ]
-
-
-
-
-
-
 
 
 async def test_build_tui_defaults_to_single_slot_pools():
@@ -642,8 +619,6 @@ async def test_preceding_subagent_cannot_emit_settle_or_clear_queued_user_turn(s
         on_turn_end=turn_module.clear_active,
     )
 
-
-
     class _UncheckedScheduler:
         def submit(self, req):
             return scheduler.submit(req)
@@ -726,7 +701,6 @@ async def test_streaming_turn_emits_token_deltas_then_message_complete():
     finally:
         await teardown()
 
-
     assert emitter.types() == ["message.start", "token.delta", "token.delta", "message.complete"]
     last_key, last = emitter.emitted[-1]
     assert last_key == "tui:c1"
@@ -738,8 +712,6 @@ async def test_streaming_turn_emits_token_deltas_then_message_complete():
 
 
 async def test_interleaved_events_keep_emit_order_through_one_queue():
-
-
 
     emitter = FakeEmitter()
     loop = _RunTurnLoop(
@@ -772,7 +744,6 @@ async def test_interleaved_events_keep_emit_order_through_one_queue():
 
 async def test_non_streamed_text_reaches_the_wire_as_a_token_delta():
 
-
     emitter = FakeEmitter()
     loop = _RunTurnLoop(events=[Text(content="which file?")])
     scheduler, hub, turn_ids, submission_ids, teardown = build_tui(loop, emitter)
@@ -791,7 +762,6 @@ async def test_non_streamed_text_reaches_the_wire_as_a_token_delta():
 
 async def test_empty_stream_turn_still_emits_message_complete():
 
-
     emitter = FakeEmitter()
     scheduler, hub, turn_ids, submission_ids, teardown = build_tui(_RunTurnLoop(events=[]), emitter)
     try:
@@ -808,10 +778,6 @@ async def test_empty_stream_turn_still_emits_message_complete():
 
 
 async def test_cron_turn_deliverables_key_to_dead_conversation_not_user_session():
-
-
-
-
 
     emitter = FakeEmitter()
     loop = _RunTurnLoop(events=[Text(content="reminder")], reply_text="reminder")
@@ -859,7 +825,6 @@ async def test_failed_turn_emits_error():
 
 
 async def test_cancelled_turn_does_not_emit_error():
-
 
     import asyncio
 

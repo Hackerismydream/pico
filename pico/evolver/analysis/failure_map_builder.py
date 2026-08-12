@@ -140,8 +140,8 @@ def build_failure_map(
             continue
 
         where_key = where.value
-            # 按模式约定，patch_why_extra 携带包含 "other:" 前缀的完整子名称；
-            # 参见 PatchWhy.other 文档字符串。
+        # 按模式约定，patch_why_extra 携带包含 "other:" 前缀的完整子名称；
+        # 参见 PatchWhy.other 文档字符串。
         why_key = why.value if why != PatchWhy.other else (action.patch_why_extra or "other:unknown")
         where_distribution[where_key] += 1
         why_distribution[why_key] += 1

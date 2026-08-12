@@ -17,9 +17,9 @@ const WINDOW_SIZE = 30
 
 export type FpsState = {
   fps: number
-/** 在 JavaScript 安全整数处回绕，使调试浮层可安全计算相邻差值。 */
+  /** 在 JavaScript 安全整数处回绕，使调试浮层可安全计算相邻差值。 */
   totalFrames: number
-/** 上一帧 Ink 渲染阶段的总次数。 */
+  /** 上一帧 Ink 渲染阶段的总次数。 */
   lastDurationMs: number
 }
 

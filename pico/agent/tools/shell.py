@@ -13,8 +13,8 @@ from pico.sandbox import DirectExecutor, SandboxExecutor
 class ExecTool(Tool):
     """Tool to execute shell commands."""
 
-# 高于 exec 内部 600 秒上限（``_MAX_TIMEOUT``）的兜底值；执行器自身超时会先触发，
-# 此值只用于捕获完全卡死的执行器。
+    # 高于 exec 内部 600 秒上限（``_MAX_TIMEOUT``）的兜底值；执行器自身超时会先触发，
+    # 此值只用于捕获完全卡死的执行器。
     timeout_seconds = 660.0
 
     def __init__(
@@ -30,15 +30,15 @@ class ExecTool(Tool):
         self.timeout = timeout
         self.working_dir = working_dir
         self.deny_patterns = deny_patterns or [
-        r"\brm\s+-[rf]{1,2}\b",  # 匹配 rm -r、rm -rf、rm -fr
-        r"\bdel\s+/[fq]\b",  # 匹配 del /f、del /q
-        r"\brmdir\s+/s\b",  # 匹配 rmdir /s
-        r"(?:^|[;&|]\s*)format\b",  # format（仅作为独立命令时）
-        r"\b(mkfs|diskpart)\b",  # 磁盘操作
-        r"\bdd\s+if=",  # 匹配 dd
-        r">\s*/dev/sd",  # 写入磁盘
-        r"\b(shutdown|reboot|poweroff)\b",  # 系统电源
-        r":\(\)\s*\{.*\};\s*:",  # fork 炸弹
+            r"\brm\s+-[rf]{1,2}\b",  # 匹配 rm -r、rm -rf、rm -fr
+            r"\bdel\s+/[fq]\b",  # 匹配 del /f、del /q
+            r"\brmdir\s+/s\b",  # 匹配 rmdir /s
+            r"(?:^|[;&|]\s*)format\b",  # format（仅作为独立命令时）
+            r"\b(mkfs|diskpart)\b",  # 磁盘操作
+            r"\bdd\s+if=",  # 匹配 dd
+            r">\s*/dev/sd",  # 写入磁盘
+            r"\b(shutdown|reboot|poweroff)\b",  # 系统电源
+            r":\(\)\s*\{.*\};\s*:",  # fork 炸弹
         ]
         self.allow_patterns = allow_patterns or []
         self.restrict_to_workspace = restrict_to_workspace
@@ -92,13 +92,13 @@ class ExecTool(Tool):
         cwd = working_dir or self.working_dir or os.getcwd()
 
         if not self._executor.is_sandboxed:
-        # 非沙箱模式：完整保护，同时应用拒绝列表模式和工作区限制。
+            # 非沙箱模式：完整保护，同时应用拒绝列表模式和工作区限制。
             guard_error = self._guard_command(command, cwd)
             if guard_error:
                 return guard_error
         elif self.restrict_to_workspace:
-        # 沙箱模式：微型虚拟机已提供真隔离，因此跳过拒绝列表；仍强制工作区限制，
-        # 以遵守操作者设定的边界。
+            # 沙箱模式：微型虚拟机已提供真隔离，因此跳过拒绝列表；仍强制工作区限制，
+            # 以遵守操作者设定的边界。
             workspace_error = self._check_workspace_restriction(command, cwd)
             if workspace_error:
                 return workspace_error
@@ -109,12 +109,12 @@ class ExecTool(Tool):
         env: dict[str, str] | None = None
         if self.path_append:
             if self._executor.is_sandboxed:
-            # 通过命令包装在虚拟机内注入路径；绝不向沙箱执行器传入 os.environ，
-            # 否则会将宿主机凭据泄漏到虚拟机。
+                # 通过命令包装在虚拟机内注入路径；绝不向沙箱执行器传入 os.environ，
+                # 否则会将宿主机凭据泄漏到虚拟机。
                 command = f'export PATH="$PATH:{shlex.quote(self.path_append)}" && {command}'
             else:
-            # 只传入 PATH 覆盖值。此处复制 os.environ 会把完整宿主机环境交给 DirectExecutor，
-            # 破坏其基线白名单隔离；其余变量由执行器提供。
+                # 只传入 PATH 覆盖值。此处复制 os.environ 会把完整宿主机环境交给 DirectExecutor，
+                # 破坏其基线白名单隔离；其余变量由执行器提供。
                 base_path = os.environ.get("PATH", "")
                 env = {"PATH": base_path + os.pathsep + self.path_append}
 

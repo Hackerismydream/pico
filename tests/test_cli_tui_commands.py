@@ -64,7 +64,6 @@ def patched_tui_loop_deps(monkeypatch: pytest.MonkeyPatch, tmp_path):
         lambda workspace, silent=False: sync_calls.append((workspace, silent)),
     )
 
-
     class _AgentLoopSpy:
         def __init__(self, **kwargs):
             captured["agent_loop_kwargs"] = kwargs
@@ -72,8 +71,6 @@ def patched_tui_loop_deps(monkeypatch: pytest.MonkeyPatch, tmp_path):
             self.configure_personalization = MagicMock()
 
     monkeypatch.setattr("pico.agent.loop.AgentLoop", _AgentLoopSpy)
-
-
 
     fake_registry = sentinel.fake_registry
     fake_backend = sentinel.fake_backend
@@ -331,8 +328,6 @@ def rpc_server_deps(monkeypatch: pytest.MonkeyPatch):
         "pico.cli.tui_commands._build_tui_runtime",
         lambda: fake_runtime,
     )
-
-
 
     fake_dispatcher = MagicMock()
     fake_dispatcher.register = MagicMock()

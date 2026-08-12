@@ -340,7 +340,6 @@ class TestExecToolWithMockExecutor:
         assert call["env"] is not None
         assert "/custom/bin" in call["env"]["PATH"]
 
-
         assert set(call["env"]) == {"PATH"}
 
         assert "export PATH" not in call["command"]
@@ -566,13 +565,11 @@ class TestBoxliteCleanupOrdering:
 
         async def _stop():
 
-
             owned_during_stop.append(mock_box.id in owned)
 
         mock_box.stop = AsyncMock(side_effect=_stop)
         executor._box = mock_box
         owned.add(mock_box.id)
-
 
         from pico.sandbox import _runtime as rt_mod
 
@@ -621,7 +618,6 @@ class TestBoxliteStartFailureCleanup:
         from pico.sandbox import _runtime as rt_mod
 
         monkeypatch.setattr(rt_mod, "get_boxlite_runtime", lambda: fake_runtime)
-
 
         import sys
 
@@ -690,7 +686,6 @@ class TestBoxliteStartFailureCleanup:
 
         mock_box.stop = AsyncMock(side_effect=_stop)
 
-
         async def _slow_wait():
             await asyncio.sleep(10)
             return MagicMock(exit_code=0)
@@ -736,7 +731,6 @@ class TestBoxliteStartProcessBridges:
         executor = BoxliteExecutor(image="ubuntu:22.04", workspace=tmp_path)
         mock_box = MagicMock()
 
-
         json_line = '{"jsonrpc":"2.0","id":1,"method":"ping"}\n'
 
         async def _stdout():
@@ -754,7 +748,6 @@ class TestBoxliteStartProcessBridges:
         executor._box = mock_box
 
         read_recv, write_send = await executor.start_process("mcp-server", [])
-
 
         await asyncio.sleep(0.05)
 
@@ -797,7 +790,6 @@ class TestBoxliteStartProcessBridges:
 
         from mcp.shared.message import SessionMessage as SM
 
-
         msg = await asyncio.wait_for(read_recv.receive(), timeout=1.0)
         assert isinstance(msg, SM), f"Expected SessionMessage, got {type(msg)}: {msg}"
         assert isinstance(msg.message, JSONRPCMessage)
@@ -828,7 +820,6 @@ class TestBoxliteStartProcessBridges:
         executor._box = mock_box
 
         _, write_send = await executor.start_process("mcp-server", [])
-
 
         from mcp.shared.message import SessionMessage
 
@@ -966,7 +957,6 @@ class TestAgentLoopExecutorLifecycle:
         )
         loop._executor = StartedThenFailsMCP()
 
-
         async def _failing_connect_mcp():
             raise SandboxInitError("test: MCP sandbox guard fired")
 
@@ -1072,10 +1062,6 @@ class TestConnectMcpSandboxGuard:
         cfg_stdio.command = "mcp-server"
         cfg_stdio.args = []
 
-
-
-
-
         from contextlib import asynccontextmanager
         from unittest.mock import patch
 
@@ -1126,11 +1112,6 @@ class TestSubagentSandboxLifecycle:
         )
         manager.set_submit(lambda req: None)
 
-
-
-
-
-
         import pico.agent.subagent.manager as subagent_mod
 
         original = subagent_mod.build_executor
@@ -1140,7 +1121,6 @@ class TestSubagentSandboxLifecycle:
 
         subagent_mod.build_executor = _patched_build
         try:
-
             original_inner = manager._run_subagent_inner
 
             async def _fast_inner(task_id, task, label, origin, executor):

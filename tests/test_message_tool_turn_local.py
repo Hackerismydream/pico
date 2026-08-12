@@ -27,7 +27,6 @@ async def test_concurrent_turns_do_not_clobber_message_routing():
         tool.set_context(channel, chat_id)
         tool.set_send_callback(cb)
 
-
         await barrier.wait()
         await tool.execute(content=content)
 

@@ -100,8 +100,6 @@ class _StubChannel:
     def __init__(self, allow_from):
         self.config = _StubConfig(allow_from=allow_from)
 
-
-
     from pico.channels.base import ChannelBase  # noqa: E402
 
     is_allowed = ChannelBase.is_allowed
@@ -132,8 +130,6 @@ class TestChannelBaseDelegation:
             from pico.channels.base import ChannelBase
 
             is_allowed = ChannelBase.is_allowed
-
-
 
         assert _BareChannel().is_allowed("alice") is False
 
@@ -177,7 +173,6 @@ class TestCapabilityTokens:
         )
         wire = issue_token(token, "s")
         recovered = verify_token(wire, "s")
-
 
         assert recovered is None
 

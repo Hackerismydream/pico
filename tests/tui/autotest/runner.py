@@ -35,7 +35,6 @@ class ExtrasMissingError(HarnessError):
     """``tui-use`` not on PATH (or pexpect/pyte missing on a Tier 3 fallback)."""
 
 
-
 _DEFAULT_ENV: dict[str, str] = {
     "TERM": "xterm-256color",
     "FORCE_COLOR": "1",
@@ -68,8 +67,6 @@ class Harness:
         self._session_id: Optional[str] = None
         self._killed = False
         self._cached_exit_code: Optional[int] = None
-
-
 
     def spawn(self, command: str) -> None:
         if self._session_id is not None:
@@ -111,12 +108,10 @@ class Harness:
                 f"  stderr: {result.stderr.strip()}"
             )
 
-
         lines = [ln for ln in (result.stdout or "").splitlines() if ln.strip()]
         if not lines:
             raise SpawnError(f"tui-use start did not emit a session id; stdout={result.stdout!r}")
         self._session_id = lines[-1].strip()
-
 
         self._run_tui_use("use", self._session_id, check=True)
 
@@ -132,8 +127,6 @@ class Harness:
         self._cached_exit_code = exit_code
         return exit_code if exit_code is not None else -1
 
-
-
     def type(self, text: str) -> None:
         self._require_spawned("type")
         self._run_tui_use("type", text, check=True)
@@ -146,8 +139,6 @@ class Harness:
         if self._session_id is not None:
             raise HarnessError("env_set() must be called before spawn()")
         self._env_overrides.update(mapping)
-
-
 
     def wait(
         self,
@@ -188,8 +179,6 @@ class Harness:
     def screen(self) -> str:
         return "\n".join(self.dump())
 
-
-
     def expect_exit(self, code: int = 0, timeout: float = 5.0) -> bool:
         self._require_spawned("expect_exit")
         deadline = time.monotonic() + timeout
@@ -200,8 +189,6 @@ class Harness:
             time.sleep(0.1)
         actual = self._poll_exit_code(timeout=0.0)
         return actual is not None and actual == code
-
-
 
     def _require_spawned(self, op: str) -> None:
         if self._session_id is None:

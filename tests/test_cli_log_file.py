@@ -152,8 +152,6 @@ def test_file_sink_does_not_dump_local_variable_values(tmp_logs: Path) -> None:
     log_path = redirect_loguru_to_file("gateway.log", file_level="DEBUG")
     api_token = "SECRET-TOKEN-9z9z9z"
     try:
-
-
         raise RuntimeError(api_token[:0] or "boom")
     except RuntimeError:
         logger.exception("processing failed")
@@ -242,7 +240,6 @@ def test_redirect_terminal_fds_captures_print_and_raw_fd_write(tmp_path, capfd) 
 
     with capfd.disabled():
         with redirect_terminal_fds_to_file(target):
-
             print("print-leak-line", flush=True)
 
             os.write(1, b"raw-fd-write\n")

@@ -189,12 +189,7 @@ export function useComposerState({
 
       const sid = getUiState().sid
 
-      if (
-        sid &&
-        !getUiState().sessionMutating &&
-        !getUiState().sessionSwitching &&
-        looksLikeDroppedPath(cleanedText)
-      ) {
+      if (sid && !getUiState().sessionMutating && !getUiState().sessionSwitching && looksLikeDroppedPath(cleanedText)) {
         try {
           const attached = await gw.request<ImageAttachResponse>('image.attach', {
             path: cleanedText,

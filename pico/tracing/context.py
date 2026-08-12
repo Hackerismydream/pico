@@ -24,7 +24,7 @@ class TraceCtx:
     parent_span_id: str | None = None
     turn_span_id: str | None = None
     # 最近一层非模型 span 的名称，表示模型调用服务的目的
-    #（turn / memory.extract / skill.gate / ...）。模型类 span 继承该来源，
+    # （turn / memory.extract / skill.gate / ...）。模型类 span 继承该来源，
     # 而不是把自身作为来源，因此嵌套调用
     # ``llm.call`` 无需遍历树即可自行标记；通用跨度没有采用方。
     # 的名称无需硬编码在此处。

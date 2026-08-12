@@ -67,10 +67,6 @@ class _ReplyAgent:
 
 def test_build_gateway_requires_a_running_loop():
 
-
-
-
-
     with pytest.raises(RuntimeError):
         build_gateway(_ReplyAgent(), {})
 
@@ -79,7 +75,6 @@ async def test_build_gateway_registers_an_outlet_per_channel():
     channels = {"telegram": _FakeChannel("telegram"), "discord": _FakeChannel("discord")}
     scheduler, hub, readback_texts, _sources, teardown = build_gateway(_ReplyAgent(), channels)
     try:
-
         assert {"telegram", "discord"} <= set(hub._outlets)
     finally:
         await teardown()
@@ -109,7 +104,6 @@ async def test_build_gateway_honors_configured_pool_and_retry_sizes():
 
 async def test_cron_reply_reaches_the_channel_via_outlet():
 
-
     ch = _FakeChannel("telegram")
     scheduler, hub, readback_texts, _sources, teardown = build_gateway(
         _ReplyAgent([Text(content="reminder!")]), {"telegram": ch}
@@ -127,9 +121,6 @@ async def test_cron_reply_reaches_the_channel_via_outlet():
 
 async def test_readback_captures_cron_reply_text():
 
-
-
-
     ch = _FakeChannel("telegram")
     scheduler, hub, readback_texts, _sources, teardown = build_gateway(
         _ReplyAgent([Text(content="done at 17:05")]), {"telegram": ch}
@@ -143,7 +134,6 @@ async def test_readback_captures_cron_reply_text():
 
 
 async def test_readback_skips_non_readback_origin():
-
 
     ch = _FakeChannel("telegram")
     scheduler, hub, readback_texts, _sources, teardown = build_gateway(
@@ -176,25 +166,17 @@ async def test_cron_media_reply_sends_local_paths():
 
 async def test_reply_to_unregistered_channel_is_dropped_not_raised():
 
-
-
     ch = _FakeChannel("telegram")
     scheduler, hub, readback_texts, _sources, teardown = build_gateway(
         _ReplyAgent([Text(content="hi")]), {"telegram": ch}
     )
     try:
-
         await scheduler.submit(_req(channel="discord", conversation="cron:2")).result()
         await hub.wait_idle("telegram")
     finally:
         await teardown()
 
     assert ch.sent == []
-
-
-
-
-
 
 
 async def test_gateway_sink_notifies_on_turn_end():
@@ -279,14 +261,12 @@ async def test_gateway_sink_sends_error_reply_on_failure():
     finally:
         await teardown()
 
-
     assert len(ch.sent) == 1 and ch.sent[0][1] == "Sorry, I encountered an error."
     assert ch.sent[0][0] == "c9"
     assert agent.notify_count >= 1
 
 
 async def test_gateway_sink_no_error_reply_on_cancel():
-
 
     started = asyncio.Event()
 

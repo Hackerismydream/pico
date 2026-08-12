@@ -182,7 +182,6 @@ class TestLocalSkillSource:
     async def test_k_passes_through(self, pool_and_registry) -> None:
         pool, reg = pool_and_registry
 
-
         spy = []
         orig = pool.search
 

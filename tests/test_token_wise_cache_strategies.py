@@ -318,7 +318,6 @@ async def _run_variant(
         strategies=StrategyRegistry(strategies),
     )
 
-
     loop.tools._tools.clear()
     if register_tools:
         for t in register_tools:
@@ -421,7 +420,6 @@ def _write_report(scenarios: list[ScenarioResult]) -> str:
                 )
             lines.append("")
 
-
         v1 = sc.variants[0]
         lines.append("### Conclusion\n")
         for v in sc.variants[1:]:
@@ -433,7 +431,6 @@ def _write_report(scenarios: list[ScenarioResult]) -> str:
                 vs = (1 - v3.total_cost / v2.total_cost) * 100
                 winner = v3.name if vs > 0 else v2.name
                 lines.append(f"- **Winner: {winner}** (Pico vs Hermes: {vs:+.1f}%)\n")
-
 
     lines.append("\n---\n\n## Overall verdict\n")
     lines.append("| Scenario | Winner | Margin |")
@@ -621,11 +618,9 @@ async def test_hermes_vs_pico(api_key: str, tmp_path: Path):
         )
     )
 
-
     body = _write_report(scenarios)
     print(f"\nReport: {REPORT_PATH}\n")
     print(body[:5000])
-
 
     for sc in scenarios:
         for v in sc.variants:

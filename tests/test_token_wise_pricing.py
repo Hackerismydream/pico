@@ -305,8 +305,6 @@ def test_resolve_context_window_unknown_returns_none(monkeypatch):
     assert resolve_context_window("openrouter/some/model-not-listed") is None
 
 
-
-
 _DEEPSEEK_PRICE = (0.0000005, 0.0000015)
 
 

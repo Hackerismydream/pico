@@ -120,7 +120,7 @@ function nativeStep(state: WheelAccelState, dir: -1 | 1, now: number): number {
 
   if (state.wheelMode) {
     if (gap < WHEEL_BURST_MS) {
-    // 同批突发（SGR 比例式）或触控板轻扫。每事件一行；触控板轻扫会触发突发计数退出。
+      // 同批突发（SGR 比例式）或触控板轻扫。每事件一行；触控板轻扫会触发突发计数退出。
       if (++state.burstCount >= 5) {
         state.wheelMode = false
         state.burstCount = 0
@@ -167,7 +167,7 @@ function xtermJsStep(state: WheelAccelState, dir: -1 | 1, now: number): number {
   }
 
   if (!sameDir || gap > WHEEL_DECAY_IDLE_MS) {
-  // 反转或长时间空闲后从 2 开始，使暂停后的第一次滚动有明显移动。
+    // 反转或长时间空闲后从 2 开始，使暂停后的第一次滚动有明显移动。
     state.mult = 2
     state.frac = 0
   } else {

@@ -92,7 +92,7 @@ function startMock(): Promise<MockServer> {
             try {
               handler(JSON.parse(line))
             } catch {
-          /* 吞掉异常。 */
+              /* 吞掉异常。 */
             }
           }
           nl = readBuf.indexOf('\n')

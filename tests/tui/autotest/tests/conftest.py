@@ -29,5 +29,4 @@ def harness() -> Iterator[Harness]:
     try:
         yield h
     finally:
-
         h.kill()

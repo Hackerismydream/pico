@@ -145,7 +145,6 @@ async def test_socket_roundtrip_after_inbound_byte() -> None:
         serve_task = asyncio.create_task(server.serve_forever())
         await server.started.wait()
 
-
         await _send(client, "system.hello", {"client_version": "0.0.2"}, 1)
         hello = await _read_one_frame(client)
         assert hello, "no handshake response — write transport closed early"
@@ -153,7 +152,6 @@ async def test_socket_roundtrip_after_inbound_byte() -> None:
         assert hello_obj["id"] == 1
         assert "result" in hello_obj
         assert hello_obj["result"]["server_version"]
-
 
         for rid in (2, 3, 4):
             await _send(client, "system.ping", {}, rid)
@@ -232,7 +230,6 @@ async def test_pipe_path_still_works() -> None:
         serve_task = asyncio.create_task(server.serve_forever())
         await server.started.wait()
 
-
         frame = (
             json.dumps(
                 {
@@ -247,7 +244,6 @@ async def test_pipe_path_still_works() -> None:
         os.write(req_w, frame)
 
         loop = asyncio.get_running_loop()
-
 
         os.set_blocking(notif_r, False)
         buf = bytearray()
@@ -273,8 +269,6 @@ async def test_pipe_path_still_works() -> None:
         except asyncio.CancelledError:
             pass
     finally:
-
-
         for fd in (req_w, notif_r):
             try:
                 os.close(fd)

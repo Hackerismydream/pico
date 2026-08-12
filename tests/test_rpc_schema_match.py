@@ -79,9 +79,6 @@ def _resolve_pyd_ref(ref: str, root: dict[str, Any]) -> dict[str, Any]:
     return node
 
 
-
-
-
 _ANY_REFS = {"JsonValue"}
 
 
@@ -106,7 +103,6 @@ def _normalize_oas_type(
         return expanded
     out: dict[str, Any] = {}
     if "type" in node:
-
         if isinstance(node["type"], list):
             out["any"] = True
         else:
@@ -129,7 +125,6 @@ def _normalize_oas_type(
                 out["values"] = _normalize_oas_type(ap, schema, _seen)
     if "oneOf" in node:
         branches = node["oneOf"]
-
 
         non_null = [b for b in branches if not (isinstance(b, dict) and b.get("type") == "null")]
         if len(branches) == 2 and len(non_null) == 1:
@@ -185,8 +180,6 @@ def _normalize_pyd_type(
         out["items"] = _normalize_pyd_type(stripped["items"], root, _seen)
     if stripped.get("type") == "object":
         if "properties" in stripped:
-
-
             props_out: dict[str, dict[str, Any]] = {}
             local_required = set(stripped.get("required", []))
             for pname, psub in stripped["properties"].items():
@@ -332,11 +325,6 @@ def _check_result_drift(method_name: str, method: dict[str, Any], schema: dict[s
         )
 
 
-
-
-
-
-
 def test_schema_match_terminal_resize(methods_by_name: dict[str, dict[str, Any]], schema: dict[str, Any]) -> None:
     method = methods_by_name["terminal.resize"]
     _check_params_drift("terminal.resize", method, schema)
@@ -374,11 +362,6 @@ def test_schema_match_turn_event_discriminated_union(schema: dict[str, Any]) -> 
     oas_normal = {k: v.split("/")[-1] for k, v in oas_mapping.items()}
     pyd_normal = {k: v.split("/")[-1] for k, v in pyd_mapping.items()}
     assert oas_normal == pyd_normal, f"TurnEvent discriminator mapping drift: schema={oas_normal} vs pyd={pyd_normal}"
-
-
-
-
-
 
 
 def _all_method_names() -> list[str]:

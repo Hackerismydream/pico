@@ -208,8 +208,8 @@ class BanditTaskScheduler:
             stats = self.tasks.get(task_id)
             if stats is None:
                 continue
-        # 在同一任务上重新运行同一候选项不产生操作，否则会重复计算成功。调用方应去重，
-        # 此处也做防御。
+            # 在同一任务上重新运行同一候选项不产生操作，否则会重复计算成功。调用方应去重，
+            # 此处也做防御。
             if candidate_id in stats.per_candidate:
                 continue
             stats.per_candidate[candidate_id] = bool(passed)

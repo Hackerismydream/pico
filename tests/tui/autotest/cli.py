@@ -125,7 +125,6 @@ def _run_smoke(args: argparse.Namespace) -> int:
         print(f"=== exit code: {0 if (ready and exit_ok) else 1} ===")
         return 0 if (ready and exit_ok) else 1
     finally:
-
         try:
             h.kill()
         except Exception:
@@ -137,7 +136,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit as e:
-
         return int(e.code) if e.code is not None else 2
 
     if args.subcommand == "smoke":

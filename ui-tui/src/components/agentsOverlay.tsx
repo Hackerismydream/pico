@@ -10,11 +10,7 @@ import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } 
 import type { Theme } from '../theme.js'
 import type { SubagentNode, SubagentProgress } from '../types.js'
 
-import {
-  $delegationState,
-  $overlaySectionsOpen,
-  toggleOverlaySection
-} from '../app/delegationStore.js'
+import { $delegationState, $overlaySectionsOpen, toggleOverlaySection } from '../app/delegationStore.js'
 import { patchOverlayState } from '../app/overlayStore.js'
 import { $spawnDiff, $spawnHistory, clearDiffPair, type SpawnSnapshot } from '../app/spawnHistoryStore.js'
 import { useTurnSelector } from '../app/turnStore.js'
@@ -728,23 +724,23 @@ export function AgentsOverlay({ initialHistoryIndex = 0, onClose, t }: AgentsOve
   // ── 副作用 ─────────────────────────────────────────────────────────
 
   useEffect(() => {
-  // 计时器同时驱动实时甘特图和 OverlayScrollbar 内容重排检测。回放中没有增长，因此速度更慢，
-  // 但不会停止，因为折叠区仍可能展开。
+    // 计时器同时驱动实时甘特图和 OverlayScrollbar 内容重排检测。回放中没有增长，因此速度更慢，
+    // 但不会停止，因为折叠区仍可能展开。
     const id = setInterval(() => setNow(Date.now()), replayMode ? 300 : 500)
 
     return () => clearInterval(id)
   }, [replayMode])
 
   useEffect(() => {
-  // 历史在当前位置下方增长或收缩时，钳制过期索引。
+    // 历史在当前位置下方增长或收缩时，钳制过期索引。
     if (historyIndex > history.length) {
       setHistoryIndex(history.length)
     }
   }, [history.length, historyIndex])
 
   useEffect(() => {
-  // 自动跟随刚结束的轮次到 history[1]，避免用户落入空实时视图。仅在实时模式从“有实时子智能体”
-  // 转为“实时为空”时触发。
+    // 自动跟随刚结束的轮次到 history[1]，避免用户落入空实时视图。仅在实时模式从“有实时子智能体”
+    // 转为“实时为空”时触发。
     const prev = prevLiveCountRef.current
     prevLiveCountRef.current = liveSubagents.length
 
@@ -756,7 +752,7 @@ export function AgentsOverlay({ initialHistoryIndex = 0, onClose, t }: AgentsOve
   }, [history.length, historyIndex, liveSubagents.length])
 
   useEffect(() => {
-  // 导航时重置详情滚动，使新节点顶部可见。
+    // 导航时重置详情滚动，使新节点顶部可见。
     detailScrollRef.current?.scrollTo(0)
   }, [cursor, historyIndex, mode])
 

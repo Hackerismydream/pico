@@ -272,9 +272,7 @@ describe('createChatStream', () => {
       }
     })
 
-    expect(getTurnState().streamPendingTools).toEqual([
-      expect.stringMatching(/Error: file not found.*✗$/)
-    ])
+    expect(getTurnState().streamPendingTools).toEqual([expect.stringMatching(/Error: file not found.*✗$/)])
   })
 
   it('surfaces non-cancellation errors and restores input prompt', async () => {

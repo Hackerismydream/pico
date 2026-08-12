@@ -151,7 +151,6 @@ async def test_d2_corrupted_shadow_repo(workspace):
     (workspace / "x.py").write_text("ok\n", encoding="utf-8")
     cid, _changed = await svc.commit_turn("t1")
 
-
     assert cid is None or isinstance(cid, str)
 
 
@@ -195,9 +194,6 @@ def _agent_with_checkpoint(workspace: Path) -> AgentLoop:
         model="stub",
         max_iterations=2,
         restrict_to_workspace=True,
-
-
-
         empty_recovery=RecoveryLimits(enabled=False),
         runtime_config=RuntimeConfig(checkpoint=CheckpointConfig(policy="always")),
     )
@@ -256,7 +252,6 @@ async def test_d3_concurrent_commits_serialize_or_degrade(workspace):
         svc.commit_turn("race-2"),
         return_exceptions=False,
     )
-
 
     ids = [r1[0], r2[0]]
     assert any(cid is not None for cid in ids), f"at least one concurrent commit should land; got {r1!r}, {r2!r}"
@@ -330,9 +325,6 @@ def _agent(workspace: Path, *, policy: str, interactive: bool) -> AgentLoop:
         model="stub",
         max_iterations=2,
         restrict_to_workspace=True,
-
-
-
         empty_recovery=RecoveryLimits(enabled=False),
         runtime_config=RuntimeConfig(checkpoint=CheckpointConfig(policy=policy)),
         interactive=interactive,
@@ -474,7 +466,6 @@ async def test_d7_gc_invoked_every_n_commits(workspace, monkeypatch):
     pay for a real GC (which is cheap but still noisier than necessary)."""
     import pico.agent.loop.checkpoint as cp_module
 
-
     monkeypatch.setattr(cp_module, "_GC_EVERY_N_COMMITS", 3)
     svc = CheckpointService(workspace)
 
@@ -521,12 +512,6 @@ async def test_d8_one_shot_mode_creates_no_shadow_dir(workspace):
 #
 
 
-
-
-
-
-
-
 def test_d9_separate_state_keeps_shadow_git_outside_workspace(workspace, tmp_path: Path):
     state = tmp_path / "state"
 
@@ -568,7 +553,6 @@ def test_d9_nested_relative_path_accepted(workspace):
     """Sanity: a normal nested relative path is fine."""
     svc = CheckpointService(workspace, shadow_dir="deep/nested/shadow.git")
 
-
     assert svc._git_dir.is_relative_to(workspace.resolve())
     assert svc._git_dir.name == "shadow.git"
 
@@ -588,9 +572,6 @@ async def test_d9_agent_loop_degrades_when_shadow_dir_invalid(workspace):
         model="stub",
         max_iterations=2,
         restrict_to_workspace=True,
-
-
-
         empty_recovery=RecoveryLimits(enabled=False),
         runtime_config=bad_cfg,
         interactive=True,
@@ -623,12 +604,10 @@ def test_d10_recovery_kept_when_content_unknown_type(workspace):
     agent = _agent_with_checkpoint(workspace)
     agent._pending_recovery["s"] = {"checkpoint_id": "abc123", "files": ["x.py"]}
 
-
     msgs_bad = [{"role": "user", "content": None}]
     agent._inject_recovery_block("s", msgs_bad)
     assert msgs_bad[-1]["content"] is None, "content must not be mutated"
     assert "s" in agent._pending_recovery, "recovery must NOT be dropped"
-
 
     msgs_ok = [{"role": "user", "content": "go"}]
     agent._inject_recovery_block("s", msgs_ok)
@@ -723,10 +702,8 @@ async def test_d8_interactive_mode_with_user_gitignore_end_to_end(workspace):
         [{"role": "user", "content": "go"}],
     )
 
-
     assert outcome.status == "completed"
     assert outcome.checkpoint_id is not None
-
 
     svc = agent._checkpoint
     rc, out, _ = await svc._git("ls-tree", "-r", "--name-only", "HEAD")

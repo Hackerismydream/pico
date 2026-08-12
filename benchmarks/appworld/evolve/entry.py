@@ -90,8 +90,8 @@ def _wait_ports_free(base: int, count: int, timeout: float = 20.0) -> None:
 
 
 def _abs_against(base_dir: Path, value: str) -> Path:
-        # bench_config 路径与顶层键一样相对配置文件目录解析，使从其他当前目录恢复时
-        # 仍读取运行开始时的同一组输入。
+    # bench_config 路径与顶层键一样相对配置文件目录解析，使从其他当前目录恢复时
+    # 仍读取运行开始时的同一组输入。
     p = Path(value).expanduser()
     return p if p.is_absolute() else (base_dir / p).resolve()
 
@@ -257,9 +257,9 @@ def build(ctx: LaunchContext) -> BenchBundle:
         return make_appworld_precheck(cfg)
 
     def run_cold_start() -> None:
-    # 先补齐缺失试验，再执行 SOP 基础设施重跑阶梯。若原版基线把基础设施失败按零分
-    # 保留，每个候选都会平白获益，因此可挽救的基础设施失败必须重新评分，写入
-    # vanilla_infra_rerun{1,2} 并由 KEPT 读取器获取。
+        # 先补齐缺失试验，再执行 SOP 基础设施重跑阶梯。若原版基线把基础设施失败按零分
+        # 保留，每个候选都会平白获益，因此可挽救的基础设施失败必须重新评分，写入
+        # vanilla_infra_rerun{1,2} 并由 KEPT 读取器获取。
         runs_root.mkdir(parents=True, exist_ok=True)
         needs_fill = cold_start_done() < len(train_ids) * k_confirm
         needs_salvage = False
@@ -273,8 +273,8 @@ def build(ctx: LaunchContext) -> BenchBundle:
             except FileNotFoundError:
                 needs_fill = True
         if needs_fill or needs_salvage:
-        # 花费前执行 Gate0：首次补齐与基础设施重跑阶梯都不能在失效端点上浪费试验
-        # （SOP §0）。干净完整的冷启动跳过探针，各轮有自己的逐轮 Gate0。
+            # 花费前执行 Gate0：首次补齐与基础设施重跑阶梯都不能在失效端点上浪费试验
+            # （SOP §0）。干净完整的冷启动跳过探针，各轮有自己的逐轮 Gate0。
             make_precheck()()
 
         def base_eval(_node, task_ids, k, job_name, *, split="train"):

@@ -66,7 +66,6 @@ def api_key() -> str:
 # ---------------------------------------------------------------------------
 
 
-
 # ---------------------------------------------------------------------------
 
 
@@ -223,8 +222,6 @@ async def _run_variant(
     workspace.mkdir(parents=True, exist_ok=True)
     _seed_workspace(workspace)
 
-
-
     provider = LiteLLMProvider(
         api_key=api_key,
         api_base="https://openrouter.ai/api/v1",
@@ -234,16 +231,12 @@ async def _run_variant(
         extra_body=_OPENROUTER_PIN,
     )
 
-
-
     tracker = _RecordingTracker()
     strategies: list = []
     if install_cache_optimizer:
         strategies.append(CacheOptimizer(max_breakpoints=4))
     strategies.append(tracker)
     registry = StrategyRegistry(strategies)
-
-
 
     loop = AgentLoop(
         provider=provider,
@@ -256,10 +249,7 @@ async def _run_variant(
         strategies=registry,
     )
 
-
     loop.tools._tools.clear()
-
-
 
     sys_prompt = loop.context.build_system_prompt()
     sys_chars = len(sys_prompt)
@@ -272,7 +262,6 @@ async def _run_variant(
             if sum(cost_so_far.values()) > COST_GUARD_USD:
                 pytest.fail(f"Cost guard tripped at ${sum(cost_so_far.values()):.4f} (cap=${COST_GUARD_USD}).")
             await _run_user_turn(loop, q, session_key=session_key, chat_id=name)
-
 
             assert len(tracker.history) == turn_idx, (
                 f"expected tracker.history len={turn_idx}, got {len(tracker.history)}"
@@ -479,7 +468,6 @@ async def test_agentloop_ablation_experiment(api_key: str, tmp_path: Path):
     print(f"\nReport written to: {REPORT_PATH}\n")
     print(body)
 
-
     for v in [v1, v2, v3]:
         assert v.error is None, f"variant {v.name} crashed: {v.error}"
         assert len(v.turns) == TURNS, f"{v.name} did not complete all turns"
@@ -487,11 +475,8 @@ async def test_agentloop_ablation_experiment(api_key: str, tmp_path: Path):
             f"{v.name} system prompt too short ({v.sys_prompt_chars} chars) — may not exceed Anthropic's cache minimum"
         )
 
-
     assert v1.total_cache_read == 0, "V1 baseline must have zero cache reads"
     assert v1.total_cache_write == 0, "V1 baseline must have zero cache writes"
-
-
 
     assert v2.total_cache_read > 0, (
         f"V2 had no cache reads across {TURNS} turns — provider auto-cache is broken end-to-end. v2.turns={v2.turns}"
@@ -501,7 +486,6 @@ async def test_agentloop_ablation_experiment(api_key: str, tmp_path: Path):
         f"CacheOptimizer is not flowing to the provider via the AgentLoop. "
         f"v3.turns={v3.turns}"
     )
-
 
     assert v3.total_cost < v1.total_cost, (
         f"V3 (${v3.total_cost:.6f}) is not cheaper than V1 baseline (${v1.total_cost:.6f})"

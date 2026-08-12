@@ -49,10 +49,6 @@ class _DictBackend:
         top_k: int,
     ) -> list[Memory]:
 
-
-
-
-
         if user_id != "contract-test":
             return []
         all_msgs = []

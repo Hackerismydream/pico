@@ -35,14 +35,12 @@ def test_origin_contract_contains_only_retained_sources():
 
 def test_for_origin_rejects_unknown_origin():
 
-
     pools = OriginPools(user=1, system=1)
     with pytest.raises(ValueError):
         pools.for_origin("not-an-origin")
 
 
 async def test_user_pool_is_independent_of_a_full_system_pool():
-
 
     pools = OriginPools(user=1, system=1)
     await pools.for_origin(Origin.CRON).acquire()

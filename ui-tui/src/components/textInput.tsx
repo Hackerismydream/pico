@@ -335,8 +335,8 @@ export function TextInput({
 
   const nativeCursor = focus && termFocus && !selected && !!stdout?.isTTY
 
-    // 占位文本只是提示而非选区，应以暗色、非反色样式渲染。TTY 中硬件光标停在第 0 列，直观标记
-    // 输入起点；非 TTY 表面仍需要合成的首字符反色才能绘制光标。
+  // 占位文本只是提示而非选区，应以暗色、非反色样式渲染。TTY 中硬件光标停在第 0 列，直观标记
+  // 输入起点；非 TTY 表面仍需要合成的首字符反色才能绘制光标。
   const rendered = useMemo(() => {
     if (!focus) {
       return display || dim(placeholder)
@@ -560,7 +560,7 @@ export function TextInput({
               return
             }
 
-        // 异步粘贴进行时用户又输入了内容；在当前光标处插入已解析的粘贴载荷，避免静默丢失。
+            // 异步粘贴进行时用户又输入了内容；在当前光标处插入已解析的粘贴载荷，避免静默丢失。
             const cur = curRef.current
             const v = vRef.current
             commit(v.slice(0, cur) + fallbackText + v.slice(cur), cur + fallbackText.length)
@@ -777,12 +777,12 @@ export function TextInput({
       }
 
       if (k.return) {
-    // 原始标准输入中的 LF 字节（\n, 0x0a）普遍表示 Ctrl+Enter，历史上也表示 Ctrl+J；CR 字节
-    // （\r, 0x0d）表示普通 Enter。字节级区别是跨技术栈可靠检测 Ctrl+Enter 的唯一方式；
-    // 许多 SSH + zellij + VSCode 链路不遵守 Kitty 键盘/xterm modifyOtherKeys 协议推送。
-    // 将 LF 视为 Ctrl+Enter 也会让 Ctrl+J 插入换行，语义兼容，因为聊天编辑器未给 Ctrl+J
-    // 其他绑定。该路径独立且补充 CSI u 路径（Kitty/modifyOtherKeys 解析器的 k.shift/k.ctrl）；
-    // 对遵守协议推送的终端仍优先使用后者。
+        // 原始标准输入中的 LF 字节（\n, 0x0a）普遍表示 Ctrl+Enter，历史上也表示 Ctrl+J；CR 字节
+        // （\r, 0x0d）表示普通 Enter。字节级区别是跨技术栈可靠检测 Ctrl+Enter 的唯一方式；
+        // 许多 SSH + zellij + VSCode 链路不遵守 Kitty 键盘/xterm modifyOtherKeys 协议推送。
+        // 将 LF 视为 Ctrl+Enter 也会让 Ctrl+J 插入换行，语义兼容，因为聊天编辑器未给 Ctrl+J
+        // 其他绑定。该路径独立且补充 CSI u 路径（Kitty/modifyOtherKeys 解析器的 k.shift/k.ctrl）；
+        // 对遵守协议推送的终端仍优先使用后者。
         const lfByteAsCtrlEnter = isLfReturn(event.keypress.sequence)
 
         if (k.shift || k.ctrl || (isMac ? isActionMod(k) : k.meta) || lfByteAsCtrlEnter) {
@@ -993,7 +993,7 @@ export function TextInput({
           return
         }
 
-  // 右键：有活动选区时复制，否则粘贴。
+        // 右键：有活动选区时复制，否则粘贴。
         if (e.button === 2) {
           e.stopImmediatePropagation?.()
           const decision = decideRightClickAction(vRef.current, selRange())

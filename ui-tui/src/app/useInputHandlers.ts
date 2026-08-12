@@ -31,8 +31,8 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
   const pagerPageSize = Math.max(5, (terminal.stdout?.rows ?? 24) - 6)
   const scrollIdleTimer = useRef<null | ReturnType<typeof setTimeout>>(null)
 
-// 从 Claude Code 移植的滚轮加速：事件间时间决定步长，方向翻转时重置。wheelStep
-// （WHEEL_SCROLL_STEP）是基数，最终行数为 wheelStep × accelMult。状态跨渲染原地修改。
+  // 从 Claude Code 移植的滚轮加速：事件间时间决定步长，方向翻转时重置。wheelStep
+  // （WHEEL_SCROLL_STEP）是基数，最终行数为 wheelStep × accelMult。状态跨渲染原地修改。
   const wheelAccelRef = useRef(initWheelAccelForHost())
 
   const precisionWheelRef = useRef(initPrecisionWheel())
@@ -53,8 +53,8 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
   }
 
   const copySelection = () => {
-  // Ink 的 copySelection() 已调用 setClipboard()，可处理 macOS 的 pbcopy、Linux 的
-  // wl-copy/xclip、tmux 和 OSC 52 回退。
+    // Ink 的 copySelection() 已调用 setClipboard()，可处理 macOS 的 pbcopy、Linux 的
+    // wl-copy/xclip、tmux 和 OSC 52 回退。
     terminal.selection.copySelection()
   }
 
@@ -210,8 +210,8 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
             const { lines, offset } = prev.pager
             const max = Math.max(0, lines.length - pagerPageSize)
 
-        // 仅当已在最后一页时自动关闭；否则钳制到 `max`，使偏移与逐行/逐页回退处理器可达位置一致，
-        // 避免下次 ↑/↓/PgUp 时突然回跳。
+            // 仅当已在最后一页时自动关闭；否则钳制到 `max`，使偏移与逐行/逐页回退处理器可达位置一致，
+            // 避免下次 ↑/↓/PgUp 时突然回跳。
             return offset >= max
               ? { ...prev, pager: null }
               : { ...prev, pager: { ...prev.pager, offset: Math.min(offset + pagerPageSize, max) } }
@@ -241,15 +241,15 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
     if (key.wheelUp || key.wheelDown) {
       const dir: -1 | 1 = key.wheelUp ? -1 : 1
       const now = Date.now()
-        // 按住修饰键滚轮进入精确模式：每帧一行，不加速。顺滑鼠标/触控板会在同帧发出微小突发，
-        // 将其合并，但不使用旧 80 毫秒节流；后者让 Option 滚动有台阶感。SGR/X10 鼠标编码只携带
-        // shift/meta/ctrl 位；macOS 的 Cmd 被终端拦截，因此 Mac 使用 Option（meta），Windows/
-        // Linux 使用 Alt（meta），Ctrl 作为便携回退。Shift 保留给扩展选择。
+      // 按住修饰键滚轮进入精确模式：每帧一行，不加速。顺滑鼠标/触控板会在同帧发出微小突发，
+      // 将其合并，但不使用旧 80 毫秒节流；后者让 Option 滚动有台阶感。SGR/X10 鼠标编码只携带
+      // shift/meta/ctrl 位；macOS 的 Cmd 被终端拦截，因此 Mac 使用 Option（meta），Windows/
+      // Linux 使用 Alt（meta），Ctrl 作为便携回退。Shift 保留给扩展选择。
       const hasModifier = key.meta || key.ctrl
       const precision = computePrecisionWheelStep(precisionWheelRef.current, dir, hasModifier, now)
 
       if (precision.active) {
-          // 进入精确模式必须丢弃加速滚轮状态，否则下一次普通滚轮事件会继承陈旧动量。
+        // 进入精确模式必须丢弃加速滚轮状态，否则下一次普通滚轮事件会继承陈旧动量。
         if (precision.entered) {
           wheelAccelRef.current = initWheelAccelForHost()
         }
@@ -257,7 +257,7 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
         return precision.rows ? scrollTranscript(dir * wheelStep) : undefined
       }
 
-        // 0 表示方向翻转回弹已延迟，跳过无操作滚动。
+      // 0 表示方向翻转回弹已延迟，跳过无操作滚动。
       const rows = computeWheelStep(wheelAccelRef.current, dir, now)
 
       return rows ? scrollTranscript(dir * rows * wheelStep) : undefined
@@ -279,8 +279,8 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
       return scrollTranscript(key.pageUp ? -step : step)
     }
 
-      // 单独按 Esc 时，取消队列编辑优先于清除选择；队列标题明确承诺“Esc 取消”，因此优先于隐式
-      // 取消选区约定。没有活动编辑时继续回退。
+    // 单独按 Esc 时，取消队列编辑优先于清除选择；队列标题明确承诺“Esc 取消”，因此优先于隐式
+    // 取消选区约定。没有活动编辑时继续回退。
     if (key.escape && cState.queueEditIdx !== null) {
       return cActions.clearIn()
     }
@@ -347,16 +347,16 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
 
         if (chat?.isTurnActive()) {
           if (live.escapeArmed) {
-        // 轮次仍进行时第二次按 Ctrl+C，说明第一次取消未产生终态事件，可能事件丢失或服务器卡死。
-        // 在本地硬重置提示，避免用户永远等待不会到达的响应。
+            // 轮次仍进行时第二次按 Ctrl+C，说明第一次取消未产生终态事件，可能事件丢失或服务器卡死。
+            // 在本地硬重置提示，避免用户永远等待不会到达的响应。
             patchUiState({ escapeArmed: false })
             chat.forceReset()
 
             return
           }
 
-        // 第一次 Ctrl+C：发出正常服务器取消并启用逃生口。忙碌占位会切换为强制退出提示，
-        // 第二次 Ctrl+C 回退到上方本地重置。
+          // 第一次 Ctrl+C：发出正常服务器取消并启用逃生口。忙碌占位会切换为强制退出提示，
+          // 第二次 Ctrl+C 回退到上方本地重置。
           patchUiState({ escapeArmed: true })
           chat.cancel().catch((err: Error) => actions.sys(`cancel failed: ${err.message}`))
 
@@ -387,8 +387,8 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
       return
     }
 
-      // 支持 Cmd/Ctrl+G，并为 VSCode/Cursor 提供 Alt+G 回退；它们会在 TUI 收到主快捷键前将其
-      // 绑定为“查找下一个”，而 Alt+G 在各平台均以 meta+g 到达。
+    // 支持 Cmd/Ctrl+G，并为 VSCode/Cursor 提供 Alt+G 回退；它们会在 TUI 收到主快捷键前将其
+    // 绑定为“查找下一个”，而 Alt+G 在各平台均以 meta+g 到达。
     if (ch.toLowerCase() === 'g' && (isAction(key, ch, 'g') || key.meta)) {
       return void cActions.openEditor().catch((err: unknown) => {
         actions.sys(err instanceof Error ? `failed to open editor: ${err.message}` : 'failed to open editor')

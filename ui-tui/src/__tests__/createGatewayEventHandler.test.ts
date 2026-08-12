@@ -48,7 +48,7 @@ const buildCtx = (appended: Msg[]) =>
       panel: (title: string, sections: any[]) =>
         appended.push({ kind: 'panel', panelData: { sections, title }, role: 'system', text: '' }),
       setHistoryItems: vi.fn()
-    },
+    }
   }) as any
 
 describe('createGatewayEventHandler', () => {
@@ -167,9 +167,7 @@ describe('createGatewayEventHandler', () => {
       type: 'error'
     } as any)
 
-    expect(ctx.system.sys).toHaveBeenCalledWith(
-      'pending image attachment discarded; attach it again before retrying'
-    )
+    expect(ctx.system.sys).toHaveBeenCalledWith('pending image attachment discarded; attach it again before retrying')
   })
 
   it('keeps the current todo list visible when the next message starts', () => {
@@ -656,5 +654,4 @@ describe('createGatewayEventHandler', () => {
 
     expect(getTurnState().activity).toMatchObject([{ text: 'boom', tone: 'error' }])
   })
-
 })

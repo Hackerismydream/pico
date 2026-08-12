@@ -125,7 +125,6 @@ async def test_disk_failure_does_not_crash(tmp_path: Path, caplog):
     blocker.write_text("not a directory")
     tracker = UsageTracker(telemetry_dir=blocker / "telemetry", flush_every=1)
 
-
     await tracker.after_llm_call({}, _snap(input_tokens=1))
 
     assert tracker.snapshot().input_tokens == 1

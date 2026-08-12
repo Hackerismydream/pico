@@ -42,7 +42,6 @@ def test_resolve_basedir_missing_ref_left_literal(tmp_path: Path) -> None:
     body = "Run {baseDir}/scripts/nope.sh"
     out, ok = resolve_refs(body, skill)
 
-
     assert "{baseDir}/scripts/nope.sh" in out
     assert ok is False
 
@@ -102,7 +101,6 @@ def test_resolve_skips_code_fence(tmp_path: Path) -> None:
 def test_no_skill_dir_strips_basedir_prefix() -> None:
     body = "Read {baseDir}/references/x.md and run {baseDir}/scripts/y.sh."
     out, ok = resolve_refs(body, None)
-
 
     assert "{baseDir}" not in out
     assert "references/x.md" in out

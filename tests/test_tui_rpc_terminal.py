@@ -56,7 +56,6 @@ async def test_terminal_resize_rejects_non_positive_and_bool() -> None:
     assert get_latest_cols() is None
     assert get_latest_rows() is None
 
-
     await terminal_resize({"cols": 0, "rows": -1})
     assert get_latest_cols() is None
     assert get_latest_rows() is None

@@ -183,7 +183,6 @@ def test_make_lazy_provider_returns_lazy_without_building(monkeypatch: pytest.Mo
     from pico.config.loader import load_config
     from pico.providers.lazy import LazyProvider
 
-
     monkeypatch.setattr(_helpers, "make_provider", lambda _c: SimpleNamespace(name="real"))
 
     provider = _helpers.make_lazy_provider(load_config(_write_config(tmp_path, api_key="sk-x")))

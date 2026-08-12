@@ -26,8 +26,8 @@ class ToolRegistry:
     Allows dynamic registration and execution of tools.
     """
 
-# 为未设置自身 ``timeout_seconds`` 的工具提供兜底上限。刻意设得宽裕：它用于打断
-# 没有内部超时且永不返回的无限挂起，而不是强制严格的单工具 SLA。
+    # 为未设置自身 ``timeout_seconds`` 的工具提供兜底上限。刻意设得宽裕：它用于打断
+    # 没有内部超时且永不返回的无限挂起，而不是强制严格的单工具 SLA。
     DEFAULT_TOOL_TIMEOUT_S = 300.0
     DEFAULT_MAX_PARALLEL = 4
 

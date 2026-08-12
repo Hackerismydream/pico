@@ -178,8 +178,8 @@ class KNNModelRouter:
             top = np.argsort(-sims)[: self._k]
 
             # 相似样本门禁：只有足够多的检索邻居确实相似
-            #（cosine >= min_similarity）时才信任所选模型。分布外查询
-            #（如闲聊）的相似邻居很少，因此保留默认模型。评分只使用这些
+            # （cosine >= min_similarity）时才信任所选模型。分布外查询
+            # （如闲聊）的相似邻居很少，因此保留默认模型。评分只使用这些
             # 相似邻居，避免无关任务稀释奖励。
             similar = [int(i) for i in top if float(sims[i]) >= self._min_similarity]
             if len(similar) < self._min_similar:

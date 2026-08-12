@@ -294,8 +294,6 @@ async def _run_long_conversation(
     sys_prompt = loop.context.build_system_prompt()
     sys_chars = len(sys_prompt)
 
-
-
     session_key = f"sceneA:{name}"
     session = loop.sessions.get_or_create(session_key)
     seed_topics = [
@@ -502,7 +500,6 @@ def _write_report(scenarios: list[ScenarioResult]) -> str:
                 )
             lines.append("")
 
-
         v3 = next((v for v in sc.variants if v.name.startswith("V3")), None)
         v2 = next((v for v in sc.variants if v.name.startswith("V2")), None)
         v1 = next((v for v in sc.variants if v.name.startswith("V1")), None)
@@ -570,7 +567,6 @@ async def test_workload_scenarios(api_key: str, tmp_path: Path):
     """Run scenarios A and B end-to-end and emit a combined report."""
     cost_so_far: dict[str, float] = {}
 
-
     a_v1 = await _run_long_conversation(
         name="V1_baseline",
         description="No cache_control. Provider auto-cache OFF.",
@@ -612,7 +608,6 @@ async def test_workload_scenarios(api_key: str, tmp_path: Path):
     )
 
     await asyncio.sleep(2)
-
 
     b_v1 = await _run_tool_accumulation(
         name="V1_baseline",
@@ -659,7 +654,6 @@ async def test_workload_scenarios(api_key: str, tmp_path: Path):
     print(f"\nReport written to: {REPORT_PATH}\n")
     print(body[:4000])
 
-
     for sc in [scenario_a, scenario_b]:
         for v in sc.variants:
             assert v.error is None, f"Scenario {sc.name} variant {v.name} crashed: {v.error}"
@@ -680,7 +674,6 @@ async def test_workload_scenarios(api_key: str, tmp_path: Path):
         assert v2.total_cost < v1.total_cost, (
             f"{sc.name}: V2 (${v2.total_cost:.6f}) not cheaper than V1 (${v1.total_cost:.6f})"
         )
-
 
     for sc in [scenario_a, scenario_b]:
         v2, v3 = sc.variants[1], sc.variants[2]

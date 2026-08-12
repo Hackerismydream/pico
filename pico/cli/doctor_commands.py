@@ -279,7 +279,7 @@ def _render_human_output(report: DoctorReport) -> None:
         console.print("\n[bold]Features[/bold]")
         count = len(features.channels_enabled)
         if count:
-        # 转义左方括号，让 Rich 渲染字面标签而非标记。
+            # 转义左方括号，让 Rich 渲染字面标签而非标记。
             labelled = ", ".join(f"{name} \\[{_channel_maturity(name)}]" for name in features.channels_enabled)
             console.print(f"  Channels:    {count} enabled  ({labelled})")
         else:

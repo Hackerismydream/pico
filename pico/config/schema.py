@@ -344,7 +344,7 @@ class Config(BaseSettings):
     routing: RoutingConfig = Field(default_factory=RoutingConfig)
     cron: CronConfig = Field(default_factory=CronConfig)
     # onboarding 时选择的 UI 语言，控制向导/CLI 文案和 Agent 回复语言
-    #（注入 system prompt）。取值为 "en" | "zh"。
+    # （注入 system prompt）。取值为 "en" | "zh"。
     language: Literal["en", "zh"] = "en"
 
     @property
@@ -427,7 +427,7 @@ class Config(BaseSettings):
         if p and p.api_base:
             return p.api_base
         # 此处仅为网关设置默认 api_base。标准 Provider
-    # Moonshot 等提供商会在 _setup_env 中通过环境变量设置 base URL。
+        # Moonshot 等提供商会在 _setup_env 中通过环境变量设置 base URL。
         # 以避免污染全局 litellm.api_base。
         if name:
             spec = find_by_name(name)

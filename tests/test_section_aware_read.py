@@ -146,7 +146,6 @@ class TestGetMemoryContextSelective:
         store: MemoryStore,
     ):
 
-
         out = store.get_memory_context(
             current_message="xyzabc unrelated query 12345",
         )

@@ -59,18 +59,12 @@ def healthy_config(tmp_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyP
     return tmp_config
 
 
-
-
-
 def test_doctor_help_lists_all_flags() -> None:
     """``--help`` exposes the full flag surface."""
     r = runner.invoke(app, ["doctor", "--help"])
     assert r.exit_code == 0, r.stdout
     for flag in ("--probe", "--json", "--timeout"):
         assert flag in r.stdout, f"missing flag in help: {flag}"
-
-
-
 
 
 def test_doctor_default_on_missing_config_exit1(tmp_config: Path) -> None:
@@ -220,9 +214,6 @@ def test_doctor_unwritable_workspace_exit1(
     assert data["paths"]["workspace_writable"] is False
 
 
-
-
-
 def test_doctor_shows_gateway_running(healthy_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A held instance lock surfaces as ``running (pid …)`` in the Gateway section."""
     from pico.cli import _gateway_lock
@@ -246,9 +237,6 @@ def test_doctor_shows_gateway_not_running(healthy_config: Path, monkeypatch: pyt
     r = runner.invoke(app, ["doctor"])
     assert r.exit_code == 0, r.stdout
     assert "not running" in r.stdout
-
-
-
 
 
 def test_doctor_probe_success(healthy_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -288,9 +276,6 @@ def test_doctor_timeout_flag_passed_through(healthy_config: Path, monkeypatch: p
     r = runner.invoke(app, ["doctor", "--probe", "--timeout", "3"])
     assert r.exit_code == 0, r.stdout
     assert captured.get("timeout_s") == 3
-
-
-
 
 
 def test_doctor_json_default_structure(healthy_config: Path) -> None:

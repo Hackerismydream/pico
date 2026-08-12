@@ -40,11 +40,11 @@ class RoundJournal:
             "parent_id": rr.parent_id,
             "next_parent_id": rr.next_parent_id,
             "promoted": rr.promoted,
-    # 两个终止信号：SOP 规定耐心与原始版本比较，错误轮次另有计数器；恢复时会重放这些状态。
+            # 两个终止信号：SOP 规定耐心与原始版本比较，错误轮次另有计数器；恢复时会重放这些状态。
             "beat_vanilla": rr.beat_vanilla,
             "errored": rr.errored,
             "verdict": rr.verdict,
-    # 用于事后密封解封（C3）：记录可交付项的提交和训练 pass@1，使运行后可重建测试曲线。
+            # 用于事后密封解封（C3）：记录可交付项的提交和训练 pass@1，使运行后可重建测试曲线。
             "next_parent_sha": rr.next_parent_sha,
             "next_parent_train": rr.next_parent_train,
             "candidates": [

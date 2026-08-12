@@ -176,7 +176,7 @@ TokenWiseConfig = CallEfficiencyConfig
 # SkillForge 负责 Local Skill 的检索与执行。
 #
 # 配置有意保持扁平。组件级参数
-    # （嵌入模型、BM25 参数等）位于
+# （嵌入模型、BM25 参数等）位于
 # 暂时留在 ``skill_forge/`` 内的脚手架 dataclass 中并使用默认值；
 # 需要向用户开放时，再由负责人把相应字段提升到这里。
 
@@ -465,7 +465,7 @@ class SkillForgeRouterConfig(_Base):
 
 
 # ``SkillForgeRouterConfig`` 已存在于模块作用域，此处解析前向引用
-        # 字段声明：``SkillForgeConfig.router: "SkillForgeRouterConfig"``。
+# 字段声明：``SkillForgeConfig.router: "SkillForgeRouterConfig"``。
 SkillForgeConfig.model_rebuild()
 
 
@@ -549,7 +549,7 @@ class PicoConfig(_Base):
     context: ContextConfig = Field(default_factory=ContextConfig)
     call_efficiency: CallEfficiencyConfig = Field(default_factory=CallEfficiencyConfig)
     # SkillForge 子系统：其 RRF 路由策略嵌套在
-        # ``skill_forge.router``（配置键 ``skillForge.router``），不再是
+    # ``skill_forge.router``（配置键 ``skillForge.router``），不再是
     # 而不是独立的顶层 ``skillRouter`` 块。
     skill_forge: SkillForgeConfig = Field(default_factory=SkillForgeConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)

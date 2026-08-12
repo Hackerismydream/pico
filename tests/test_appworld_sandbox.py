@@ -88,7 +88,6 @@ class TestBashBoundary:
 class TestScopeRestore:
     def test_out_of_whitelist_edits_reverted_whitelist_kept(self, sandbox):
 
-
         (sandbox.root / "grader.py").write_text("score = 999\n")
         (sandbox.root / "stray.txt").write_text("junk\n")
         sandbox.write_text("benchmarks/appworld/agent_cli.py", "PROMPT = 'v2'\n")

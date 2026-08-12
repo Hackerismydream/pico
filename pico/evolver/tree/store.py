@@ -222,7 +222,7 @@ class EvolverTreeStore:
         root_id: Optional[str] = None
         if root_candidates:
             root_id = root_candidates[0]
-        # 其他根节点按策略报告为孤儿节点。
+            # 其他根节点按策略报告为孤儿节点。
             if len(root_candidates) > 1:
                 logger.warning(
                     "Multiple root nodes detected; keeping %s, treating %s as orphans",

@@ -68,9 +68,6 @@ async def _run_one(runner, events: list) -> None:
     await lane.submit(_req())
 
 
-
-
-
 class ScriptedRunner:
     """Opens the spans a real turn would, then returns the scripted outcome."""
 
@@ -249,9 +246,6 @@ async def test_tracing_disabled_leaves_the_turn_untouched(trace_dir, monkeypatch
     await _run_one(ScriptedRunner(), events)
     assert _rows(trace_dir) == []
     assert [type(e).__name__ for e in events] == ["TurnStarted", "Text", "TurnEnded"]
-
-
-
 
 
 class _StubProvider(LLMProvider):

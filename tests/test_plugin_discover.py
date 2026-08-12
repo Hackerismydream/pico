@@ -199,7 +199,6 @@ class TestConflictResolution:
         _write_manifest(user, "x")
         _write_manifest(project, "x")
 
-
         _write_manifest(bundled, "b-only")
         _write_manifest(user, "u-only")
         _write_manifest(project, "p-only")

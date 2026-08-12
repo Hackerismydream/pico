@@ -452,7 +452,6 @@ def test_gateway_log_config_overrides_parse() -> None:
 
 def test_gateway_channels_excludes_tui_when_no_im_enabled() -> None:
 
-
     from unittest.mock import MagicMock
 
     from pico.cli.gateway_commands import _build_gateway_channels

@@ -119,7 +119,9 @@ export function resolveQueuedEdit(
   return {
     pasteSnips,
     submitText:
-      entry.text === editedText && entry.submitText !== undefined ? entry.submitText : expandSnips(pasteSnips)(editedText)
+      entry.text === editedText && entry.submitText !== undefined
+        ? entry.submitText
+        : expandSnips(pasteSnips)(editedText)
   }
 }
 
@@ -208,7 +210,11 @@ export function useSubmission(opts: UseSubmissionOptions) {
             text: displayText
           })
           patchUiState({ busy: false, status: 'ready' })
-          sys(typed ? 'chat transport is switching sessions; message queued' : 'chat transport is not ready; message queued')
+          sys(
+            typed
+              ? 'chat transport is switching sessions; message queued'
+              : 'chat transport is not ready; message queued'
+          )
 
           return
         }
@@ -312,9 +318,7 @@ export function useSubmission(opts: UseSubmissionOptions) {
         chat.cancel(),
         () => (opts.fallbackEntry ? sendQueued(entry) : send(full)),
         error =>
-          fallback(
-            `turn cancel failed: ${error instanceof Error ? error.message : String(error)}; message queued`
-          )
+          fallback(`turn cancel failed: ${error instanceof Error ? error.message : String(error)}; message queued`)
       )
     },
     [chatStreamRef, composerActions, composerState.pasteSnips, send, sendQueued, sys]

@@ -30,7 +30,7 @@ from pico.providers.base import LLMProvider
 from pico.utils.helpers import estimate_prompt_tokens_chain
 
 # Provider 安全的消息字段。会话消息上的其他字段
-    # （时间戳、内部 ID、清单标注）会在此前丢弃
+# （时间戳、内部 ID、清单标注）会在此前丢弃
 # 必须在字典到达 LLM 前移除。reasoning_content / thinking_blocks 必须保留，
 # 才能维持多 Turn 推理契约（如 DeepSeek thinking mode）；下游 Provider 门禁
 # 会针对非 Anthropic 目标移除 thinking_blocks。

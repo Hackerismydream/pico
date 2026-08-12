@@ -85,9 +85,6 @@ def dispatcher() -> Dispatcher:
     return d
 
 
-
-
-
 async def test_turn_send_happy_path_returns_turn_id_and_accepted() -> None:
     scheduler = FakeScheduler()
     turn_ids: dict[int, str] = {}
@@ -109,7 +106,6 @@ async def test_turn_send_happy_path_returns_turn_id_and_accepted() -> None:
     assert set(result) == {"turn_id", "accepted"}
     assert result["accepted"] is True
     assert isinstance(result["turn_id"], str) and len(result["turn_id"]) >= 16
-
 
     assert len(scheduler.submitted) == 1
     assert scheduler.submitted[0].conversation == "tui:default"
@@ -153,9 +149,6 @@ async def test_turn_send_binds_active_slot_after_submit() -> None:
     scheduler = FakeScheduler()
     await turn_send({"session_key": "tui:default", "content": "hi"}, scheduler=scheduler, turn_ids={})
     assert turn_mod.is_turn_active("tui:default") is True
-
-
-
 
 
 async def test_turn_send_rejects_active_turn_with_minus_32003() -> None:
@@ -289,9 +282,6 @@ async def test_turn_send_without_scheduler_hides_unmarked_build_error_detail() -
     assert "secret detail" not in payload["message"]
 
 
-
-
-
 async def test_turn_send_rejects_missing_session_key() -> None:
     with pytest.raises(Exception):  # noqa: BLE001
         await turn_send({"content": "missing session_key"}, scheduler=FakeScheduler())
@@ -318,9 +308,6 @@ async def test_turn_send_accepts_optional_channel_chat_id_sender_id() -> None:
     assert result["accepted"] is True
     src = scheduler.submitted[0].source
     assert (src.channel, src.chat_id, src.sender_id) == ("tui", "default", "user")
-
-
-
 
 
 async def test_turn_send_dispatches_via_dispatcher(dispatcher: Dispatcher) -> None:

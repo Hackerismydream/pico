@@ -175,7 +175,6 @@ class TestFlagsAndSchema:
 
     def test_extra_top_level_fields_silently_dropped(self) -> None:
 
-
         toml = textwrap.dedent("""
             [plugin]
             id = "x"
@@ -230,7 +229,6 @@ class TestDirectConstruction:
         assert mf.contributes.memory_backends[0].name == "x"
 
     def test_frozen_model(self) -> None:
-
 
         mf = PluginManifest(id="x", version="0.1")
         with pytest.raises(ValidationError):

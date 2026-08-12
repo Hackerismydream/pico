@@ -205,8 +205,8 @@ export function useVirtualHistory(
     }
   }, [items])
 
-    // 偏移：跨渲染复用 Float64Array；heightCache 写入方（measureRef、缩放、垃圾回收）递增
-    // offsetVersion 时使其失效。二分搜索兼容任一单调来源，因此仅在发生变化时重建。
+  // 偏移：跨渲染复用 Float64Array；heightCache 写入方（measureRef、缩放、垃圾回收）递增
+  // offsetVersion 时使其失效。二分搜索兼容任一单调来源，因此仅在发生变化时重建。
   const n = items.length
 
   if (offsetsCache.current.version !== offsetVersion.current || offsetsCache.current.n !== n) {
@@ -230,8 +230,8 @@ export function useVirtualHistory(
   const sticky = scrollRef.current?.isSticky() ?? true
   const recentManual = Date.now() - (scrollRef.current?.getLastManualScrollAt() ?? 0) < 1200
 
-      // 冻结期间若项目收缩越过冻结范围起点（/clear、压缩），则丢弃冻结范围；钳制会收缩成
-      // 空挂载并闪白。此时进入正常路径。
+  // 冻结期间若项目收缩越过冻结范围起点（/clear、压缩），则丢弃冻结范围；钳制会收缩成
+  // 空挂载并闪白。此时进入正常路径。
   const frozenRange =
     freezeRenders.current > 0 && prevRange.current && prevRange.current[0] < n ? prevRange.current : null
 
@@ -252,9 +252,9 @@ export function useVirtualHistory(
         start--
       }
     } else {
-        // 用户向上滚动。覆盖 [committed..target]，使每个排空帧都在范围内。Claude Code 将区间
-        // 限制为视口的 3 倍，避免无限增长的 pendingDelta（如 MX Master 自由滚动）耗尽挂载预算；
-        // 追赶期间由 setClampBounds 显示已挂载内容边缘。
+      // 用户向上滚动。覆盖 [committed..target]，使每个排空帧都在范围内。Claude Code 将区间
+      // 限制为视口的 3 倍，避免无限增长的 pendingDelta（如 MX Master 自由滚动）耗尽挂载预算；
+      // 追赶期间由 setClampBounds 显示已挂载内容边缘。
       const MAX_SPAN = vp * 3
       const rawLo = Math.min(top, target)
       const rawHi = Math.max(top, target)
@@ -264,7 +264,7 @@ export function useVirtualHistory(
       const lo = Math.max(0, clampedLo - overscan)
       const hi = clampedHi + vp + overscan
 
-    // 二分搜索——offsets 单调。n 超过 1 万时，线性遍历为 O(n)，滚动期间每次渲染约 2 毫秒。
+      // 二分搜索——offsets 单调。n 超过 1 万时，线性遍历为 O(n)，滚动期间每次渲染约 2 毫秒。
       start = Math.max(0, Math.min(n - 1, upperBound(offsets, lo, n + 1) - 1))
       end = Math.max(start + 1, Math.min(n, upperBound(offsets, hi, n + 1)))
     }
@@ -274,8 +274,8 @@ export function useVirtualHistory(
     sticky ? (start = Math.max(0, end - maxMounted)) : (end = Math.min(n, start + maxMounted))
   }
 
-    // 覆盖保证：确保真实或悲观高度之和至少为 viewportH + 2*overscan，使项目很小时视口仍被
-    // 实际覆盖。未缓存项目使用下限 1，因而是悲观估计；项目较大时会过度挂载，但绝不会露出空白。
+  // 覆盖保证：确保真实或悲观高度之和至少为 viewportH + 2*overscan，使项目很小时视口仍被
+  // 实际覆盖。未缓存项目使用下限 1，因而是悲观估计；项目较大时会过度挂载，但绝不会露出空白。
   if (n > 0 && vp > 0 && !frozenRange) {
     const needed = vp + 2 * overscan
     let coverage = 0
@@ -301,10 +301,10 @@ export function useVirtualHistory(
     }
   }
 
-    // 滑动上限：限制本次提交新挂载项数量。按滚动速度启用，即自上次提交后的 scrollTop 差值绝对值
-    // 加 pendingDelta 绝对值超过两倍视口；按键重复 PageUp 每次移动约半个视口。兼容 scrollBy
-    // （pendingDelta）和 scrollTo（直接写入）。普通单次 PageUp 跳过；追赶时钳制将视口固定在
-    // 已挂载边缘，避免空白。只限制范围增长，收缩不受限。
+  // 滑动上限：限制本次提交新挂载项数量。按滚动速度启用，即自上次提交后的 scrollTop 差值绝对值
+  // 加 pendingDelta 绝对值超过两倍视口；按键重复 PageUp 每次移动约半个视口。兼容 scrollBy
+  // （pendingDelta）和 scrollTo（直接写入）。普通单次 PageUp 跳过；追赶时钳制将视口固定在
+  // 已挂载边缘，避免空白。只限制范围增长，收缩不受限。
   if (!frozenRange && prevRange.current && vp > 0) {
     const velocity = Math.abs(top - lastScrollTopRef.current) + Math.abs(pendingDelta)
 
@@ -376,9 +376,9 @@ export function useVirtualHistory(
           return
         }
 
-      // 卸载时测量：yogaNode 此时仍有效，协调器会在 removeChild -> freeRecursive 前调用
-      // ref(null)，因此在 WASM 释放前取得最终高度。否则快速平移时滚出视口的项目会在
-      // heightCache 中保留陈旧估计，偏移计算持续漂移到下次挂载/重挂载周期。
+        // 卸载时测量：yogaNode 此时仍有效，协调器会在 removeChild -> freeRecursive 前调用
+        // ref(null)，因此在 WASM 释放前取得最终高度。否则快速平移时滚出视口的项目会在
+        // heightCache 中保留陈旧估计，偏移计算持续漂移到下次挂载/重挂载周期。
         const existing = nodes.current.get(key) as MeasuredNode | undefined
         const h = Math.ceil(existing?.yogaNode?.getComputedHeight?.() ?? 0)
 
@@ -402,16 +402,16 @@ export function useVirtualHistory(
     let dirty = false
     let heightDirty = false
 
-  // 向渲染器提供已挂载行覆盖范围，用于被动滚动钳制。钳制必须使用有效的延迟范围，而非即时范围。
-  // 快速滚动时，即时 [start,end] 可能已覆盖新 scrollTop，但子项仍按延迟范围渲染。若钳制使用
-  // 即时边界，render-node-to-output 的排空门会越过延迟子项范围，使视口落入占位并闪白。
+    // 向渲染器提供已挂载行覆盖范围，用于被动滚动钳制。钳制必须使用有效的延迟范围，而非即时范围。
+    // 快速滚动时，即时 [start,end] 可能已覆盖新 scrollTop，但子项仍按延迟范围渲染。若钳制使用
+    // 即时边界，render-node-to-output 的排空门会越过延迟子项范围，使视口落入占位并闪白。
     if (s && shouldSetVirtualClamp({ itemCount: n, liveTailActive, sticky, viewportHeight: vp })) {
       const effTopSpacer = offsets[effStart] ?? 0
       const effBottom = offsets[effEnd] ?? total
-  // effEnd=n 时没有 bottomSpacer；使用 Infinity，让 render-node-to-output 自身的
-  // Math.min(cur, maxScroll) 控制。若在此使用 offsets[n]，会固化落后 Yoga 一次渲染的
-  // heightCache；流式期间尾项缓存高度落后真实高度，sticky-break 会钳制到真实最大值下方，
-  // 把流式文本推离视口。
+      // effEnd=n 时没有 bottomSpacer；使用 Infinity，让 render-node-to-output 自身的
+      // Math.min(cur, maxScroll) 控制。若在此使用 offsets[n]，会固化落后 Yoga 一次渲染的
+      // heightCache；流式期间尾项缓存高度落后真实高度，sticky-break 会钳制到真实最大值下方，
+      // 把流式文本推离视口。
       const clampMin = effStart === 0 ? 0 : effTopSpacer
       const clampMax = effEnd === n ? Infinity : Math.max(effTopSpacer, effBottom - vp)
 

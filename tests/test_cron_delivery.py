@@ -259,7 +259,6 @@ def test_cron_fanout_to_tui_resolves_minted_chat_id(tmp_path: Path):
     older_id = "20260610_100000_aaa111"
     newer_id = "20260610_120000_bbb222"
 
-
     _seed_minted_tui(tmp_path, newer_id, "2026-06-10T12:00:00")
     _seed_minted_tui(tmp_path, older_id, "2026-06-10T10:00:00")
 

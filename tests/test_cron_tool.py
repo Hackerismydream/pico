@@ -32,7 +32,6 @@ async def test_add_every_with_tz_is_tolerated_and_dropped() -> None:
 
 async def test_add_naive_at_with_tz_anchors_to_that_zone() -> None:
 
-
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -57,7 +56,6 @@ async def test_add_offset_aware_at_ignores_tz_param() -> None:
 
 
 async def test_non_runnable_schedule_surfaces_service_error() -> None:
-
 
     tool, cron = _tool()
     cron.add_job.side_effect = ValueError("at time is in the past")

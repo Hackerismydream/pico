@@ -31,8 +31,6 @@ def stub_config_path(monkeypatch, tmp_path: Path):
     def _stub() -> Path:
         return p
 
-
-
     monkeypatch.setattr("pico.config.loader.get_config_path", _stub)
     monkeypatch.setattr("pico.config.pico.get_config_path", _stub)
     return p

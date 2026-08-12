@@ -71,14 +71,12 @@ def tmp_builtin(tmp_path: Path):
 
     _write_skill(builtin, "simple", description="A simple builtin skill")
 
-
     _write_skill(
         builtin,
         "always_flag_top",
         description="Always-loaded skill (top-level)",
         frontmatter_extra="always: true",
     )
-
 
     _write_skill(
         builtin,
@@ -87,14 +85,12 @@ def tmp_builtin(tmp_path: Path):
         frontmatter_extra='metadata: {"pico":{"always":true}}',
     )
 
-
     _write_skill(
         builtin,
         "needs_fake_bin",
         description="Needs a missing binary",
         frontmatter_extra='metadata: {"pico":{"requires":{"bins":["this_bin_does_not_exist_xyz"]}}}',
     )
-
 
     _write_skill(
         builtin,
@@ -209,15 +205,12 @@ class TestSkillRegistryCacheInvalidation:
 
         assert not any(s == "generated" for s, _ in before)
 
-
-
         nested_dir = tmp_workspace / "skills" / "generated" / "42"
         nested_dir.mkdir(parents=True)
         (nested_dir / "SKILL.md").write_text(
             "---\nname: dynamic-skill\ndescription: added at runtime\n---\n\nbody\n",
             encoding="utf-8",
         )
-
 
         names = {m.name for m in store.list_all()}
         assert "dynamic-skill" not in names
@@ -226,7 +219,6 @@ class TestSkillRegistryCacheInvalidation:
         after = store.list_all()
         names_after = {m.name for m in after}
         assert "dynamic-skill" in names_after
-
 
         assert before.issubset({(m.source, m.name) for m in after})
 
@@ -246,7 +238,6 @@ class TestSkillRegistryCacheInvalidation:
         )
         store = SkillRegistry(tmp_workspace, builtin_skills_dir=tmp_builtin)
         assert any(m.name == "gone-soon" for m in store.list_all())
-
 
         import shutil
 
@@ -286,7 +277,6 @@ class TestResolveSourceForPath:
         tmp_builtin,
     ):
         store = SkillRegistry(tmp_workspace, builtin_skills_dir=tmp_builtin)
-
 
         path = tmp_workspace / "skills" / "generated" / "42" / "SKILL.md"
         assert store.resolve_source_for_path(path) == "generated"
@@ -499,7 +489,6 @@ class TestRenderingHelpers:
 class TestContextBuilderIntegration:
     def test_skill_names_narrows_xml_directory(self, tmp_workspace, tmp_builtin, monkeypatch):
 
-
         from pico.agent.context import ContextBuilder
 
         cb = ContextBuilder(tmp_workspace)
@@ -508,13 +497,9 @@ class TestContextBuilderIntegration:
 
         cb.skills = LocalSkillCatalog(tmp_workspace, builtin_skills_dir=tmp_builtin)
 
-
         prompt_full = cb.build_system_prompt(selected_skills=None)
         assert "<name>simple</name>" in prompt_full
         assert "<name>always_flag_top</name>" in prompt_full
-
-
-
 
         simple_meta = [m for m in cb.skills._registry.list_all() if m.name == "simple"]
         prompt_filtered = cb.build_system_prompt(selected_skills=simple_meta)
@@ -539,11 +524,6 @@ class TestContextBuilderIntegration:
         assert "<name>simple</name>" in prompt
 
 
-
-
-
-
-
 # ----------------------------------------------------------------------
 
 # ----------------------------------------------------------------------
@@ -557,6 +537,5 @@ class TestRealBuiltinSmokeTest:
         workspace.mkdir()
         store = SkillRegistry(workspace)
         names = {m.name for m in store.list_all()}
-
 
         assert "weather" in names

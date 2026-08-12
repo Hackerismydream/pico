@@ -90,8 +90,8 @@ class SealedTestRunner:
             self.test_task_ids,
             expected_attempts=self.k,
         )
-    # 固定分母（完整测试集）上的 pass@1，这是 SOP 第 0 节硬规则。未产生结果的测试任务按 0 分
-    # 计算，绝不能从分母删除；删除会缩小分母并高估泛化能力。
+        # 固定分母（完整测试集）上的 pass@1，这是 SOP 第 0 节硬规则。未产生结果的测试任务按 0 分
+        # 计算，绝不能从分母删除；删除会缩小分母并高估泛化能力。
         n_test = len(self.test_task_ids)
         record = {
             "round": round_index,
@@ -209,7 +209,7 @@ def unseal_retention(
     scored: set[str] = {vanilla_node.node_id}
     for rec in journal_records:
         nid, sha = rec["next_parent_id"], rec.get("next_parent_sha")
-    # "unknown" 是循环改为记录 None 前，旧日志中根节点垫片的占位符；检出它会让整个解封崩溃。
+        # "unknown" 是循环改为记录 None 前，旧日志中根节点垫片的占位符；检出它会让整个解封崩溃。
         if nid in scored or not sha or sha == "unknown":
             continue
         runner.score(_shim_node(nid, sha), rec["round_index"])

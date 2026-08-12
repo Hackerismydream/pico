@@ -413,8 +413,6 @@ def test_test_provider_oauth_reads_token_from_oauth_cli_kit(
         seen["auth"] = request.headers.get("Authorization")
         return httpx.Response(200, json={"data": [{"id": "m1"}]})
 
-
-
     result = probe_provider(
         "openai_codex",
         config_path=cfg_path,

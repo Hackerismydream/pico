@@ -164,15 +164,6 @@ async def test_queue_overflow_emits_error_and_closes(
     emitter = SubscriptionEmitter(send_frame=send_frame)
     sub_id = await emitter.register("tui:default")
 
-
-
-
-
-
-
-
-
-
     for i in range(QUEUE_CAPACITY + 100):
         await emitter.emit(
             "tui:default",
@@ -184,7 +175,6 @@ async def test_queue_overflow_emits_error_and_closes(
     events = _collect_emitted_events(send_frame)
     overflow_errors = [e for e in events if e.get("type") == "error" and e.get("payload", {}).get("code") == -32016]
     assert len(overflow_errors) >= 1, f"expected ≥1 overflow error; got events: {[e['type'] for e in events]}"
-
 
     assert sub_id not in emitter._by_id
 
@@ -208,7 +198,6 @@ async def test_multiple_subs_same_session_both_receive(
         {"type": "message.start", "payload": {"turn_id": "t1"}},
     )
     await asyncio.sleep(COALESCE_WINDOW_S * 3)
-
 
     sub_a_frames = 0
     sub_b_frames = 0

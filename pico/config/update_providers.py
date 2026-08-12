@@ -74,8 +74,8 @@ _SECRET_SUFFIXES = ("_token", "_secret", "_key", "_password")
 
 # 需要脱敏，但既不匹配 _SECRET_EXACT、也不以 secret 后缀结尾的名称。
 # 目前仅涵盖 Gemini 的 ``api_key_list``（其后缀是
-    # ``_list`` 而非 ``_key``）。随着 schema.py 在底层字段上增加
-    # ``json_schema_extra={"secret": True}`` 标记，应删除此处对应条目。
+# ``_list`` 而非 ``_key``）。随着 schema.py 在底层字段上增加
+# ``json_schema_extra={"secret": True}`` 标记，应删除此处对应条目。
 _KNOWN_SECRET_FIELDS: set[str] = {"api_key_list"}
 
 

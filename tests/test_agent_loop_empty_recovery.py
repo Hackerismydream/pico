@@ -125,7 +125,6 @@ def test_classify_plain_empty_retries_until_budget():
 
 def test_classify_always_reasoning_model_still_retries_after_prefill():
 
-
     resp = LLMResponse(content=None, reasoning_content="hmm")
     assert _classify(resp, "", prefill_retries=2, empty_retries=0) is RecoveryAction.RETRY
     assert _classify(resp, "", prefill_retries=2, empty_retries=3) is RecoveryAction.COMPLETE

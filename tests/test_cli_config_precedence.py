@@ -69,9 +69,6 @@ def isolated_config_state(tmp_path: Path, monkeypatch):
     return fake_home
 
 
-
-
-
 def test_load_pico_config_reads_from_set_config_path(
     isolated_config_state: Path,
     tmp_path: Path,
@@ -97,7 +94,6 @@ def test_load_pico_config_reads_from_set_config_path(
         ),
     )
 
-
     custom_cfg = tmp_path / "custom-config.json"
     _write_json(
         custom_cfg,
@@ -113,13 +109,11 @@ def test_load_pico_config_reads_from_set_config_path(
     from pico.config import loader
     from pico.config.pico import load_pico_config
 
-
     cfg_before = load_pico_config()
     assert cfg_before.skill_forge.injection_mode == "summary", (
         "Without set_config_path, load_pico_config must read the "
         "default ~/.pico/config.json (which we stubbed to summary)."
     )
-
 
     loader.set_config_path(custom_cfg)
     cfg_after = load_pico_config()
@@ -130,9 +124,6 @@ def test_load_pico_config_reads_from_set_config_path(
         f"This means either set_config_path is not honored, or "
         f"load_pico_config reads from a hardcoded path."
     )
-
-
-
 
 
 class _CaptureAndStop(Exception):
@@ -177,7 +168,6 @@ def test_cli_subcommand_loads_extension_blocks_from_custom_config(
         ),
     )
 
-
     custom_cfg = tmp_path / "custom-config.json"
     _write_json(
         custom_cfg,
@@ -190,7 +180,6 @@ def test_cli_subcommand_loads_extension_blocks_from_custom_config(
         ),
     )
 
-
     captured: dict = {}
     import pico.config.pico as ec_module
 
@@ -201,7 +190,6 @@ def test_cli_subcommand_loads_extension_blocks_from_custom_config(
         raise _CaptureAndStop()
 
     monkeypatch.setattr(ec_module, "load_pico_config", capture_and_stop)
-
 
     from pico.cli.commands import app
 
@@ -220,7 +208,6 @@ def test_cli_subcommand_loads_extension_blocks_from_custom_config(
     else:
         cmd = ["gateway", "--config", str(custom_cfg), "--workspace", str(tmp_path / "ws"), "--port", "0"]
     result = runner.invoke(app, cmd, catch_exceptions=True)
-
 
     assert "ec_config" in captured, (
         f"load_pico_config was never invoked by `pico {subcommand}`. "

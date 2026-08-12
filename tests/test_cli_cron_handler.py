@@ -363,13 +363,10 @@ async def test_trigger_dynamic_config_reload(
         session_manager=fake_session_mgr,
     )
 
-
     await handler(_make_job(channel="cli", name="t1"))
     assert spine.captured[-1].source.channel == "telegram"
 
-
     state["forward_channels"] = ["feishu"]
-
 
     await handler(_make_job(channel="cli", name="t2"))
     assert spine.captured[-1].source.channel == "feishu"
@@ -535,7 +532,6 @@ async def test_silent_job_on_non_ephemeral_channel_warns(
 # ─────────────────────────────────────────────────────────────────────
 
 
-
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -553,7 +549,6 @@ async def test_repl_assembly_cron_renders_once_via_clioutlet_not_broadcast(fake_
     rendered: list[str] = []
     scheduler, hub, teardown = build_repl(_CronEchoLoop(), "cli", rendered.append)
 
-
     handler = make_on_cron_job(
         hub,
         submit=scheduler.submit,
@@ -567,8 +562,6 @@ async def test_repl_assembly_cron_renders_once_via_clioutlet_not_broadcast(fake_
         await hub.wait_idle("cli")
     finally:
         await teardown()
-
-
 
     assert rendered == ["cron-reply<cron:job_repl1>"]
 

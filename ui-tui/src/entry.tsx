@@ -117,7 +117,7 @@ const [ink, { App }, { logFrameEvent }, { trackFrame }] = await Promise.all([
   import('./lib/fpsStore.js')
 ])
 
-  // 两个使用方的环境开关关闭时均为 undefined；至少一个开启时才挂接 onFrame，使 Ink 默认跳过计时。
+// 两个使用方的环境开关关闭时均为 undefined；至少一个开启时才挂接 onFrame，使 Ink 默认跳过计时。
 const onFrame =
   logFrameEvent || trackFrame
     ? (event: FrameEvent) => {

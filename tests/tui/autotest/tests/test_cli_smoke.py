@@ -57,17 +57,12 @@ class TestSmokeSubcommand:
             "uv run pico --check",
         )
 
-
-
-
         assert result.returncode in (0, 1), (
             f"unexpected rc={result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 
     def test_smoke_fails_on_nonexistent_binary(self):
         result = _run("smoke", "/nonexistent/binary/path")
-
-
 
         assert result.returncode == 1, (
             f"expected exit 1 (subprocess exit != 0); got {result.returncode}\n"

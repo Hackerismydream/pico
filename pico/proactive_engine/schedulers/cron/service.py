@@ -64,7 +64,7 @@ def _compute_next_run(schedule: CronSchedule, now_ms: int) -> int | None:
 
             from croniter import croniter
 
-        # 使用调用方提供的参考时间，确保调度结果确定。
+            # 使用调用方提供的参考时间，确保调度结果确定。
             base_time = now_ms / 1000
             tz = ZoneInfo(schedule.tz) if schedule.tz else datetime.now().astimezone().tzinfo
             base_dt = datetime.fromtimestamp(base_time, tz=tz)
@@ -432,7 +432,7 @@ class CronService:
         if next_wake:
             delay_s = max(0.0, (next_wake - self._now_ms()) / 1000)
         else:
-                # 没有待执行任务时仍需轮询新写入。
+            # 没有待执行任务时仍需轮询新写入。
             delay_s = _MAX_WAKE_INTERVAL_S
         delay_s = min(delay_s, _MAX_WAKE_INTERVAL_S)
 
@@ -466,7 +466,7 @@ class CronService:
                     continue
                 # 渠道路由：调用方设置 allow-list 后，只 claim 其中渠道的任务。
                 # 为向后兼容，在 channel attribution 出现前创建的任务
-                #（channel 为空或 None）仍可被任意进程 claim。
+                # （channel 为空或 None）仍可被任意进程 claim。
                 if self.allowed_channels is not None and j.payload.channel:
                     if j.payload.channel not in self.allowed_channels:
                         continue
@@ -694,7 +694,7 @@ class CronService:
             # L7：topic_tag 去重最严格，因此最先执行。新请求带 topic_tag 时，
             # 相同 (channel, to, topic_tag) 的任何已启用任务都视为重复。这能捕获
             # 护理场景中的失败模式：LLM 创建近乎相同的用药提醒 cron，只在时间
-            #（11:20 与 11:30）或措辞上略有差异；消息全等去重和 15 分钟窗口去重
+            # （11:20 与 11:30）或措辞上略有差异；消息全等去重和 15 分钟窗口去重
             # 都会漏掉。topic_tag 就是“提醒主题”的身份，因此相同 topic_tag 的
             # 两个 cron 按定义属于同一逻辑提醒。就地更新现有任务的消息/schedule，
             # 而不是创建并行任务。
@@ -784,8 +784,8 @@ class CronService:
                 existing.payload.deliver = deliver
                 existing.name = name
                 existing.updated_at_ms = now
-                    # 仅当现有任务已经触发或被禁用时才重算 next_run_at_ms，
-                    # 否则保留原定触发时间。
+                # 仅当现有任务已经触发或被禁用时才重算 next_run_at_ms，
+                # 否则保留原定触发时间。
                 if not existing.enabled or existing.state.next_run_at_ms is None:
                     existing.enabled = True
                     existing.state.next_run_at_ms = _compute_next_run(schedule, now)

@@ -36,8 +36,6 @@ def test_dogfood_slash_command(harness, slash, expected):
         f"slash /{slash} did not produce expected output (regex={expected!r}); screen=\n{harness.screen()}"
     )
 
-
-
     for key in ("escape", "ctrl+c"):
         try:
             harness.press(key)

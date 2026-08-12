@@ -160,7 +160,6 @@ def test_pico_node_override_no_fallback(monkeypatch, tmp_path):
 
     monkeypatch.setenv("PICO_NODE", str(tmp_path / "nonexistent-node"))
 
-
     node_path, version = find_node()
     assert node_path is None, "PICO_NODE override must not fall back to venv/PATH"
     assert version is None
@@ -209,8 +208,6 @@ def test_dev_npx_derived_from_node_path(monkeypatch, tmp_path):
     )
 
     captured: dict[str, object] = {}
-
-
 
     def fake_run_subprocess_with_rpc(node_path, args, cwd, **_kw):
         captured["node_path"] = node_path
@@ -283,7 +280,6 @@ def test_rpc_handshake_timeout(monkeypatch, tmp_path):
         lambda: ("/usr/bin/node", (22, 5, 0)),
     )
 
-
     monkeypatch.setattr(
         "pico.cli.tui_commands.run_subprocess_with_rpc",
         lambda *_a, **_kw: 3,
@@ -304,9 +300,7 @@ def test_rpc_handshake_timeout_helper_real(tmp_path, monkeypatch):
     """
     from pico.cli import tui_commands
 
-
     monkeypatch.setattr(tui_commands, "_RPC_HANDSHAKE_TIMEOUT_S", 1.0)
-
 
     exit_code = tui_commands.run_subprocess_with_rpc(
         "/bin/sh",
@@ -321,10 +315,6 @@ def test_rpc_handshake_timeout_helper_real(tmp_path, monkeypatch):
 
 # ---------------------------------------------------------------------------
 #
-
-
-
-
 
 
 def test_rpc_socket_env_constants_exposed():
@@ -423,7 +413,6 @@ def test_rpc_socket_transport_handshake_ok(tmp_path, monkeypatch):
     """
     from pico.cli import tui_commands
 
-
     monkeypatch.setattr(tui_commands, "_RPC_HANDSHAKE_TIMEOUT_S", 3.0)
 
     child_src = """
@@ -465,7 +454,6 @@ def test_rpc_socket_handshake_timeout_when_child_never_connects(tmp_path, monkey
     from pico.cli import tui_commands
 
     monkeypatch.setattr(tui_commands, "_RPC_HANDSHAKE_TIMEOUT_S", 1.0)
-
 
     exit_code = tui_commands.run_subprocess_with_rpc(
         "/bin/sh",

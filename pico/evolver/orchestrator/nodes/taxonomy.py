@@ -99,8 +99,8 @@ def empty_failure_map() -> dict:
 
 def add_failure_mode(fm: dict, trajectory_id: str, mode: dict) -> None:
     why, where = mode["why"], mode["where"]
-        # 主导模式加权：失败运行中几乎普遍共现的次要症状若按全权重计入，会在 WHY 选择排序的
-        # 分布中淹没因果模式。没有该标志的模式（旧调用方）保留原全权重。
+    # 主导模式加权：失败运行中几乎普遍共现的次要症状若按全权重计入，会在 WHY 选择排序的
+    # 分布中淹没因果模式。没有该标志的模式（旧调用方）保留原全权重。
     weight = 1.0 if mode.get("dominant", True) else 0.5
     fm["why_distribution"][why] = fm["why_distribution"].get(why, 0) + weight
     cell = fm["cells"].setdefault(f"{where}::{why}", {"candidates": []})

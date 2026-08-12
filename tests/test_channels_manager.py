@@ -68,9 +68,6 @@ def _manager(monkeypatch, specs, config) -> ChannelManager:
     return ChannelManager(config)
 
 
-
-
-
 def test_init_builds_enabled_channel_and_sets_groq_key(monkeypatch):
     mgr = _manager(
         monkeypatch,
@@ -117,9 +114,6 @@ def test_empty_allow_from_disables_the_channel_loudly(monkeypatch):
     error = "".join(lines)
     assert "fake channel disabled" in error
     assert "empty allowFrom denies every sender" in error
-
-
-
 
 
 def test_factory_crash_disables_only_that_channel(monkeypatch):
@@ -352,8 +346,6 @@ async def test_quiesce_intake_preserves_caller_cancellation_over_barrier_failure
     assert intake.cancel_calls == 1
 
 
-
-
 _EDITABLE_JSON = '{"url": "file:///src", "dir_info": {"editable": true}}'
 _WHEEL_JSON = '{"url": "https://x/pico_harness-0.1.2.whl", "archive_info": {}}'
 
@@ -455,9 +447,6 @@ def test_init_warning_carries_install_hint(monkeypatch, direct_url, platform, ex
     warning = "".join(lines)
     assert "feishu channel disabled" in warning
     assert expected in warning
-
-
-
 
 
 def test_get_status_and_get_channel(monkeypatch):

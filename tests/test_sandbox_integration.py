@@ -131,8 +131,6 @@ class TestBoxliteStdioMCPRoundtrip:
         pytest.importorskip("mcp")
         from mcp import ClientSession
 
-
-
         result = await node_executor.exec(
             "npm install -g @modelcontextprotocol/server-everything",
             timeout=120,

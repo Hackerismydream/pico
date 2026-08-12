@@ -89,7 +89,6 @@ class LocalSkillCatalog:
         if start_watcher:
             self.start_file_watcher()
 
-
     @property
     def registry(self) -> SkillRegistry:
         return self._registry

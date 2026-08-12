@@ -362,7 +362,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
     ),
     # === 本地部署（按配置键匹配，不按 api_base）=========
     # vLLM / 任意 OpenAI-compatible 本地服务。配置键为 "vllm"
-    #（provider_name="vllm"）时检测到。
+    # （provider_name="vllm"）时检测到。
     ProviderSpec(
         name="vllm",
         keywords=("vllm",),

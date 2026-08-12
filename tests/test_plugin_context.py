@@ -38,7 +38,6 @@ class TestPluginContext:
         )
         assert isinstance(ctx.logger, logging.Logger)
 
-
         assert ctx.logger.name.startswith("pico.plugin")
 
     def test_explicit_logger(self, tmp_path: Path) -> None:

@@ -59,8 +59,6 @@ def test_turn_outcome_is_frozen_with_usage_reply_and_tool_evidence():
 
 def test_turn_runner_protocol_is_a_weak_has_run_check():
 
-
-
     class HasRun:
         async def run(self, req, emit):
             return TurnOutcome(usage=Usage(0, 0, 0), explicit_reply=False)

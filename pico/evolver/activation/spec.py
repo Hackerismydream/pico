@@ -194,7 +194,7 @@ def evaluate_spec(spec: ActivationSpec, corpus: list[list[dict]]) -> int:
             run, prev = 0, object()
             for c in _scope_contents(traj, scope):
                 if ignore_empty and not c.strip():
-        # 空响应不携带命令；比较命令的重复触发器永远看不到它们。
+                    # 空响应不携带命令；比较命令的重复触发器永远看不到它们。
                     continue
                 run = run + 1 if c == prev else 1
                 prev = c

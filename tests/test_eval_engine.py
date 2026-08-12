@@ -64,7 +64,6 @@ class TestDefaultDisabledBehavior:
     def test_config_subflags_have_safe_defaults(self):
         cfg = EvalEngineConfig()
 
-
         assert cfg.on_task_completion is True
 
         assert cfg.on_tool_audit is False
@@ -119,7 +118,6 @@ class TestBeforeIterationHook:
         assert decision.short_circuit_result is None
 
     def test_estimator_handles_unserializable_payload(self):
-
 
         cfg = EvalEngineConfig(enabled=True, on_iteration_gate=True)
         hook = BeforeIterationHook(cfg)
@@ -357,7 +355,6 @@ class TestEvalEngineOrchestrator:
 
         assert isinstance(hooks[0], BeforeIterationHook)
         assert isinstance(hooks[1], ToolAuditHook)
-
 
         from pico.agent.hook.base import AgentHook
 

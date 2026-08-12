@@ -69,7 +69,6 @@ class _MessageToolProvider:
                 },
             )
 
-
     def get_default_model(self) -> str:
         return "fake/model"
 
@@ -99,9 +98,6 @@ def _req(session_key: str = "tui:default") -> TurnRequest:
     )
 
 
-
-
-
 async def test_ac1_message_tool_content_routes_to_token_delta_event(workspace) -> None:
     from pico.tui_rpc.spine import build_tui
 
@@ -121,10 +117,6 @@ async def test_ac1_message_tool_content_routes_to_token_delta_event(workspace) -
     assert "hi from tool" in "".join(e["payload"]["text"] for e in deltas)
 
 
-
-
-
-
 async def test_ac2_callback_isolated_per_turn(workspace) -> None:
     loop = _make_agent(workspace)
     message_tool = loop.tools.get("message")
@@ -133,8 +125,6 @@ async def test_ac2_callback_isolated_per_turn(workspace) -> None:
 
     async def _noop_emit(_event) -> None:
         return None
-
-
 
     await asyncio.create_task(loop.run_turn(_req(), _noop_emit, lambda: [], stream=True))
     assert message_tool._cur().send_callback is original
@@ -160,9 +150,6 @@ async def test_ac2_callback_isolated_even_on_error(workspace) -> None:
     with pytest.raises(RuntimeError):
         await asyncio.create_task(loop.run_turn(_req(), _noop_emit, lambda: [], stream=True))
     assert message_tool._cur().send_callback is original
-
-
-
 
 
 async def test_ac4_synthetic_tool_complete_before_message_complete(workspace) -> None:
@@ -212,9 +199,6 @@ async def test_ac4_no_synthetic_tool_complete_when_message_tool_unused(workspace
         await teardown()
 
     assert [e for e in emitter.events() if e["type"] == "tool.complete"] == []
-
-
-
 
 
 def _make_inbound(content: str = "test prompt") -> TurnRequest:

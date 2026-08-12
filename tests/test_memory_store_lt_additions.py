@@ -179,7 +179,6 @@ class TestLockedSectionWrite:
         def writer(label: str, delay_inside_lock_s: float) -> None:
             barrier.wait()
             with store.locked():
-
                 observed_orders.append(label)
                 current = store.read_long_term()
 
@@ -194,7 +193,6 @@ class TestLockedSectionWrite:
         t2.start()
         t1.join()
         t2.join()
-
 
         text = store.read_long_term()
         assert "## alpha" in text

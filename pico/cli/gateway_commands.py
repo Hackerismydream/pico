@@ -140,7 +140,7 @@ async def _cleanup_gateway(
     await attempt("channel transports", channels.stop_all)
     await attempt("agent", agent.stop)
     await attempt("runtime", runtime.close)
-        # 运行失败说明网关为何退出；清理失败会记录日志，且只有运行本身成功时才成为最终错误。
+    # 运行失败说明网关为何退出；清理失败会记录日志，且只有运行本身成功时才成为最终错误。
     if run_error is not None:
         raise run_error
     if cancellation is not None:
@@ -166,8 +166,8 @@ def register(app: typer.Typer) -> None:
         from pico.config.pico import load_pico_config
         from pico.proactive_engine.schedulers.cron.service import CronService
 
-    # load_runtime_config 必须最先运行：它调用 set_config_path()，使后续 load_pico_config()
-    # 从 --config 而非默认 ~/.pico/config.json 读取。否则 --config 中的 skill_forge 会被静默忽略。
+        # load_runtime_config 必须最先运行：它调用 set_config_path()，使后续 load_pico_config()
+        # 从 --config 而非默认 ~/.pico/config.json 读取。否则 --config 中的 skill_forge 会被静默忽略。
         config = load_runtime_config(config, workspace)
         paths = resolve_service_paths(config)
 
@@ -184,7 +184,7 @@ def register(app: typer.Typer) -> None:
 
         from pico.cli._gateway_lock import GatewayAlreadyRunningError, acquire
 
-    # 整个进程期间持有；关闭该句柄或垃圾回收时释放锁。
+        # 整个进程期间持有；关闭该句柄或垃圾回收时释放锁。
         try:
             _lock_handle = acquire(now=time.time())
         except GatewayAlreadyRunningError as exc:
@@ -250,9 +250,9 @@ def register(app: typer.Typer) -> None:
             run_error: BaseException | None = None
             try:
                 await runtime.start_memory_backend()
-        # 为网关主机来源装配 Spine：cron 通过它提交，回复经逐渠道出口路由到渠道。必须在此处
-        # 正在运行的事件循环内构建，而非同步命令序言；Scheduler 构造时会固定所属循环，
-        # submit 必须来自该循环，而序言尚无事件循环。
+                # 为网关主机来源装配 Spine：cron 通过它提交，回复经逐渠道出口路由到渠道。必须在此处
+                # 正在运行的事件循环内构建，而非同步命令序言；Scheduler 构造时会固定所属循环，
+                # submit 必须来自该循环，而序言尚无事件循环。
                 from pico.cli._gateway_spine import build_gateway
 
                 gw_scheduler, gw_hub, gw_readback_texts, gw_sources, gw_teardown = build_gateway(
@@ -271,13 +271,13 @@ def register(app: typer.Typer) -> None:
                     default_channel="cli",
                 )
 
-        # 子智能体结果回注会提交来源为 SUBAGENT 的轮次。
+                # 子智能体结果回注会提交来源为 SUBAGENT 的轮次。
                 agent.subagents.set_submit(gw_scheduler.submit)
 
-        # 渠道侧的 ask_user 往返：QuestionBroker 把智能体的 clarify.request 渲染为发往会话渠道的
-        # 出站 Text；下方入站门通过 reply() 路由用户下一条消息。问题在轮次中途发出，因此当前
-        # 轮次的真实入站 Source 仍在以会话 ID 为键的 gw_sources 中；复用它可精确保留话题/
-        # 线程地址，而无需从会话 ID 重建。
+                # 渠道侧的 ask_user 往返：QuestionBroker 把智能体的 clarify.request 渲染为发往会话渠道的
+                # 出站 Text；下方入站门通过 reply() 路由用户下一条消息。问题在轮次中途发出，因此当前
+                # 轮次的真实入站 Source 仍在以会话 ID 为键的 gw_sources 中；复用它可精确保留话题/
+                # 线程地址，而无需从会话 ID 重建。
                 from pico.spine import Text as _Text
                 from pico.tui_rpc.question_broker import QuestionBroker
 
@@ -301,9 +301,9 @@ def register(app: typer.Typer) -> None:
                 if (ask_tool := agent.tools.get("ask_user")) is not None and hasattr(ask_tool, "set_broker"):
                     ask_tool.set_broker(question_broker)
 
-            # 渠道入站通过 spine：获准消息提交为 USER 轮次。/stop 和 /restart 是控制命令
-            # （总线排空器的职责），在此拦截而不提交为轮次，否则智能体会回复命令文本。cid 与
-            # 通道键（conversation 或 channel:chat_id）一致，也是总线路径 _handle_stop 使用的会话键。
+                # 渠道入站通过 spine：获准消息提交为 USER 轮次。/stop 和 /restart 是控制命令
+                # （总线排空器的职责），在此拦截而不提交为轮次，否则智能体会回复命令文本。cid 与
+                # 通道键（conversation 或 channel:chat_id）一致，也是总线路径 _handle_stop 使用的会话键。
                 from dataclasses import replace
 
                 from pico.spine import Text

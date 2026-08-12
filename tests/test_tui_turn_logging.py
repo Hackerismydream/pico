@@ -182,7 +182,6 @@ def test_suppress_noisy_watchers_raises_watchfiles_level() -> None:
 
     from pico.cli.tui_commands import _suppress_noisy_watchers
 
-
     logging.getLogger("watchfiles.main").setLevel(logging.DEBUG)
     _suppress_noisy_watchers()
     for name in ("watchfiles", "watchfiles.main", "watchdog"):

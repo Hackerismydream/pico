@@ -42,9 +42,6 @@ _IMAGE = "ubuntu:22.04"
 runner = CliRunner()
 
 
-
-
-
 @pytest.fixture(scope="session", autouse=True)
 def pre_pull_image():
     """Pull the OCI image once per session before any test starts.
@@ -65,7 +62,6 @@ def pre_pull_image():
 
     async def _pull() -> None:
 
-
         async with boxlite.SimpleBox(
             image=_IMAGE,
             cpus=1,
@@ -78,9 +74,6 @@ def pre_pull_image():
         asyncio.run(_pull())
     except Exception as exc:
         pytest.skip(f"OCI image pull failed for {_IMAGE!r} — likely a network issue, not a code bug.\n  Error: {exc}")
-
-
-
 
 
 @pytest.fixture
@@ -116,7 +109,6 @@ async def real_server(sock_dir):
     runtime = get_boxlite_runtime()
     box = await runtime.create(boxlite.BoxOptions(image=_IMAGE, cpus=1, memory_mib=512))
 
-
     await box.start()
 
     sock_path = sock_dir / "debug.sock"
@@ -135,15 +127,10 @@ async def real_server(sock_dir):
         except Exception:
             pass
 
-
-
         try:
             await runtime.remove(box.id)
         except Exception:
             pass
-
-
-
 
 
 async def _invoke(args, socket_path):
@@ -159,9 +146,6 @@ async def _invoke(args, socket_path):
             return runner.invoke(sandbox_app, args)
 
     return await asyncio.get_running_loop().run_in_executor(None, _run)
-
-
-
 
 
 class TestListLsRealVM:
@@ -189,13 +173,9 @@ class TestListLsRealVM:
 
     async def test_list_marks_owned_vm(self, real_server):
 
-
         path, _ = real_server
         result = await _invoke(["list"], path)
         assert "*" in result.output
-
-
-
 
 
 class TestExecRealVM:
@@ -227,13 +207,6 @@ class TestExecRealVM:
         assert "via-ref" in result.output
 
 
-
-
-
-
-
-
-
 def _spawn_shell_under_pty(socket_path: Path) -> tuple[subprocess.Popen, int]:
     """Spawn `pico sandbox shell` in a subprocess whose stdio is a PTY.
 
@@ -243,9 +216,6 @@ def _spawn_shell_under_pty(socket_path: Path) -> tuple[subprocess.Popen, int]:
     not expose one. We use an env var instead.
     """
     master_fd, slave_fd = pty.openpty()
-
-
-
 
     runner_src = (
         "import os, sys\n"
@@ -299,7 +269,6 @@ class TestShellRealVM:
 
         loop.add_reader(master_fd, _on_master)
         try:
-
             deadline = time.time() + 30
             while b"# " not in bytes(output) and b"$ " not in bytes(output) and time.time() < deadline:
                 await asyncio.sleep(0.1)
@@ -307,10 +276,6 @@ class TestShellRealVM:
             assert b"# " in bytes(output) or b"$ " in bytes(output), (
                 f"shell prompt never arrived; got: {bytes(output)!r}"
             )
-
-
-
-
 
             os.write(master_fd, b"echo " + marker + b"\n")
             deadline = time.time() + 15
@@ -337,7 +302,6 @@ class TestShellRealVM:
                 pass
 
         full = bytes(output)
-
 
         assert full.count(marker) >= 2, (
             f"expected marker {marker!r} to appear at least twice "

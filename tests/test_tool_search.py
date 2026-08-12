@@ -58,9 +58,6 @@ class _ContextTool(_FakeTool):
         return f"ran {self.name}"
 
 
-
-
-
 def test_index_ranks_name_match_first() -> None:
     idx = ToolIndex()
     tools = [
@@ -98,7 +95,6 @@ def test_index_rebuilds_on_name_or_description_change() -> None:
 
 
 def test_index_matches_parameter_schema_keywords() -> None:
-
 
     idx = ToolIndex()
     tools = [
@@ -182,9 +178,6 @@ def test_index_reused_across_instances_for_same_catalog() -> None:
     assert second._bm25 is first._bm25, "same catalog should reuse the cached BM25"
 
 
-
-
-
 def _controller(registry: ToolRegistry) -> ToolSearchController:
     return ToolSearchController(
         registry,
@@ -225,8 +218,6 @@ def test_default_search_result_limit_is_ten() -> None:
 
 def test_default_always_visible_covers_core_and_interaction_primitives() -> None:
 
-
-
     assert set(DEFAULT_ALWAYS_VISIBLE) >= {
         "read_file",
         "write_file",
@@ -256,9 +247,6 @@ def test_meta_tools_not_self_searchable() -> None:
     ctrl.refresh()
     names = [h["name"] for h in ctrl.search("tool search describe call")]
     assert not (META_TOOL_NAMES & set(names))
-
-
-
 
 
 @pytest.mark.asyncio
@@ -338,9 +326,6 @@ async def test_tool_call_rejects_unparseable_arguments() -> None:
     assert "must be a JSON object" in await ctrl.call("anything", "not json {")
 
 
-
-
-
 def _registry_with_n(n: int) -> tuple[ToolRegistry, ToolSearchController]:
     reg = ToolRegistry()
     for i in range(n):
@@ -380,7 +365,6 @@ async def test_strategy_large_catalog_compacts_to_visible() -> None:
 @pytest.mark.asyncio
 async def test_strategy_keeps_interaction_primitives_visible_above_threshold() -> None:
 
-
     reg, ctrl = _registry_with_n(40)
     reg.register(_FakeTool("ask_user", "ask the user a clarifying question"))
     reg.register(_FakeTool("spawn", "spawn a subagent to handle a subtask"))
@@ -393,7 +377,6 @@ async def test_strategy_keeps_interaction_primitives_visible_above_threshold() -
 
 @pytest.mark.asyncio
 async def test_strategy_tool_list_stable_across_turns() -> None:
-
 
     reg, ctrl = _registry_with_n(40)
     strat = ToolSearchStrategy(ctrl, compaction_threshold=25)
@@ -413,7 +396,6 @@ async def test_strategy_none_tools_passthrough() -> None:
 
 @pytest.mark.asyncio
 async def test_strategy_passthrough_when_meta_tools_absent() -> None:
-
 
     reg, ctrl = _registry_with_n(40)
     reg.unregister("tool_search")

@@ -26,9 +26,6 @@ def tree(tmp_path: Path) -> Path:
     return tmp_path
 
 
-
-
-
 async def test_grep_content_finds_match(tree: Path):
     tool = GrepTool(workspace=tree, allowed_dir=tree)
     out = await tool.execute(pattern=r"def hello")
@@ -141,9 +138,6 @@ async def test_grep_cancellation_reaps_ripgrep_process(tree: Path, monkeypatch):
 
     assert process.killed is True
     assert process.waited is True
-
-
-
 
 
 async def test_find_basename_recursive(tree: Path):

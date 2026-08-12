@@ -145,9 +145,9 @@ class TuiTurnRunner(AgentTurnRunner):
         usage_sink: dict[str, Any] = {}
         outcome = await self._loop.run_turn(req, emit_bound, drain, stream=True, usage_sink=usage_sink)
 
-            # 消息工具触发时生成一个合成 tool.complete（Agent Loop 在通用工具路径中会跳过它），
-            # 让 UI 记录 Agent 已采取行动；回复已作为令牌增量流式输出。返回前发出，
-            # 确保它在 Turn 事件流中位于 TurnEnded 之前。
+        # 消息工具触发时生成一个合成 tool.complete（Agent Loop 在通用工具路径中会跳过它），
+        # 让 UI 记录 Agent 已采取行动；回复已作为令牌增量流式输出。返回前发出，
+        # 确保它在 Turn 事件流中位于 TurnEnded 之前。
         message_tool = self._loop.tools.get("message")
         if bound and isinstance(message_tool, MessageTool) and message_tool.sent_in_turn:
             await emit(
@@ -211,8 +211,8 @@ class TuiOutlet:
                     },
                 )
         elif isinstance(out, Text):
-                # 非流式回复（澄清、Hook 短路或空回退）通过一个 token.delta 进入流式回复使用的
-                # 同一缓冲区，使 message.complete 能像处理其他文本一样完成它。
+            # 非流式回复（澄清、Hook 短路或空回退）通过一个 token.delta 进入流式回复使用的
+            # 同一缓冲区，使 message.complete 能像处理其他文本一样完成它。
             if out.content:
                 await self._emitter.emit(cid, {"type": "token.delta", "payload": {"text": out.content}})
             # Notice 和 MediaOut 当前没有线上事件，因此被消耗。
@@ -350,7 +350,7 @@ def _make_tui_sink(
                 )
             return
         if isinstance(event, TurnStarted):
-        # TuiTurnRunner 将精确请求与对应 turn.send 绑定关联后，再发出 message.start。
+            # TuiTurnRunner 将精确请求与对应 turn.send 绑定关联后，再发出 message.start。
             return
         await hub.dispatch(event)
 

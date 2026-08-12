@@ -99,7 +99,7 @@ def load_tree_into_scheduler(
 
         # ── 确定任务池 ──
     if all_task_ids is None:
-            # 以根节点的 bandit_tasks_chosen 作为规范任务池。
+        # 以根节点的 bandit_tasks_chosen 作为规范任务池。
         roots = [n for n in nodes if n.parent_id is None]
         if len(roots) != 1:
             raise ValueError(f"Expected exactly one root node, found {len(roots)}: {[r.node_id for r in roots]}")
@@ -118,7 +118,7 @@ def load_tree_into_scheduler(
         rng_seed=rng_seed,
     )
 
-        # ── 拓扑顺序——父节点先于子节点 ──
+    # ── 拓扑顺序——父节点先于子节点 ──
     for node in _topological_order(nodes):
         scheduler.add_node(node.node_id, parent_id=node.parent_id)
         _record_outcomes(
@@ -142,8 +142,8 @@ def _topological_order(nodes: list[HarnessNode]) -> list[HarnessNode]:
     it. Uses BFS from roots; raises on cycles or orphan parents."""
     by_id = {n.node_id: n for n in nodes}
 
-        # 预检：每个非根节点必须引用节点集合中存在的父节点。否则 BFS 会静默跳过，并落入
-        # 信息较弱的“可能存在环”分支。
+    # 预检：每个非根节点必须引用节点集合中存在的父节点。否则 BFS 会静默跳过，并落入
+    # 信息较弱的“可能存在环”分支。
     for n in nodes:
         if n.parent_id is not None and n.parent_id not in by_id:
             raise ValueError(f"Node {n.node_id!r} references parent_id {n.parent_id!r} which is not in the node set")
@@ -186,7 +186,7 @@ def _record_outcomes(
 
     dense = node.eval.dense_signals or {}
 
-            # ── 1. 多次尝试重放（根节点 k=3 的情况）──
+    # ── 1. 多次尝试重放（根节点 k=3 的情况）──
     replay_dir_rel = dense.get("k_attempt_replay_dir")
     if isinstance(replay_dir_rel, str) and replay_dir_rel and not skip_multi_attempt_replay:
         replay_dir = repo_root / replay_dir_rel
@@ -197,7 +197,7 @@ def _record_outcomes(
                 trial_dir=replay_dir,
                 task_pool=set(scheduler._task_ids),
             )
-                    # 跳过 per_task_results 合并，因为刚刚已重放每次尝试。
+            # 跳过 per_task_results 合并，因为刚刚已重放每次尝试。
         else:
             logger.warning(
                 "node %s: k_attempt_replay_dir does not exist: %s — falling back to per_task_results union",
@@ -206,10 +206,10 @@ def _record_outcomes(
             )
             _replay_primary(scheduler, node)
     else:
-            # ── 1b. 主评测（每个任务单次尝试）──
+        # ── 1b. 主评测（每个任务单次尝试）──
         _replay_primary(scheduler, node)
 
-            # ── 2. 次级评测 ──
+        # ── 2. 次级评测 ──
     n_secondary = int(dense.get("secondary_eval_count", 0) or 0)
     for i in range(n_secondary):
         label = dense.get(f"secondary_eval_{i}_label")

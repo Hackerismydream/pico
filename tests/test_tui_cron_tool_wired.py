@@ -24,7 +24,6 @@ def patched_tui_build_deps(monkeypatch: pytest.MonkeyPatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     captured: dict[str, Any] = {}
 
-
     config = MagicMock()
     config.workspace_path = str(tmp_path)
     config.agents.defaults.model = "stub-model"
@@ -55,7 +54,6 @@ def patched_tui_build_deps(monkeypatch: pytest.MonkeyPatch, tmp_path):
         lambda: ec_config,
     )
 
-
     monkeypatch.setattr(
         "pico.session.manager.SessionManager",
         lambda _wp: MagicMock(),
@@ -67,7 +65,6 @@ def patched_tui_build_deps(monkeypatch: pytest.MonkeyPatch, tmp_path):
         lambda: cron_dir,
     )
 
-
     class _AgentLoopSpy:
         def __init__(self, **kwargs):
             captured["agent_loop_kwargs"] = kwargs
@@ -76,7 +73,6 @@ def patched_tui_build_deps(monkeypatch: pytest.MonkeyPatch, tmp_path):
             self.configure_personalization = MagicMock()
 
     monkeypatch.setattr("pico.agent.loop.AgentLoop", _AgentLoopSpy)
-
 
     class _CronServiceSpy:
         instances: list[Any] = []

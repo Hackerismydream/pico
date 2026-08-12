@@ -219,8 +219,6 @@ class TestBuildPluginTools:
     def test_none_factory_is_skipped(self, tmp_path: Path) -> None:
         from pico.cli._plugin_stack import build_plugin_tools
 
-
-
         def opt_out(ctx):
             return None
 

@@ -71,7 +71,7 @@ function startMock(): Promise<MockServer> {
             try {
               handler(socket, JSON.parse(line) as Frame)
             } catch {
-        /* 格式错误，忽略。 */
+              /* 格式错误，忽略。 */
             }
           }
 

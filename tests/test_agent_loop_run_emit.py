@@ -172,7 +172,6 @@ def _stub_edges(loop: AgentLoop) -> None:
 
 async def test_help_slash_returns_command_list_at_outbound_layer(tmp_path):
 
-
     loop = AgentLoop(provider=_FakeChatProvider([]), workspace=tmp_path)
     _stub_edges(loop)
 
@@ -184,9 +183,6 @@ async def test_help_slash_returns_command_list_at_outbound_layer(tmp_path):
 
 
 async def test_hook_short_circuit_preserves_media_at_outbound_layer(tmp_path):
-
-
-
 
     loop = AgentLoop(
         provider=_FakeChatProvider([]),
@@ -203,11 +199,7 @@ async def test_hook_short_circuit_preserves_media_at_outbound_layer(tmp_path):
     assert content == "short"
 
 
-
-
-
 async def test_run_streams_then_dissolves_main_response(tmp_path):
-
 
     chunks = [
         StreamDelta(content="Hel"),
@@ -244,9 +236,6 @@ async def test_run_emits_reasoning_then_stream(tmp_path):
 
 async def test_run_tool_call_emits_tool_events_and_notice(tmp_path):
 
-
-
-
     provider = _FakeStreamToolProvider(
         [
             [
@@ -276,7 +265,6 @@ async def test_run_tool_call_emits_tool_events_and_notice(tmp_path):
     assert complete.failed is False
     assert outcome.tool_calls == 1
     assert outcome.tool_failures == 0
-
 
     assert any(isinstance(e, EvNotice) and e.kind is NoticeKind.TOOL_HINT for e in sink.events)
     assert any(isinstance(e, EvStreamDelta) and e.delta == "done" for e in sink.events)
@@ -409,7 +397,6 @@ async def test_run_observes_and_parallelizes_progressive_target_tools(tmp_path):
 
 async def test_inject_message_merged_before_next_iteration(tmp_path):
 
-
     class _RecordingStreamToolProvider:
         def __init__(self, scripts):
             self._scripts = scripts
@@ -477,7 +464,6 @@ async def test_run_slash_emits_text_not_streamed(tmp_path):
 
 async def test_run_short_circuit_emits_media_before_text(tmp_path):
 
-
     loop = AgentLoop(
         provider=_FakeChatProvider([]),
         workspace=tmp_path,
@@ -496,7 +482,6 @@ async def test_run_short_circuit_emits_media_before_text(tmp_path):
 
 async def test_run_propagates_sandbox_error_not_error_string(tmp_path):
 
-
     loop = AgentLoop(provider=_FakeChatProvider([]), workspace=tmp_path)
 
     async def _boom() -> None:
@@ -512,8 +497,6 @@ async def test_run_propagates_sandbox_error_not_error_string(tmp_path):
 
 
 async def test_run_propagates_mid_turn_error_not_sorry_text(tmp_path):
-
-
 
     class _BoomStreamProvider:
         async def chat_stream(self, **kwargs):
@@ -591,8 +574,6 @@ def _message_tool_call(arguments: str) -> StreamDelta:
 
 async def test_run_message_tool_text_streams_and_dissolves(tmp_path):
 
-
-
     provider = _FakeStreamToolProvider(
         [
             [_message_tool_call('{"content": "hi via tool"}')],
@@ -637,9 +618,6 @@ async def test_run_failed_message_tool_emits_one_failed_completion(tmp_path):
 
 async def test_run_message_tool_media_is_not_dropped(tmp_path):
 
-
-
-
     provider = _FakeStreamToolProvider(
         [
             [_message_tool_call('{"content": "see this", "media": ["/tmp/pic.png"]}')],
@@ -658,11 +636,7 @@ async def test_run_message_tool_media_is_not_dropped(tmp_path):
     assert outcome.explicit_reply is True
 
 
-
-
-
 async def test_run_stream_false_main_reply_is_one_text(tmp_path):
-
 
     provider = _FakeChatProvider([LLMResponse(content="full reply", finish_reason="stop")])
     loop = AgentLoop(provider=provider, workspace=tmp_path)
@@ -678,8 +652,6 @@ async def test_run_stream_false_main_reply_is_one_text(tmp_path):
 
 
 async def test_run_stream_false_message_tool_emits_text(tmp_path):
-
-
 
     provider = _FakeChatProvider(
         [
@@ -703,9 +675,6 @@ async def test_run_stream_false_message_tool_emits_text(tmp_path):
     assert outcome.explicit_reply is True
     assert outcome.tool_calls == 1
     assert outcome.tool_failures == 0
-
-
-
 
 
 def _hook_loop(tmp_path):
@@ -750,7 +719,6 @@ async def _process_via_chat(loop, msg):
 
 
 async def test_process_message_origin_none_plain_fires_hook(tmp_path):
-
 
     loop = AgentLoop(
         provider=_FakeChatProvider([LLMResponse(content="llm", finish_reason="stop")]),
@@ -801,8 +769,6 @@ def test_agent_loop_has_no_sentinel_callback_parameters():
 
 async def test_run_turn_reconstructs_metadata_from_source_extras(tmp_path):
 
-
-
     loop = AgentLoop(
         provider=_FakeChatProvider([LLMResponse(content="ok", finish_reason="stop", tool_calls=[])]),
         workspace=tmp_path,
@@ -833,7 +799,6 @@ async def test_run_turn_reconstructs_metadata_from_source_extras(tmp_path):
 
 
 async def test_run_turn_empty_extras_reconstructs_empty_metadata(tmp_path):
-
 
     loop = AgentLoop(
         provider=_FakeChatProvider([LLMResponse(content="ok", finish_reason="stop", tool_calls=[])]),

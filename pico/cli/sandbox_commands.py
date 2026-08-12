@@ -215,7 +215,7 @@ def sandbox_exec(
             sys.stderr.buffer.flush()
 
         def _flush_stderr_tail() -> None:
-        # 刷新最后一个没有换行符的不完整行，避免 VM 进程在两次写入间退出时静默丢失。
+            # 刷新最后一个没有换行符的不完整行，避免 VM 进程在两次写入间退出时静默丢失。
             if stderr_buf:
                 sys.stderr.buffer.write(b"[stderr] " + bytes(stderr_buf))
                 sys.stderr.buffer.write(b"\n")
@@ -346,6 +346,7 @@ def sandbox_shell(
 
                 # SIGWINCH 可能在任意线程上下文触发；转回事件循环，确保 create_task 和 writer
                 # 访问发生在循环线程。
+
             original_sigwinch = signal.getsignal(signal.SIGWINCH)
             signal.signal(
                 signal.SIGWINCH,
@@ -402,9 +403,9 @@ def sandbox_shell(
                             break
                         chunk = get_task.result()
                         if not chunk:
-                        # 本地标准输入到达 EOF（如管道输入结束或终端关闭）。转发最后一个 EOT 字节
-                        # （\x04），使 VM 侧 PTY 的行规程收到 VEOF 并终止 Shell；行为与
-                        # `docker exec -it` 在 Ctrl-D 或管道结束时一致。
+                            # 本地标准输入到达 EOF（如管道输入结束或终端关闭）。转发最后一个 EOT 字节
+                            # （\x04），使 VM 侧 PTY 的行规程收到 VEOF 并终止 Shell；行为与
+                            # `docker exec -it` 在 Ctrl-D 或管道结束时一致。
                             data = base64.b64encode(b"\x04").decode()
                             try:
                                 await _send(writer, {"cmd": "stdin", "data": data})

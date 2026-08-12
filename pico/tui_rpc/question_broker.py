@@ -83,9 +83,9 @@ class QuestionBroker:
         self._pending[conversation_id] = _PendingQuestion(future=future, request_id=request_id, default=default)
         self._by_request[request_id] = conversation_id
         try:
-        # ``clarify.request`` 是 ui-tui 前端已有的多选提示协议：
-        # {question, choices, request_id} -> ClarifyPrompt -> clarify.respond。代理器复用它；
-        # conversation_id 供网关通道路由使用，前端会忽略额外键。
+            # ``clarify.request`` 是 ui-tui 前端已有的多选提示协议：
+            # {question, choices, request_id} -> ClarifyPrompt -> clarify.respond。代理器复用它；
+            # conversation_id 供网关通道路由使用，前端会忽略额外键。
             await self._send_frame(
                 {
                     "jsonrpc": "2.0",

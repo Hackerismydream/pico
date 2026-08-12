@@ -161,7 +161,6 @@ def test_set_sandbox_backend_preserves_siblings(cfg_path: Path) -> None:
 
 def test_set_sandbox_backend_survives_reload(cfg_path: Path) -> None:
 
-
     from pico.config.loader import load_config
 
     set_sandbox_backend("boxlite", config_path=cfg_path)
@@ -213,7 +212,6 @@ def test_init_extension_defaults_seeds_safe_subset(cfg_path: Path) -> None:
 
 def test_init_extension_defaults_omits_internal_infra_fields(cfg_path: Path) -> None:
 
-
     init_extension_block_defaults(config_path=cfg_path)
     sf = _read(cfg_path)["skillForge"]
     for leaked in (
@@ -229,7 +227,6 @@ def test_init_extension_defaults_omits_internal_infra_fields(cfg_path: Path) -> 
 
 
 def test_init_extension_defaults_is_idempotent_and_non_clobbering(cfg_path: Path) -> None:
-
 
     cfg_path.write_text(json.dumps({"memory": {"backend": None, "memoryTopK": 20}}))
     init_extension_block_defaults(config_path=cfg_path)
@@ -256,8 +253,6 @@ def test_init_extension_defaults_round_trips_through_loader(cfg_path: Path) -> N
 
 
 def test_malformed_config_refuses_write_and_preserves_file(cfg_path: Path) -> None:
-
-
 
     from pico.config.loader import ConfigReadError
     from pico.config.update import set_default_model, set_language

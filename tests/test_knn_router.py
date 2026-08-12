@@ -63,7 +63,6 @@ def _cfg(
     )
 
 
-
 FAR_ENTRIES = [
     {
         "task_name": "a",
@@ -186,8 +185,6 @@ async def test_switches_when_all_gates_pass(tmp_path, monkeypatch):
     assert fallbacks == ["small"]
 
 
-
-
 TEXT_ENTRIES = [
     {"task_name": "a", "text": "alpha", "rewards": {"small": 30, "large": 60}, "costs": {"small": 1, "large": 10}},
     {"task_name": "b", "text": "beta", "rewards": {"small": 30, "large": 60}, "costs": {"small": 1, "large": 10}},
@@ -235,7 +232,6 @@ async def test_text_memory_embeds_at_load(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_routing_error_falls_back_to_default(tmp_path, monkeypatch):
-
 
     r = KNNModelRouter(_cfg(_write_memory(tmp_path)))
     monkeypatch.setattr(r, "_embed", _const_embed([1.0, 0.0, 0.0]))

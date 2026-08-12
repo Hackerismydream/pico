@@ -493,7 +493,7 @@ function SubagentAccordion({
   }
 
   if (children.length > 0) {
-      // 嵌套孙节点通过 SubagentAccordion 递归渲染，与顶层节点共用相同快捷键和展开语义。
+    // 嵌套孙节点通过 SubagentAccordion 递归渲染，与顶层节点共用相同快捷键和展开语义。
     sections.push({
       header: (
         <Chevron
@@ -1014,7 +1014,7 @@ export const ToolTrail = memo(function ToolTrail({
   }
 
   if (hasSubagents && !inlineDelegateKey && visible.subagents !== 'hidden') {
-      // 火花图加摘要在打开子树前提供一行分支形态概览；`/agents` 打开全屏审计浮层。
+    // 火花图加摘要在打开子树前提供一行分支形态概览；`/agents` 打开全屏审计浮层。
     const suffix = spawnSpark ? `${spawnSummaryLabel}  ${spawnSpark}  (/agents)` : `${spawnSummaryLabel}  (/agents)`
 
     panels.push({
