@@ -1,4 +1,4 @@
-.PHONY: help install install-deps format check lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-reproduce picobench-scorecard-estimate picobench-scorecard-ship picobench-scorecard-score picobench-runtime-scheduler picobench-runtime-tools picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify picobench-myna-task-effect-plan picobench-myna-task-effect-run picobench-myna-task-effect-verify verify-myna-integration verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
+.PHONY: help install install-deps format check lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-reproduce picobench-scorecard-estimate picobench-scorecard-ship picobench-scorecard-score picobench-runtime-scheduler picobench-runtime-tools picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify picobench-myna-task-effect-plan picobench-myna-task-effect-run picobench-myna-task-effect-verify picobench-memory-agent-plan picobench-memory-agent-run picobench-memory-agent-verify verify-myna-integration verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
 
 PYTHON ?= python3
 PYTHON_LINT_TARGETS ?= scripts/check_commit_file.py scripts/check_commit_messages.py scripts/check_pr_title.py scripts/check_large_files.py scripts/commit_lint.py tests/test_commit_lint.py tests/test_large_file_check.py
@@ -7,6 +7,8 @@ PICO_MYNA_TASK_EFFECT_KIND ?= calibration
 PICO_MYNA_TASK_EFFECT_REPETITIONS ?= $(if $(filter formal,$(PICO_MYNA_TASK_EFFECT_KIND)),3,2)
 PICO_MYNA_TASK_EFFECT_CORPUS := benchmarks/picobench/tasks/myna_task_effect/$(PICO_MYNA_TASK_EFFECT_KIND).json
 PICO_MYNA_TASK_EFFECT_OUTPUT ?= .pico/evidence/myna-task-effect/$(PICO_MYNA_TASK_EFFECT_KIND)
+PICO_MEMORY_AGENT_CORPUS := benchmarks/picobench/tasks/myna_task_effect/agent.json
+PICO_MEMORY_AGENT_OUTPUT ?= .pico/evidence/myna-task-effect/agent
 
 help:
 	@echo "Targets:"
@@ -28,6 +30,9 @@ help:
 	@echo "  picobench-myna-task-effect-plan Freeze the installed Pico x Myna A/B plan"
 	@echo "  picobench-myna-task-effect-run Run or resume the credential-free A/B"
 	@echo "  picobench-myna-task-effect-verify Reinstall candidates and rebuild A/B evidence"
+	@echo "  picobench-memory-agent-plan Freeze the lightweight real-Agent Memory A/B"
+	@echo "  picobench-memory-agent-run Run or resume the approved 48-Trial Agent A/B"
+	@echo "  picobench-memory-agent-verify Rebuild Agent A/B metrics without Provider calls"
 	@echo "  picobench      Run the frozen PicoBench calibration and formal campaign"
 	@echo "  picobench-reproduce Run or reuse every Scorecard track and render one report"
 	@echo "  picobench-scorecard-estimate Print the current Scorecard worst-case budget"
@@ -141,6 +146,30 @@ picobench-myna-task-effect-plan picobench-myna-task-effect-run picobench-myna-ta
 		--pico-commit "$$PICO_MYNA_PICO_COMMIT" \
 		--myna-commit "$$PICO_MYNA_COMMIT" \
 		--repetitions "$(PICO_MYNA_TASK_EFFECT_REPETITIONS)"
+
+picobench-memory-agent-plan picobench-memory-agent-run:
+	@test -n "$$PICO_MYNA_PICO_WHEEL" || (echo "PICO_MYNA_PICO_WHEEL is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_WHEEL" || (echo "PICO_MYNA_WHEEL is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_PICO_COMMIT" || (echo "PICO_MYNA_PICO_COMMIT is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_COMMIT" || (echo "PICO_MYNA_COMMIT is required" >&2; exit 2)
+	$(if $(filter picobench-memory-agent-run,$@),@test "$$PICO_BENCH_EXECUTE_PAID" = "1" || (echo "PICO_BENCH_EXECUTE_PAID=1 is required" >&2; exit 2),)
+	$(if $(filter picobench-memory-agent-run,$@),@test -n "$$PICO_MEMORY_AGENT_APPROVAL_DIGEST" || (echo "PICO_MEMORY_AGENT_APPROVAL_DIGEST is required" >&2; exit 2),)
+	$(if $(filter picobench-memory-agent-run,$@),@test -n "$$PICO_MEMORY_AGENT_APPROVED_CNY" || (echo "PICO_MEMORY_AGENT_APPROVED_CNY is required" >&2; exit 2),)
+	uv run --frozen --all-extras --exact python -m benchmarks.picobench.packs.myna_task_effect.agent_campaign \
+		$(patsubst picobench-memory-agent-%,%,$@) \
+		--corpus "$(PICO_MEMORY_AGENT_CORPUS)" \
+		--output-root "$(PICO_MEMORY_AGENT_OUTPUT)" \
+		--pico-wheel "$$PICO_MYNA_PICO_WHEEL" \
+		--myna-wheel "$$PICO_MYNA_WHEEL" \
+		--pico-commit "$$PICO_MYNA_PICO_COMMIT" \
+		--myna-commit "$$PICO_MYNA_COMMIT" \
+		$(if $(filter picobench-memory-agent-run,$@),--approval-digest "$$PICO_MEMORY_AGENT_APPROVAL_DIGEST" --approved-cny "$$PICO_MEMORY_AGENT_APPROVED_CNY",)
+
+picobench-memory-agent-verify:
+	uv run --frozen --all-extras --exact python -m benchmarks.picobench.packs.myna_task_effect.agent_campaign \
+		verify \
+		--corpus "$(PICO_MEMORY_AGENT_CORPUS)" \
+		--output-root "$(PICO_MEMORY_AGENT_OUTPUT)"
 
 verify-myna-integration:
 	@test -n "$$PICO_MYNA_PICO_WHEEL" || (echo "PICO_MYNA_PICO_WHEEL is required" >&2; exit 2)

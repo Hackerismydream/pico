@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib.metadata
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -154,18 +156,47 @@ def _context_factory(recorder_sink: list[RecallRecorder]):
     return factory
 
 
-async def run_turn(spec: dict[str, Any]) -> dict[str, Any]:
+class ProviderRecorder(LLMProvider):
+    def __init__(self, delegate: LLMProvider) -> None:
+        super().__init__(api_key=delegate.api_key, api_base=delegate.api_base)
+        self._delegate = delegate
+        self.calls = 0
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self.generation = delegate.generation
+
+    async def chat(self, *args, **kwargs) -> LLMResponse:
+        self.calls += 1
+        response = await self._delegate.chat(*args, **kwargs)
+        self.input_tokens += int(response.usage.get("prompt_tokens", response.usage.get("input_tokens", 0)) or 0)
+        self.output_tokens += int(response.usage.get("completion_tokens", response.usage.get("output_tokens", 0)) or 0)
+        return response
+
+    def get_default_model(self) -> str:
+        return self._delegate.get_default_model()
+
+
+async def run_turn(
+    spec: dict[str, Any],
+    *,
+    provider_override: LLMProvider | None = None,
+) -> dict[str, Any]:
     workspace = Path(spec["workspace"]).resolve()
     state = Path(spec["state_root"]).resolve()
     workspace.mkdir(parents=True, exist_ok=True)
     state.mkdir(parents=True, exist_ok=True)
-    provider = DeterministicTaskProvider(spec)
+    provider_mode = spec.get("provider_mode", "deterministic")
+    delegate = provider_override or (
+        _build_live_provider(spec) if provider_mode == "live" else DeterministicTaskProvider(spec)
+    )
+    budget_attempts_before = _provider_request_attempts(delegate)
+    provider = ProviderRecorder(delegate)
     config = Config()
     config.agents.defaults.workspace = str(workspace)
     config.agents.defaults.model = provider.get_default_model()
-    config.agents.defaults.max_tokens = 512
-    config.agents.defaults.context_window_tokens = 8_192
-    config.agents.defaults.max_tool_iterations = 4
+    config.agents.defaults.max_tokens = int(spec.get("max_output_tokens_per_call", 512))
+    config.agents.defaults.context_window_tokens = int(spec.get("context_window_tokens", 8_192))
+    config.agents.defaults.max_tool_iterations = int(spec.get("max_tool_iterations", 4))
     config.agents.defaults.enable_personalization = False
     config.routing.enabled = False
     config.tools.restrict_to_workspace = True
@@ -234,10 +265,11 @@ async def run_turn(spec: dict[str, Any]) -> dict[str, Any]:
     close_error: dict[str, str] | None = None
     try:
         try:
-            outcome = await asyncio.wait_for(
-                scheduler.submit(request).result(),
-                timeout=float(spec.get("timeout_seconds", 120)),
-            )
+            with _provider_scope(spec):
+                outcome = await asyncio.wait_for(
+                    scheduler.submit(request).result(),
+                    timeout=float(spec.get("timeout_seconds", 120)),
+                )
             if memory_enabled:
                 if spec["stage"] == "evaluate":
                     operations.append("recall")
@@ -270,7 +302,12 @@ async def run_turn(spec: dict[str, Any]) -> dict[str, Any]:
         "close_error": close_error,
         "memory_backend_build_calls": build_calls,
         "memory_hits": outcome.memory_hits if outcome is not None else 0,
-        "model_calls": provider.calls,
+        "model_calls": getattr(delegate, "calls", []),
+        "input_tokens": provider.input_tokens,
+        "output_tokens": provider.output_tokens,
+        "provider_calls": _provider_request_attempts(
+            delegate, baseline=budget_attempts_before, fallback=provider.calls
+        ),
         "myna_operations": operations,
         "recall_calls": recorder.calls if recorder is not None else 0,
         "recall_hits": recorder.hits if recorder is not None else [],
@@ -287,8 +324,76 @@ async def run_turn(spec: dict[str, Any]) -> dict[str, Any]:
             if isinstance(event, ToolEvent)
         ],
         "turn_error": turn_error,
-        "used_memory": provider.used_memory,
+        "used_memory": bool(getattr(delegate, "used_memory", False)),
     }
+
+
+def _build_live_provider(spec: dict[str, Any]) -> LLMProvider:
+    benchmark_root = Path(spec["benchmark_root"]).resolve()
+    if str(benchmark_root) not in sys.path:
+        sys.path.append(str(benchmark_root))
+    from benchmarks.picobench.budget import BudgetGuardedProvider, ProviderBudgetConfig, ProviderBudgetLedger
+    from pico.cli._helpers import make_provider
+
+    provider_name = spec["provider_name"]
+    config = Config()
+    config.agents.defaults.model = spec["model"]
+    config.agents.defaults.max_tokens = int(spec["max_output_tokens_per_call"])
+    provider_config = getattr(config.providers, provider_name, None)
+    if provider_config is None:
+        raise ValueError("live task-effect provider is unsupported")
+    provider_config.api_key = os.environ.get("PICO_BENCH_PROVIDER_API_KEY", "")
+    provider_config.api_base = spec.get("provider_api_base")
+    delegate = make_provider(config)
+    budget = spec["budget"]
+    ledger_config = ProviderBudgetConfig(
+        hard_cap_cny=float(budget["hard_cap_cny"]),
+        external_service_reserve_cny=0.0,
+        max_total_request_attempts=int(budget["maximum_provider_attempts"]),
+        max_input_tokens_per_call=int(spec["max_input_tokens_per_call"]),
+        max_output_tokens_per_call=int(spec["max_output_tokens_per_call"]),
+        input_cache_miss_usd_per_million=float(budget["input_cache_miss_usd_per_million"]),
+        output_usd_per_million=float(budget["output_usd_per_million"]),
+        conservative_usd_to_cny_multiplier=float(budget["conservative_usd_to_cny_multiplier"]),
+        approval_digest=budget["approval_digest"],
+        ledger_prefix_event_count=int(budget["ledger_prefix_event_count"]),
+        ledger_prefix_digest=budget["ledger_prefix_digest"],
+        ledger_prefix_charged_cny=float(budget["ledger_prefix_charged_cny"]),
+    )
+    return BudgetGuardedProvider(
+        delegate,
+        ledger=ProviderBudgetLedger(Path(budget["ledger_path"]), ledger_config),
+    )
+
+
+def _provider_scope(spec: dict[str, Any]):
+    if spec.get("provider_mode") != "live" or "budget" not in spec:
+        return contextlib.nullcontext()
+    benchmark_root = Path(spec["benchmark_root"]).resolve()
+    if str(benchmark_root) not in sys.path:
+        sys.path.append(str(benchmark_root))
+    from benchmarks.picobench.budget import provider_call_budget_scope
+
+    return provider_call_budget_scope(
+        trial_id=spec["trial_id"],
+        max_logical_calls=int(spec["max_logical_calls_per_trial"]),
+        max_attempts_per_call=int(spec["max_attempts_per_call"]),
+        max_input_tokens_per_call=int(spec["max_input_tokens_per_call"]),
+        max_output_tokens_per_call=int(spec["max_output_tokens_per_call"]),
+    )
+
+
+def _provider_request_attempts(
+    provider: LLMProvider,
+    *,
+    baseline: int = 0,
+    fallback: int = 0,
+) -> int:
+    ledger = getattr(provider, "ledger", None)
+    snapshot = getattr(ledger, "snapshot", None)
+    if not callable(snapshot):
+        return fallback
+    return max(0, int(snapshot().request_attempts) - baseline)
 
 
 def installed_identity() -> dict[str, Any]:
