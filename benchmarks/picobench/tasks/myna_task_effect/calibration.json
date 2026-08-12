@@ -1,0 +1,78 @@
+{
+  "schema": "pico.picobench.myna-task-effect.tasks.v1",
+  "definition_kind": "calibration",
+  "tasks": [
+    {
+      "task_id": "cal-fact-release-check",
+      "task_class": "fact",
+      "repository_id": "example/calibration-alpha",
+      "source_path": "docs/release.md",
+      "source_text": "PICO_REPO_FACT[cal-fact-release-check]=uv run pytest tests/test_release.py\n",
+      "memory_text": "PICO_MEMORY_FACT[cal-fact-release-check]=uv run pytest tests/test_release.py",
+      "recall_query": "Which release verification command was established for this repository?",
+      "evaluation_prompt": "Recover the established release verification command and write the result artifact.",
+      "output_path": "artifacts/cal-fact-release-check.json",
+      "expected_value": "uv run pytest tests/test_release.py"
+    },
+    {
+      "task_id": "cal-fact-region",
+      "task_class": "fact",
+      "repository_id": "example/calibration-beta",
+      "source_path": "ops/deploy.md",
+      "source_text": "PICO_REPO_FACT[cal-fact-region]=ap-southeast-1\n",
+      "memory_text": "PICO_MEMORY_FACT[cal-fact-region]=ap-southeast-1",
+      "recall_query": "Which deployment region did this repository select?",
+      "evaluation_prompt": "Recover the selected deployment region and write the result artifact.",
+      "output_path": "artifacts/cal-fact-region.json",
+      "expected_value": "ap-southeast-1"
+    },
+    {
+      "task_id": "cal-experience-parser",
+      "task_class": "experience",
+      "repository_id": "example/calibration-alpha",
+      "source_path": "incidents/parser.md",
+      "source_text": "PICO_REPO_FACT[cal-experience-parser]=strip proxy warnings before JSON decoding\n",
+      "memory_text": "PICO_MEMORY_FACT[cal-experience-parser]=strip proxy warnings before JSON decoding",
+      "recall_query": "What workaround fixed the command JSON parser?",
+      "evaluation_prompt": "Recover the proven parser workaround and write the result artifact.",
+      "output_path": "artifacts/cal-experience-parser.json",
+      "expected_value": "strip proxy warnings before JSON decoding"
+    },
+    {
+      "task_id": "cal-experience-lock",
+      "task_class": "experience",
+      "repository_id": "example/calibration-beta",
+      "source_path": "incidents/lock.md",
+      "source_text": "PICO_REPO_FACT[cal-experience-lock]=acquire the report lock before checking resume state\n",
+      "memory_text": "PICO_MEMORY_FACT[cal-experience-lock]=acquire the report lock before checking resume state",
+      "recall_query": "Which ordering fixed the resume race?",
+      "evaluation_prompt": "Recover the proven ordering for the resume race and write the result artifact.",
+      "output_path": "artifacts/cal-experience-lock.json",
+      "expected_value": "acquire the report lock before checking resume state"
+    },
+    {
+      "task_id": "cal-stale-timeout",
+      "task_class": "stale_conflict",
+      "repository_id": "example/calibration-alpha",
+      "source_path": "config/runtime.md",
+      "source_text": "PICO_REPO_FACT[cal-stale-timeout]=45 seconds\n",
+      "memory_text": "The former 15 second timeout was superseded. Read current repository evidence before acting.",
+      "recall_query": "What timeout is currently authoritative?",
+      "evaluation_prompt": "Use current repository evidence to recover the authoritative timeout and write the result artifact.",
+      "output_path": "artifacts/cal-stale-timeout.json",
+      "expected_value": "45 seconds"
+    },
+    {
+      "task_id": "cal-irrelevant-retention",
+      "task_class": "irrelevant",
+      "repository_id": "example/calibration-beta",
+      "source_path": "policy/retention.md",
+      "source_text": "PICO_REPO_FACT[cal-irrelevant-retention]=21 days\n",
+      "memory_text": "PICO_MEMORY_FACT[unrelated-cafeteria]=vegetarian menu on Friday",
+      "recall_query": "What artifact retention period is authoritative?",
+      "evaluation_prompt": "Recover the artifact retention period from repository evidence and write the result artifact.",
+      "output_path": "artifacts/cal-irrelevant-retention.json",
+      "expected_value": "21 days"
+    }
+  ]
+}

@@ -76,6 +76,7 @@ proof that the corresponding product behavior works.
 | [TokenWise cost experiment](evaluation/tokenwise-cost.md) | Completed DeepSeek two-arm prefix-stability campaign, conservative hit-rate and success-cost metrics, and claim gates |
 | [PicoBench Ship-1 contract](evaluation/picobench-ship-1.md) | Runtime, Context, Memory/Skill, Tool/MCP, and paired-evaluation task protocol |
 | [PicoBench semantic addendum](evaluation/picobench-semantic-addendum.md) | Historical production EverOS semantic retrieval, source fusion, cumulative budget, and separate claim gates |
+| [PicoBench Myna task-effect v1](evaluation/picobench-myna-task-effect-v1.md) | Installed-candidate cross-Session Memory A/B, rediscovery-efficiency metric, and claim gates |
 | [Myna Memory backend](specs/myna-memory-backend.md) | Current public Plugin identity, ownership, lifecycle, failure semantics, and acceptance Gates |
 | [Channel evidence contract](specs/channel-evidence-gates.md) | V-C0, V-S0, adapter maturity, deterministic matrices, and live-evidence boundary |
 | [Turn evidence correlation](specs/turn-evidence-correlation.md) | V-TE0 trace, usage, delivery, terminal-state, and verifier contract |
