@@ -5,6 +5,47 @@
 > can support a frozen-workload efficiency claim, but it is not evidence that a
 > general-purpose model improves on arbitrary repositories.
 
+The lightweight real-Agent subtrack below is the task-effect benchmark. It
+keeps this deterministic track as lifecycle calibration instead of relabeling
+its mechanically constrained repository-read result as general Agent uplift.
+
+## Lightweight real-Agent subtrack
+
+The `agent` corpus adds 12 cross-Session scenarios, with three tasks in each of
+the same four risk classes. It runs two balanced repetitions of the Memory-off
+and Myna arms: 24 Pairs and 48 evaluation Trials in total. The prior experience
+Turn is setup, not a scored Trial.
+
+The only treatment remains `memory.backend = null` versus
+`memory.backend = myna`. Both arms otherwise freeze the installed Pico and Myna
+wheels, configured Provider and model, task, prompt, Tools, context budget, Tool
+iteration budget, timeout, and external Verifier. The campaign is frozen to
+`deepseek/deepseek-v4-flash` so model drift cannot silently change the Pack.
+
+Primary metrics are externally verified task pass rate, Tool Calls among Pairs
+where both arms pass, and Provider input tokens among Pairs where both arms
+pass. The efficiency Gate requires task-pass non-inferiority within five
+percentage points, at least 80%
+concordant passing Pair coverage, at least 15% Tool Call reduction, at least 10%
+input token reduction, and task-clustered bootstrap intervals above zero for
+both efficiency metrics. A capability claim separately requires at least a
+10-percentage-point pass-rate gain with its interval above zero. Any stale
+Memory-caused regression or cross-repository Memory event blocks every positive
+claim.
+
+Planning writes no Trial and makes no Provider call. The run command requires
+the frozen manifest digest, an approved CNY amount covering the worst case
+without crossing the CNY 10 hard cap, and `PICO_BENCH_EXECUTE_PAID=1`. The
+default plan is 48 evaluation Trials, at most 480 Provider attempts, and a
+conservative CNY 4.644864 worst-case estimate. Completed Trial records resume
+rather than rerun. The offline verifier rebuilds metrics and checks the
+append-only Provider budget ledger without a Provider call.
+
+Because 12 tasks are below the 30-task confirmatory threshold, bootstrap
+intervals are explicitly exploratory. A passing Gate supports only a scoped
+claim about this frozen lightweight Pack; `general_agent_claim_eligible`
+remains false.
+
 ## Question
 
 The experiment asks whether Myna can reduce repository rediscovery work across
@@ -140,3 +181,24 @@ The task Provider is local and makes no paid model calls. The first FastEmbed
 prefetch may download the pinned local retrieval model. The manifest reports
 paid Provider calls as zero; it does not mislabel unobserved network transfer as
 a currency receipt.
+
+Plan the real-Agent subtrack after supplying the same exact candidate inputs:
+
+```bash
+make picobench-memory-agent-plan
+```
+
+Run it only after reviewing the printed digest and ceiling:
+
+```bash
+PICO_BENCH_EXECUTE_PAID=1 \
+PICO_MEMORY_AGENT_APPROVAL_DIGEST=<printed-digest> \
+PICO_MEMORY_AGENT_APPROVED_CNY=4.644864 \
+  make picobench-memory-agent-run
+```
+
+Rebuild the accepted evidence without Provider calls:
+
+```bash
+make picobench-memory-agent-verify
+```

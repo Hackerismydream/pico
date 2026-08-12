@@ -1,0 +1,150 @@
+{
+  "schema": "pico.picobench.myna-agent-task-effect.tasks.v1",
+  "definition_kind": "agent",
+  "tasks": [
+    {
+      "task_id": "agent-fact-01",
+      "task_class": "fact",
+      "repository_id": "example/agent-alpha",
+      "source_path": "docs/decision-01.md",
+      "source_text": "PICO_REPO_FACT[agent-fact-01]=use UTC for persisted timestamps\n",
+      "memory_text": "PICO_MEMORY_FACT[agent-fact-01]=use UTC for persisted timestamps",
+      "recall_query": "Which timestamp convention was selected?",
+      "evaluation_prompt": "Recover the selected timestamp convention and write the result artifact.",
+      "output_path": "artifacts/agent-fact-01.json",
+      "expected_value": "use UTC for persisted timestamps"
+    },
+    {
+      "task_id": "agent-fact-02",
+      "task_class": "fact",
+      "repository_id": "example/agent-beta",
+      "source_path": "docs/decision-02.md",
+      "source_text": "PICO_REPO_FACT[agent-fact-02]=port 4318\n",
+      "memory_text": "PICO_MEMORY_FACT[agent-fact-02]=port 4318",
+      "recall_query": "Which telemetry port was selected?",
+      "evaluation_prompt": "Recover the selected telemetry port and write the result artifact.",
+      "output_path": "artifacts/agent-fact-02.json",
+      "expected_value": "port 4318"
+    },
+    {
+      "task_id": "agent-fact-03",
+      "task_class": "fact",
+      "repository_id": "example/agent-gamma",
+      "source_path": "docs/decision-03.md",
+      "source_text": "PICO_REPO_FACT[agent-fact-03]=JSON Lines\n",
+      "memory_text": "PICO_MEMORY_FACT[agent-fact-03]=JSON Lines",
+      "recall_query": "Which durable event format was selected?",
+      "evaluation_prompt": "Recover the selected durable event format and write the result artifact.",
+      "output_path": "artifacts/agent-fact-03.json",
+      "expected_value": "JSON Lines"
+    },
+    {
+      "task_id": "agent-experience-01",
+      "task_class": "experience",
+      "repository_id": "example/agent-gamma",
+      "source_path": "incidents/experience-01.md",
+      "source_text": "PICO_REPO_FACT[agent-experience-01]=run uv sync before retrying imports\n",
+      "memory_text": "PICO_MEMORY_FACT[agent-experience-01]=run uv sync before retrying imports",
+      "recall_query": "What fixed the missing import failure?",
+      "evaluation_prompt": "Recover the proven fix for the missing import failure and write the result artifact.",
+      "output_path": "artifacts/agent-experience-01.json",
+      "expected_value": "run uv sync before retrying imports"
+    },
+    {
+      "task_id": "agent-experience-02",
+      "task_class": "experience",
+      "repository_id": "example/agent-delta",
+      "source_path": "incidents/experience-02.md",
+      "source_text": "PICO_REPO_FACT[agent-experience-02]=bind the workspace before starting the gateway\n",
+      "memory_text": "PICO_MEMORY_FACT[agent-experience-02]=bind the workspace before starting the gateway",
+      "recall_query": "What fixed gateway routing to the wrong repository?",
+      "evaluation_prompt": "Recover the proven gateway routing fix and write the result artifact.",
+      "output_path": "artifacts/agent-experience-02.json",
+      "expected_value": "bind the workspace before starting the gateway"
+    },
+    {
+      "task_id": "agent-experience-03",
+      "task_class": "experience",
+      "repository_id": "example/agent-alpha",
+      "source_path": "incidents/experience-03.md",
+      "source_text": "PICO_REPO_FACT[agent-experience-03]=preserve tool result adjacency\n",
+      "memory_text": "PICO_MEMORY_FACT[agent-experience-03]=preserve tool result adjacency",
+      "recall_query": "What fixed provider transcript rejection?",
+      "evaluation_prompt": "Recover the proven transcript fix and write the result artifact.",
+      "output_path": "artifacts/agent-experience-03.json",
+      "expected_value": "preserve tool result adjacency"
+    },
+    {
+      "task_id": "agent-stale-01",
+      "task_class": "stale_conflict",
+      "repository_id": "example/agent-alpha",
+      "source_path": "current/stale-01.md",
+      "source_text": "PICO_REPO_FACT[agent-stale-01]=timeout 60 seconds\n",
+      "memory_text": "The former timeout 20 seconds was superseded. Current repository evidence is authoritative.",
+      "recall_query": "What timeout is currently authoritative?",
+      "evaluation_prompt": "Use current repository evidence to recover the authoritative timeout and write the result artifact.",
+      "output_path": "artifacts/agent-stale-01.json",
+      "expected_value": "timeout 60 seconds"
+    },
+    {
+      "task_id": "agent-stale-02",
+      "task_class": "stale_conflict",
+      "repository_id": "example/agent-beta",
+      "source_path": "current/stale-02.md",
+      "source_text": "PICO_REPO_FACT[agent-stale-02]=schema version 4\n",
+      "memory_text": "The former schema version 2 was superseded. Current repository evidence is authoritative.",
+      "recall_query": "Which schema version is currently authoritative?",
+      "evaluation_prompt": "Use current repository evidence to recover the authoritative schema version and write the result artifact.",
+      "output_path": "artifacts/agent-stale-02.json",
+      "expected_value": "schema version 4"
+    },
+    {
+      "task_id": "agent-stale-03",
+      "task_class": "stale_conflict",
+      "repository_id": "example/agent-gamma",
+      "source_path": "current/stale-03.md",
+      "source_text": "PICO_REPO_FACT[agent-stale-03]=queue capacity 256\n",
+      "memory_text": "The former queue capacity 64 was superseded. Current repository evidence is authoritative.",
+      "recall_query": "Which queue capacity is currently authoritative?",
+      "evaluation_prompt": "Use current repository evidence to recover the authoritative queue capacity and write the result artifact.",
+      "output_path": "artifacts/agent-stale-03.json",
+      "expected_value": "queue capacity 256"
+    },
+    {
+      "task_id": "agent-irrelevant-01",
+      "task_class": "irrelevant",
+      "repository_id": "example/agent-gamma",
+      "source_path": "current/irrelevant-01.md",
+      "source_text": "PICO_REPO_FACT[agent-irrelevant-01]=batch size 128\n",
+      "memory_text": "PICO_MEMORY_FACT[unrelated-01]=cafeteria closes at six",
+      "recall_query": "Which batch size is currently authoritative?",
+      "evaluation_prompt": "Recover the authoritative batch size from repository evidence and write the result artifact.",
+      "output_path": "artifacts/agent-irrelevant-01.json",
+      "expected_value": "batch size 128"
+    },
+    {
+      "task_id": "agent-irrelevant-02",
+      "task_class": "irrelevant",
+      "repository_id": "example/agent-delta",
+      "source_path": "current/irrelevant-02.md",
+      "source_text": "PICO_REPO_FACT[agent-irrelevant-02]=compression zstd\n",
+      "memory_text": "PICO_MEMORY_FACT[unrelated-02]=office plants need water",
+      "recall_query": "Which compression format is currently authoritative?",
+      "evaluation_prompt": "Recover the authoritative compression format from repository evidence and write the result artifact.",
+      "output_path": "artifacts/agent-irrelevant-02.json",
+      "expected_value": "compression zstd"
+    },
+    {
+      "task_id": "agent-irrelevant-03",
+      "task_class": "irrelevant",
+      "repository_id": "example/agent-alpha",
+      "source_path": "current/irrelevant-03.md",
+      "source_text": "PICO_REPO_FACT[agent-irrelevant-03]=retry limit 3\n",
+      "memory_text": "PICO_MEMORY_FACT[unrelated-03]=meeting room is on floor nine",
+      "recall_query": "Which retry limit is currently authoritative?",
+      "evaluation_prompt": "Recover the authoritative retry limit from repository evidence and write the result artifact.",
+      "output_path": "artifacts/agent-irrelevant-03.json",
+      "expected_value": "retry limit 3"
+    }
+  ]
+}

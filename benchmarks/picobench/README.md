@@ -38,6 +38,9 @@ evaluated. No current Memory backend task-effect track is composed into the
 Scorecard. The separate installed-candidate Myna task-effect experiment is
 documented in `docs/evaluation/picobench-myna-task-effect-v1.md`; it is not
 silently composed into the multidimensional score.
+That Pack includes a lightweight real-Agent subtrack with 12 tasks and 48
+evaluation Trials. It remains an independent PicoBench result until a verified
+run exists; the deterministic calibration result is not substituted for it.
 
 Run or resume the complete multidimensional workflow with:
 

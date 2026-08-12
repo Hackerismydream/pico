@@ -33,6 +33,10 @@ separate installed-candidate experiment. It uses the public Myna
 `MemoryBackend`, crosses a real process and Session boundary, and measures
 verified task parity plus repository rediscovery effort. Its deterministic Agent
 policy is frozen-workload evidence, not general-purpose model uplift.
+The same Pack also owns an opt-in lightweight real-Agent subtrack: 12 tasks,
+two arms, two repetitions, and 48 evaluation Trials. It reports successful-task
+Tool Calls and input tokens alongside pass rate and keeps its paid run behind a
+digest-bound CNY ceiling.
 
 ## Purpose and boundary
 
@@ -154,6 +158,9 @@ make picobench-reproduce
 make picobench-myna-task-effect-plan
 make picobench-myna-task-effect-run
 make picobench-myna-task-effect-verify
+make picobench-memory-agent-plan
+make picobench-memory-agent-run
+make picobench-memory-agent-verify
 ```
 
 `make picobench-smoke` is credential-free and validates the contract,
@@ -172,6 +179,10 @@ target executes or resumes the credential-free deterministic Agent A/B; the
 verify target reinstalls the same wheels and rebuilds the evidence. No paid
 Provider is involved, although the first local FastEmbed prefetch may download
 its pinned model.
+The Memory Agent plan target freezes the 48-Trial task-effect manifest without
+calling a Provider. Its run target additionally requires explicit paid consent,
+the printed approval digest, and the printed CNY amount. Its verifier rebuilds
+the result from raw records and the Provider budget ledger without model calls.
 
 The implementation hides:
 

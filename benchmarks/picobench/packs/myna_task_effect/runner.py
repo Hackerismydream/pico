@@ -206,7 +206,13 @@ class InstalledTrialExecutor:
             "timeout_seconds": 180,
         }
 
-    def _worker_call(self, spec: dict[str, Any], root: Path) -> dict[str, Any]:
+    def _worker_call(
+        self,
+        spec: dict[str, Any],
+        root: Path,
+        *,
+        environment_overrides: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         root.mkdir(parents=True, exist_ok=True)
         spec_path = root / "spec.json"
         spec_path.write_text(
@@ -216,6 +222,7 @@ class InstalledTrialExecutor:
         completed = self._run(
             (str(self._python), "-I", str(self._worker), str(spec_path)),
             cwd=root,
+            environment_overrides=environment_overrides,
         )
         try:
             value = json.loads(completed.stdout.splitlines()[-1])
@@ -230,6 +237,7 @@ class InstalledTrialExecutor:
         argv: tuple[str, ...],
         *,
         cwd: Path,
+        environment_overrides: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         environment = {
             key: value
@@ -251,6 +259,7 @@ class InstalledTrialExecutor:
                 "UV_CACHE_DIR": str(self._uv_cache),
             }
         )
+        environment.update(environment_overrides or {})
         completed = subprocess.run(
             argv,
             cwd=cwd,
