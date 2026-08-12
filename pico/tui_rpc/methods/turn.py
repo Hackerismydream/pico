@@ -60,6 +60,10 @@ def is_turn_active(session_key: str) -> bool:
     return session_key in _active_turns
 
 
+def has_active_turns() -> bool:
+    return bool(_active_turns)
+
+
 def clear_active(session_key: str, request_key: int | None = None) -> None:
     """Drop the matching session active-turn slot.
 
@@ -403,6 +407,7 @@ def register_turn_methods(
 
 
 __all__ = [
+    "has_active_turns",
     "register_turn_methods",
     "turn_send",
     "turn_subscribe",

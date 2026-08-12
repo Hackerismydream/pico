@@ -4,7 +4,7 @@ import asyncio
 import json
 import random
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -72,6 +72,8 @@ class LLMResponse:
     # in from the error string.
     error_classification: "ErrorClassification | None" = None
     model: str | None = None
+    call_record: Any | None = None
+    cache_policy: str | None = None
 
     @property
     def has_tool_calls(self) -> bool:
@@ -96,6 +98,8 @@ class StreamDelta:
     finish_reason: str | None = None
     error_classification: ErrorClassification | None = None
     model: str | None = None
+    cache_policy: str | None = None
+    call_record: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -128,6 +132,9 @@ class LLMProvider(ABC):
         self.api_key = api_key
         self.api_base = api_base
         self.generation: GenerationSettings = GenerationSettings()
+
+    def supports_explicit_cache_control(self, model: str) -> bool:
+        return False
 
     @staticmethod
     def _sanitize_empty_content(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -363,7 +370,7 @@ class LLMProvider(ABC):
             return ErrorClassification("server", retryable=True, should_fallback=True)
 
         # Timeout / connection → retry + fallback.
-        if {"timeout", "apitimeouterror", "apiconnectionerror"} & names or has(
+        if {"timeout", "apitimeouterror", "apiconnectionerror", "oserror"} & names or has(
             "timeout",
             "timed out",
             "connection",
@@ -440,6 +447,8 @@ class LLMProvider(ABC):
         temperature: object,
         reasoning_effort: object,
         tool_choice: str | dict[str, Any] | None,
+        response_observer: Callable[[LLMResponse, str | None], Awaitable[None]] | None = None,
+        attempt_started: Callable[[str | None], None] | None = None,
     ) -> LLMResponse:
         """Run a single model through the retry ladder, classifying each failure.
 
@@ -454,6 +463,8 @@ class LLMProvider(ABC):
         for attempt in range(1, total_attempts + 1):
             exc: Exception | None = None
             try:
+                if attempt_started is not None:
+                    attempt_started(model)
                 response = await self.chat(
                     messages=messages,
                     tools=tools,
@@ -469,13 +480,20 @@ class LLMProvider(ABC):
                 exc = e
                 response = LLMResponse(content=f"Error calling LLM: {e}", finish_reason="error")
 
+            if response.model is None:
+                response.model = model
+
             if response.finish_reason != "error":
+                if response_observer is not None:
+                    await response_observer(response, model)
                 return response
 
             # Prefer a provider-attached classification (it had the live
             # exception); else classify the exception we caught, else the string.
             classification = response.error_classification or self.classify_error(exc, response.content)
             response.error_classification = classification
+            if response_observer is not None:
+                await response_observer(response, model)
             last_response = response
 
             if not classification.retryable or attempt == total_attempts:
@@ -506,6 +524,13 @@ class LLMProvider(ABC):
         reasoning_effort: object = _SENTINEL,
         tool_choice: str | dict[str, Any] | None = None,
         fallback_models: list[str] | None = None,
+        request_transform: Callable[
+            [list[dict[str, Any]], list[dict[str, Any]] | None, str | None],
+            tuple[list[dict[str, Any]], list[dict[str, Any]] | None, str | None],
+        ]
+        | None = None,
+        response_observer: Callable[[LLMResponse, str | None], Awaitable[None]] | None = None,
+        attempt_started: Callable[[str | None], None] | None = None,
     ) -> LLMResponse:
         """Call chat() with retry on transient failures, then fall back models.
 
@@ -530,15 +555,28 @@ class LLMProvider(ABC):
         model_chain = [model, *(fallback_models or [])]
         response: LLMResponse | None = None
         for idx, current_model in enumerate(model_chain):
+            attempt_messages = messages
+            attempt_tools = tools
+            attempt_model = current_model
+            if request_transform is not None:
+                attempt_messages, attempt_tools, attempt_model = request_transform(
+                    messages,
+                    tools,
+                    current_model,
+                )
             response = await self._chat_attempt_with_retry(
-                messages=messages,
-                tools=tools,
-                model=current_model,
+                messages=attempt_messages,
+                tools=attempt_tools,
+                model=attempt_model,
                 max_tokens=max_tokens,
                 temperature=temperature,
                 reasoning_effort=reasoning_effort,
                 tool_choice=tool_choice,
+                response_observer=response_observer,
+                attempt_started=attempt_started,
             )
+            if response.model is None:
+                response.model = attempt_model
             if response.finish_reason != "error":
                 return response
 
@@ -548,7 +586,7 @@ class LLMProvider(ABC):
                 next_model = model_chain[idx + 1]
                 logger.warning(
                     "LLM call failed on model={} [{}], falling back to {}: {}",
-                    current_model,
+                    attempt_model,
                     classification.category,
                     next_model,
                     (response.content or "")[:120],

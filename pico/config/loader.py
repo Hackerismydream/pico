@@ -17,6 +17,8 @@ from pico.product import get_product_home
 # Add new extension blocks here — one place, no duplication.
 EXTENSION_KEYS = (
     "context",
+    "callEfficiency",
+    "call_efficiency",
     "tokenWise",
     "skillForge",
     "token_wise",

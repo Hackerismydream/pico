@@ -8,7 +8,7 @@ This package exposes two layers:
 
     Pico feature layer:
         ``PicoConfig`` + ``load_pico_config`` + per-feature blocks
-        (``ContextConfig``, ``TokenWiseConfig``,
+        (``ContextConfig``, ``CallEfficiencyConfig``,
         ``SkillForgeConfig``). Defined in :mod:`pico.config.pico`.
 """
 
@@ -24,6 +24,7 @@ from pico.config.paths import (
 )
 from pico.config.pico import (
     BudgetPolicyConfig,
+    CallEfficiencyConfig,
     ContextConfig,
     PicoConfig,
     SkillForgeConfig,
@@ -50,6 +51,7 @@ __all__ = [
     "PicoConfig",
     "load_pico_config",
     "ContextConfig",
+    "CallEfficiencyConfig",
     "TokenWiseConfig",
     "SkillForgeConfig",
     "BudgetPolicyConfig",

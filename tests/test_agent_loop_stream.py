@@ -130,6 +130,20 @@ async def test_llm_call_stream_captures_final_usage() -> None:
     assert response.usage["total_tokens"] == 15
 
 
+async def test_llm_call_stream_preserves_actual_model_identity() -> None:
+    provider = _FakeProvider(
+        [
+            StreamDelta(content="ok", model="fallback-model"),
+            StreamDelta(content=None, usage={"prompt_tokens": 1}, model="fallback-model"),
+        ]
+    )
+    call = _bind_helper(provider)
+
+    response = await call(messages=[], tools=None, model="requested-model")
+
+    assert response.model == "fallback-model"
+
+
 # ---------------------------------------------------------------------------
 # tool_call_delta accumulation (best-effort v0.1)
 # ---------------------------------------------------------------------------

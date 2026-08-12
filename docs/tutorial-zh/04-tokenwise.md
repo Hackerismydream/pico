@@ -1,6 +1,7 @@
 # 04 TokenWise：缓存断点、成本记账，和一份没赢的实验
 
 > 教学快照：代码正文按 `76d3761`（PR #47）阅读，第一轮证据核实至 `b65f962`（PR #53）；当前检查点为 `b215c13`（PR #56）。差异与 M 编号见 [references/metrics-ledger.md](references/metrics-ledger.md)。
+> 现行 Runtime 已由 `pico/call_efficiency/` 接管 Provider 调用边界，并由共享 Runtime Assembly 装配；本章“尚未装配”的判断只属于上述历史快照。现行模式、所有权与证据边界见 [Operations](../architecture/operations.md) 和 [Feature evidence](../feature-evidence.md)。
 
 读完这一篇，你应该能回答：
 

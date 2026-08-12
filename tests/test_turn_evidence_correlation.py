@@ -22,6 +22,7 @@ from pico.providers.base import LLMProvider, LLMResponse
 from pico.spine import ChatType, Origin, Source, Text, TurnOutcome, TurnRequest, Usage
 from pico.spine.scheduler import Lane, OriginPools
 from pico.token_wise.usage_tracker import UsageTracker
+from pico.tracing import context as trace_context
 from pico.tracing import spans as _spans
 from pico.tracing import trace
 
@@ -107,6 +108,36 @@ class HangingRunner:
 
 def _spine(trace_dir) -> dict:
     return _by_name(trace_dir)["spine.turn"]
+
+
+def test_trace_context_pins_the_session_turn_across_nested_model_spans() -> None:
+    with trace_context.turn_scope(
+        session_key="s1",
+        channel="test",
+        chat_id="c1",
+        root_span_id="spine-span",
+    ):
+        assert trace_context.current().turn_span_id is None
+        session_token = trace_context.push(
+            trace_id="trace-1",
+            span_id="session-span",
+            name="session.turn",
+            kind="session",
+        )
+        try:
+            assert trace_context.current().turn_span_id == "session-span"
+            model_token = trace_context.push(
+                trace_id="trace-1",
+                span_id="model-span",
+                name="llm.call",
+                kind="model",
+            )
+            try:
+                assert trace_context.current().turn_span_id == "session-span"
+            finally:
+                trace_context.reset(model_token)
+        finally:
+            trace_context.reset(session_token)
 
 
 async def test_a_completed_turn_chains_spine_session_and_leaf_spans(trace_dir):

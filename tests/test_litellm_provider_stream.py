@@ -15,11 +15,14 @@ patching `litellm.acompletion` after import would not be picked up.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from litellm.types.utils import Usage
 
-from pico.providers.base import StreamDelta
+from pico.call_efficiency import CallEfficiency
+from pico.providers.base import LLMResponse, StreamDelta
 from pico.providers.litellm_provider import LiteLLMProvider
 
 # ---------- Test doubles modelling OpenAI ChatCompletionChunk shape ----------
@@ -42,6 +45,7 @@ class _FakeChoice:
 class _FakeChunk:
     choices: list[_FakeChoice]
     usage: Any | None = None
+    model: str | None = None
 
 
 def _chunk(content: str | None) -> _FakeChunk:
@@ -96,6 +100,26 @@ async def test_chat_stream_yields_stream_deltas_in_order(monkeypatch: pytest.Mon
     assert captured_kwargs.get("stream_options") == {"include_usage": True}
 
 
+@pytest.mark.asyncio
+async def test_chat_stream_default_payload_has_no_provider_cache_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def fake_acompletion(**kwargs: Any):
+        captured.update(kwargs)
+        return _fake_stream([_chunk("ok")])
+
+    monkeypatch.setattr("pico.providers.litellm_provider.acompletion", fake_acompletion)
+    provider = LiteLLMProvider(api_key="test", default_model="anthropic/claude-sonnet-4-5")
+    messages = [{"role": "system", "content": "stable"}]
+    tools = [{"type": "function", "function": {"name": "read"}}]
+
+    _ = [delta async for delta in provider.chat_stream(messages=messages, tools=tools)]
+
+    assert "cache_control" not in str({"messages": captured["messages"], "tools": captured["tools"]})
+
+
 def test_normalize_stream_chunk_openai_shape_default() -> None:
     """_normalize_stream_chunk default path extracts OpenAI-shape content."""
     provider = _make_provider()
@@ -113,6 +137,91 @@ def test_normalize_stream_chunk_returns_none_for_empty_payload() -> None:
     # delta.content is None AND no tool_calls AND no usage — pure stop-marker chunk
     chunk = _FakeChunk(choices=[_FakeChoice(delta=_FakeDelta(content=None), finish_reason="stop")])
     assert provider._normalize_stream_chunk(chunk) is None
+
+
+def test_normalize_stream_chunk_preserves_usage_only_terminal_chunk() -> None:
+    provider = _make_provider()
+    usage = SimpleNamespace(prompt_tokens=10, completion_tokens=2, total_tokens=12)
+    chunk = _FakeChunk(choices=[], usage=usage, model="openai/gpt-4o")
+
+    delta = provider._normalize_stream_chunk(chunk)
+
+    assert delta is not None
+    assert delta.content is None
+    assert delta.model == "openai/gpt-4o"
+    assert delta.usage == {
+        "prompt_tokens": 10,
+        "completion_tokens": 2,
+        "total_tokens": 12,
+    }
+
+
+@pytest.mark.parametrize(
+    ("model", "usage", "expected_fresh", "expected_read", "expected_write"),
+    [
+        (
+            "deepseek/deepseek-v4-flash",
+            Usage(
+                prompt_tokens=100,
+                completion_tokens=5,
+                total_tokens=105,
+                prompt_cache_hit_tokens=80,
+                prompt_cache_miss_tokens=20,
+            ),
+            20,
+            80,
+            0,
+        ),
+        (
+            "openai/gpt-4o",
+            Usage(
+                prompt_tokens=100,
+                completion_tokens=5,
+                total_tokens=105,
+                prompt_tokens_details={"cached_tokens": 80},
+            ),
+            20,
+            80,
+            0,
+        ),
+        (
+            "anthropic/claude-sonnet-4-5",
+            Usage(
+                prompt_tokens=20,
+                completion_tokens=5,
+                total_tokens=115,
+                cache_read_input_tokens=80,
+                cache_creation_input_tokens=10,
+            ),
+            20,
+            80,
+            10,
+        ),
+    ],
+)
+def test_stream_terminal_usage_uses_canonical_cache_fields(
+    tmp_path,
+    model: str,
+    usage: Usage,
+    expected_fresh: int,
+    expected_read: int,
+    expected_write: int,
+) -> None:
+    provider = _make_provider()
+    delta = provider._normalize_stream_chunk(_FakeChunk(choices=[], usage=usage, model=model))
+
+    assert delta is not None
+    controller = CallEfficiency(mode="observe", telemetry_dir=tmp_path, persist=False)
+    record = controller.record(
+        LLMResponse(content="ok", usage=delta.usage or {}, model=model),
+        requested_model=model,
+        session_key="session-1",
+    )
+
+    assert record.usage.input_tokens == expected_fresh
+    assert record.usage.cache_read_tokens == expected_read
+    assert record.usage.cache_write_tokens == expected_write
+    assert record.usage.complete is True
 
 
 @pytest.mark.asyncio

@@ -64,6 +64,12 @@ class ContextAssembler(ContextEngine):
         # the full append-only log and skips the host MemoryConsolidator.
         return True
 
+    def replace_model(self, model: str) -> None:
+        for builder in self._builders:
+            replace_model = getattr(builder, "replace_model", None)
+            if callable(replace_model):
+                replace_model(model)
+
     async def assemble(
         self,
         session_key: str,

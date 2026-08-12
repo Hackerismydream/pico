@@ -38,7 +38,7 @@ from pico.tui_rpc.errors import (
     ModelNotAvailableError,
     ModelSwitchInTurnError,
 )
-from pico.tui_rpc.methods.turn import is_turn_active
+from pico.tui_rpc.methods.turn import has_active_turns
 
 if TYPE_CHECKING:
     from pico.tui_rpc.dispatcher import Dispatcher
@@ -301,9 +301,9 @@ def _set_model(
             new_provider = spec.name
 
     session_id = params.get("session_id")
-    if isinstance(session_id, str) and session_id and is_turn_active(session_id):
+    if has_active_turns():
         raise ModelSwitchInTurnError(
-            f"cannot switch model while session {session_id!r} has an active turn",
+            "cannot switch the global model while a turn is active",
             data={"session_id": session_id},
         )
 
@@ -331,8 +331,12 @@ def _set_model(
     _save_config(payload)
 
     if loop is not None:
-        loop.provider = built_provider
-        loop.model = raw_value
+        replace_provider = getattr(loop, "replace_provider", None)
+        if callable(replace_provider):
+            replace_provider(built_provider, model=raw_value)
+        else:
+            loop.provider = built_provider
+            loop.model = raw_value
 
     return {"applied": True, "previous": previous, "value": raw_value}
 

@@ -106,7 +106,8 @@ bound to its original artifacts and is not evidence about Myna.
 - Installed Myna Memory, Local Skills, SkillForge, and
   Plugin-contributed Memory backends and Tools.
 - Feishu, QQ, and WeCom adapters with isolated optional SDK extras.
-- Providers, custom OpenAI-compatible endpoints, Routing, TokenWise, Tracing,
+- Providers, custom OpenAI-compatible endpoints, Routing, CallEfficiency,
+  historical TokenWise compatibility, Tracing,
   Sandbox configuration, and security controls.
 - Opt-in Evolver Beta with human review, activation artifacts, and rollback.
 

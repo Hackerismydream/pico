@@ -1,9 +1,4 @@
-"""LLM usage normalization + best-effort cost.
-
-Mirrors ``AgentLoop._build_usage_snapshot`` semantics (fresh-vs-total prompt
-token convention differs by provider). Cost reuses Pico's own pricing table
-when importable; if Pico moves it, cost degrades to ``None`` — never raises.
-"""
+"""Tracing projection of canonical CallEfficiency usage and cost."""
 
 from __future__ import annotations
 
@@ -11,38 +6,38 @@ from typing import Any
 
 
 def normalize(usage: dict[str, Any] | None, model: str | None) -> dict[str, Any]:
-    usage = usage or {}
-    prompt_t = int(usage.get("prompt_tokens", 0) or 0)
-    out_toks = int(usage.get("completion_tokens", 0) or 0)
-    cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
-    cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
-    cached_tokens = cache_read + cache_write
+    from pico.call_efficiency.pricing import estimate_cost_usd
+    from pico.call_efficiency.usage import normalize_usage
 
-    # Normalize prompt tokens to *fresh* (non-cached): Anthropic reports
-    # fresh-only, OpenRouter/LiteLLM report total (already including cache).
-    if cached_tokens and prompt_t >= cached_tokens:
-        fresh = prompt_t - cached_tokens
-    else:
-        fresh = prompt_t
-
-    total = int(usage.get("total_tokens", 0) or 0) or (prompt_t + out_toks)
+    raw = usage or {}
+    normalized, findings = normalize_usage(raw, model or "")
+    total = normalized.total_tokens or (
+        normalized.input_tokens
+        + normalized.cache_read_tokens
+        + normalized.cache_write_tokens
+        + normalized.output_tokens
+    )
+    cost = None
+    if model and normalized.complete:
+        try:
+            cost = estimate_cost_usd(
+                model,
+                normalized.input_tokens,
+                normalized.output_tokens,
+                normalized.cache_read_tokens,
+                normalized.cache_write_tokens,
+                allow_litellm_import=False,
+            )
+        except Exception:  # noqa: BLE001
+            cost = None
     return {
-        "input_tokens": fresh,
-        "output_tokens": out_toks,
-        "cache_read_tokens": cache_read,
-        "cache_write_tokens": cache_write,
+        "input_tokens": normalized.input_tokens,
+        "output_tokens": normalized.output_tokens,
+        "cache_read_tokens": normalized.cache_read_tokens,
+        "cache_write_tokens": normalized.cache_write_tokens,
         "total_tokens": total,
-        "cost_usd": _cost(model, fresh, out_toks, cache_read, cache_write),
-        "raw": dict(usage),
+        "cost_usd": cost,
+        "usage_complete": normalized.complete,
+        "findings": findings,
+        "raw": dict(raw),
     }
-
-
-def _cost(model: str | None, fresh: int, out: int, cache_read: int, cache_write: int):
-    if not model:
-        return None
-    try:
-        from pico.token_wise.pricing import estimate_cost_usd
-
-        return estimate_cost_usd(model, fresh, out, cache_read, cache_write)
-    except Exception:  # noqa: BLE001 — pricing is best-effort; never break tracing
-        return None

@@ -31,8 +31,12 @@ flowchart LR
     SPINE --> RUNNER["Turn Runner"]
     RUNNER --> LOOP["Agent Loop"]
     LOOP --> CTX["Context Engine"]
+    LOOP --> BG["Subagent / Personalizer / Consolidator"]
     LOOP --> TOOLS["Tool Registry / MCP / Sandbox"]
-    LOOP --> PROVIDER["Provider / Routing / TokenWise"]
+    LOOP --> EFFICIENCY["CallEfficiencyProvider"]
+    CTX --> EFFICIENCY
+    BG --> EFFICIENCY
+    EFFICIENCY --> PROVIDER["Provider / Routing"]
     LOOP --> SESSION["Session"]
     CTX --> MEMORY["Myna Memory"]
     CTX --> SKILLS["Local Skills"]
@@ -92,7 +96,8 @@ not one database transaction.
 | `pico/plugin/` | manifest discovery, activation registry, and Memory/Tool contributions | Remote marketplace |
 | `pico/providers/` | LLM abstraction, provider catalog, LiteLLM/direct adapters, retries, fallback, streaming | Task-level host scheduling |
 | `pico/routing/` | Optional model-selection policies and per-model endpoint routing | Provider authentication lifecycle |
-| `pico/token_wise/` | LLM-call strategies, cache placement, usage and cost aggregation | Product billing |
+| `pico/call_efficiency/` | final request cache policy, Provider-aware Usage normalization, call evidence ledger, and estimated cost | Provider transport parsing or product billing |
+| `pico/token_wise/` | historical Strategy, UsageSnapshot, import, and benchmark compatibility | active Runtime cache-control ownership |
 | `pico/sandbox/` | direct or BoxLite executor selection, VM lifecycle, debug server | A guarantee that direct host execution is isolated |
 | `pico/tracing/` | non-interfering local span facade, semantic conventions, JSONL storage, artifacts, local viewer | Distributed tracing backend or release evidence verifier |
 | `pico/evolver/` | Evolution Run lifecycle, benchmark contracts, candidate commits, Gates, sealed evaluation, activation artifacts | Automatic production activation |
@@ -116,6 +121,7 @@ base Config + Pico extension Config
   -> selected Memory Backend
   -> plugin-contributed Tools
   -> Session Manager
+  -> Provider + CallEfficiencyProvider(CallEfficiency)
   -> Agent Loop
   -> RuntimeAssembly
 ```
@@ -131,9 +137,9 @@ Each host then supplies and owns:
 - startup timing and shutdown sequence.
 
 `RuntimeAssembly.start_memory_backend()` attempts startup once and caches a
-failure. `RuntimeAssembly.close()` closes MCP/Agent resources before stopping
-the backend, while recording shutdown errors instead of abandoning later
-cleanup.
+failure. `RuntimeAssembly.close()` closes MCP/Agent resources, flushes
+CallEfficiency, and then stops the backend. Cancellation and shutdown errors do
+not abandon later cleanup.
 
 ## Dependency direction
 

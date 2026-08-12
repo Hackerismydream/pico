@@ -25,7 +25,8 @@ domain terms live in [`CONTEXT.md`](../CONTEXT.md).
 | `plugin/` | manifest discovery, Registry, and installed Memory/Tool contributions |
 | `providers/` | LLM abstraction, catalog, retries, fallback, and streaming |
 | `routing/` | optional task-level model selection |
-| `token_wise/` | Provider-call strategies, cache placement, usage, and estimated cost |
+| `call_efficiency/` | Runtime-owned cache policy, usage normalization, call ledger, and estimated cost |
+| `token_wise/` | historical Strategy and schema compatibility for frozen experiments and extensions |
 | `sandbox/` | direct host executor, optional BoxLite executor, and debug server |
 | `tracing/` | local non-interfering spans, storage, artifacts, and viewer |
 | `evolver/` | opt-in Evolution Runs, candidate evidence, Gates, activation artifacts, and rollback |

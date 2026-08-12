@@ -32,6 +32,7 @@ from pico.agent.tools.shell import ExecTool
 from pico.agent.tools.skill import SkillReadTool
 from pico.agent.tools.spawn import SpawnTool
 from pico.agent.tools.web import WebFetchTool, WebSearchTool
+from pico.call_efficiency.pricing import resolve_context_window
 from pico.memory_engine.base import TokenBudget
 from pico.memory_engine.consolidate.consolidator import MemoryConsolidator, MemoryStore
 from pico.providers.base import ErrorClassification, LLMProvider, LLMResponse, ToolCallRequest
@@ -39,7 +40,6 @@ from pico.sandbox import SandboxConfig, SandboxExecutor, SandboxInitError, build
 from pico.session.manager import Session, SessionManager
 from pico.spine.message import Media
 from pico.spine.turn import Origin
-from pico.token_wise.pricing import resolve_context_window
 from pico.tracing import semconv, trace
 from pico.utils.helpers import estimate_prompt_tokens
 from pico.utils.persisted_payload import sanitize_persisted_payload
@@ -55,6 +55,7 @@ from pico.utils.persisted_payload import sanitize_persisted_payload
 if TYPE_CHECKING:
     from pico.agent.hook import CompositeHook
     from pico.agent.tools.base import Tool
+    from pico.call_efficiency import CallEfficiency
     from pico.config.pico import (
         ContextConfig,
         MemoryConfig,
@@ -235,6 +236,7 @@ class AgentLoop:
         channels_config: ChannelsConfig | None = None,
         router: "ModelRouter | None" = None,
         strategies: "StrategyRegistry | None" = None,
+        call_efficiency: "CallEfficiency | None" = None,
         skill_forge_config: Any = None,
         hooks: "CompositeHook | None" = None,
         now_fn: Callable | None = None,
@@ -263,6 +265,7 @@ class AgentLoop:
         state: Path | None = None,
     ):
         from pico.agent.hook import CompositeHook
+        from pico.call_efficiency import CallEfficiency
         from pico.config.schema import ExecToolConfig
         from pico.token_wise.registry import StrategyRegistry
 
@@ -281,8 +284,9 @@ class AgentLoop:
         self.exec_config = exec_config or ExecToolConfig()
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
-        # TokenWise strategies — empty registry acts as pure pass-through.
+        # The legacy registry remains the tool-list and benchmark extension seam.
         self.strategies = strategies if strategies is not None else StrategyRegistry([])
+        self.call_efficiency = call_efficiency or CallEfficiency.disabled()
         # Fake-clock injection point for benchmark/sim harnesses. Defaults
         # to wall clock so production paths (gateway, REPL) are unaffected.
         # Used both here (session entry timestamps) and threaded into
@@ -301,7 +305,7 @@ class AgentLoop:
             workspace,
             state=self.state,
             skill_forge_config=skill_forge_config,
-            llm_provider=provider,
+            llm_provider=self.provider,
             now_fn=now_fn,
         )
         self.sessions = session_manager or SessionManager(self.state)
@@ -334,7 +338,7 @@ class AgentLoop:
             workspace=workspace,
             config=context_config,
             builder=self.context,
-            provider=provider,
+            provider=self.provider,
             model=self.model,
             context_window_tokens=context_window_tokens,
             get_tool_definitions=self.tools.get_definitions,
@@ -379,7 +383,7 @@ class AgentLoop:
         self._sandbox_config = sandbox_config
         self._owned_ids: set[str] = set()
         self.subagents = SubagentManager(
-            provider=provider,
+            provider=self.provider,
             workspace=workspace,
             state=self.state,
             model=self.model,
@@ -414,7 +418,7 @@ class AgentLoop:
         self.on_turn_complete: list[Callable[[], None]] = []
         self.memory_consolidator = MemoryConsolidator(
             workspace=self.state,
-            provider=provider,
+            provider=self.provider,
             model=self.model,
             sessions=self.sessions,
             context_window_tokens=context_window_tokens,
@@ -892,48 +896,17 @@ class AgentLoop:
 
     @staticmethod
     def _build_usage_snapshot(response, model: str, session_key: str) -> "UsageSnapshot":
-        """Build a UsageSnapshot from an LLMResponse for TokenWise after-hooks.
+        """Build the historical TokenWise view through canonical normalization."""
+        from pico.call_efficiency import CallEfficiency
 
-        Normalizes input_tokens to *fresh* (non-cached) prompt tokens. The
-        ``prompt_tokens`` field has two conventions in the wild:
-          - Anthropic native: fresh-only (cache_read/write are separate counts)
-          - OpenRouter/LiteLLM: total (already includes cache_read + cache_write)
-        We detect by inequality and subtract when needed so downstream code
-        (pricing, telemetry) sees a single consistent semantics.
-
-        Unknown model pricing remains ``None``; it is not a free-call estimate.
-        """
-        from pico.token_wise.base import UsageSnapshot
-        from pico.token_wise.pricing import estimate_cost_usd
-
-        usage = response.usage or {}
-        prompt_t = int(usage.get("prompt_tokens", 0) or 0)
-        out_toks = int(usage.get("completion_tokens", 0) or 0)
-        cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
-        cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
-        cached_tokens = cache_read + cache_write
-
-        # Normalize to fresh-only.
-        if cached_tokens and prompt_t >= cached_tokens:
-            fresh = prompt_t - cached_tokens
-        else:
-            fresh = prompt_t
-
-        cost = estimate_cost_usd(model, fresh, out_toks, cache_read, cache_write)
-        # The llm.call span has already closed here, so the active context is the
-        # enclosing turn span: the persisted row joins at turn granularity, while
-        # per-call counts stay on the llm.call span itself.
-        ctx = trace.current()
-        return UsageSnapshot(
-            model=model,
-            input_tokens=fresh,
-            output_tokens=out_toks,
-            cache_read_tokens=cache_read,
-            cache_write_tokens=cache_write,
-            estimated_cost_usd=cost,
-            session_key=session_key or None,
-            trace_id=getattr(ctx, "trace_id", None),
-            turn_span_id=getattr(ctx, "parent_span_id", None),
+        return (
+            CallEfficiency.disabled()
+            .record(
+                response,
+                requested_model=model,
+                session_key=session_key,
+            )
+            .to_legacy_snapshot()
         )
 
     @trace.instrument("llm.call", extract=semconv.llm_call_stream)
@@ -969,6 +942,9 @@ class AgentLoop:
         final_usage: dict[str, Any] | None = None
         final_finish_reason: str | None = None
         final_error_classification: ErrorClassification | None = None
+        actual_model: str | None = None
+        cache_policy: str | None = None
+        call_record = None
 
         async for delta in self.provider.chat_stream(
             messages=messages,
@@ -981,6 +957,15 @@ class AgentLoop:
             delta_error_classification = getattr(delta, "error_classification", None)
             if delta_error_classification is not None:
                 final_error_classification = delta_error_classification
+            delta_model = getattr(delta, "model", None)
+            if delta_model:
+                actual_model = delta_model
+            delta_cache_policy = getattr(delta, "cache_policy", None)
+            if delta_cache_policy:
+                cache_policy = delta_cache_policy
+            delta_call_record = getattr(delta, "call_record", None)
+            if delta_call_record is not None:
+                call_record = delta_call_record
             is_error_delta = delta_finish_reason == "error"
             reasoning_delta = getattr(delta, "reasoning_content", None)
             if reasoning_delta:
@@ -1009,6 +994,9 @@ class AgentLoop:
             usage=final_usage or {},
             reasoning_content="".join(reasoning_buf) or None,
             error_classification=final_error_classification,
+            model=actual_model or model,
+            cache_policy=cache_policy,
+            call_record=call_record,
         )
 
     @classmethod
@@ -1044,6 +1032,7 @@ class AgentLoop:
         messages: list[dict],
         model: str | None,
         fallback_models: list[str] | None,
+        session_key: str = "",
         on_token_delta: Callable[[str], Awaitable[None]] | None = None,
         on_reasoning_delta: Callable[[str], Awaitable[None]] | None = None,
     ) -> str:
@@ -1076,6 +1065,13 @@ class AgentLoop:
                     tools=None,
                     model=model,
                     fallback_models=fallback_models,
+                )
+            if response.call_record is None:
+                response.call_record = self.call_efficiency.record(
+                    response,
+                    requested_model=model or self.model,
+                    session_key=session_key,
+                    cache_policy=response.cache_policy,
                 )
             text = self._strip_think(response.content)
             if response.finish_reason != "error" and text:
@@ -1173,8 +1169,7 @@ class AgentLoop:
 
             tool_defs = self.tools.get_definitions()
 
-            # TokenWise before-hook: strategies may rewrite messages, tools,
-            # or model (e.g. CacheOptimizer marks cache_control blocks).
+            # Historical strategies run first so tool filtering precedes cache planning.
             call_messages, call_tools, call_model = await self.strategies.before_llm_call(
                 messages,
                 tool_defs,
@@ -1195,9 +1190,16 @@ class AgentLoop:
                     model=call_model,
                     fallback_models=fallback_models,
                 )
-            # TokenWise after-hook: strategies observe the response for
-            # usage tracking, budget enforcement, etc. Errors are swallowed.
-            usage_snapshot = self._build_usage_snapshot(response, call_model, session_key)
+            call_record = response.call_record
+            if call_record is None:
+                call_record = self.call_efficiency.record(
+                    response,
+                    requested_model=call_model,
+                    session_key=session_key,
+                    cache_policy=response.cache_policy,
+                )
+                response.call_record = call_record
+            usage_snapshot = call_record.to_legacy_snapshot()
             await self.strategies.after_llm_call(
                 {
                     "content": response.content,
@@ -1216,7 +1218,13 @@ class AgentLoop:
                 completion_tokens = int(response.usage.get("completion_tokens", 0) or 0)
                 # Real window from the model's provider table when LiteLLM lags
                 # (e.g. OpenRouter); otherwise the configured default.
-                context_max = resolve_context_window(call_model) or self.context_window_tokens
+                context_max = (
+                    resolve_context_window(
+                        call_record.accounting_model,
+                        allow_litellm_import=False,
+                    )
+                    or self.context_window_tokens
+                )
                 context_used = prompt_tokens + completion_tokens
                 usage_sink.clear()
                 usage_sink["prompt_tokens"] = prompt_tokens
@@ -1469,6 +1477,7 @@ class AgentLoop:
                 messages,
                 effective_model,
                 fallback_models,
+                session_key,
                 on_token_delta=on_token_delta,
                 on_reasoning_delta=on_reasoning_delta,
             )
@@ -1559,6 +1568,22 @@ class AgentLoop:
         """Stop the agent loop."""
         self._running = False
         logger.info("Agent loop stopping")
+
+    def replace_provider(self, provider: LLMProvider, *, model: str | None = None) -> None:
+        from pico.call_efficiency.provider import CallEfficiencyProvider
+
+        if isinstance(self.provider, CallEfficiencyProvider):
+            self.provider.replace(provider)
+        else:
+            self.provider = provider
+        if model is None:
+            return
+        self.model = model
+        self.subagents.model = model
+        self.memory_consolidator.model = model
+        replace_model = getattr(self.context_engine, "replace_model", None)
+        if callable(replace_model):
+            replace_model(model)
 
     @trace.instrument("session.turn", seed=semconv.turn_seed, on_open=semconv.turn_open, extract=semconv.turn)
     async def _process_message(

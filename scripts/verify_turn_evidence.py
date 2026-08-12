@@ -30,6 +30,7 @@ RERUN = "make verify-turn-evidence"
 REPORT_FILENAME = "turn-evidence-report.json"
 MANIFEST_FILENAME = "turn-evidence-manifest.json"
 SCENARIO_TEST = "tests/test_turn_evidence_scenario.py"
+CALL_EFFICIENCY_HEALTH_SCHEMA = "pico.call-efficiency.ledger-health.v1"
 
 PASSED = "passed"
 FAILED = "failed"
@@ -117,9 +118,78 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def load_usage_rows(telemetry_dir: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for path in sorted(telemetry_dir.glob("usage-*.jsonl")):
-        rows.extend(read_jsonl(path))
+    for pattern in ("usage-*.jsonl", "call-efficiency-*.jsonl"):
+        for path in sorted(telemetry_dir.glob(pattern)):
+            rows.extend(read_jsonl(path))
     return rows
+
+
+def check_call_efficiency_health(telemetry_dir: Path) -> dict[str, Any]:
+    path = telemetry_dir / "call-efficiency-ledger-health.json"
+    if not path.exists():
+        return _result([], observed=0, evidence_class=CONTRACT, unit="ledger health")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or payload.get("schema") != CALL_EFFICIENCY_HEALTH_SCHEMA:
+            raise ValueError("unsupported ledger health schema")
+        status = payload.get("status")
+        if status not in {"healthy", "degraded"}:
+            raise ValueError("invalid ledger health status")
+        counts = []
+        for key in ("accepted_records", "persisted_records", "lost_records"):
+            value = payload.get(key)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"invalid ledger health field: {key}")
+            counts.append(value)
+        accepted_records, persisted_records, lost_records = counts
+        if persisted_records > accepted_records or lost_records != accepted_records - persisted_records:
+            raise ValueError("inconsistent ledger health counts")
+        if status == "healthy" and lost_records:
+            raise ValueError("healthy ledger reports loss")
+        ledgers = payload.get("ledgers")
+        if ledgers is not None:
+            if not isinstance(ledgers, dict) or not ledgers:
+                raise ValueError("invalid ledger health entries")
+            entry_counts = [0, 0, 0]
+            entry_degraded = False
+            for entry in ledgers.values():
+                if not isinstance(entry, dict) or entry.get("status") not in {"healthy", "degraded"}:
+                    raise ValueError("invalid ledger health entry")
+                values = []
+                for key in ("accepted_records", "persisted_records", "lost_records"):
+                    value = entry.get(key)
+                    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                        raise ValueError(f"invalid ledger health entry field: {key}")
+                    values.append(value)
+                if values[1] > values[0] or values[2] != values[0] - values[1]:
+                    raise ValueError("inconsistent ledger health entry counts")
+                if entry["status"] == "healthy" and values[2]:
+                    raise ValueError("healthy ledger entry reports loss")
+                entry_counts = [left + right for left, right in zip(entry_counts, values, strict=True)]
+                entry_degraded = entry_degraded or entry["status"] == "degraded"
+            if entry_counts != counts or (status == "degraded") != (entry_degraded or lost_records > 0):
+                raise ValueError("ledger health aggregate mismatch")
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        findings = [
+            _finding(
+                "call_efficiency_ledger_health_invalid",
+                "CallEfficiency ledger health artifact is invalid",
+                error_type=type(exc).__name__,
+            )
+        ]
+        return _result(findings, observed=1, evidence_class=CONTRACT, unit="ledger health")
+    findings = []
+    if status != "healthy" or lost_records:
+        findings.append(
+            _finding(
+                "call_efficiency_ledger_degraded",
+                "CallEfficiency reports incomplete persistence",
+                accepted_records=payload.get("accepted_records"),
+                persisted_records=payload.get("persisted_records"),
+                lost_records=payload.get("lost_records"),
+            )
+        )
+    return _result(findings, observed=1, evidence_class=CONTRACT, unit="ledger health")
 
 
 def dedupe_spans(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -540,13 +610,15 @@ def build_report(scenario: dict[str, Any], checks: dict[str, dict[str, Any]], tu
 def evaluate(manifest: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
     """Validate the artifacts a scenario run described; the pure gate core."""
     spans = dedupe_spans(read_jsonl(Path(manifest["spans"])))
-    usage_rows = load_usage_rows(Path(manifest["telemetry"]))
+    telemetry_dir = Path(manifest["telemetry"])
+    usage_rows = load_usage_rows(telemetry_dir)
     notices = read_jsonl(Path(manifest["notices"]))
     turns = index_turns(spans)
 
     checks = {
         "turn_correlation": check_turn_correlation(turns),
         "usage_join": check_usage_join(turns, usage_rows),
+        "call_efficiency_health": check_call_efficiency_health(telemetry_dir),
         "delivery_join": check_delivery_join(turns, spans, notices),
         "terminal_states": check_terminal_states(turns),
         "scenario_deliveries": check_scenario_deliveries(turns),
@@ -583,6 +655,7 @@ def main() -> int:
             for name in (
                 "turn_correlation",
                 "usage_join",
+                "call_efficiency_health",
                 "delivery_join",
                 "terminal_states",
                 "scenario_deliveries",

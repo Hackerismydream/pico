@@ -3,6 +3,12 @@
 > **Status: completed on 2026-08-06.** The frozen DeepSeek V4 Flash campaign
 > completed 36 valid Comparison Blocks and 72 Trials. All claim gates passed.
 
+This page keeps the historical TokenWise experiment name and schemas. The
+active Runtime subsystem is now CallEfficiency. Shared Runtime activation and
+this live campaign are separate evidence: the current implementation has been
+verified deterministically and can replay this report offline, but no paid
+post-integration DeepSeek, OpenAI, or Anthropic canary has been run.
+
 ## Question
 
 How much does DeepSeek's automatic disk context cache reduce the estimated API
@@ -104,6 +110,28 @@ The report and per-call artifacts are retained outside git under
 Repository policy forbids committing standalone report artifacts.
 
 ## Reproduction
+
+The CallEfficiency replay path makes no Provider calls. It validates the
+historical report digest, recalculates every Trial from the embedded frozen
+price snapshot, and runs the original reducer again:
+
+```bash
+uv run python -m benchmarks.picobench.packs.tokenwise_cost.replay \
+  --source-report .pico/evidence/tokenwise-cost-deepseek-rebased/report.json \
+  --expected-source-digest fcde99b98c8bc46d0852015d7a92c01a0de6a4e4216f773045375f2f06e75aec \
+  --output .pico/evidence/call-efficiency-replay/report.json
+```
+
+`--expected-source-digest` is the external lineage binding. Obtain it from a
+separately trusted manifest or frozen evidence record; copying a digest from the
+same report being checked does not establish provenance. The replay refuses to
+claim equivalence without that binding and refuses to overwrite its source
+artifact.
+
+An `equivalent: true` result establishes artifact and reducer equivalence only.
+It is not a new live Runtime result.
+
+The original paid runner remains available behind its explicit execution flag:
 
 ```bash
 uv run python -m benchmarks.picobench.tokenwise_cost_campaign \

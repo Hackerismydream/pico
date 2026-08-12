@@ -22,6 +22,7 @@ class TraceCtx:
     channel: str | None = None
     chat_id: str | None = None
     parent_span_id: str | None = None
+    turn_span_id: str | None = None
     # Name of the nearest enclosing non-model span — the purpose a model call is
     # made on behalf of (turn / memory.extract / skill.gate / ...). Model-kind
     # spans inherit it rather than becoming a source themselves, so a nested
@@ -97,6 +98,7 @@ def push(
             channel=channel,
             chat_id=chat_id,
             parent_span_id=span_id,
+            turn_span_id=span_id if name == "session.turn" else (cur.turn_span_id if cur else None),
             source=source,
         )
     )

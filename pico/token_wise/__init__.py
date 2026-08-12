@@ -1,14 +1,13 @@
-"""TokenWise — token and cost efficiency strategies.
+"""Historical TokenWise compatibility surface.
 
 Public API:
     - ``StrategyRegistry``       — chains TokenStrategy hooks around LLM calls.
     - ``UsageTracker``           — strategy 1: records tokens + cost per call.
     - ``CacheOptimizer``         — strategy 2: Anthropic cache_control placement.
-    - ``estimate_cost_usd``      — single source of truth for cost estimation.
+    - ``estimate_cost_usd``      — compatibility alias to CallEfficiency.
 
-The ``install_from_config`` assembly helper lives in ``pico.cli._token_wise_stack``
-— it's CLI-layer composition, not part of TokenWise's strategy API.
-The token_wise package has no dependency on the CLI layer.
+New Runtime integrations use ``pico.call_efficiency``. These names remain for
+frozen benchmarks, historical schemas, and source-compatible extensions.
 """
 
 from pico.token_wise.cache_optimizer import CacheOptimizer

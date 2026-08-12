@@ -5,7 +5,7 @@
 
 The Python agent runtime: receives messages from chat channels, runs the agent loop
 against LLM providers, and hosts the feature engines (context, memory, eval)
-plus the TokenWise efficiency layer.
+plus the CallEfficiency layer.
 
 ## Language
 
@@ -49,10 +49,10 @@ _Avoid_: calling a single LLM call the "agent loop" — the loop spans all Itera
 
 **Runtime Assembly** (`cli/_runtime_assembly.py`):
 The concrete shared composition of Config, Plugin Registry, Memory Backend, plugin Tools,
-Session Manager, and Agent Loop used by CLI, TUI, and Gateway. Each host supplies its
-Provider, Cron service, interaction policy, and optional model Router, then retains its
-own outlet, broker, Channel, and Turn Runner wiring. The assembly owns Memory Backend,
-MCP, and Sandbox teardown.
+Session Manager, CallEfficiency Provider decorator, and Agent Loop used by CLI, TUI,
+and Gateway. Each host supplies its Provider, Cron service, interaction policy, and
+optional model Router, then retains its own outlet, broker, Channel, and Turn Runner
+wiring. The assembly owns CallEfficiency, Memory Backend, MCP, and Sandbox teardown.
 _Avoid_: "Runtime factory" or "lifecycle Interface" — this is one concrete composition
 with three real host consumers, not an implementation hierarchy.
 
@@ -246,35 +246,59 @@ Bare `pico` launches the TUI.
 **Routing Tag**:
 The `channel` field on a `TurnRequest`; names the recipient — a Channel, or the TUI.
 
-### Token Efficiency
+### Call Efficiency
+
+**CallEfficiency**:
+The Runtime-owned policy at the Provider-call boundary. It prepares the final
+request after Tool filtering, normalizes Provider Usage into one semantic model,
+estimates cost, and appends a correlated Call Record. Shared Runtime Assembly
+installs exactly one instance and one stable Provider decorator for CLI, TUI,
+and Gateway hosts; Runtime-owned background components share that decorator.
+_Avoid_: calling the active Runtime subsystem TokenWise; TokenWise is the historical
+compatibility surface and benchmark lineage.
+
+**Call Efficiency Mode**:
+The configured request policy: `off`, `observe`, or `optimize`. `observe` records
+normalized Usage without changing the request and is the default. `optimize`
+additionally owns explicit Anthropic cache breakpoints. DeepSeek and OpenAI cache
+behavior remains Provider-automatic in every mode.
+
+**Call Record**:
+The versioned telemetry unit for one Provider attempt: requested, attempted,
+actual, and accounting model identities; normalized fresh/output/cache/reasoning
+tokens; attempt outcome and error category; estimated cost; cache policy;
+findings; Session key; and Trace lineage.
+Retries and fallback attempts are distinct records. Unknown pricing stays
+`None`, and ambiguous Provider Usage is marked incomplete rather than priced.
 
 **TokenWise**:
-The cross-cutting token-efficiency layer: a set of independently toggled
-TokenStrategies, not a single module.
+The historical Strategy, schema, and experiment compatibility surface under
+`pico/token_wise/`. Its imports and frozen `pico.picobench.tokenwise-cost.*`
+schemas remain valid, but Runtime request ownership belongs to CallEfficiency.
 
 **TokenStrategy**:
-One independently enable-able efficiency measure, implemented as a `TokenStrategy` ABC
+One historical extension measure, implemented as a `TokenStrategy` ABC
 with `before_llm_call` (may rewrite messages / tools / model) and `after_llm_call`
 (observes usage) hooks; e.g. usage tracking, cache optimization, smart routing.
 _Avoid_: bare "Strategy"
 
 **StrategyRegistry**:
-The ordered chain that wraps every Provider call, invoking each registered
+The ordered legacy chain that invokes registered
 TokenStrategy's `before_llm_call` / `after_llm_call` hooks in registration order.
 `before` errors propagate (a bad request fails fast); `after` errors are logged and
 swallowed so telemetry never crashes the turn.
 
 **UsageTracker**:
-The shipped TokenStrategy (`"usage_tracker"`) that records each call's UsageSnapshot and
+The retained historical TokenStrategy (`"usage_tracker"`) that records each call's UsageSnapshot and
 rolls token counts and USD cost up into per-session, per-day, and lifetime aggregates.
 
 **CacheOptimizer**:
-The shipped TokenStrategy (`"cache_optimizer"`) that places Anthropic's ≤4 ephemeral
+The retained historical TokenStrategy (`"cache_optimizer"`) that places Anthropic's ≤4 ephemeral
 `cache_control` breakpoints adaptively (tools tail + system tail + a rolling message-tail
 window). A Hermes-faithful `SystemAndTailCacheStrategy` ships alongside as an A/B reference.
 
 **UsageSnapshot**:
-The token/cost accounting unit for a single LLM call: input / output / cache-read /
+The historical TokenWise projection of a Call Record: input / output / cache-read /
 cache-write / reasoning tokens plus the estimated USD cost. Cost is ``None`` when
 the model has no known price; zero is reserved for a priced call whose computed
 cost is actually zero. UsageTracker rollups keep their token totals but expose an

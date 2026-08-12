@@ -99,7 +99,56 @@ def test_only_specified_block_overrides(stub_config_path: Path) -> None:
     )
     cfg = ec_module.load_pico_config()
     assert cfg.skill_forge.enabled is True
-    assert cfg.token_wise.enabled is True
+    assert cfg.call_efficiency.mode == "observe"
+    assert cfg.token_wise is cfg.call_efficiency
+
+
+def test_legacy_token_wise_config_migrates_without_enabling_request_rewrites(
+    stub_config_path: Path,
+) -> None:
+    _write_config(
+        stub_config_path,
+        {
+            "tokenWise": {
+                "enabled": True,
+                "cacheOptimization": True,
+                "maxCacheBreakpoints": 3,
+            },
+        },
+    )
+
+    cfg = ec_module.load_pico_config()
+
+    assert cfg.call_efficiency.mode == "observe"
+    assert cfg.call_efficiency.max_cache_breakpoints == 3
+    assert cfg.token_wise is cfg.call_efficiency
+
+
+def test_legacy_token_wise_disable_maps_to_call_efficiency_off(
+    stub_config_path: Path,
+) -> None:
+    _write_config(stub_config_path, {"token_wise": {"enabled": False}})
+
+    cfg = ec_module.load_pico_config()
+
+    assert cfg.call_efficiency.effective_mode == "off"
+
+
+def test_explicit_call_efficiency_mode_wins_over_legacy_block(
+    stub_config_path: Path,
+) -> None:
+    _write_config(
+        stub_config_path,
+        {
+            "tokenWise": {"enabled": False},
+            "callEfficiency": {"mode": "optimize", "maxCacheBreakpoints": 2},
+        },
+    )
+
+    cfg = ec_module.load_pico_config()
+
+    assert cfg.call_efficiency.effective_mode == "optimize"
+    assert cfg.call_efficiency.max_cache_breakpoints == 2
 
 
 def test_mass_library_db_path_round_trips(stub_config_path: Path) -> None:

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from pico.config.schema import ModelEndpoint
+from pico.providers.base import ErrorClassification, LLMProvider, LLMResponse
 from pico.providers.per_model_provider import PerModelProvider
 
 
@@ -69,3 +70,43 @@ async def test_chat_with_retry_unknown_model_uses_fallback():
 
     assert out == "FB_RESP"
     fb.chat_with_retry.assert_awaited_once()
+
+
+class _Endpoint(LLMProvider):
+    def __init__(self, model: str, response: LLMResponse) -> None:
+        super().__init__()
+        self.model = model
+        self.response = response
+        self.calls: list[str | None] = []
+
+    async def chat(self, messages, tools=None, model=None, **kwargs):
+        self.calls.append(model)
+        return self.response
+
+    def get_default_model(self) -> str:
+        return self.model
+
+
+@pytest.mark.asyncio
+async def test_chat_with_retry_dispatches_fallback_to_its_own_endpoint():
+    primary = _Endpoint(
+        "primary",
+        LLMResponse(
+            content="billing unavailable",
+            finish_reason="error",
+            error_classification=ErrorClassification("billing", should_fallback=True),
+        ),
+    )
+    backup = _Endpoint("backup", LLMResponse(content="recovered", model="backup"))
+    provider = PerModelProvider([], fallback=primary)
+    provider._by_model = {"primary": primary, "backup": backup}
+
+    response = await provider.chat_with_retry(
+        messages=[],
+        model="primary",
+        fallback_models=["backup"],
+    )
+
+    assert response.content == "recovered"
+    assert primary.calls == ["primary"]
+    assert backup.calls == ["backup"]

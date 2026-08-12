@@ -19,10 +19,8 @@ class UsageSnapshot:
     """Token usage and cost for a single LLM call.
 
     Convention: ``input_tokens`` is *fresh* (non-cached) prompt tokens.
-    Provider adapters normalize total/fresh divergence (some providers
-    report total ``prompt_tokens`` including cache reads/writes;
-    AgentLoop's ``_build_usage_snapshot`` subtracts when needed so this
-    field has consistent semantics across providers).
+    ``pico.call_efficiency`` normalizes Provider-specific total/fresh
+    conventions before projecting a record into this historical schema.
 
     ``trace_id`` / ``turn_span_id`` correlate a persisted usage row back to the
     Turn that spent it (see ``docs/specs/turn-evidence-correlation.md``). Both
