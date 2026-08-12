@@ -39,7 +39,10 @@ without crossing the CNY 10 hard cap, and `PICO_BENCH_EXECUTE_PAID=1`. The
 default plan is 48 evaluation Trials, at most 480 Provider attempts, and a
 conservative CNY 4.644864 worst-case estimate. Completed Trial records resume
 rather than rerun. The offline verifier rebuilds metrics and checks the
-append-only Provider budget ledger without a Provider call.
+append-only Provider budget ledger without a Provider call. Every passing raw
+Trial also carries the observed JSON, artifact SHA-256, terminal outcome, and
+unexpected-path inventory so task success is rebuilt rather than trusted as a
+stored boolean.
 
 Because 12 tasks are below the 30-task confirmatory threshold, bootstrap
 intervals are explicitly exploratory. A passing Gate supports only a scoped

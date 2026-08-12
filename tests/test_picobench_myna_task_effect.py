@@ -18,6 +18,7 @@ from benchmarks.picobench.packs.myna_task_effect.campaign import (
     ARM_MEMORY_OFF,
     ARM_MEMORY_ON,
     CampaignConfig,
+    TaskCorpus,
     TrialRecord,
     arm_order,
     build_report,
@@ -127,7 +128,12 @@ def test_agent_report_uses_success_tool_calls_and_input_tokens() -> None:
                 ]
             )
 
-    report = build_agent_report(corpus=corpus, trials=tuple(trials), repetitions=2)
+    report = build_agent_report(
+        corpus=corpus,
+        trials=tuple(trials),
+        repetitions=2,
+        require_verification_receipts=False,
+    )
 
     assert report["measurement"]["valid_pairs"] == 24
     assert report["capability"]["verified_pass_delta_pp"] == 0.0
@@ -178,11 +184,49 @@ def test_agent_report_fails_closed_on_stale_or_cross_repository_memory() -> None
             ]
         )
 
-    report = build_agent_report(corpus=corpus, trials=tuple(trials), repetitions=1)
+    report = build_agent_report(
+        corpus=corpus,
+        trials=tuple(trials),
+        repetitions=1,
+        require_verification_receipts=False,
+    )
 
     assert report["safety"]["stale_memory_caused_regressions"] == 3
     assert report["safety"]["cross_repository_memory_events"] == 3
     assert report["claim"]["positive_claim_eligible"] is False
+
+
+def test_agent_report_requires_rebuildable_receipts_for_formal_evidence() -> None:
+    corpus = load_agent_task_corpus(TASK_ROOT / "agent.json")
+    task = corpus.tasks[0]
+    lifecycle = ("start", "store", "stop", "start", "recall", "store", "stop")
+    trials = tuple(
+        AgentTrialRecord(
+            task_id=task.task_id,
+            task_class=task.task_class,
+            repetition=0,
+            arm_id=arm_id,
+            status="passed",
+            workspace_digest="workspace",
+            tool_calls=2,
+            input_tokens=100,
+            output_tokens=10,
+            provider_calls=1,
+            memory_hits=int(arm_id == "memory_on"),
+            myna_operations=lifecycle if arm_id == "memory_on" else (),
+        )
+        for arm_id in ("memory_off", "memory_on")
+    )
+
+    report = build_agent_report(
+        corpus=TaskCorpus(schema=corpus.schema, definition_kind="agent", tasks=(task,)),
+        trials=trials,
+        repetitions=1,
+        require_verification_receipts=True,
+    )
+
+    assert report["measurement"]["verification_receipts_valid"] is False
+    assert report["claim"]["measurement_valid"] is False
 
 
 def test_agent_campaign_requires_approval_persists_and_resumes(tmp_path: Path) -> None:
@@ -223,6 +267,13 @@ def test_agent_campaign_requires_approval_persists_and_resumes(tmp_path: Path) -
                 provider_calls=0,
                 memory_hits=int(treatment),
                 myna_operations=(("start", "store", "stop", "start", "recall", "store", "stop") if treatment else ()),
+                verification_receipt={
+                    "schema": "pico.picobench.myna-agent-task-effect.verification-receipt.v1",
+                    "terminal": "completed",
+                    "artifact_sha256": "0" * 64,
+                    "observed": {"task_id": task.task_id, "value": task.expected_value},
+                    "unexpected_workspace_paths": [],
+                },
             )
 
     with pytest.raises(ValueError, match="paid execution approval"):

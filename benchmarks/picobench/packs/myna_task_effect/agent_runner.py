@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
 from dataclasses import asdict
 from pathlib import Path, PurePosixPath
@@ -118,6 +119,7 @@ class InstalledAgentTrialExecutor(InstalledTrialExecutor):
             )
             metrics = _tool_metrics(evaluation.get("tool_events"))
             passed, findings = _verify_trial(task, workspace, evaluation)
+            receipt = _verification_receipt(task, workspace, evaluation)
             recall_hits = evaluation.get("recall_hits")
             cross_repository = bool(
                 isinstance(recall_hits, list)
@@ -157,6 +159,7 @@ class InstalledAgentTrialExecutor(InstalledTrialExecutor):
                 stale_memory_used=bool(task.task_class == "stale_conflict" and not passed and memory_hits),
                 cross_repository_memory=cross_repository,
                 findings=findings,
+                verification_receipt=receipt,
             )
         except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as exc:
             treatment = arm.arm_id == "memory_on"
@@ -214,3 +217,31 @@ class InstalledAgentTrialExecutor(InstalledTrialExecutor):
 
 
 __all__ = ["InstalledAgentTrialExecutor"]
+
+
+def _verification_receipt(
+    task: TaskDefinition,
+    workspace: Path,
+    evaluation: dict[str, object],
+) -> dict[str, object]:
+    artifact = workspace.joinpath(*PurePosixPath(task.output_path).parts)
+    try:
+        payload = artifact.read_bytes()
+        observed = json.loads(payload)
+        artifact_sha256 = hashlib.sha256(payload).hexdigest()
+    except (OSError, ValueError):
+        observed = None
+        artifact_sha256 = None
+    allowed = {task.source_path, task.output_path}
+    observed_paths = {
+        path.relative_to(workspace).as_posix()
+        for path in workspace.rglob("*")
+        if path.is_file() and not path.is_relative_to(workspace / ".git")
+    }
+    return {
+        "schema": "pico.picobench.myna-agent-task-effect.verification-receipt.v1",
+        "terminal": evaluation.get("terminal"),
+        "artifact_sha256": artifact_sha256,
+        "observed": observed,
+        "unexpected_workspace_paths": sorted(observed_paths - allowed),
+    }

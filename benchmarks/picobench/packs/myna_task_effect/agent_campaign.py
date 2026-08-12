@@ -34,6 +34,7 @@ from .campaign import (
 
 AGENT_TASK_SCHEMA = "pico.picobench.myna-agent-task-effect.tasks.v1"
 _AGENT_TASK_ID = re.compile(r"[a-z0-9][a-z0-9._-]{0,127}")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 _EXPECTED_LIFECYCLE = ("start", "store", "stop", "start", "recall", "store", "stop")
 _PASS_NONINFERIORITY_FLOOR = -0.05
 _MIN_CONCORDANT_COVERAGE = 0.80
@@ -71,6 +72,7 @@ class AgentTrialRecord:
     stale_memory_used: bool = False
     cross_repository_memory: bool = False
     findings: tuple[str, ...] = ()
+    verification_receipt: Mapping[str, Any] | None = None
 
     @property
     def passed(self) -> bool:
@@ -234,6 +236,7 @@ def build_agent_report(
     repetitions: int,
     bootstrap_samples: int = 2_000,
     bootstrap_seed: int = 20260812,
+    require_verification_receipts: bool = True,
 ) -> dict[str, Any]:
     if corpus.schema != AGENT_TASK_SCHEMA or repetitions < 1:
         raise ValueError("invalid agent report inputs")
@@ -276,7 +279,20 @@ def build_agent_report(
                 valid_pairs.append((control, treatment))
 
     ship_complete = complete_pairs == expected_pairs and len(trials) == expected_pairs * 2
-    measurement_valid = bool(ship_complete and axis_valid and len(valid_pairs) == expected_pairs)
+    receipts_valid = all(
+        not trial.passed
+        or (
+            task_by_id.get(trial.task_id) is not None
+            and _verification_receipt_passes(task_by_id[trial.task_id], trial.verification_receipt)
+        )
+        for trial in trials
+    )
+    measurement_valid = bool(
+        ship_complete
+        and axis_valid
+        and len(valid_pairs) == expected_pairs
+        and (receipts_valid or not require_verification_receipts)
+    )
     denominator = len(valid_pairs)
     control_passes = sum(control.passed for control, _ in valid_pairs)
     treatment_passes = sum(treatment.passed for _, treatment in valid_pairs)
@@ -333,6 +349,7 @@ def build_agent_report(
             "axis_valid": axis_valid,
             "lifecycle_complete": lifecycle_complete,
             "exploratory_task_count": len(corpus.tasks) < 30,
+            "verification_receipts_valid": receipts_valid,
         },
         "capability": {
             "control_passes": control_passes,
@@ -437,6 +454,7 @@ def run_agent_campaign(
             repetitions=config.repetitions,
             bootstrap_samples=config.bootstrap_samples,
             bootstrap_seed=config.bootstrap_seed,
+            require_verification_receipts=True,
         )
         budget = ledger.snapshot()
         if (
@@ -470,6 +488,7 @@ def verify_agent_evidence(output_root: Path, *, corpus_path: Path) -> dict[str, 
         repetitions=execution["repetitions"],
         bootstrap_samples=int(analysis.get("bootstrap_samples", 0)),
         bootstrap_seed=int(analysis.get("bootstrap_seed", 0)),
+        require_verification_receipts=True,
     )
     observed = json.loads((output / "aggregate.json").read_text(encoding="utf-8"))
     gates = {
@@ -671,6 +690,8 @@ def _validate_agent_trial(
         raise ValueError("agent executor returned a record outside the planned trial")
     if record.status not in {"passed", "task_failed", "infrastructure_failure"}:
         raise ValueError("agent executor returned an unknown status")
+    if record.passed and not _verification_receipt_passes(task, record.verification_receipt):
+        raise ValueError("passing agent Trial requires a rebuildable verification receipt")
     for name in ("tool_calls", "input_tokens", "output_tokens", "provider_calls", "memory_hits"):
         value = getattr(record, name)
         if isinstance(value, bool) or value < 0:
@@ -713,6 +734,22 @@ def _reductions(
 def _mean_reduction(values: dict[str, tuple[float, ...]]) -> float:
     flattened = [value for task_values in values.values() for value in task_values]
     return mean(flattened) if flattened else 0.0
+
+
+def _verification_receipt_passes(
+    task: TaskDefinition,
+    receipt: Mapping[str, Any] | None,
+) -> bool:
+    if not isinstance(receipt, Mapping):
+        return False
+    return bool(
+        receipt.get("schema") == "pico.picobench.myna-agent-task-effect.verification-receipt.v1"
+        and receipt.get("terminal") == "completed"
+        and isinstance(receipt.get("artifact_sha256"), str)
+        and _SHA256.fullmatch(receipt["artifact_sha256"])
+        and receipt.get("observed") == {"task_id": task.task_id, "value": task.expected_value}
+        and receipt.get("unexpected_workspace_paths") == []
+    )
 
 
 def _parse_agent_task(raw: Any) -> TaskDefinition:
