@@ -31,10 +31,10 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from loguru import logger
 
+from pico.call_efficiency.pricing import resolve_context_window
 from pico.config.loader import load_config
 from pico.session.export import default_export_path, verify_export, write_portable_export
 from pico.session.manager import SessionManager, new_chat_id
-from pico.token_wise.pricing import resolve_context_window
 from pico.tui_rpc.errors import SessionNotFoundError, TurnInProgressError
 from pico.tui_rpc.methods import turn as turn_module
 from pico.tui_rpc.methods.image import clear_pending_images

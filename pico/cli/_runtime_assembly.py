@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -11,6 +12,7 @@ from pico.agent.loop.recovery import limits_from_defaults
 
 if TYPE_CHECKING:
     from pico.agent.loop import AgentLoop
+    from pico.call_efficiency import CallEfficiency
     from pico.config.paths import RuntimePaths
     from pico.config.pico import PicoConfig
     from pico.config.schema import Config
@@ -24,10 +26,12 @@ class RuntimeAssembly:
     agent_loop: AgentLoop
     session_manager: SessionManager
     backend: MemoryBackend | None
+    call_efficiency: CallEfficiency | None = None
     _backend_start_attempted: bool = field(default=False, init=False)
     _backend_started: bool = field(default=False, init=False)
     _backend_start_error: BaseException | None = field(default=None, init=False)
     _agent_closed: bool = field(default=False, init=False)
+    _call_efficiency_closed: bool = field(default=False, init=False)
     _backend_stopped: bool = field(default=False, init=False)
 
     async def start_memory_backend(self) -> bool:
@@ -59,6 +63,18 @@ class RuntimeAssembly:
                 cancellation = exc
             else:
                 self._agent_closed = True
+
+        if self.call_efficiency is None:
+            self._call_efficiency_closed = True
+        elif not self._call_efficiency_closed:
+            try:
+                await asyncio.to_thread(self.call_efficiency.close)
+            except Exception:
+                logger.exception("call efficiency close failed; continuing shutdown")
+            except BaseException as exc:
+                cancellation = cancellation or exc
+            else:
+                self._call_efficiency_closed = True
 
         backend_error: BaseException | None = None
         if self.backend is None:
@@ -93,6 +109,7 @@ def assemble_runtime(
     paths: "RuntimePaths | None" = None,
 ) -> RuntimeAssembly:
     from pico.agent.loop import AgentLoop
+    from pico.call_efficiency import CallEfficiency, CallEfficiencyProvider
     from pico.cli._plugin_stack import (
         build_plugin_registry,
         build_plugin_tools,
@@ -107,58 +124,73 @@ def assemble_runtime(
     )
     if session_manager is None:
         session_manager = SessionManager(paths.state)
-    plugin_registry = build_plugin_registry(pico_config)
-    backend = maybe_build_memory_backend(
-        paths.workspace,
-        pico_config,
-        registry=plugin_registry,
-    )
-    plugin_tools = build_plugin_tools(
-        paths.workspace,
-        pico_config,
-        registry=plugin_registry,
-    )
-    defaults = config.agents.defaults
-    agent_loop = AgentLoop(
+    call_efficiency = CallEfficiency.from_config(
+        pico_config.call_efficiency,
+        telemetry_dir=paths.state / "telemetry",
         provider=provider,
-        workspace=paths.workspace,
-        state=paths.state,
-        model=defaults.model,
-        max_iterations=defaults.max_tool_iterations,
-        empty_recovery=limits_from_defaults(defaults),
-        context_window_tokens=defaults.context_window_tokens,
-        max_concurrent_subagents=defaults.max_concurrent_subagents,
-        max_subagent_spawns_per_hour=defaults.max_subagent_spawns_per_hour,
-        brave_api_key=config.tools.web.search.api_key or None,
-        jina_api_key=config.tools.web.jina_api_key or None,
-        web_proxy=config.tools.web.proxy or None,
-        exec_config=config.tools.exec,
-        cron_service=cron_service,
-        restrict_to_workspace=config.tools.restrict_to_workspace,
-        session_manager=session_manager,
-        mcp_servers=config.tools.mcp_servers,
-        disabled_tools=config.tools.disabled_tools,
-        tool_search_config=config.tools.tool_search,
-        sandbox_config=config.tools.sandbox,
-        channels_config=config.channels,
-        router=router,
-        skill_forge_config=pico_config.skill_forge,
-        context_config=pico_config.context,
-        context_engine_factory=context_engine_factory,
-        runtime_config=pico_config.runtime,
-        interactive=interactive,
-        backend=backend,
-        memory_config=pico_config.memory,
-        skill_forge_router_config=pico_config.skill_forge.router,
-        plugin_tools=plugin_tools,
     )
-    agent_loop.configure_personalization(
-        defaults.enable_personalization,
-    )
+    runtime_provider = CallEfficiencyProvider(provider, call_efficiency)
+    try:
+        plugin_registry = build_plugin_registry(pico_config)
+        backend = maybe_build_memory_backend(
+            paths.workspace,
+            pico_config,
+            registry=plugin_registry,
+        )
+        plugin_tools = build_plugin_tools(
+            paths.workspace,
+            pico_config,
+            registry=plugin_registry,
+        )
+        defaults = config.agents.defaults
+        agent_loop = AgentLoop(
+            provider=runtime_provider,
+            workspace=paths.workspace,
+            state=paths.state,
+            model=defaults.model,
+            max_iterations=defaults.max_tool_iterations,
+            empty_recovery=limits_from_defaults(defaults),
+            context_window_tokens=defaults.context_window_tokens,
+            max_concurrent_subagents=defaults.max_concurrent_subagents,
+            max_subagent_spawns_per_hour=defaults.max_subagent_spawns_per_hour,
+            brave_api_key=config.tools.web.search.api_key or None,
+            jina_api_key=config.tools.web.jina_api_key or None,
+            web_proxy=config.tools.web.proxy or None,
+            exec_config=config.tools.exec,
+            cron_service=cron_service,
+            restrict_to_workspace=config.tools.restrict_to_workspace,
+            session_manager=session_manager,
+            mcp_servers=config.tools.mcp_servers,
+            disabled_tools=config.tools.disabled_tools,
+            tool_search_config=config.tools.tool_search,
+            sandbox_config=config.tools.sandbox,
+            channels_config=config.channels,
+            router=router,
+            call_efficiency=call_efficiency,
+            skill_forge_config=pico_config.skill_forge,
+            context_config=pico_config.context,
+            context_engine_factory=context_engine_factory,
+            runtime_config=pico_config.runtime,
+            interactive=interactive,
+            backend=backend,
+            memory_config=pico_config.memory,
+            skill_forge_router_config=pico_config.skill_forge.router,
+            plugin_tools=plugin_tools,
+        )
+        agent_loop.configure_personalization(
+            defaults.enable_personalization,
+        )
+    except BaseException:
+        try:
+            call_efficiency.close()
+        except Exception:
+            logger.exception("call efficiency close failed during runtime assembly cleanup")
+        raise
     return RuntimeAssembly(
         agent_loop=agent_loop,
         session_manager=session_manager,
         backend=backend,
+        call_efficiency=call_efficiency,
     )
 
 

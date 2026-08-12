@@ -56,6 +56,7 @@ def _runtime_configs(tmp_path):
         plugins=SimpleNamespace(disabled=[], config={}),
         memory=sentinel.memory_config,
         context=sentinel.context_config,
+        call_efficiency=sentinel.call_efficiency_config,
         runtime=sentinel.runtime_config,
         skill_forge=SimpleNamespace(
             router=sentinel.skill_forge_router_config,
@@ -110,6 +111,10 @@ def test_runtime_assembly_preserves_config_and_plugin_parity(
 
     monkeypatch.setattr("pico.cli._plugin_stack.maybe_build_memory_backend", _build_backend)
     monkeypatch.setattr("pico.cli._plugin_stack.build_plugin_tools", _build_tools)
+    monkeypatch.setattr(
+        "pico.call_efficiency.CallEfficiency.from_config",
+        lambda config, *, telemetry_dir, provider: sentinel.call_efficiency,
+    )
 
     class _AgentLoopSpy:
         def __init__(self, **kwargs):
@@ -129,12 +134,15 @@ def test_runtime_assembly_preserves_config_and_plugin_parity(
 
     assert runtime.session_manager is session_manager
     assert runtime.backend is backend
+    assert runtime.call_efficiency is sentinel.call_efficiency
     assert calls == [
         ("session", tmp_path),
         ("registry", pico_config),
         ("backend", registry),
         ("tools", registry),
     ]
+    assert captured["provider"].delegate is provider
+    captured["provider"] = provider
     assert captured == {
         "provider": provider,
         "workspace": tmp_path,
@@ -160,6 +168,7 @@ def test_runtime_assembly_preserves_config_and_plugin_parity(
         "sandbox_config": sentinel.sandbox_config,
         "channels_config": sentinel.channels_config,
         "router": router,
+        "call_efficiency": sentinel.call_efficiency,
         "skill_forge_config": pico_config.skill_forge,
         "context_config": sentinel.context_config,
         "context_engine_factory": None,
@@ -171,6 +180,64 @@ def test_runtime_assembly_preserves_config_and_plugin_parity(
         "plugin_tools": plugin_tools,
     }
     runtime.agent_loop.configure_personalization.assert_called_once_with(True)
+
+
+def test_runtime_assembly_closes_call_efficiency_when_construction_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    from pico.cli import _runtime_assembly
+
+    config, pico_config = _runtime_configs(tmp_path)
+    controller = SimpleNamespace(close=MagicMock())
+    monkeypatch.setattr(
+        "pico.call_efficiency.CallEfficiency.from_config",
+        lambda config, *, telemetry_dir, provider: controller,
+    )
+    monkeypatch.setattr(
+        "pico.cli._plugin_stack.build_plugin_registry",
+        MagicMock(side_effect=RuntimeError("plugin failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="plugin failed"):
+        _runtime_assembly.assemble_runtime(
+            config,
+            pico_config,
+            provider=object(),
+            cron_service=object(),
+            interactive=False,
+        )
+
+    controller.close.assert_called_once()
+
+
+def test_runtime_assembly_preserves_construction_error_when_cleanup_also_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    from pico.cli import _runtime_assembly
+
+    config, pico_config = _runtime_configs(tmp_path)
+    controller = SimpleNamespace(close=MagicMock(side_effect=RuntimeError("close failed")))
+    monkeypatch.setattr(
+        "pico.call_efficiency.CallEfficiency.from_config",
+        lambda config, *, telemetry_dir, provider: controller,
+    )
+    monkeypatch.setattr(
+        "pico.cli._plugin_stack.build_plugin_registry",
+        MagicMock(side_effect=RuntimeError("plugin failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="plugin failed"):
+        _runtime_assembly.assemble_runtime(
+            config,
+            pico_config,
+            provider=object(),
+            cron_service=object(),
+            interactive=False,
+        )
+
+    controller.close.assert_called_once()
 
 
 def test_runtime_assembly_forwards_context_engine_factory(
@@ -388,6 +455,10 @@ async def test_project_local_runtime_keeps_tools_and_state_in_their_roots(
         paths=paths,
     )
     try:
+        assert runtime.call_efficiency.mode == "observe"
+        assert runtime.agent_loop.call_efficiency is runtime.call_efficiency
+        assert runtime.agent_loop.subagents.provider is runtime.agent_loop.provider
+        assert runtime.agent_loop.memory_consolidator.provider is runtime.agent_loop.provider
         read_file = runtime.agent_loop.tools.get("read_file")
         assert runtime.agent_loop.workspace == project
         assert runtime.agent_loop.state == state
@@ -411,10 +482,12 @@ async def test_runtime_assembly_owns_memory_and_agent_resources_once() -> None:
     agent_loop = SimpleNamespace(
         close_mcp=AsyncMock(side_effect=lambda: order.append("agent.close")),
     )
+    call_efficiency = SimpleNamespace(close=MagicMock(side_effect=lambda: order.append("call_efficiency.close")))
     runtime = RuntimeAssembly(
         agent_loop=agent_loop,
         session_manager=object(),
         backend=backend,
+        call_efficiency=call_efficiency,
     )
 
     assert await runtime.start_memory_backend() is True
@@ -422,10 +495,32 @@ async def test_runtime_assembly_owns_memory_and_agent_resources_once() -> None:
     await runtime.close()
     await runtime.close()
 
-    assert order == ["backend.start", "agent.close", "backend.stop"]
+    assert order == ["backend.start", "agent.close", "call_efficiency.close", "backend.stop"]
     backend.start.assert_awaited_once()
     backend.stop.assert_awaited_once()
     agent_loop.close_mcp.assert_awaited_once()
+    call_efficiency.close.assert_called_once()
+
+
+async def test_runtime_assembly_continues_backend_shutdown_after_call_efficiency_failure() -> None:
+    from pico.cli._runtime_assembly import RuntimeAssembly
+
+    backend = SimpleNamespace(start=AsyncMock(), stop=AsyncMock())
+    agent_loop = SimpleNamespace(close_mcp=AsyncMock())
+    call_efficiency = SimpleNamespace(close=MagicMock(side_effect=RuntimeError("ledger failed")))
+    runtime = RuntimeAssembly(
+        agent_loop=agent_loop,
+        session_manager=object(),
+        backend=backend,
+        call_efficiency=call_efficiency,
+    )
+
+    await runtime.close()
+    await runtime.close()
+
+    backend.stop.assert_awaited_once()
+    agent_loop.close_mcp.assert_awaited_once()
+    assert call_efficiency.close.call_count == 2
 
 
 async def test_runtime_assembly_preserves_memory_start_failure() -> None:

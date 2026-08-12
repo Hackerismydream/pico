@@ -25,6 +25,8 @@ from pathlib import Path
 import pytest
 
 from pico.agent.loop.main import ProviderTurnError
+from pico.call_efficiency import CallEfficiency
+from pico.providers.base import LLMResponse
 from pico.spine import ChatType, Origin, Source, Text, TurnOutcome, TurnRequest, Usage
 from pico.spine import delivery as delivery_mod
 from pico.spine.delivery import Capabilities, DeliveryHub, make_hub_sink
@@ -109,12 +111,14 @@ class _ScriptedRunner:
     def __init__(
         self,
         tracker: UsageTracker,
+        call_efficiency: CallEfficiency,
         *,
         tool_failures: int = 0,
         raises: BaseException | None = None,
         hang: asyncio.Event | None = None,
     ) -> None:
         self._tracker = tracker
+        self._call_efficiency = call_efficiency
         self._tool_failures = tool_failures
         self._raises = raises
         self._hang = hang
@@ -135,6 +139,15 @@ class _ScriptedRunner:
                     trace_id=getattr(ctx, "trace_id", None),
                     turn_span_id=getattr(ctx, "parent_span_id", None),
                 ),
+            )
+            self._call_efficiency.record(
+                LLMResponse(
+                    content="scripted",
+                    usage={"prompt_tokens": 11, "completion_tokens": 5, "total_tokens": 16},
+                    model="deepseek/deepseek-v4-flash",
+                ),
+                requested_model="deepseek/deepseek-v4-flash",
+                session_key=req.conversation,
             )
             with trace.span("tool.call", {"tool.name": "grep"}) as tool:
                 tool.set({"tool.call_id": "call_scenario_1"})
@@ -175,34 +188,48 @@ async def test_turn_evidence_scenario(evidence_root: Path) -> None:
     sink = make_hub_sink(hub)
     pools = OriginPools(user=4, system=1)
     tracker = UsageTracker(telemetry_dir=evidence_root / "telemetry", persist=True)
+    call_efficiency = CallEfficiency(
+        mode="observe",
+        telemetry_dir=evidence_root / "telemetry",
+        persist=True,
+    )
 
     def lane(conversation: str, runner) -> Lane:
         return Lane(runner=runner, pools=pools, sink=sink, conversation_id=conversation)
 
     try:
-        await lane(COMPLETED, _ScriptedRunner(tracker)).submit(_request(COMPLETED, "ok"))
-        await lane(TOOL_FAILURE, _ScriptedRunner(tracker, tool_failures=1)).submit(_request(TOOL_FAILURE, "ok"))
+        await lane(COMPLETED, _ScriptedRunner(tracker, call_efficiency)).submit(_request(COMPLETED, "ok"))
+        await lane(TOOL_FAILURE, _ScriptedRunner(tracker, call_efficiency, tool_failures=1)).submit(
+            _request(TOOL_FAILURE, "ok")
+        )
         await lane(
             PROVIDER_FAILURE,
-            _ScriptedRunner(tracker, raises=ProviderTurnError("scripted_provider_error")),
+            _ScriptedRunner(
+                tracker,
+                call_efficiency,
+                raises=ProviderTurnError("scripted_provider_error"),
+            ),
         ).submit(_request(PROVIDER_FAILURE, "ok"))
         await lane(
             RUNNER_ERROR,
-            _ScriptedRunner(tracker, raises=RuntimeError("scripted runner failure")),
+            _ScriptedRunner(tracker, call_efficiency, raises=RuntimeError("scripted runner failure")),
         ).submit(_request(RUNNER_ERROR, "ok"))
 
         hang = asyncio.Event()
-        cancel_lane = lane(CANCELLED, _ScriptedRunner(tracker, hang=hang))
+        cancel_lane = lane(CANCELLED, _ScriptedRunner(tracker, call_efficiency, hang=hang))
         cancel_future = cancel_lane.submit(_request(CANCELLED, "ok"))
         await hang.wait()
         assert cancel_lane.cancel_running() == 1
         await cancel_future
 
-        await lane(DELIVERY_EXHAUSTED, _ScriptedRunner(tracker)).submit(_request(DELIVERY_EXHAUSTED, "broken"))
+        await lane(DELIVERY_EXHAUSTED, _ScriptedRunner(tracker, call_efficiency)).submit(
+            _request(DELIVERY_EXHAUSTED, "broken")
+        )
         await hub.wait_idle("ok")
         await hub.wait_idle("broken")
     finally:
         tracker.close()
+        call_efficiency.close()
         await hub.aclose()
 
     (evidence_root / NOTICES_FILENAME).write_text(
@@ -214,4 +241,6 @@ async def test_turn_evidence_scenario(evidence_root: Path) -> None:
     # verifier joins, otherwise a silently empty run would look like a pass.
     assert (evidence_root / SPANS_RELPATH).exists()
     assert list((evidence_root / TELEMETRY_DIRNAME).glob("usage-*.jsonl"))
+    assert list((evidence_root / TELEMETRY_DIRNAME).glob("call-efficiency-*.jsonl"))
+    assert (evidence_root / TELEMETRY_DIRNAME / "call-efficiency-ledger-health.json").exists()
     assert len(notices) == 1

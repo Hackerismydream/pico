@@ -143,7 +143,7 @@ async def test_config_set_model_reassigns_loop_and_persists(fake_home: Path, mon
     loop = SimpleNamespace(provider="old-prov", model="old-model")
     new_provider = SimpleNamespace(name="new-prov")
 
-    monkeypatch.setattr(config_mod, "is_turn_active", lambda _key: False)
+    monkeypatch.setattr(config_mod, "has_active_turns", lambda: False)
     monkeypatch.setattr(config_mod, "make_provider", lambda _cfg: new_provider)
     monkeypatch.setattr(
         config_mod,
@@ -171,6 +171,39 @@ async def test_config_set_model_reassigns_loop_and_persists(fake_home: Path, mon
     assert cfg["agents"]["defaults"]["provider"] == "anthropic"
 
 
+async def test_config_set_model_uses_atomic_runtime_replacement(fake_home: Path, monkeypatch) -> None:
+    import pico.tui_rpc.methods.config as config_mod
+
+    calls: list[tuple[object, str | None]] = []
+    loop = SimpleNamespace(
+        provider="old-prov",
+        model="old-model",
+        replace_provider=lambda provider, *, model=None: calls.append((provider, model)),
+    )
+    new_provider = SimpleNamespace(name="new-prov")
+    monkeypatch.setattr(config_mod, "has_active_turns", lambda: False)
+    monkeypatch.setattr(config_mod, "make_provider", lambda _cfg: new_provider)
+    monkeypatch.setattr(
+        config_mod,
+        "load_runtime_config",
+        lambda *a, **k: SimpleNamespace(agents=SimpleNamespace(defaults=SimpleNamespace(model="", provider="auto"))),
+    )
+
+    await config_set(
+        {
+            "key": "model",
+            "value": "deepseek/deepseek-v4-flash",
+            "provider": "deepseek",
+            "session_id": "tui:default",
+        },
+        agent_loop_factory=lambda: loop,
+    )
+
+    assert calls == [(new_provider, "deepseek/deepseek-v4-flash")]
+    assert loop.provider == "old-prov"
+    assert loop.model == "old-model"
+
+
 async def test_config_set_model_bare_derives_provider(fake_home: Path) -> None:
     # A bare `/model <name>` carries no provider; _set_model must derive it from
     # the model so a previously-forced provider does not silently mis-route.
@@ -184,17 +217,17 @@ async def test_config_set_model_bare_derives_provider(fake_home: Path) -> None:
     assert cfg["agents"]["defaults"]["provider"] == "anthropic"
 
 
-async def test_config_set_model_rejected_during_active_turn(fake_home: Path, monkeypatch) -> None:
-    import pico.tui_rpc.methods.config as config_mod
+async def test_config_set_model_rejected_while_any_session_has_active_turn(fake_home: Path, monkeypatch) -> None:
+    import pico.tui_rpc.methods.turn as turn_mod
 
-    monkeypatch.setattr(config_mod, "is_turn_active", lambda _key: True)
+    monkeypatch.setitem(turn_mod._active_turns, "tui:other-session", object())
 
     with pytest.raises(ModelSwitchInTurnError):
         await config_set(
             {
                 "key": "model",
                 "value": "anthropic/claude-opus-4-8",
-                "session_id": "tui:default",
+                "session_id": "tui:requesting-session",
             },
             agent_loop_factory=lambda: SimpleNamespace(provider=None, model="x"),
         )
@@ -211,7 +244,7 @@ async def test_config_set_model_unconstructable_preserves_previous(fake_home: Pa
     def _boom(_cfg):
         raise RuntimeError("no api key")
 
-    monkeypatch.setattr(config_mod, "is_turn_active", lambda _key: False)
+    monkeypatch.setattr(config_mod, "has_active_turns", lambda: False)
     monkeypatch.setattr(config_mod, "make_provider", _boom)
     monkeypatch.setattr(
         config_mod,

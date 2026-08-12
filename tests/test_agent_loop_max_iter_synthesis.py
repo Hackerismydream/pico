@@ -19,6 +19,7 @@ import pytest
 
 from pico.agent.loop import AgentLoop
 from pico.agent.loop.main import _MAX_ITER_STATIC_FALLBACK, _MAX_ITER_SYNTHESIS_PROMPT
+from pico.call_efficiency import CallEfficiency
 from pico.config.pico import CheckpointConfig, RuntimeConfig
 from pico.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from pico.spine.message import ChatType, Source
@@ -162,7 +163,9 @@ class _RecordingProvider:
 def _bind_synth(provider, max_iterations: int = 40):
     fake_self = SimpleNamespace(
         provider=provider,
+        model="test-model",
         max_iterations=max_iterations,
+        call_efficiency=CallEfficiency.disabled(),
         _strip_think=AgentLoop._strip_think,
     )
     return AgentLoop._synthesize_final_on_exhaustion.__get__(fake_self)

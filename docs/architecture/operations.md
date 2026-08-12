@@ -1,6 +1,6 @@
 # Operations and extension surfaces
 
-This document covers configuration, Providers, Routing, TokenWise, Channels,
+This document covers configuration, Providers, Routing, CallEfficiency, Channels,
 Cron, Sandbox, Tracing, package boundaries, and operational failure behavior.
 
 ## Runtime prerequisites
@@ -27,8 +27,13 @@ Pico reads one JSON config and builds:
 
 - base `Config`: agents, Channels, Providers, Gateway, Web/Exec/MCP Tools,
   Routing, Cron, language, and Workspace;
-- Pico extensions: Context, TokenWise, SkillForge, Plugins, Memory, Runtime,
+- Pico extensions: Context, CallEfficiency, SkillForge, Plugins, Memory, Runtime,
   and Tracing.
+
+`callEfficiency` is the canonical config key. `tokenWise` and `token_wise`
+remain accepted compatibility inputs; enabled legacy blocks migrate to
+`observe`, while `enabled: false` maps to `off`. Legacy cache settings never
+silently opt a Runtime into request rewriting.
 
 Extension models reject unknown fields. Loader behavior is not uniformly
 fail-closed:
@@ -144,31 +149,75 @@ support thresholds are satisfied:
 - a routable endpoint.
 
 `PerModelProvider` dispatches a selected model to its endpoint. Route
-configuration is not model-weight training.
+configuration is not model-weight training. Retry stays within that endpoint;
+cross-model fallback selects the fallback model's endpoint again rather than
+reusing the primary transport.
 
-## TokenWise
+## CallEfficiency
 
-TokenWise is a Strategy chain around Provider calls, not a separate Agent
-Runtime.
+Shared Runtime Assembly installs one `CallEfficiency` instance and wraps the
+selected Provider in one stable `CallEfficiencyProvider` decorator. The same
+decorator is passed to the Agent Loop, Context Engine, Subagent Manager,
+Personalizer, and Memory Consolidator, so Runtime-owned direct, retry/fallback,
+and streaming calls cross the same boundary. A TUI model change replaces the
+decorator's delegate instead of leaving those long-lived components on the old
+Provider. The replacement also updates components that inherit the Agent model;
+an explicitly configured specialist model such as the Curator model remains
+independent.
 
-Retained implementations:
+The call boundary has one order: historical Strategy hooks may first filter
+Tools or support frozen experiments, CallEfficiency prepares the final request
+for each attempted model, the Provider attempt runs, and CallEfficiency records
+normalized Usage and estimated cost before projecting a compatibility
+`UsageSnapshot` to any legacy after-hooks. Retries and fallback models therefore
+produce distinct Call Records.
 
-- `StrategyRegistry`: ordered `before_llm_call` and `after_llm_call` hooks;
-- `UsageTracker`: per-call token/cost snapshots and aggregate accounting;
-- `CacheOptimizer`: Anthropic-compatible prompt cache breakpoint placement;
-- `SystemAndTailCacheStrategy`: a reference cache placement variant;
-- pricing and model-catalog helpers.
+Modes are explicit:
 
-The shared Runtime Assembly does not currently install the configured TokenWise
-chain. Experiments inject a StrategyRegistry explicitly; mechanism evidence
-must not be reported as current host activation.
+- `off`: no request rewriting and no Call Record persistence;
+- `observe`: no request rewriting, with normalized Call Records persisted on a
+  bounded background writer;
+- `optimize`: observation plus one CallEfficiency-owned Anthropic cache plan.
 
-Before-hook errors fail fast because they may corrupt the Provider request.
-After-hook errors are logged and swallowed so telemetry cannot fail the Turn.
+DeepSeek and OpenAI use Provider-automatic prompt caching; Pico does not add
+explicit markers for them. LiteLLMProvider no longer adds `cache_control` by
+default, so Provider and Runtime cannot both stamp the same request. The old
+provider behavior remains opt-in only for frozen TokenWise experiments.
 
-Cost values are estimates based on the known model catalog, not invoices.
-Historical `EXPERIMENT_REPORT*.md` results are dated measurements with pinned
-models and Provider behavior, not current release benchmarks.
+In `optimize`, valid external Anthropic markers are respected, malformed or
+over-limit markers are deterministically replanned, and explicit Anthropic
+markers are stripped before an automatic-cache or unsupported fallback model is
+attempted.
+
+Provider adapters still extract wire-specific Usage fields. CallEfficiency is
+the single semantic normalizer: it distinguishes DeepSeek hit/miss totals,
+Anthropic fresh input, and OpenAI/OpenRouter total input. An unknown cached-token
+convention fails closed for cost instead of guessing. Tracing consumes the same
+normalizer and pricing source.
+
+Pricing on the Provider-response path is offline: it consults LiteLLM's local
+catalog only when LiteLLM is already loaded, then a previously refreshed disk
+catalog and frozen fallback rates. It neither imports LiteLLM nor contacts
+OpenRouter merely because a local or private model is unknown.
+Refreshing the optional remote model catalog is an explicit operation through
+`refresh_model_catalog()`.
+
+Call Record persistence is operational telemetry, not a billing ledger. Clean
+shutdown writes a terminal healthy `call-efficiency-ledger-health.json`. A full
+or failed bounded writer updates it to degraded, rejects later appends into the
+failed writer, and surfaces the failure again at shutdown, but it does not
+convert a completed Provider response into a failed Turn. V-TE0 treats a missing
+terminal artifact as inconclusive, fails known loss, and checks the lineage of
+rows that exist. It still does not independently prove one-to-one cardinality
+against Provider transport attempts. Health updates aggregate under a
+cross-process lock, so a later healthy Runtime cannot erase known loss from
+another Runtime. Provider-response append paths remain memory/queue-only; health
+file I/O runs on the background writer or threaded Runtime shutdown path.
+
+`pico/token_wise/` remains for Strategy imports, `UsageSnapshot`, and frozen
+benchmark schemas. Historical `EXPERIMENT_REPORT*.md` and DeepSeek campaigns
+remain dated evidence; deterministic Runtime activation does not turn those
+results into a current live canary.
 
 ## Channels
 
@@ -388,7 +437,7 @@ Interpretation rules:
 | Config and CLI | focused CLI/config tests and `pico doctor` |
 | Providers and fallback | provider unit tests; V-LP for one real Provider |
 | Routing | Router threshold and fallback tests |
-| TokenWise | Strategy/cache/usage tests |
+| CallEfficiency | Runtime wiring, cache ownership, usage, pricing, and offline replay tests |
 | Channel contract | adapter and Channel Interface tests; V-C0 |
 | real Feishu | V-LF, passed 2026-07-27 |
 | Cron | service, claim, timezone, and Gateway integration tests |

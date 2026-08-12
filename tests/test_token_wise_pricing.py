@@ -50,6 +50,7 @@ def _patch_openrouter(monkeypatch, handler):
         return real_client(*args, **kwargs)
 
     monkeypatch.setattr(pricing, "_fetch_openrouter_models", _REAL_FETCH)
+    monkeypatch.setattr(pricing, "_ALLOW_NETWORK_CATALOG", True)
     monkeypatch.setattr(pricing.httpx, "Client", client_factory)
     monkeypatch.setattr(pricing, "_OPENROUTER_CACHE_TIME", 0.0)
     return counter
@@ -70,6 +71,15 @@ def test_unknown_model_returns_none():
     """Models LiteLLM doesn't know about and we don't have fallback for → None."""
     cost = estimate_cost_usd("nonexistent-vendor/imaginary-model-9000", 100, 100)
     assert cost is None
+
+
+def test_default_unknown_model_pricing_never_fetches_remote_catalog(monkeypatch):
+    def _unexpected_fetch():
+        raise AssertionError("default pricing must stay offline")
+
+    monkeypatch.setattr(pricing, "_fetch_openrouter_models", _unexpected_fetch)
+
+    assert estimate_cost_usd("private/local-model", 100, 10) is None
 
 
 def test_fallback_pricing_used_when_litellm_misses():

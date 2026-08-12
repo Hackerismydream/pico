@@ -135,6 +135,7 @@ def test_config_module_imports():
 
     cfg = PicoConfig()
     assert isinstance(cfg.context, ContextConfig)
+    assert cfg.call_efficiency.mode == "observe"
     assert isinstance(cfg.token_wise, TokenWiseConfig)
     assert isinstance(cfg.skill_forge, SkillForgeConfig)
 

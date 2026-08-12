@@ -176,6 +176,43 @@ async def test_chain_exhausted_returns_last_error():
 
 
 @pytest.mark.asyncio
+async def test_attempt_hooks_replan_and_observe_every_retry_and_fallback():
+    transient = LLMResponse(content="503 overloaded", finish_reason="error")
+    provider = _ScriptedProvider(
+        {
+            "prepared-primary": [transient, transient],
+            "prepared-backup": [LLMResponse(content="recovered", finish_reason="stop")],
+        }
+    )
+    provider._CHAT_RETRY_DELAYS = (0,)
+    prepared: list[str | None] = []
+    observed: list[tuple[str | None, str | None]] = []
+
+    def transform(messages, tools, model):
+        prepared.append(model)
+        return messages, tools, f"prepared-{model}"
+
+    async def observe(response, model):
+        observed.append((model, response.model))
+
+    response = await provider.chat_with_retry(
+        messages=[],
+        model="primary",
+        fallback_models=["backup"],
+        request_transform=transform,
+        response_observer=observe,
+    )
+
+    assert response.content == "recovered"
+    assert prepared == ["primary", "backup"]
+    assert observed == [
+        ("prepared-primary", "prepared-primary"),
+        ("prepared-primary", "prepared-primary"),
+        ("prepared-backup", "prepared-backup"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_should_fallback_classification():
     # Structured classifier (string path): transient + capacity/availability
     # are fallback-worthy; auth / invalid-request / context-overflow are not.

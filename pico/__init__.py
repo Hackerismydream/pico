@@ -4,7 +4,7 @@ evolution path.
 
 Three feature pillars:
     1. Context Management   — context_engine/          (Curator engine)
-    2. Token Efficiency     — token_wise/
+    2. Call Efficiency      — call_efficiency/
     3. Skill Self-Evolution — memory_engine/skill_forge/
 
 The public and internal Python namespace is ``pico``. See ``NOTICES.md`` and

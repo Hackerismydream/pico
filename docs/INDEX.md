@@ -70,7 +70,7 @@ proof that the corresponding product behavior works.
 | [Architecture overview](architecture/README.md) | System boundary, package map, dependency direction, lifecycle ownership, and architectural constraints |
 | [Runtime and Turn flow](architecture/runtime.md) | CLI, TUI, Gateway, Channel, Cron, and Subagent entry paths through Spine and Agent Loop |
 | [State, Context, Memory, and Skills](architecture/state-and-intelligence.md) | Session persistence, Context segments, Curator, Myna, Local Skills, Plugins, and state roots |
-| [Operations and extension surfaces](architecture/operations.md) | Providers, Routing, TokenWise, Channels, Cron, Sandbox, Tracing, configuration, and packaging |
+| [Operations and extension surfaces](architecture/operations.md) | Providers, Routing, CallEfficiency, Channels, Cron, Sandbox, Tracing, configuration, and packaging |
 | [Evolver architecture](architecture/evolver.md) | Evolution Run lifecycle, benchmark inversion, candidate evidence, activation, rollback, and threat model |
 | [Agent application evaluation](evaluation/README.md) | Implemented checkout-only PicoBench boundary, Runtime relationship, experiment state, and claim discipline |
 | [TokenWise cost experiment](evaluation/tokenwise-cost.md) | Completed DeepSeek two-arm prefix-stability campaign, conservative hit-rate and success-cost metrics, and claim gates |
@@ -167,10 +167,11 @@ not interpreted as free-standing product claims.
 
 ## Historical evidence and research
 
-TokenWise experiment reports are dated measurements. Model availability,
-prices, Provider routing, and measured results are snapshots rather than
-current release claims. Current claims require a Gate bound to the candidate
-commit.
+TokenWise experiment reports are dated measurements retained under their
+historical names and schemas. CallEfficiency can replay them offline without
+relabeling them as current live evidence. Model availability, prices, Provider
+routing, and measured results are snapshots rather than current release claims.
+Current claims require a Gate bound to the candidate commit.
 
 ## Legal, security, and repository policy
 

@@ -16,6 +16,7 @@ from scripts.verify_turn_evidence import (
     CHANNEL_OUTCOMES,
     SPINE_OUTCOMES,
     build_report,
+    check_call_efficiency_health,
     check_delivery_join,
     check_scenario_deliveries,
     check_terminal_states,
@@ -24,6 +25,7 @@ from scripts.verify_turn_evidence import (
     dedupe_spans,
     evaluate,
     index_turns,
+    load_usage_rows,
     read_jsonl,
 )
 
@@ -403,6 +405,98 @@ def test_the_report_never_serializes_message_content():
     checks = _detectors(spans=spans)
     report = build_report(_scenario_check(), checks, [])
     assert "SECRET" not in json.dumps(report)
+
+
+def test_usage_loader_accepts_legacy_and_call_efficiency_ledgers(tmp_path):
+    telemetry = tmp_path / "telemetry"
+    telemetry.mkdir()
+    legacy = {"trace_id": "legacy", "turn_span_id": "turn-1"}
+    current = {
+        "schema": "pico.call-efficiency.call.v1",
+        "trace_id": "current",
+        "turn_span_id": "turn-2",
+    }
+    (telemetry / "usage-2026-01-01.jsonl").write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+    (telemetry / "call-efficiency-2026-01-01.jsonl").write_text(
+        json.dumps(current) + "\n",
+        encoding="utf-8",
+    )
+
+    assert load_usage_rows(telemetry) == [legacy, current]
+
+
+def test_call_efficiency_health_fails_when_ledger_reports_loss(tmp_path):
+    (tmp_path / "call-efficiency-ledger-health.json").write_text(
+        json.dumps(
+            {
+                "schema": "pico.call-efficiency.ledger-health.v1",
+                "status": "degraded",
+                "accepted_records": 2,
+                "persisted_records": 1,
+                "lost_records": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    check = check_call_efficiency_health(tmp_path)
+
+    assert check["status"] == "failed"
+    assert check["findings"][0]["detector"] == "call_efficiency_ledger_degraded"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "not-json",
+        json.dumps({"schema": "wrong", "status": "healthy", "lost_records": 0}),
+        json.dumps({"schema": "pico.call-efficiency.ledger-health.v1", "status": "healthy"}),
+        json.dumps(
+            {
+                "schema": "pico.call-efficiency.ledger-health.v1",
+                "status": "healthy",
+                "accepted_records": 2,
+                "persisted_records": 1,
+                "lost_records": 0,
+            }
+        ),
+        json.dumps(
+            {
+                "schema": "pico.call-efficiency.ledger-health.v1",
+                "status": "healthy",
+                "accepted_records": True,
+                "persisted_records": 1,
+                "lost_records": 0,
+            }
+        ),
+    ],
+)
+def test_call_efficiency_health_fails_closed_for_invalid_health_artifact(tmp_path, payload):
+    (tmp_path / "call-efficiency-ledger-health.json").write_text(payload, encoding="utf-8")
+
+    check = check_call_efficiency_health(tmp_path)
+
+    assert check["status"] == "failed"
+    assert check["findings"][0]["detector"] == "call_efficiency_ledger_health_invalid"
+
+
+def test_call_efficiency_health_accepts_consistent_terminal_counts(tmp_path):
+    (tmp_path / "call-efficiency-ledger-health.json").write_text(
+        json.dumps(
+            {
+                "schema": "pico.call-efficiency.ledger-health.v1",
+                "status": "healthy",
+                "accepted_records": 2,
+                "persisted_records": 2,
+                "lost_records": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    check = check_call_efficiency_health(tmp_path)
+
+    assert check["status"] == "passed"
 
 
 @pytest.mark.parametrize("missing", ["spans", "telemetry", "notices"])

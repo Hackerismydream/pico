@@ -49,6 +49,52 @@ _OPENROUTER_ATTRIBUTION: dict[str, str] = {
 }
 
 
+def _first_present(*values: Any) -> Any:
+    return next((value for value in values if value is not None), None)
+
+
+def _usage_field(value: Any, name: str) -> Any:
+    if isinstance(value, dict):
+        return value.get(name)
+    return getattr(value, name, None)
+
+
+def _normalize_usage_payload(usage: Any) -> dict[str, Any]:
+    normalized = {
+        name: value
+        for name in ("prompt_tokens", "completion_tokens", "total_tokens")
+        if (value := _usage_field(usage, name)) is not None
+    }
+    prompt_details = _usage_field(usage, "prompt_tokens_details")
+    completion_details = _usage_field(usage, "completion_tokens_details")
+    cache_read = _first_present(
+        _usage_field(usage, "prompt_cache_hit_tokens"),
+        _usage_field(usage, "cache_read_input_tokens"),
+        _usage_field(prompt_details, "cached_tokens"),
+        _usage_field(usage, "_cache_read_input_tokens"),
+    )
+    cache_write = _first_present(
+        _usage_field(usage, "cache_creation_input_tokens"),
+        _usage_field(prompt_details, "cache_write_tokens"),
+        _usage_field(prompt_details, "cache_creation_tokens"),
+        _usage_field(usage, "_cache_creation_input_tokens"),
+    )
+    cache_miss = _usage_field(usage, "prompt_cache_miss_tokens")
+    reasoning = _first_present(
+        _usage_field(usage, "reasoning_tokens"),
+        _usage_field(completion_details, "reasoning_tokens"),
+    )
+    for key, value in (
+        ("cache_read_input_tokens", cache_read),
+        ("cache_creation_input_tokens", cache_write),
+        ("cache_miss_input_tokens", cache_miss),
+        ("reasoning_tokens", reasoning),
+    ):
+        if value is not None:
+            normalized[key] = value
+    return normalized
+
+
 def _short_tool_id() -> str:
     """Generate a 9-char alphanumeric ID compatible with all providers (incl. Mistral)."""
     return "".join(secrets.choice(_ALNUM) for _ in range(9))
@@ -70,16 +116,15 @@ class LiteLLMProvider(LLMProvider):
         default_model: str = "anthropic/claude-opus-4-5",
         extra_headers: dict[str, str] | None = None,
         provider_name: str | None = None,
-        disable_auto_cache_control: bool = False,
+        disable_auto_cache_control: bool = True,
         extra_body: dict[str, Any] | None = None,
         transport_num_retries: int | None = None,
     ):
         super().__init__(api_key, api_base)
         self.default_model = default_model
         self.extra_headers = extra_headers or {}
-        # When a TokenStrategy (e.g. CacheOptimizer) handles cache_control
-        # placement upstream, turn this on so the provider doesn't also
-        # stamp its own breakpoints on top.
+        # CallEfficiency owns explicit request rewriting at the Runtime seam.
+        # False is retained only for historical experiment compatibility.
         self.disable_auto_cache_control = disable_auto_cache_control
         # Provider-specific request body extras forwarded verbatim to LiteLLM.
         # Common use: OpenRouter routing affinity to keep prompt-cache hits warm,
@@ -174,6 +219,9 @@ class LiteLLMProvider(LLMProvider):
             return self._gateway.supports_prompt_caching
         spec = find_by_model(model)
         return spec is not None and spec.supports_prompt_caching
+
+    def supports_explicit_cache_control(self, model: str) -> bool:
+        return self._supports_cache_control(model)
 
     def _apply_cache_control(
         self,
@@ -459,15 +507,24 @@ class LiteLLMProvider(LLMProvider):
         `self._gateway` / `find_by_model(...).name` if/when needed.
         """
         try:
+            usage = getattr(chunk, "usage", None)
+            usage_dict: dict[str, Any] | None = None
+            if usage is not None:
+                usage_dict = _normalize_usage_payload(usage)
             choices = getattr(chunk, "choices", None)
             if not choices:
-                return None
+                if usage_dict is None:
+                    return None
+                return StreamDelta(
+                    content=None,
+                    usage=usage_dict,
+                    model=getattr(chunk, "model", None) or None,
+                )
             delta_obj = getattr(choices[0], "delta", None)
             if delta_obj is None:
                 return None
             content = getattr(delta_obj, "content", None)
             tool_calls = getattr(delta_obj, "tool_calls", None)
-            usage = getattr(chunk, "usage", None)
             reasoning_content = getattr(delta_obj, "reasoning_content", None) or None
 
             tool_call_delta: dict[str, Any] | None = None
@@ -491,17 +548,6 @@ class LiteLLMProvider(LLMProvider):
                             }
                         )
                 tool_call_delta = {"tool_calls": serialized}
-
-            usage_dict: dict[str, Any] | None = None
-            if usage is not None:
-                try:
-                    usage_dict = usage.model_dump()
-                except AttributeError:
-                    usage_dict = {
-                        "prompt_tokens": getattr(usage, "prompt_tokens", None),
-                        "completion_tokens": getattr(usage, "completion_tokens", None),
-                        "total_tokens": getattr(usage, "total_tokens", None),
-                    }
 
             if content is None and tool_call_delta is None and usage_dict is None and reasoning_content is None:
                 return None
@@ -560,41 +606,7 @@ class LiteLLMProvider(LLMProvider):
                 )
             )
 
-        usage = {}
-        if hasattr(response, "usage") and response.usage:
-            usage = {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
-            }
-            # Cache token extraction. LiteLLM normalizes these across providers
-            # in different shapes depending on where the response came from:
-            #   - Anthropic native:  usage.cache_read_input_tokens / cache_creation_input_tokens
-            #   - LiteLLM internal:  usage._cache_read_input_tokens / _cache_creation_input_tokens
-            #   - OpenAI-style:      usage.prompt_tokens_details.cached_tokens (read only)
-            #   - OpenRouter:        usage.prompt_tokens_details.cached_tokens
-            #                        usage.prompt_tokens_details.cache_write_tokens
-            details = getattr(response.usage, "prompt_tokens_details", None)
-            deepseek_cache_read = getattr(response.usage, "prompt_cache_hit_tokens", None)
-            cache_read = (
-                deepseek_cache_read
-                if deepseek_cache_read is not None
-                else getattr(response.usage, "cache_read_input_tokens", None)
-                or getattr(response.usage, "_cache_read_input_tokens", None)
-                or (getattr(details, "cached_tokens", None) if details else None)
-            )
-            cache_write = (
-                getattr(response.usage, "cache_creation_input_tokens", None)
-                or getattr(response.usage, "_cache_creation_input_tokens", None)
-                or (getattr(details, "cache_write_tokens", None) if details else None)
-            )
-            cache_miss = getattr(response.usage, "prompt_cache_miss_tokens", None)
-            if cache_read is not None:
-                usage["cache_read_input_tokens"] = int(cache_read)
-            if cache_write is not None:
-                usage["cache_creation_input_tokens"] = int(cache_write)
-            if cache_miss is not None:
-                usage["cache_miss_input_tokens"] = int(cache_miss)
+        usage = _normalize_usage_payload(response.usage) if getattr(response, "usage", None) else {}
 
         reasoning_content = getattr(message, "reasoning_content", None) or None
         thinking_blocks = getattr(message, "thinking_blocks", None) or None

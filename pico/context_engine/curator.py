@@ -362,6 +362,10 @@ class CuratorAssembler:
             context_window_tokens,
         )
 
+    def replace_model(self, model: str) -> None:
+        self.model = model
+        self.trimmer.model = model
+
     @staticmethod
     def working_state_segment(working_state: str | None) -> str:
         """Render segment 6 text (``# Curator Working State``) or ``""``."""

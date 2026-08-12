@@ -86,6 +86,11 @@ class CuratorSegmentBuilder:
         )
         self._turn_ids: dict[str, str] = {}
 
+    def replace_model(self, model: str) -> None:
+        self.model = model
+        self.curator_model = self.config.curator_model or model
+        self.assembler.replace_model(model)
+
     async def build(self, ctx: AssemblyContext) -> Segment | None:
         if ctx.prefix is None:
             raise RuntimeError("CuratorSegmentBuilder requires ctx.prefix (phase B)")

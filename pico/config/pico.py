@@ -11,9 +11,8 @@ Design:
     - ``PicoConfig`` composes the base ``Config`` rather than subclassing
       it. This keeps the base schema untouched and lets us add / remove
       feature blocks without breaking the base loader.
-    - Each feature block has its own Pydantic model. Defaults are
-      conservative: every novel feature starts OFF so a fresh install behaves
-      like the base agent until features are enabled.
+    - Each feature block has its own Pydantic model. Behavior-changing paths
+      default off or observe-only so a fresh install does not rewrite requests.
 """
 
 from __future__ import annotations
@@ -98,7 +97,7 @@ class ContextConfig(_Base):
     """Relative path under workspace for lossless message archives."""
 
 
-# Feature 2 — Token Efficiency (TokenWise)
+# Feature 2 — Call Efficiency
 # ---------------------------------------------------------------------------
 
 
@@ -137,17 +136,20 @@ class ToolResultLifecycleConfig(_Base):
     summary_model: str = "gemini-2.5-flash"
 
 
-class TokenWiseConfig(_Base):
-    """TokenWise cross-cutting token/cost optimization."""
+class CallEfficiencyConfig(_Base):
+    """Provider-call cache, normalized usage, and estimated-cost policy."""
+
+    mode: Literal["off", "observe", "optimize"] = "observe"
+    """Observe by default; request rewriting requires explicit optimize mode."""
 
     enabled: bool = True
-    """Master switch. Disabling skips all strategies."""
+    """Legacy TokenWise switch. False maps to effective mode off."""
 
     usage_tracking: bool = True
     """Record token usage per call — cheap and informative; on by default."""
 
     cache_optimization: bool = True
-    """Apply Anthropic cache_control breakpoints. No-op on other providers."""
+    """Legacy TokenWise field. Canonical request behavior is selected by mode."""
 
     max_cache_breakpoints: int = 4
     """Anthropic API limit; kept configurable for forward-compat."""
@@ -158,6 +160,13 @@ class TokenWiseConfig(_Base):
     tool_result_lifecycle: ToolResultLifecycleConfig = Field(default_factory=ToolResultLifecycleConfig)
     smart_routing: SmartRoutingConfig = Field(default_factory=SmartRoutingConfig)
     budget: BudgetPolicyConfig = Field(default_factory=BudgetPolicyConfig)
+
+    @property
+    def effective_mode(self) -> Literal["off", "observe", "optimize"]:
+        return self.mode if self.enabled else "off"
+
+
+TokenWiseConfig = CallEfficiencyConfig
 
 
 # ---------------------------------------------------------------------------
@@ -539,7 +548,7 @@ class PicoConfig(_Base):
 
     # Feature blocks
     context: ContextConfig = Field(default_factory=ContextConfig)
-    token_wise: TokenWiseConfig = Field(default_factory=TokenWiseConfig)
+    call_efficiency: CallEfficiencyConfig = Field(default_factory=CallEfficiencyConfig)
     # SkillForge subsystem — its RRF routing policy nests at
     # ``skill_forge.router`` (config key ``skillForge.router``), no longer a
     # separate top-level ``skillRouter`` block.
@@ -555,10 +564,30 @@ class PicoConfig(_Base):
     # Kept as a nested field so we can round-trip YAML with the base loader.
     base: BaseConfig = Field(default_factory=BaseConfig)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_token_wise_block(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        migrated = dict(data)
+        legacy_camel = migrated.pop("tokenWise", None)
+        legacy_snake = migrated.pop("token_wise", None)
+        legacy = legacy_camel if legacy_camel is not None else legacy_snake
+        if "callEfficiency" in migrated:
+            migrated.pop("call_efficiency", None)
+        if "callEfficiency" not in migrated and "call_efficiency" not in migrated and legacy is not None:
+            migrated["callEfficiency"] = legacy
+        return migrated
+
+    @property
+    def token_wise(self) -> CallEfficiencyConfig:
+        """Compatibility view for historical code and frozen benchmarks."""
+        return self.call_efficiency
+
 
 def load_pico_config(config_path: Path | None = None) -> PicoConfig:
     """Load both the base Config and the Pico extension blocks
-    (``context`` / ``token_wise`` / ``skill_forge``) from
+    (``context`` / ``call_efficiency`` / ``skill_forge``) from
     the same JSON config file.
 
     Args:

@@ -16,10 +16,13 @@ import httpx
 import pytest
 
 from pico.agent.loop import AgentLoop
-from pico.providers.base import LLMProvider, LLMResponse
+from pico.call_efficiency import CallEfficiency, CallEfficiencyProvider
+from pico.providers.base import LLMProvider, LLMResponse, StreamDelta
 from pico.spine.message import ChatType, Source
 from pico.spine.turn import Origin, TurnRequest
 from pico.token_wise import pricing
+from pico.token_wise.base import TokenStrategy
+from pico.token_wise.registry import StrategyRegistry
 
 # The real fetch, captured before conftest's autouse guard stubs it to {}.
 _REAL_FETCH = pricing._fetch_openrouter_models
@@ -53,6 +56,17 @@ class UsageProvider(LLMProvider):
         return self._model
 
 
+class StreamingUsageProvider(UsageProvider):
+    async def chat_stream(self, messages, tools=None, model=None, **kwargs):
+        yield StreamDelta(content="ok", model=model or self._model)
+        yield StreamDelta(
+            content=None,
+            model=model or self._model,
+            usage=self._usage,
+            finish_reason="stop",
+        )
+
+
 @pytest.fixture
 def workspace():
     with tempfile.TemporaryDirectory() as td:
@@ -75,6 +89,88 @@ def _make_agent(workspace: Path, provider: LLMProvider, model: str, window: int)
         context_window_tokens=window,
         restrict_to_workspace=True,
     )
+
+
+class _UsageObserver(TokenStrategy):
+    name = "usage_observer"
+
+    def __init__(self) -> None:
+        self.snapshots = []
+
+    async def after_llm_call(self, response, usage) -> None:
+        self.snapshots.append(usage)
+
+
+@pytest.mark.asyncio
+async def test_active_call_efficiency_records_agent_loop_attempt_and_projects_legacy_usage(
+    workspace,
+) -> None:
+    model = "deepseek/deepseek-v4-flash"
+    provider = UsageProvider(model, prompt_tokens=100, completion_tokens=5)
+    controller = CallEfficiency(mode="observe", telemetry_dir=workspace, persist=False)
+    observer = _UsageObserver()
+    agent = AgentLoop(
+        provider=provider,
+        workspace=workspace,
+        model=model,
+        max_iterations=2,
+        context_window_tokens=40000,
+        restrict_to_workspace=True,
+        call_efficiency=controller,
+        strategies=StrategyRegistry([observer]),
+    )
+
+    await agent._process_message(
+        TurnRequest(
+            origin=Origin.USER,
+            source=Source(channel="test", chat_id="c1", sender_id="user", chat_type=ChatType.DM),
+            text="hi",
+        ),
+        session_key="s1",
+    )
+
+    assert len(controller.records) == 1
+    assert controller.records[0].requested_model == model
+    assert controller.records[0].attempted_model == model
+    assert controller.records[0].session_key == "s1"
+    assert observer.snapshots[0].input_tokens == 100
+    assert observer.snapshots[0].estimated_cost_usd == controller.records[0].estimated_cost_usd
+
+
+@pytest.mark.asyncio
+async def test_streaming_runtime_records_exactly_one_provider_attempt(workspace) -> None:
+    model = "deepseek/deepseek-v4-flash"
+    delegate = StreamingUsageProvider(model, prompt_tokens=100, completion_tokens=5)
+    controller = CallEfficiency(mode="observe", telemetry_dir=workspace, persist=False)
+    provider = CallEfficiencyProvider(delegate, controller)
+    agent = AgentLoop(
+        provider=provider,
+        workspace=workspace,
+        model=model,
+        max_iterations=2,
+        context_window_tokens=40000,
+        restrict_to_workspace=True,
+        call_efficiency=controller,
+    )
+
+    streamed: list[str] = []
+
+    async def on_delta(text: str) -> None:
+        streamed.append(text)
+
+    await agent._process_message(
+        TurnRequest(
+            origin=Origin.USER,
+            source=Source(channel="test", chat_id="c1", sender_id="user", chat_type=ChatType.DM),
+            text="hi",
+        ),
+        session_key="s1",
+        on_token_delta=on_delta,
+    )
+
+    assert streamed == ["ok"]
+    assert len(controller.records) == 1
+    assert controller.records[0].actual_model == model
 
 
 @pytest.mark.asyncio
@@ -173,6 +269,7 @@ async def test_usage_sink_context_max_from_live_openrouter(workspace, monkeypatc
         return real_client(*args, **kwargs)
 
     monkeypatch.setattr(pricing, "_fetch_openrouter_models", _REAL_FETCH)
+    monkeypatch.setattr(pricing, "_ALLOW_NETWORK_CATALOG", True)
     monkeypatch.setattr(pricing.httpx, "Client", client_factory)
     monkeypatch.setattr(pricing, "_OPENROUTER_CACHE_TIME", 0.0)
 

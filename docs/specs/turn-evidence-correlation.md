@@ -116,26 +116,37 @@ are not mistaken for Turn outcomes:
 
 ## 4. Usage join
 
-`UsageSnapshot` gains two optional fields, defaulting to `None`:
+CallEfficiency `CallRecord` and historical `UsageSnapshot` rows carry two
+optional fields, defaulting to `None`:
 
 | field | source |
 |---|---|
-| `trace_id` | `trace.current().trace_id` at `AgentLoop._build_usage_snapshot` |
-| `turn_span_id` | `trace.current().parent_span_id` — the enclosing Turn span |
+| `trace_id` | captured from `trace.current().trace_id` before the Provider attempt |
+| `turn_span_id` | captured before the Provider attempt from the enclosing Turn span |
 
-`UsageTracker` serializes the dataclass with `asdict`, so every row in
-`{telemetry_dir}/usage-YYYY-MM-DD.jsonl` gains the two keys with no writer
-change. Rows written before this change, or written with tracing disabled,
-carry `null` and are reported as unjoinable rather than silently dropped.
+CallEfficiency writes `call-efficiency-YYYY-MM-DD.jsonl`; historical
+`UsageTracker` writes `usage-YYYY-MM-DD.jsonl`. V-TE0 reads both schemas. Rows
+written before lineage existed, or written with tracing disabled, carry `null`
+and are reported as unjoinable rather than silently dropped.
 
-**Granularity boundary.** The join is per Turn, not per model call. At the
-point the snapshot is built, the `llm.call` span has already closed, so the
-active context is the enclosing Turn span. Per-call token and cost accounting
-already lives on the `llm.call` span (`llm.usage.*`, `llm.call_id`); the usage
-JSONL is the durable per-call ledger and joins up to the Turn. Forcing a
-per-call key into the ledger would mean either reopening a closed span or
-threading a call id through the provider return value; neither is worth the
-coupling for a join the span log already provides.
+**Granularity boundary.** The join is per Turn, not per model call. The Turn
+identity is captured before entering retry/fallback dispatch so attempt-level
+observers cannot accidentally record the active `llm.call` span as the Turn.
+The `llm.call` span is the logical retry/fallback dispatch envelope and reports
+the final response. The Call Record JSONL is finer-grained: each failed retry
+and fallback attempt is a separate row, all joined to the enclosing Turn. There
+is intentionally no one-to-one mapping between an `llm.call` span and a Call
+Record.
+
+Persistence failure is logged, written to a machine-readable ledger-health
+artifact, and surfaced again at Runtime shutdown without failing the completed
+Turn. V-TE0 fails on a known degraded ledger and validates the rows present; it
+does not independently observe the Provider transport and therefore cannot
+prove cardinality completeness when no degradation was detected. Clean shutdown
+writes a terminal healthy artifact; a missing artifact makes the check
+inconclusive rather than passing open. Multiple Runtime ledgers aggregate
+monotonically, and V-TE0 validates both terminal counts and their per-ledger
+sum before accepting a healthy state.
 
 `TurnOutcome.usage` on `TurnEnded` is unchanged: it remains the last model
 call's counts, the shape the TUI wire pins. Nothing in this document alters it.
