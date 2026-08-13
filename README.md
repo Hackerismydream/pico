@@ -134,6 +134,9 @@ the channel connected. A config write is not a live send/receive result.
 
 Normal startup keeps Pico state outside the repository. Myna onboarding shows
 its planned writes before consent and does not import history or install Hooks.
+Executable Plugins come only from Pico's bundled set, operator-managed
+`~/.pico/plugins/`, and installed `pico.plugins` entry points. A checkout's
+`.pico/plugins/` directory is not an automatic startup source.
 For a complete operational handoff, read the
 [Myna guide](docs/onboarding/memory.zh-CN.md) and
 [troubleshooting guide](docs/onboarding/troubleshooting.md).

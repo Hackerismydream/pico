@@ -1,17 +1,13 @@
-"""Plugin registry — turns discovered manifests into callable factories.
+"""Plugin registry - admits manifests and resolves factories on demand.
 
 Two responsibilities, split deliberately:
 
-1. **Activation** (:meth:`activate`) — for each discovered plugin
-   admitted by the user's config (``plugins.disabled`` opt-out list +
-   ``enabled_by_default`` flag), resolve each contributed factory
-   reference (``module.path:callable``) into an actual callable and
-   record it in the factory table. This is where plugin Python code is
-   first imported — manifests up to this point have been pure data.
+1. **Activation** (:meth:`activate`) admits manifests according to config,
+   validates contribution conflicts, and records unresolved factory refs. It
+   does not import plugin Python or widen ``sys.path``.
 
-2. **Lookup** (:meth:`get_memory_backend_factory` etc.) — synchronous
-   lookups for the eventual ``build_memory_backend`` entry point
-   landing in PG-3.
+2. **Build** resolves and caches only the factory for a backend or Tool that a
+   host actually constructs.
 
 Across-manifest name conflicts (two activated plugins both contributing
 the same memory backend name) raise :class:`PluginConflictError` -
@@ -67,12 +63,13 @@ class PluginNotFoundError(PluginError):
 
 @dataclass(frozen=True)
 class _ActivatedFactory:
-    """Resolved factory + provenance for diagnostics."""
+    """Unresolved factory reference plus provenance for diagnostics."""
 
     plugin_id: str
     name: str
-    factory: MemoryBackendFactory
     factory_ref: str
+    source: Source
+    location: Path | None
 
 
 class PluginRegistry:
@@ -82,6 +79,7 @@ class PluginRegistry:
         self._manifests: dict[str, PluginManifest] = {}
         self._memory_backends: dict[str, _ActivatedFactory] = {}
         self._tools: dict[str, _ActivatedFactory] = {}
+        self._resolved_factories: dict[tuple[str, str], MemoryBackendFactory] = {}
 
     # ── 激活 ─────────────────────────────────────────────────────
 
@@ -91,7 +89,7 @@ class PluginRegistry:
         *,
         disabled: frozenset[str] = frozenset(),
     ) -> None:
-        """Resolve and register every contribution from every admitted plugin.
+        """Admit manifests without importing Plugin Python code.
 
         A plugin is admitted iff:
 
@@ -125,11 +123,6 @@ class PluginRegistry:
             raise PluginConflictError(
                 f"plugin id {mf.id!r} activated twice",
             )
-        # 调用顺序敏感：基于文件的 USER/PROJECT 插件把工厂模块放在插件目录中，
-        # 该目录不会自动加入 sys.path，因此必须在下方 _resolve_factory 执行前
-        # 先使模块可导入。
-        self._ensure_importable(source, location)
-
         pending_memory_backends: dict[str, _ActivatedFactory] = {}
         pending_tools: dict[str, _ActivatedFactory] = {}
 
@@ -139,12 +132,12 @@ class PluginRegistry:
                 raise PluginConflictError(
                     f"memory_backend {contribution.name!r} contributed by both {prev.plugin_id!r} and {mf.id!r}",
                 )
-            factory = self._resolve_factory(mf.id, contribution.factory)
             pending_memory_backends[contribution.name] = _ActivatedFactory(
                 plugin_id=mf.id,
                 name=contribution.name,
-                factory=factory,
                 factory_ref=contribution.factory,
+                source=source,
+                location=location,
             )
 
         for tool in mf.contributes.tools:
@@ -153,12 +146,12 @@ class PluginRegistry:
                 raise PluginConflictError(
                     f"tool {tool.name!r} contributed by both {prev.plugin_id!r} and {mf.id!r}",
                 )
-            factory = self._resolve_factory(mf.id, tool.factory)
             pending_tools[tool.name] = _ActivatedFactory(
                 plugin_id=mf.id,
                 name=tool.name,
-                factory=factory,
                 factory_ref=tool.factory,
+                source=source,
+                location=location,
             )
 
         self._manifests[mf.id] = mf
@@ -171,20 +164,11 @@ class PluginRegistry:
 
     @staticmethod
     def _ensure_importable(source: Source, location: Path | None) -> None:
-        """Put a file-based plugin's directory on ``sys.path`` so its
-        factory module imports.
+        """Expose a file-based Plugin directory immediately before import.
 
-        Only USER / PROJECT plugins need this: their Python package lives
-        in the plugin directory (``<root>/<id>/``) that nothing else adds
-        to the path. BUNDLED code ships inside the Pico package and
-        ENTRY_POINTS plugins are installed into site-packages, so both
-        already import without help.
-
-        Appended (not prepended) so an installed package of the same name
-        keeps priority, and guarded so repeated activations don't grow the
-        path. This widens the process-wide import surface for the lifetime
-        of the process: every module under that directory becomes
-        importable, not just the referenced factory.
+        USER and explicit PROJECT Plugins may ship code next to the manifest.
+        Their directory is appended only when a caller resolves a contributed
+        factory. Automatic project discovery is disabled at the host boundary.
         """
         if source not in (Source.USER, Source.PROJECT) or location is None:
             return
@@ -218,6 +202,20 @@ class PluginRegistry:
             )
         return obj  # type: ignore[return-value]
 
+    def _get_factory(
+        self,
+        kind: str,
+        entry: _ActivatedFactory,
+    ) -> MemoryBackendFactory:
+        key = (kind, entry.name)
+        cached = self._resolved_factories.get(key)
+        if cached is not None:
+            return cached
+        self._ensure_importable(entry.source, entry.location)
+        factory = self._resolve_factory(entry.plugin_id, entry.factory_ref)
+        self._resolved_factories[key] = factory
+        return factory
+
     # ── 内省 ─────────────────────────────────────────────────────
 
     def activated_ids(self) -> list[str]:
@@ -229,13 +227,14 @@ class PluginRegistry:
         return sorted(self._memory_backends)
 
     def get_memory_backend_factory(self, name: str) -> MemoryBackendFactory:
-        """Look up the factory for ``name``. Raises ``PluginNotFoundError``."""
+        """Resolve the backend factory for ``name`` on first use."""
         try:
-            return self._memory_backends[name].factory
+            entry = self._memory_backends[name]
         except KeyError as e:
             raise PluginNotFoundError(
                 f"no memory_backend named {name!r} (registered: {self.memory_backend_names()})",
             ) from e
+        return self._get_factory("memory_backend", entry)
 
     def memory_backend_identity(self, name: str) -> tuple[str, str]:
         """Return the owning plugin id and declared factory reference."""
@@ -257,13 +256,14 @@ class PluginRegistry:
         return entry.plugin_id if entry is not None else None
 
     def get_tool_factory(self, name: str) -> ToolFactory:
-        """Look up the factory for tool ``name``. Raises ``PluginNotFoundError``."""
+        """Resolve the Tool factory for ``name`` on first use."""
         try:
-            return self._tools[name].factory
+            entry = self._tools[name]
         except KeyError as e:
             raise PluginNotFoundError(
                 f"no tool named {name!r} (registered: {self.tool_names()})",
             ) from e
+        return self._get_factory("tool", entry)
 
     def manifest_for(self, plugin_id: str) -> PluginManifest | None:
         """Return the manifest of an activated plugin, or None."""

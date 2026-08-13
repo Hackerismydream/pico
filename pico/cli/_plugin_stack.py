@@ -4,8 +4,8 @@ Two functions that bridge the gap between the runtime config (user-facing
 settings under ``plugins`` / ``memory``) and the runtime objects
 AgentLoop expects (a ready-to-use :class:`MemoryBackend` instance):
 
-- :func:`build_plugin_registry` — discover all installed plugins
-  (bundled + user-level + project-level + pip entry points), filter
+- :func:`build_plugin_registry` — discover all trusted plugins
+  (bundled + user-level + installed entry points), filter
   by ``config.plugins.disabled``, return an activated registry.
 - :func:`maybe_build_memory_backend` — resolve ``config.memory.backend``
   to a concrete :class:`MemoryBackend` instance via the registry, or
@@ -35,7 +35,7 @@ from pico.plugin import (
     PluginRegistry,
     ServiceLocator,
 )
-from pico.product import get_product_home, get_workspace_state_dir
+from pico.product import get_product_home
 
 if TYPE_CHECKING:
     from pico.config.pico import PicoConfig
@@ -102,22 +102,24 @@ class _MynaBackendGuard:
 
 
 def plugin_discovery_sources() -> dict:
-    """Resolve the four discovery-source locations the host scans.
+    """Resolve the trusted discovery sources scanned by Pico hosts.
 
     Shared by :func:`build_plugin_registry` (live boot) and the
     ``pico plugins`` CLI command so both see the same set:
 
-    - bundled — ``pico/plugin/memory/`` inside the package.
-    - user    - ``~/.pico/plugins/``.
-    - project - ``./.pico/plugins/``.
-    - entry_points - the ``pico.plugins`` group.
+    - bundled - ``pico/plugin/memory/`` inside the package;
+    - user - operator-managed ``~/.pico/plugins/``;
+    - entry points - installed distributions in the ``pico.plugins`` group.
+
+    ``project_dir`` remains explicit and disabled. A checkout must not gain an
+    executable startup hook merely by containing ``.pico/plugins``.
     """
     import pico
 
     return {
         "bundled_dir": Path(pico.__path__[0]) / "plugin" / "memory",
         "user_dir": get_product_home() / "plugins",
-        "project_dir": get_workspace_state_dir(Path.cwd()) / "plugins",
+        "project_dir": None,
         "entry_points_group": "pico.plugins",
     }
 
@@ -131,15 +133,17 @@ def build_plugin_registry(
     :func:`assemble_plugin_registry`. Activation errors propagate so a
     configured backend cannot silently disappear.
 
-    Discovery spans four sources (priority bundled > user > project >
+    Discovery spans three trusted sources (priority bundled > user >
     entry_points):
 
     - **bundled** — ``pico/plugin/memory/<id>/`` shipped inside the
       Pico package.
     - **user** - ``~/.pico/plugins/<id>/`` drop-in directories.
-    - **project** - ``./.pico/plugins/<id>/`` drop-in directories.
     - **entry_points** - the ``pico.plugins`` group, where
       third-party pip-installed plugins register their factories.
+
+    Low-level callers can still opt into project manifests explicitly with
+    :class:`PluginDiscovery(project_dir=...)`.
     """
     disabled = frozenset(config.plugins.disabled)
     discovered = PluginDiscovery(**plugin_discovery_sources()).discover()

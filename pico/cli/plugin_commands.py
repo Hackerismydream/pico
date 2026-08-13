@@ -6,17 +6,16 @@ which memory backend the current config selects.
 
 Use cases:
 
-- "Where did this plugin come from?" — the command lists discovery
-  sources (bundled / user / project / entry_points) so the user can see
+- "Where did this plugin come from?" — the command lists trusted discovery
+  sources (bundled / user / entry_points) so the user can see
   where each plugin was resolved from.
 - "Why isn't my plugin loading?" — disabled / failed-to-activate
   entries surface here.
 - "Which backend is actually active?" — shows the
   ``config.memory.backend`` selection resolved against the registry.
 
-This is a **read-only** command — no plugin code is invoked beyond
-manifest parsing. ``MemoryBackend.start()`` is not awaited, so no
-network / disk I/O happens against the plugin's runtime systems.
+This is a **read-only** command: discovery and admission parse manifests but do
+not resolve factories or mutate ``sys.path``.
 """
 
 from __future__ import annotations
@@ -62,7 +61,7 @@ def register(app: typer.Typer) -> None:
         ec_config = _load_ec_config(config_path)
 
         # 将发现与激活分开，使表格不仅显示活跃集合，也能显示被遮蔽（低优先级）和已禁用插件。
-        # 扫描来源与实际启动时的四个来源相同。
+        # 扫描来源与实际启动时的受信来源相同。
         discovery = PluginDiscovery(**plugin_discovery_sources())
         discovered = discovery.discover()
 

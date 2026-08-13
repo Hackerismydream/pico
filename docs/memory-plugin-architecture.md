@@ -40,14 +40,16 @@ Pico discovers Myna through installed distribution metadata and the public
 
 Discovery reads the manifest from the owning distribution file inventory. It
 checks distribution name and version against the manifest and checks the
-manifest's Pico version interval before importing the factory module. Invalid
-identity or compatibility fails closed with remediation. Registry activation
-commits no manifest or contribution until every declared factory resolves.
+manifest's Pico version interval without importing the factory module. Invalid
+identity or compatibility fails closed with remediation. Registry admission
+validates contribution conflicts and records unresolved factory references;
+the selected backend factory resolves only when Pico constructs that backend.
 
-The entry-point package is import-cheap. Discovery and backend activation do
-not load Myna's App module. Calling Myna's public `descriptor()` is the point
-where the App descriptor and its consent-bound setup contract load. Pico does
-not embed the Myna Local App or Hub in this integration.
+Discovery, admission, and `pico plugins` do not import the Myna package. Backend
+construction imports only the declared public factory. Calling Myna's public
+`descriptor()` separately is the point where the App descriptor and its
+consent-bound setup contract load. Pico does not embed the Myna Local App or
+Hub in this integration.
 
 ## Configuration and first use
 
