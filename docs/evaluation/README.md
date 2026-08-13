@@ -357,6 +357,7 @@ claim a security boundary that direct host execution does not provide.
 
 | Document | Purpose |
 | --- | --- |
+| [Candidate evidence index](candidate-evidence-index.md) | Current candidate hashes, durable Myna artifacts, and explicit TokenWise availability gaps |
 | [TokenWise cost experiment](tokenwise-cost.md) | Four-arm cache-policy experiment, workload matrix, metric formulas, and positive-claim gates |
 | [PicoBench Ship-1 contract](picobench-ship-1.md) | Task packs, variants, metrics, statistics, artifacts, and Gates |
 | [Ship-1 delivery analysis](../plan/analysis/picobench-ship-1.md) | Module decomposition, integration enumeration, dependency graph, and task split |

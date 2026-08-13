@@ -2,8 +2,9 @@
 
 > Current implementation checkpoint: PicoBench Ship-1 and its held-out semantic
 > v2 addendum, the Issue #21 V-LF closure recorded on 2026-07-27, and the
-> current Myna public-seam integration, plus historical Issue #65 and Issue #70
-> CodeCairn evidence. Issue #79 task-effect v2 calibration is complete,
+> current Myna public-seam integration and its 2026-08-13 deterministic formal
+> evidence, plus historical Issue #65 and Issue #70 CodeCairn evidence. Issue
+> #79 task-effect v2 calibration is complete,
 > measurement-invalid, and blocked before its formal matrix. Campaign evidence
 > remains bound to the source commits named below.
 > Package metadata: `pico-harness 0.1.7`, Development Status Alpha.
@@ -53,8 +54,12 @@ coherent Runtime path while deliberately limiting unrelated product breadth:
 - Pico selects the separately installed Myna Plugin in fresh config, preserves
   Local Skills and the generic Memory Plugin contract, and keeps `null` as the
   explicit Memory-off setting. Pico carries no Myna source or local-path
-  dependency. The installed composition Gate is technical contract evidence;
-  no Myna task-effect, performance, or production-success claim exists.
+  dependency. The current installed-candidate formal Pack completed 144/144
+  deterministic Trials and 72/72 valid Pairs with both arms passing 72/72. The
+  Myna arm reduced repository reads by 50.0 percent on this frozen Pack, with a
+  task-clustered 95 percent interval of 29.166667 to 70.833333 percent. This is
+  deterministic efficiency evidence, not general capability, production
+  performance, or real-Agent evidence.
 - V-R0 exists as a fail-closed release driver, but no complete V-R0 result has
   passed.
 - Evolver has a public Beta workflow, deterministic V-E0 coverage, and a
@@ -62,8 +67,9 @@ coherent Runtime path while deliberately limiting unrelated product breadth:
   small-real run.
 
 The remaining v1 release boundary includes a real small-real Evolution Run
-verdict, formal availability of the compatible Myna artifact, and one clean,
-commit-bound full V-R0 run followed by versioning and release.
+verdict and one clean, commit-bound full V-R0 run followed by versioning and
+release. A compatible Myna wheel is now available as a private prerelease, but
+the full V-R0 run has not consumed it.
 
 ## Pico Harness v0.1 portfolio milestone
 
@@ -148,7 +154,7 @@ Counts and live claims below remain bound to the named clean source commit.
 | CLI, TUI, and Gateway Runtime parity | PR #54 consumed a fresh V-P0 wheel: deterministic host Gate 1 passed; live DeepSeek V-LP 1 passed | Implemented; live Provider evidence is current only for PR #54 |
 | Spine scheduling and Turn lifecycle | PR #51 V-TE0; PR #56 retained suite | Implemented and deterministically verified |
 | Session and Context continuity | retained deterministic tests | Implemented; long-term backend state remains a separate durability domain |
-| Myna Memory integration | installed Pico plus Myna composition verifier with pinned wheels | Public Plugin identity, compatibility, lifecycle, store/recall, fresh-process provenance, abstention, and fail-closed paths are contract-verified; no task-effect, performance, or production-success claim exists |
+| Myna Memory integration | installed composition Gate plus the deterministic formal candidate at Pico `7c9655a` and Myna `924436f5`; see the [candidate evidence index](evaluation/candidate-evidence-index.md) | Public Plugin identity, compatibility, lifecycle, store/recall, fresh-process provenance, abstention, and fail-closed paths are contract-verified. The formal Pack completed 144/144 Trials and 72/72 valid Pairs, with both arms passing and repository reads reduced by 50.0 percent in the Myna arm. This is frozen-workload deterministic efficiency evidence only; capability uplift was zero and the paid real-Agent subtrack has not run. |
 | Historical CodeCairn Memory integration | Issue #65 implementation plus Issue #70 experiment `1c5496edfaa08212635f6218f9aaa55c3e942fcd1e79203a11a6b8c4d9b94623` | Historical evidence bound to the recorded Pico and CodeCairn artifacts; not evidence about Myna |
 | Historical EverOS continuity | PR #47 V-O0: 134 deterministic checks plus one required live EverOS check | Historical evidence for PR #47 only; not a current backend claim |
 | Local Skills | retained deterministic tests with Myna selected and Memory off | Implemented independently of Memory; there is no remote marketplace |
@@ -190,6 +196,15 @@ activation policy before changing that behavior.
 
 Current checkpoint evidence:
 
+- Myna deterministic task-effect formal at Pico `7c9655a` and Myna
+  `924436f5`: 144/144 Trials, 72/72 valid Pairs, both arms 72/72 task passes,
+  50.0 percent repository-read reduction with task-clustered 95 percent
+  interval 29.166667 to 70.833333 percent, and zero stale or cross-repository
+  Memory events. Exact wheels and raw summaries are retained in the private
+  Myna `v0.1.1rc3` prerelease and bound in the
+  [candidate evidence index](evaluation/candidate-evidence-index.md). The
+  deterministic efficiency claim is eligible; capability uplift is zero and
+  the real-Agent subtrack has no run.
 - Issue #70 CodeCairn formal experiment
   `1c5496edfaa08212635f6218f9aaa55c3e942fcd1e79203a11a6b8c4d9b94623`
   at Pico `5318daa` and CodeCairn `a501fe2`: 32/32 terminal Trials,
@@ -256,9 +271,10 @@ mechanism that must aggregate those layers on one clean release commit.
    failure is not a valid product result.
 2. **There is no release candidate.** The V-R0 driver exists, but the complete
    Gate has not passed on one clean commit. There is no Pico version bump, tag,
-   release artifact set, or enabled publication workflow. Its
-   `memory_continuity` layer remains inconclusive until the compatible Myna
-   distribution is formally available. Issue #24 owns the release closure.
+   release artifact set, or enabled publication workflow. A compatible Myna
+   wheel is now available from a private prerelease, but `memory_continuity`
+   remains inconclusive until a complete V-R0 run consumes and verifies that
+   exact artifact. Issue #24 owns the release closure.
 
 ### P1: implementation and architecture debt
 
