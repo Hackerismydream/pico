@@ -27,6 +27,7 @@ from benchmarks.picobench.packs.myna_task_effect.campaign import (
     load_task_corpus,
     run_campaign,
 )
+from benchmarks.picobench.packs.myna_task_effect.runner import InstalledTrialExecutor
 from benchmarks.picobench.packs.myna_task_effect.worker import run_turn
 from pico.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
@@ -703,7 +704,7 @@ def test_arm_order_is_deterministic_balanced_and_changes_only_memory_backend() -
 def test_report_qualifies_efficiency_uplift_without_inventing_success_uplift() -> None:
     corpus = load_task_corpus(TASK_ROOT / "formal.json")
     trials: list[TrialRecord] = []
-    lifecycle = ("start", "store", "stop", "start", "recall", "store", "stop")
+    lifecycle = AGENT_LIFECYCLE
     for task in corpus.tasks:
         trials.extend(
             [
@@ -792,7 +793,7 @@ def test_campaign_persists_candidate_bound_evidence_and_resumes(tmp_path: Path) 
             repository_reads=(0 if treatment and task.task_class in {"fact", "experience"} else 1),
             tool_calls=(1 if treatment and task.task_class in {"fact", "experience"} else 2),
             memory_hits=int(treatment and task.task_class in {"fact", "experience"}),
-            myna_operations=(("start", "store", "stop", "start", "recall", "store", "stop") if treatment else ()),
+            myna_operations=(AGENT_LIFECYCLE if treatment else ()),
         )
 
     config = CampaignConfig(
@@ -821,6 +822,56 @@ def test_campaign_persists_candidate_bound_evidence_and_resumes(tmp_path: Path) 
     (output / "aggregate.json").write_text("{}\n", encoding="utf-8")
     with pytest.raises(ValueError, match="existing evidence digest changed"):
         run_campaign(config, trial_executor=execute)
+
+
+def test_installed_runner_preserves_worker_failure_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task = load_task_corpus(TASK_ROOT / "calibration.json").tasks[0]
+    pico_wheel = tmp_path / "pico.whl"
+    myna_wheel = tmp_path / "myna.whl"
+    pico_wheel.write_bytes(b"pico-wheel")
+    myna_wheel.write_bytes(b"myna-wheel")
+    config = CampaignConfig(
+        corpus_path=TASK_ROOT / "calibration.json",
+        output_root=tmp_path / "evidence",
+        pico_wheel=pico_wheel,
+        myna_wheel=myna_wheel,
+        pico_commit="a" * 40,
+        myna_commit="b" * 40,
+        repetitions=1,
+    )
+    executor = object.__new__(InstalledTrialExecutor)
+    executor._root = tmp_path / "executor"
+    monkeypatch.setattr(executor, "_run", lambda *_args, **_kwargs: None)
+    receipt = {
+        "failure_class": "infrastructure",
+        "failure_receipt": {
+            "failure_class": "infrastructure",
+            "phase": "runtime_assembly",
+            "error": {
+                "code": "PluginIdentityError",
+                "message": "official manifest identity mismatch",
+                "type": "PluginIdentityError",
+            },
+        },
+        "memory_operation_receipt": [],
+        "myna_operations": [],
+        "terminal": "failed",
+        "tool_events": [],
+    }
+    monkeypatch.setattr(executor, "_worker_call", lambda *_args, **_kwargs: receipt)
+
+    record = executor(task, 0, ARM_MEMORY_OFF, config)
+
+    assert record.status == "infrastructure_failure"
+    assert record.findings == (
+        "failure_class:infrastructure",
+        "runtime_assembly_failed:PluginIdentityError",
+    )
+    assert "turn_not_completed" not in record.findings
+    assert "result_artifact_mismatch" not in record.findings
 
 
 @pytest.mark.asyncio

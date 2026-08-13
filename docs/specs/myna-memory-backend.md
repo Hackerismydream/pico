@@ -26,7 +26,7 @@ entry point:        myna = myna.integrations.pico
 manifest id:        myna-memory
 compatible Pico:    >=0.1,<0.2
 backend:            myna
-factory:            myna.integrations.pico.backend:make_backend
+factory:            myna.integrations.pico:make_backend
 ```
 
 Pico reads `pico-plugin.toml` from the entry point's owning distribution. The

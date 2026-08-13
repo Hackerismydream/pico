@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 _MYNA_PLUGIN_ID = "myna-memory"
 _MYNA_BACKEND = "myna"
-_MYNA_FACTORY = "myna.integrations.pico.backend:make_backend"
+_MYNA_FACTORY = "myna.integrations.pico:make_backend"
 
 
 @dataclass(frozen=True)

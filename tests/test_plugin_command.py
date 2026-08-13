@@ -36,7 +36,7 @@ def _installed_myna(monkeypatch: pytest.MonkeyPatch):
                 memory_backends=[
                     MemoryBackendContribution(
                         name="myna",
-                        factory="myna.integrations.pico.backend:make_backend",
+                        factory="myna.integrations.pico:make_backend",
                     )
                 ]
             ),
@@ -137,4 +137,4 @@ def test_verbose_shows_myna_factory(tmp_path: Path) -> None:
     result = _invoke(args, tmp_path)
 
     assert result.exit_code == 0, result.stdout
-    assert "myna.integrations.pico.backend:make_backend" in result.stdout
+    assert "myna.integrations.pico:make_backend" in result.stdout

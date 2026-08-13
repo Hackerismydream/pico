@@ -224,6 +224,7 @@ def build_report(
     axis_valid = not duplicate_trials and not unknown_trials
     expected_lifecycle = (
         "start",
+        "recall",
         "store",
         "stop",
         "start",

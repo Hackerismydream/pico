@@ -110,7 +110,7 @@ class TestEntryPointIdentity:
 
                 [[plugin.contributes.memory_backends]]
                 name = "myna"
-                factory = "myna.integrations.pico.backend:make_backend"
+                factory = "myna.integrations.pico:make_backend"
             """),
             encoding="utf-8",
         )
