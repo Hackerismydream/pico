@@ -249,7 +249,7 @@ async def test_formal_campaign_persists_each_trial_and_rebuilds_on_resume(tmp_pa
         call_efficiency_record = {
             "outcome": "success",
             "requested_model": config.model,
-            "actual_model": config.model,
+            "actual_model": "deepseek-v4-flash",
             "usage": {
                 "complete": True,
                 "input_tokens": 1000,
