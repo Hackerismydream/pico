@@ -1,7 +1,7 @@
 # Tracing Runtime overhead
 
-> **Status: implemented campaign, no formal result recorded here.** Generated
-> evidence remains outside Git and owns every measured metric.
+> **Status: formal run completed on 2026-08-13.** Generated evidence remains
+> outside Git; this page records its candidate binding and digests.
 
 This PicoBench track measures the local Runtime tax of Pico's in-tree Tracing.
 It does not test an external Provider or claim production latency.
@@ -33,6 +33,27 @@ workload, Pair count, and bootstrap settings. Per-block receipts retain raw
 Turn latency and terminal outcomes plus SHA-256 receipts for every trace file.
 The offline verifier rebuilds `raw-outcomes.jsonl`, `aggregate.json`,
 `claim-eligibility.json`, `verifier-report.json`, and `inventory.json`.
+
+## Result
+
+All 1,000 pairs and 2,000 Turns were valid. The enabled arm retained exactly
+1,000 traces and 6,000 spans with 100 percent correlation; the disabled arm
+emitted zero trace bytes. Tracing wrote 25,717.2 bytes per enabled Turn.
+
+| Metric | Tracing off | Tracing on |
+| --- | ---: | ---: |
+| P50 Turn latency | 2.061208 ms | 4.284334 ms |
+| P95 Turn latency | 2.912292 ms | 5.157333 ms |
+
+The observed P95 tax was 2.245041 ms, or 77.0885 percent relative to the small
+local baseline. The block-clustered relative P95 interval was -9.9969 to
+101.9378 percent, so the result does not support a stable relative-overhead
+claim. It does support exact correlation and an absolute local tax estimate.
+
+The aggregate SHA-256 is
+`29b855459d6039f7630f410a623875a37a7e454f4a978aae265330fb023cec65`;
+the complete manifest and inventory identities are in the
+[candidate evidence index](candidate-evidence-index.md).
 
 ## Operator commands
 

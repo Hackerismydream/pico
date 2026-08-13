@@ -1,13 +1,12 @@
 # DeepSeek TokenWise cost experiment
 
-> **Status: completed on 2026-08-06.** The frozen DeepSeek V4 Flash campaign
-> completed 36 valid Comparison Blocks and 72 Trials. All claim gates passed.
+> **Status: rerun through current CallEfficiency on 2026-08-13.** The frozen
+> DeepSeek V4 Flash campaign completed 36 valid Comparison Blocks, 72 Trials,
+> and 504 real Provider calls. All Claim Gates passed.
 
-This page keeps the historical TokenWise experiment name and schemas. The
-active Runtime subsystem is now CallEfficiency. Shared Runtime activation and
-this live campaign are separate evidence: the current implementation has been
-verified deterministically and can replay this report offline, but no paid
-post-integration DeepSeek, OpenAI, or Anthropic canary has been run.
+This page keeps the historical TokenWise experiment name for continuity. The
+active Runtime subsystem is CallEfficiency, and the current campaign crossed
+the shared Runtime Assembly and retained one Call Record per physical attempt.
 
 ## Question
 
@@ -84,13 +83,14 @@ million cache-hit input tokens, and USD 0.28 per million output tokens.
 | --- | ---: | ---: |
 | Valid Trials | 36 | 36 |
 | Verified task pass rate | 100% | 100% |
-| Conservative cache hit rate | 0% | 75.19% |
-| Estimated cost per verified success | $0.008694 | $0.002309 |
+| Conservative cache hit rate | 0% | 74.0478% |
+| Estimated cost per verified success | $0.008356 | $0.002311 |
 
-Stable prefixes reduced estimated cost per verified success by **73.44%**
-relative to the deliberately disrupted counterfactual. All 36 Comparison
-Blocks were valid, no fallback or model drift occurred, and the full campaign
-used an estimated USD 0.3961.
+Stable prefixes reduced estimated cost per verified success by **72.3413%**
+in the aggregate. The task-clustered paired estimate was **72.0750%**, with a
+95 percent interval of **68.8471% to 75.0961%**. All 36 Comparison Blocks were
+valid, no fallback or model drift occurred, and the full campaign used an
+estimated USD 0.384031.
 
 Per-workload treatment hit rates were 65.12% for stable dialogue, 75.72% for
 long history, 79.31% for Tool accumulation, and 65.47% for the intra-Turn Tool
@@ -104,15 +104,12 @@ DeepSeek cache usage and estimated cost. It does not prove that Pico created
 DeepSeek's cache, that every production workload will achieve a 75.19% hit
 rate, or that the estimate has been reconciled against a Provider invoice.
 
-The report was originally written outside git under
-`.pico/evidence/tokenwise-cost-deepseek-rebased/`, with declared digest
-`fcde99b98c8bc46d0852015d7a92c01a0de6a4e4216f773045375f2f06e75aec`.
-As of 2026-08-13, that exact `report.json` is not present in the current
-evidence store or a durable release asset. The historical summary remains, but
-offline replay is blocked until the exact source artifact is recovered and its
-digest is verified. Repository policy forbids committing standalone report
-artifacts; the [candidate evidence index](candidate-evidence-index.md) records
-the availability state.
+The current report is retained outside Git under
+`.pico/evidence/call-efficiency-cost/1df7029-formal/`. Its SHA-256 is
+`b905ec833231236a53959cf78b05c89ca9b72b4066055aa5b6e3c327df3e4337`;
+the manifest and inventory digests are recorded in the
+[candidate evidence index](candidate-evidence-index.md). Repository policy
+forbids committing standalone report artifacts.
 
 ## Reproduction
 
