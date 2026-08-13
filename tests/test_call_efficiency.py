@@ -756,6 +756,99 @@ class _CancellableProvider(_ProviderDouble):
         raise AssertionError("unreachable")
 
 
+class _PersonalizationProvider(_ProviderDouble):
+    def __init__(self, blocked_call: str) -> None:
+        super().__init__("custom/local-model")
+        self.blocked_call = blocked_call
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+        self.call_kinds: list[str] = []
+        self.cancelled: list[str] = []
+
+    async def chat(self, messages, tools=None, model=None, **kwargs):
+        prompt = str(messages[-1].get("content", ""))
+        if prompt.startswith("Analyze this completed interaction"):
+            kind = "post_learn"
+        elif prompt.startswith("Extract reusable preference facts"):
+            kind = "extract"
+        else:
+            kind = "turn"
+        self.call_kinds.append(kind)
+        if kind == self.blocked_call:
+            self.entered.set()
+            try:
+                await self.release.wait()
+            except asyncio.CancelledError:
+                self.cancelled.append(kind)
+                raise
+        content = '{"has_new_preference": false, "new_facts": []}' if kind == "post_learn" else "done"
+        return LLMResponse(
+            content=content,
+            model=model or self.model,
+            usage={"prompt_tokens": 10, "completion_tokens": 2},
+        )
+
+
+class _PersonalizationBackend:
+    def __init__(self) -> None:
+        self.stop_calls = 0
+
+    async def start(self) -> None:
+        return None
+
+    async def stop(self) -> None:
+        self.stop_calls += 1
+
+    async def recall(self, query, *, user_id=None, agent_id=None, top_k=5):
+        return []
+
+    async def store(self, session_id, messages) -> None:
+        return None
+
+    async def feedback(self, signals) -> None:
+        return None
+
+
+def _personalization_runtime(tmp_path, delegate):
+    from pico.cli._runtime_assembly import RuntimeAssembly
+
+    telemetry = tmp_path / "telemetry"
+    controller = CallEfficiency(mode="observe", telemetry_dir=telemetry, provider=delegate)
+    provider = CallEfficiencyProvider(delegate, controller)
+    backend = _PersonalizationBackend()
+    agent = AgentLoop(
+        provider=provider,
+        workspace=tmp_path,
+        model=delegate.model,
+        max_iterations=1,
+        backend=backend,
+        call_efficiency=controller,
+    )
+    agent.configure_personalization(True)
+    runtime = RuntimeAssembly(
+        agent_loop=agent,
+        session_manager=agent.sessions,
+        backend=backend,
+        call_efficiency=controller,
+    )
+    return runtime, agent, controller, backend, telemetry
+
+
+def _personalization_request():
+    from pico.spine import ChatType, Origin, Source, TurnRequest
+
+    return TurnRequest(
+        origin=Origin.USER,
+        source=Source(
+            channel="test",
+            chat_id="shutdown",
+            sender_id="user",
+            chat_type=ChatType.DM,
+        ),
+        text="remember that I prefer concise answers",
+    )
+
+
 @pytest.mark.asyncio
 async def test_provider_decorator_owns_prepare_and_record_for_direct_calls(tmp_path) -> None:
     delegate = _ProviderDouble("anthropic/claude-sonnet-4-5", explicit=True)
@@ -949,3 +1042,149 @@ async def test_provider_decorator_records_cancelled_retry_attempt(tmp_path) -> N
     assert controller.records[0].outcome == "cancelled"
     assert controller.records[0].error_category == "cancelled"
     assert controller.records[0].usage.complete is False
+
+
+@pytest.mark.asyncio
+async def test_runtime_shutdown_records_entered_post_learn_before_ledger_close(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from pico.agent.personalizer import Personalizer
+    from pico.spine import Origin
+
+    async def _no_clarification(self, message, history=None):
+        return {"needs_clarification": False, "domain": ""}
+
+    monkeypatch.setattr(Personalizer, "classify", _no_clarification)
+    delegate = _PersonalizationProvider("post_learn")
+    runtime, agent, controller, _backend, telemetry = _personalization_runtime(tmp_path, delegate)
+
+    await agent._process_message(_personalization_request(), origin=Origin.USER)
+    await delegate.entered.wait()
+    try:
+        await runtime.close()
+
+        assert delegate.call_kinds == ["turn", "post_learn"]
+        assert delegate.cancelled == ["post_learn"]
+        assert [record.outcome for record in controller.records] == ["success", "cancelled"]
+        health = json.loads((telemetry / "call-efficiency-ledger-health.json").read_text(encoding="utf-8"))
+        assert health["status"] == "healthy"
+        assert health["accepted_records"] == 2
+        assert health["persisted_records"] == 2
+        assert health["lost_records"] == 0
+    finally:
+        delegate.release.set()
+        await asyncio.gather(*agent._personalization_tasks, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_runtime_shutdown_cancels_unentered_post_learn_without_late_provider_call(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from pico.agent.personalizer import Personalizer
+    from pico.spine import Origin
+
+    async def _no_clarification(self, message, history=None):
+        return {"needs_clarification": False, "domain": ""}
+
+    monkeypatch.setattr(Personalizer, "classify", _no_clarification)
+    delegate = _PersonalizationProvider("post_learn")
+    runtime, agent, controller, backend, telemetry = _personalization_runtime(tmp_path, delegate)
+
+    await agent._process_message(_personalization_request(), origin=Origin.USER)
+    await runtime.close()
+    await runtime.close()
+
+    assert delegate.call_kinds == ["turn"]
+    assert delegate.entered.is_set() is False
+    assert [record.outcome for record in controller.records] == ["success"]
+    assert backend.stop_calls == 1
+    health = json.loads((telemetry / "call-efficiency-ledger-health.json").read_text(encoding="utf-8"))
+    assert health["status"] == "healthy"
+    assert health["accepted_records"] == 1
+    assert health["persisted_records"] == 1
+    assert health["lost_records"] == 0
+
+
+@pytest.mark.asyncio
+async def test_runtime_shutdown_records_entered_preference_extraction_before_ledger_close(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from pico.agent.personalizer import Personalizer
+    from pico.spine import Origin
+
+    async def _no_clarification(self, message, history=None):
+        return {"needs_clarification": False, "domain": ""}
+
+    async def _no_post_learn(self, message, response_summary):
+        return False
+
+    monkeypatch.setattr(Personalizer, "classify", _no_clarification)
+    monkeypatch.setattr(Personalizer, "post_learn", _no_post_learn)
+    delegate = _PersonalizationProvider("extract")
+    runtime, agent, controller, _backend, telemetry = _personalization_runtime(tmp_path, delegate)
+    session = agent.sessions.get_or_create("test:shutdown")
+    session.pending_clarification = {
+        "original_message": "choose an editor",
+        "question": "Which editor do you prefer?",
+        "domain": "editor",
+    }
+    agent.sessions.save(session)
+
+    await agent._process_message(_personalization_request(), origin=Origin.USER)
+    await delegate.entered.wait()
+    await runtime.close()
+
+    assert delegate.call_kinds == ["extract", "turn"]
+    assert delegate.cancelled == ["extract"]
+    assert [record.outcome for record in controller.records] == ["success", "cancelled"]
+    health = json.loads((telemetry / "call-efficiency-ledger-health.json").read_text(encoding="utf-8"))
+    assert health["status"] == "healthy"
+    assert health["accepted_records"] == 2
+    assert health["persisted_records"] == 2
+    assert health["lost_records"] == 0
+
+
+@pytest.mark.asyncio
+async def test_runtime_shutdown_finishes_when_personalization_cleanup_raises(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from pico.agent.personalizer import Personalizer
+    from pico.spine import Origin
+
+    entered = asyncio.Event()
+
+    async def _no_clarification(self, message, history=None):
+        return {"needs_clarification": False, "domain": ""}
+
+    async def _raise_during_cleanup(self, message, response_summary):
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError as exc:
+            raise RuntimeError("personalization cleanup failed") from exc
+
+    monkeypatch.setattr(Personalizer, "classify", _no_clarification)
+    monkeypatch.setattr(Personalizer, "post_learn", _raise_during_cleanup)
+    delegate = _PersonalizationProvider("unused")
+    runtime, agent, controller, backend, telemetry = _personalization_runtime(tmp_path, delegate)
+
+    await agent._process_message(_personalization_request(), origin=Origin.USER)
+    await entered.wait()
+    tasks = tuple(agent._personalization_tasks)
+    await runtime.close()
+    await runtime.close()
+
+    assert tasks
+    assert all(task.done() for task in tasks)
+    assert delegate.call_kinds == ["turn"]
+    assert [record.outcome for record in controller.records] == ["success"]
+    assert backend.stop_calls == 1
+    health = json.loads((telemetry / "call-efficiency-ledger-health.json").read_text(encoding="utf-8"))
+    assert health["status"] == "healthy"
+    assert health["accepted_records"] == 1
+    assert health["persisted_records"] == 1
+    assert health["lost_records"] == 0

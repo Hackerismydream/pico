@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from pico.agent.loop.recovery import limits_from_defaults
+from pico.spine._barrier import finish_barrier
 
 if TYPE_CHECKING:
     from pico.agent.loop import AgentLoop
@@ -33,6 +34,7 @@ class RuntimeAssembly:
     _agent_closed: bool = field(default=False, init=False)
     _call_efficiency_closed: bool = field(default=False, init=False)
     _backend_stopped: bool = field(default=False, init=False)
+    _close_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
 
     async def start_memory_backend(self) -> bool:
         if self.backend is None:
@@ -50,11 +52,20 @@ class RuntimeAssembly:
         self._backend_started = True
         return True
 
+    def begin_close(self) -> None:
+        self.agent_loop.begin_close()
+
     async def close(self) -> None:
+        async with self._close_lock:
+            self.begin_close()
+            close_task = asyncio.create_task(self._close_once())
+            await finish_barrier(close_task)
+
+    async def _close_once(self) -> None:
         cancellation: BaseException | None = None
         if not self._agent_closed:
             try:
-                await self.agent_loop.close_mcp()
+                await self.agent_loop.close()
             except Exception:
                 logger.exception(
                     "agent runtime close failed; continuing shutdown",

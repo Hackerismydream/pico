@@ -120,7 +120,10 @@ def _invoke_agent_capturing_session(
             await emit(Text(content="stub-response", source=req.source))
             return TurnOutcome(usage=Usage(0, 0, 0), explicit_reply=True)
 
-        async def close_mcp(self) -> None:
+        async def close(self) -> None:
+            pass
+
+        def begin_close(self) -> None:
             pass
 
     monkeypatch.setattr(_os, "_exit", lambda code: (_ for _ in ()).throw(SystemExit(code)))

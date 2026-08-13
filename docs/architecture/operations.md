@@ -214,6 +214,13 @@ cross-process lock, so a later healthy Runtime cannot erase known loss from
 another Runtime. Provider-response append paths remain memory/queue-only; health
 file I/O runs on the background writer or threaded Runtime shutdown path.
 
+Runtime shutdown synchronously seals and cancels Agent Loop background
+Personalizer tasks before its first yield, then awaits them, closes
+CallEfficiency, and only then stops the Memory Backend. Once that barrier starts,
+caller cancellation is propagated only after all three stages finish, so an
+entered Provider attempt can append its cancelled Call Record while the ledger
+is still open and an unentered task cannot start a late Provider attempt.
+
 `pico/token_wise/` remains for Strategy imports, `UsageSnapshot`, and frozen
 benchmark schemas. Historical `EXPERIMENT_REPORT*.md` and DeepSeek campaigns
 remain dated evidence; deterministic Runtime activation does not turn those
