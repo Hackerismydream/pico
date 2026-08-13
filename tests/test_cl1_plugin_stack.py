@@ -34,7 +34,7 @@ def _config(memory_backend: str | None = "myna") -> PicoConfig:
 def _registry(
     *,
     plugin_id: str = "myna-memory",
-    factory_ref: str = "myna.integrations.pico.backend:make_backend",
+    factory_ref: str = "myna.integrations.pico:make_backend",
     start_error: Exception | None = None,
 ):
     module_name = factory_ref.partition(":")[0]
@@ -138,7 +138,7 @@ def test_retired_backend_fails_without_rewrite(
     ("plugin_id", "factory_ref"),
     [
         ("other-memory", "_test_myna_backend:make_backend"),
-        ("myna-memory", "other.module:make_backend"),
+        ("myna-memory", "myna.integrations.pico.backend:make_backend"),
     ],
 )
 def test_myna_backend_requires_frozen_public_manifest_identity(

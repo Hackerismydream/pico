@@ -110,6 +110,15 @@ class InstalledTrialExecutor:
                 ),
                 trial_root / "prime-worker",
             )
+            failure = _worker_failure_record(
+                task,
+                repetition=repetition,
+                arm=arm,
+                workspace_digest=fixture_digest,
+                worker=prime,
+            )
+            if failure is not None:
+                return failure
             evaluation = self._worker_call(
                 self._turn_spec(
                     task,
@@ -122,6 +131,15 @@ class InstalledTrialExecutor:
                 ),
                 trial_root / "evaluation-worker",
             )
+            failure = _worker_failure_record(
+                task,
+                repetition=repetition,
+                arm=arm,
+                workspace_digest=fixture_digest,
+                worker=evaluation,
+            )
+            if failure is not None:
+                return failure
             if arm.arm_id == "memory_on":
                 operations = tuple(prime.get("myna_operations", ())) + tuple(evaluation.get("myna_operations", ()))
             metrics = _tool_metrics(evaluation.get("tool_events"))
@@ -175,7 +193,7 @@ class InstalledTrialExecutor:
                 repository_reads=0,
                 tool_calls=0,
                 memory_hits=0,
-                myna_operations=(("start",) if treatment else ()),
+                myna_operations=(),
                 findings=(f"trial_execution_failed:{type(exc).__name__}",),
             )
 
@@ -300,6 +318,41 @@ def _tool_metrics(raw_events: object) -> dict[str, int]:
         "repository_reads": len(reads),
         "tool_calls": len(completed),
     }
+
+
+def _worker_failure_record(
+    task: TaskDefinition,
+    *,
+    repetition: int,
+    arm: ExperimentArm,
+    workspace_digest: str,
+    worker: dict[str, Any],
+) -> TrialRecord | None:
+    receipt = worker.get("failure_receipt")
+    if not isinstance(receipt, dict):
+        return None
+    failure_class = str(receipt.get("failure_class") or worker.get("failure_class") or "infrastructure")
+    phase = str(receipt.get("phase") or "turn_execution")
+    error = receipt.get("error")
+    error_type = str(error.get("type") or error.get("code") or "unknown") if isinstance(error, dict) else "unknown"
+    metrics = _tool_metrics(worker.get("tool_events"))
+    operations = tuple(worker.get("myna_operations", ())) if arm.arm_id == "memory_on" else ()
+    return TrialRecord(
+        task_id=task.task_id,
+        task_class=task.task_class,
+        repetition=repetition,
+        arm_id=arm.arm_id,
+        status="task_failed" if failure_class == "memory_backend" else "infrastructure_failure",
+        workspace_digest=workspace_digest,
+        repository_reads=metrics["repository_reads"],
+        tool_calls=metrics["tool_calls"],
+        memory_hits=int(worker.get("memory_hits", 0) or 0),
+        myna_operations=operations,
+        findings=(
+            f"failure_class:{failure_class}",
+            f"{phase}_failed:{error_type}",
+        ),
+    )
 
 
 def _verify_trial(

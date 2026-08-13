@@ -36,7 +36,7 @@ Pico discovers Myna through installed distribution metadata and the public
 | Plugin id | `myna-memory` |
 | compatible Pico | `>=0.1,<0.2` |
 | Memory backend | `myna` |
-| factory | `myna.integrations.pico.backend:make_backend` |
+| factory | `myna.integrations.pico:make_backend` |
 
 Discovery reads the manifest from the owning distribution file inventory. It
 checks distribution name and version against the manifest and checks the

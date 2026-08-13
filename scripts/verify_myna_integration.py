@@ -19,7 +19,7 @@ EXPECTED_PLUGIN_ID = "myna-memory"
 EXPECTED_PLUGIN_VERSION = "0.1.1rc3"
 EXPECTED_COMPATIBILITY = ">=0.1,<0.2"
 EXPECTED_BACKEND = "myna"
-EXPECTED_FACTORY = "myna.integrations.pico.backend:make_backend"
+EXPECTED_FACTORY = "myna.integrations.pico:make_backend"
 MEMORY_TEXT = "Pico releases require make check."
 
 
@@ -99,6 +99,52 @@ def _backend(repository: Path):
     from pico.config.pico import PicoConfig
 
     return maybe_build_memory_backend(repository, PicoConfig(), registry=_registry())
+
+
+async def _runtime_turn(repository: Path, state: Path, *, memory_backend: str | None) -> None:
+    from pico.cli._runtime_assembly import assemble_runtime
+    from pico.config.paths import RuntimePaths
+    from pico.config.pico import MemoryConfig, PicoConfig
+    from pico.config.schema import Config
+    from pico.spine.message import ChatType, Source
+    from pico.spine.turn import Origin, TurnRequest
+
+    state.mkdir(parents=True)
+    config = Config()
+    config.agents.defaults.workspace = str(repository)
+    config.agents.defaults.model = "installed-smoke"
+    config.agents.defaults.enable_personalization = False
+    config.routing.enabled = False
+    pico_config = PicoConfig(memory=MemoryConfig(backend=memory_backend))
+    pico_config.base = config
+    pico_config.skill_forge.enabled = False
+    pico_config.skill_forge.router.enabled = False
+    runtime = assemble_runtime(
+        config,
+        pico_config,
+        provider=_RecordingProvider(),
+        cron_service=None,
+        interactive=False,
+        paths=RuntimePaths(workspace=repository, state=state),
+    )
+    _require((runtime.backend is not None) == (memory_backend == EXPECTED_BACKEND), "Runtime Memory arm mismatch")
+    try:
+        await runtime.start_memory_backend()
+        response = await runtime.agent_loop._process_message(
+            TurnRequest(
+                origin=Origin.USER,
+                source=Source(
+                    channel="installed-smoke",
+                    chat_id=f"runtime-{memory_backend or 'off'}",
+                    sender_id="user",
+                    chat_type=ChatType.DM,
+                ),
+                text="Complete one installed Runtime Turn.",
+            )
+        )
+        _require(response is not None, f"Runtime Turn failed for memory backend {memory_backend!r}")
+    finally:
+        await runtime.close()
 
 
 async def _store(repository: Path) -> None:
@@ -480,6 +526,8 @@ def main() -> int:
             capture_output=True,
             text=True,
         )
+        asyncio.run(_runtime_turn(repository, root / "memory-off-state", memory_backend=None))
+        asyncio.run(_runtime_turn(repository, root / "memory-on-state", memory_backend=EXPECTED_BACKEND))
         _assert_incompatible_plugin_is_transactional(root / "plugins")
         common = (
             str(Path(__file__).resolve()),
@@ -528,6 +576,8 @@ def main() -> int:
                 "myna_wheel_sha256": args.myna_sha256,
                 "plugin_id": EXPECTED_PLUGIN_ID,
                 "plugin_version": EXPECTED_PLUGIN_VERSION,
+                "runtime_memory_off": True,
+                "runtime_memory_on": True,
             },
             sort_keys=True,
         )
