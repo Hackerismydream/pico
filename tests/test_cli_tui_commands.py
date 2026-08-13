@@ -312,7 +312,7 @@ def rpc_server_deps(monkeypatch: pytest.MonkeyPatch):
     fake_agent_loop.cron_service = None
     fake_agent_loop.tools.get.return_value = None
     fake_agent_loop.subagents.set_submit = MagicMock()
-    fake_agent_loop.close_mcp = AsyncMock()
+    fake_agent_loop.close = AsyncMock()
     ctx["agent_loop"] = fake_agent_loop
 
     from pico.cli._runtime_assembly import RuntimeAssembly
@@ -527,6 +527,50 @@ async def test_rpc_runner_cancels_stuck_backend_start_during_cleanup(
     assert rpc_server_deps["stop_calls"] == ["stop"]
 
 
+async def test_rpc_runner_finishes_runtime_close_after_cancellation_during_turn_teardown(
+    rpc_server_deps,
+    monkeypatch,
+) -> None:
+    from pico.cli.tui_commands import _run_rpc_server_until_done
+
+    teardown_entered = asyncio.Event()
+    teardown_release = asyncio.Event()
+
+    async def _blocking_turn_teardown() -> None:
+        teardown_entered.set()
+        await teardown_release.wait()
+
+    monkeypatch.setattr(
+        "pico.tui_rpc.spine.build_tui",
+        lambda *args, **kwargs: (
+            MagicMock(),
+            MagicMock(),
+            {},
+            {},
+            _blocking_turn_teardown,
+        ),
+    )
+    proc_done = asyncio.Event()
+    proc_done.set()
+    runner = asyncio.create_task(
+        _run_rpc_server_until_done(
+            MagicMock(),
+            "test-token",
+            0.01,
+            proc_done,
+        )
+    )
+    await teardown_entered.wait()
+    runner.cancel()
+    teardown_release.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await runner
+
+    rpc_server_deps["agent_loop"].close.assert_awaited_once()
+    assert rpc_server_deps["stop_calls"] == ["stop"]
+
+
 async def test_rpc_runner_calls_backend_stop_on_exit(rpc_server_deps, monkeypatch) -> None:
     """``_run_rpc_server_until_done`` must await ``backend.stop()`` in the finally
     block so the embedded index lock is released on normal exit."""
@@ -538,7 +582,7 @@ async def test_rpc_runner_calls_backend_stop_on_exit(rpc_server_deps, monkeypatc
 async def test_rpc_runner_closes_mcp_and_sandbox_on_exit(rpc_server_deps, monkeypatch) -> None:
     await _run_until_done_with_immediate_proc_done(monkeypatch, rpc_server_deps)
 
-    rpc_server_deps["agent_loop"].close_mcp.assert_awaited_once()
+    rpc_server_deps["agent_loop"].close.assert_awaited_once()
 
 
 async def test_rpc_runner_latches_spine_build_failure_and_closes_runtime(
@@ -569,7 +613,7 @@ async def test_rpc_runner_latches_spine_build_failure_and_closes_runtime(
         await scheduler_factory()
 
     assert result is False
-    rpc_server_deps["agent_loop"].close_mcp.assert_awaited_once()
+    rpc_server_deps["agent_loop"].close.assert_awaited_once()
     assert rpc_server_deps["stop_calls"] == ["stop"]
 
 

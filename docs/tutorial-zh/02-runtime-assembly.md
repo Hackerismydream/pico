@@ -307,7 +307,7 @@ EXTENSION_KEYS = (
 
 ## 四、机制三：所有权与三个 host 的差异
 
-共享构造带来一个新问题：这些对象归谁关。`RuntimeAssembly` 是个 dataclass，只有两个方法，`start_memory_backend` 和 `close`，所有权全在这两个方法里：
+共享构造带来一个新问题：这些对象归谁关。`RuntimeAssembly` 是个 dataclass，公开生命周期只有 `start_memory_backend` 和 `close`，所有权全在这两个方法里。下面只保留关闭时序主干，逐阶段的 `None` 分支、日志和异常重试代码以省略号表示：
 
 ```python
     async def start_memory_backend(self) -> bool:
@@ -327,43 +327,58 @@ EXTENSION_KEYS = (
         return True
 
     async def close(self) -> None:
-        try:
-            if not self._agent_closed:
-                try:
-                    await self.agent_loop.close_mcp()
-                except Exception:
-                    logger.exception("agent runtime close failed; continuing shutdown")
-                else:
-                    self._agent_closed = True
-        finally:
-            if self.backend is None:
-                self._backend_stopped = True
-            elif not self._backend_stopped:
-                try:
-                    await self.backend.stop()
-                except Exception:
-                    logger.exception("memory backend stop failed; continuing shutdown")
-                else:
-                    self._backend_stopped = True
+        async with self._close_lock:
+            self.agent_loop.begin_close()
+            close_task = asyncio.create_task(self._close_once())
+            await finish_barrier(close_task)
+
+    async def _close_once(self) -> None:
+        cancellation = None
+        if not self._agent_closed:
+            try:
+                await self.agent_loop.close()
+            except Exception:
+                ...
+            except BaseException as exc:
+                cancellation = exc
+            else:
+                self._agent_closed = True
+
+        if self.call_efficiency is not None and not self._call_efficiency_closed:
+            await asyncio.to_thread(self.call_efficiency.close)
+            self._call_efficiency_closed = True
+
+        if self.backend is not None and not self._backend_stopped:
+            await self.backend.stop()
+            self._backend_stopped = True
+
+        if cancellation is not None:
+            raise cancellation
 ```
 
-这三十行里藏了四个决定，逐条拆：
+这段主干里藏了四个决定，逐条拆：
 
 `start` 只试一次并把失败缓存下来。第二次调用直接把原异常再抛一遍，不会重试。理由是记忆后端起不来通常是配置或依赖问题，重试只是把同一个错误多打几遍日志。
 
 `except BaseException` 而不是 `except Exception`。`CancelledError` 在 Python 3.8 之后不再继承 `Exception`，用窄的写法会漏掉取消，导致「取消发生过但 `_backend_start_error` 是空的」这种半死状态。记录之后立刻 `raise`，取消语义不被吞。
 
-`close` 用 `try/finally` 把两件事焊在一起。`close_mcp()` 失败只记 exception 不重抛，但 backend 的 stop 在 `finally` 里，一定会跑。`close_mcp` 抛 `CancelledError` 时（`except Exception` 接不住），异常照常传播，但 backend 已经在 `finally` 里停干净了。这条有专测：`test_runtime_assembly_stops_memory_before_propagating_cancellation`。
+`close` 是一条三段式关闭屏障：先让 `AgentLoop.close()` 取消并等待后台 Personalizer 任务，再把 CallEfficiency 账本在线程中刷盘关闭，最后停止 Memory Backend。顺序不能交换；否则已经进入 Provider 边界的 `post_learn` 或偏好提取任务会在账本关闭后补记取消记录，产生「真实调用发生、Call Record 丢失、health 仍显示健康」的假象。
 
-两个幂等标志 `_agent_closed` / `_backend_stopped` 分开维护。`close_mcp` 失败时 `_agent_closed` 不置位，下次 `close()` 会重试它；而 `_backend_stopped` 已经置位，backend 不会被停第二次。测试 `test_runtime_assembly_retries_agent_close_without_double_stopping_memory` 逐字断言了这个组合：`close_mcp` await 两次，`backend.stop` await 一次。
+`begin_close()` 在第一个 `await` 之前同步封住并取消 Personalizer 任务，保证已经排进事件循环但尚未运行的任务不能抢在关闭任务前进入 Provider。`finish_barrier` 则让已经开始的关闭不被调用方取消切成半截：它先等 `_close_once` 真正完成，再把原来的 `CancelledError` 向上传播。`_close_lock` 串行化并发关闭；`_agent_closed`、`_call_efficiency_closed`、`_backend_stopped` 三个标志分别记录阶段结果。某阶段失败时，下次 `close()` 只重试没有成功的阶段，不会重复关闭已经完成的资源。
 
-`close_mcp()` 这个名字有点窄，它实际关的比 MCP 多：
+`AgentLoop.close()` 是 Agent 侧的总关闭入口。它先封住新的 Personalizer 后台任务，取消并 `gather` 已登记的任务，再调用 `close_mcp()` 收 MCP 和沙箱执行器：
 
 ```python
-    async def close_mcp(self) -> None:
-        """Close MCP connections and the sandbox executor."""
-        ...
-        await self.close_executor()  # always runs, even when no MCP servers are configured
+    async def close(self) -> None:
+        async with self._close_lock:
+            if self._closed:
+                return
+            self.begin_close()
+            tasks = tuple(self._personalization_tasks)
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            await self.close_mcp()
+            self._closed = True
 ```
 （`pico/agent/loop/main.py`）
 
@@ -372,7 +387,9 @@ EXTENSION_KEYS = (
 | 资源 | 归属 |
 |---|---|
 | Memory Backend 构造 / start / stop | assembly |
-| MCP 连接与沙箱执行器 | assembly 的 close 经 `close_mcp()` 连带关闭 |
+| CallEfficiency 账本刷盘 / close | assembly，在 Agent 后台任务收敛之后、Backend 之前 |
+| Personalizer 后台任务 | Agent Loop 登记并在 `AgentLoop.close()` 中取消、等待 |
+| MCP 连接与沙箱执行器 | assembly 的 close 经 `AgentLoop.close()` 连带关闭 |
 | SessionManager、插件工具 | assembly 构造（SessionManager 可由 host 传入复用） |
 | Provider、Router、Cron 摆放、outlet、池尺寸、启停时序 | host 各自所有 |
 

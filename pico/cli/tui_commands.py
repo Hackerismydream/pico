@@ -27,6 +27,7 @@ import typer
 
 from pico.cli._log_file import _strip_tty_stream_handlers, redirect_loguru_to_file, redirect_terminal_fds_to_file
 from pico.product import get_product_home
+from pico.spine._barrier import finish_barrier
 
 # 相对于本文件的 ui-tui/ 源码树路径：
 # pico/cli/tui_commands.py -> ../../../ui-tui/。仅 `--dev` 路径（从源码运行 tsx）需要它；
@@ -427,7 +428,7 @@ async def _run_rpc_server_until_done(
     runtime_bound = asyncio.Event()
     backend_ready = asyncio.Event()
     backend_start_error: InternalError | None = None
-    cleanup_done = False
+    cleanup_task: asyncio.Task[None] | None = None
 
     async def _bind_runtime() -> None:
         nonlocal agent_loop, build_error, turn_scheduler, turn_teardown
@@ -518,11 +519,8 @@ async def _run_rpc_server_until_done(
         if backend_start_error is not None:
             raise backend_start_error
 
-    async def _cleanup() -> None:
-        nonlocal cleanup_done
-        if cleanup_done:
-            return
-        cleanup_done = True
+    async def _cleanup_once() -> None:
+        cancellation: asyncio.CancelledError | None = None
         if serve_task is not None:
             serve_task.cancel()
             try:
@@ -557,9 +555,22 @@ async def _run_rpc_server_until_done(
         if turn_teardown is not None:
             try:
                 await turn_teardown()
+            except asyncio.CancelledError as exc:
+                cancellation = exc
             except Exception:
                 pass
-        await runtime_host.close()
+        try:
+            await runtime_host.close()
+        except asyncio.CancelledError as exc:
+            cancellation = cancellation or exc
+        if cancellation is not None:
+            raise cancellation
+
+    async def _cleanup() -> None:
+        nonlocal cleanup_task
+        if cleanup_task is None:
+            cleanup_task = asyncio.create_task(_cleanup_once())
+        await finish_barrier(cleanup_task)
 
     try:
         # 包装 system.hello 以锁存握手事件；下方总入口注册保留的会话 RPC 接口。

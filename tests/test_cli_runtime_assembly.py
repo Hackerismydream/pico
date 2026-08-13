@@ -480,7 +480,8 @@ async def test_runtime_assembly_owns_memory_and_agent_resources_once() -> None:
         stop=AsyncMock(side_effect=lambda: order.append("backend.stop")),
     )
     agent_loop = SimpleNamespace(
-        close_mcp=AsyncMock(side_effect=lambda: order.append("agent.close")),
+        begin_close=MagicMock(),
+        close=AsyncMock(side_effect=lambda: order.append("agent.close")),
     )
     call_efficiency = SimpleNamespace(close=MagicMock(side_effect=lambda: order.append("call_efficiency.close")))
     runtime = RuntimeAssembly(
@@ -498,15 +499,108 @@ async def test_runtime_assembly_owns_memory_and_agent_resources_once() -> None:
     assert order == ["backend.start", "agent.close", "call_efficiency.close", "backend.stop"]
     backend.start.assert_awaited_once()
     backend.stop.assert_awaited_once()
-    agent_loop.close_mcp.assert_awaited_once()
+    agent_loop.close.assert_awaited_once()
     call_efficiency.close.assert_called_once()
+
+
+async def test_runtime_assembly_serializes_concurrent_close() -> None:
+    from pico.cli._runtime_assembly import RuntimeAssembly
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    close_calls = 0
+
+    async def _close_agent() -> None:
+        nonlocal close_calls
+        close_calls += 1
+        entered.set()
+        await release.wait()
+
+    backend = SimpleNamespace(start=AsyncMock(), stop=AsyncMock())
+    call_efficiency = SimpleNamespace(close=MagicMock())
+    runtime = RuntimeAssembly(
+        agent_loop=SimpleNamespace(begin_close=MagicMock(), close=_close_agent),
+        session_manager=object(),
+        backend=backend,
+        call_efficiency=call_efficiency,
+    )
+
+    first = asyncio.create_task(runtime.close())
+    await entered.wait()
+    second = asyncio.create_task(runtime.close())
+    asyncio.get_running_loop().call_soon(release.set)
+    await asyncio.gather(first, second)
+
+    assert close_calls == 1
+    call_efficiency.close.assert_called_once()
+    backend.stop.assert_awaited_once()
+
+
+async def test_runtime_assembly_finishes_started_close_before_propagating_caller_cancellation() -> None:
+    from pico.cli._runtime_assembly import RuntimeAssembly
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    order: list[str] = []
+
+    async def _close_agent() -> None:
+        entered.set()
+        await release.wait()
+        order.append("agent.close")
+
+    runtime = RuntimeAssembly(
+        agent_loop=SimpleNamespace(begin_close=MagicMock(), close=_close_agent),
+        session_manager=object(),
+        backend=SimpleNamespace(
+            start=AsyncMock(),
+            stop=AsyncMock(side_effect=lambda: order.append("backend.stop")),
+        ),
+        call_efficiency=SimpleNamespace(close=MagicMock(side_effect=lambda: order.append("call_efficiency.close"))),
+    )
+
+    shutdown = asyncio.create_task(runtime.close())
+    await entered.wait()
+    shutdown.cancel()
+    release.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await shutdown
+
+    assert order == ["agent.close", "call_efficiency.close", "backend.stop"]
+
+
+async def test_tui_runtime_host_finishes_close_after_cancellation_during_build() -> None:
+    from pico.cli._runtime_host import TuiRuntimeHost
+
+    build_entered = asyncio.Event()
+    build_release = asyncio.Event()
+    runtime = SimpleNamespace(begin_close=MagicMock(), close=AsyncMock())
+    host = TuiRuntimeHost(lambda: runtime)
+
+    async def _build_runtime():
+        build_entered.set()
+        await build_release.wait()
+        return runtime
+
+    host._task = asyncio.create_task(_build_runtime())
+    await build_entered.wait()
+    shutdown = asyncio.create_task(host.close())
+    asyncio.get_running_loop().call_soon(shutdown.cancel)
+    asyncio.get_running_loop().call_soon(build_release.set)
+
+    with pytest.raises(asyncio.CancelledError):
+        await shutdown
+
+    runtime.begin_close.assert_called_once()
+    runtime.close.assert_awaited_once()
+    assert host._closed is True
 
 
 async def test_runtime_assembly_continues_backend_shutdown_after_call_efficiency_failure() -> None:
     from pico.cli._runtime_assembly import RuntimeAssembly
 
     backend = SimpleNamespace(start=AsyncMock(), stop=AsyncMock())
-    agent_loop = SimpleNamespace(close_mcp=AsyncMock())
+    agent_loop = SimpleNamespace(begin_close=MagicMock(), close=AsyncMock())
     call_efficiency = SimpleNamespace(close=MagicMock(side_effect=RuntimeError("ledger failed")))
     runtime = RuntimeAssembly(
         agent_loop=agent_loop,
@@ -519,7 +613,7 @@ async def test_runtime_assembly_continues_backend_shutdown_after_call_efficiency
     await runtime.close()
 
     backend.stop.assert_awaited_once()
-    agent_loop.close_mcp.assert_awaited_once()
+    agent_loop.close.assert_awaited_once()
     assert call_efficiency.close.call_count == 2
 
 
@@ -531,7 +625,7 @@ async def test_runtime_assembly_preserves_memory_start_failure() -> None:
         start=AsyncMock(side_effect=failure),
         stop=AsyncMock(),
     )
-    agent_loop = SimpleNamespace(close_mcp=AsyncMock())
+    agent_loop = SimpleNamespace(begin_close=MagicMock(), close=AsyncMock())
     runtime = RuntimeAssembly(
         agent_loop=agent_loop,
         session_manager=object(),
@@ -555,13 +649,14 @@ async def test_runtime_assembly_retries_agent_close_without_double_stopping_memo
 
     backend = SimpleNamespace(start=AsyncMock(), stop=AsyncMock())
     agent_loop = SimpleNamespace(
-        close_mcp=AsyncMock(
+        close=AsyncMock(
             side_effect=[RuntimeError("close failed"), None],
         ),
     )
     runtime = _runtime_assembly.RuntimeAssembly(
         agent_loop=SimpleNamespace(
-            close_mcp=agent_loop.close_mcp,
+            begin_close=MagicMock(),
+            close=agent_loop.close,
         ),
         session_manager=object(),
         backend=backend,
@@ -572,8 +667,8 @@ async def test_runtime_assembly_retries_agent_close_without_double_stopping_memo
     await runtime.close()
     await runtime.close()
 
-    agent_loop.close_mcp.assert_awaited()
-    assert agent_loop.close_mcp.await_count == 2
+    agent_loop.close.assert_awaited()
+    assert agent_loop.close.await_count == 2
     backend.stop.assert_awaited_once()
     log.exception.assert_called_once()
 
@@ -584,7 +679,8 @@ async def test_runtime_assembly_stops_memory_before_propagating_cancellation() -
     backend = SimpleNamespace(start=AsyncMock(), stop=AsyncMock())
     runtime = RuntimeAssembly(
         agent_loop=SimpleNamespace(
-            close_mcp=AsyncMock(side_effect=asyncio.CancelledError),
+            begin_close=MagicMock(),
+            close=AsyncMock(side_effect=asyncio.CancelledError),
         ),
         session_manager=object(),
         backend=backend,
@@ -609,7 +705,7 @@ async def test_runtime_assembly_exposes_memory_stop_failure_after_agent_close() 
         raise RuntimeError("myna stop failed")
 
     runtime = RuntimeAssembly(
-        agent_loop=SimpleNamespace(close_mcp=AsyncMock(side_effect=_close_agent)),
+        agent_loop=SimpleNamespace(begin_close=MagicMock(), close=AsyncMock(side_effect=_close_agent)),
         session_manager=object(),
         backend=SimpleNamespace(start=AsyncMock(), stop=AsyncMock(side_effect=_stop_backend)),
     )

@@ -406,7 +406,10 @@ class AgentLoop:
             now_fn=now_fn,
         )
 
-        self._consolidation_tasks: set[asyncio.Task] = set()
+        self._personalization_tasks: set[asyncio.Task[Any]] = set()
+        self._personalization_closed = False
+        self._close_lock = asyncio.Lock()
+        self._closed = False
 
         # B-3 阶段已移除 L4 外观（``DefaultMemoryEngine`` / ``MemoryEngine`` 抽象基类）。
         # AgentLoop 现在直接持有底层子系统：
@@ -452,6 +455,21 @@ class AgentLoop:
         """
         self.enable_personalization = bool(enable and self.memory_enabled)
         logger.info("Personalization flow: {}", "enabled" if self.enable_personalization else "disabled")
+
+    def _start_personalization_task(self, factory: Callable[[], Awaitable[Any]]) -> None:
+        if self._personalization_closed:
+            return
+        task = asyncio.create_task(factory())
+        self._personalization_tasks.add(task)
+        task.add_done_callback(self._personalization_tasks.discard)
+
+    def begin_close(self) -> None:
+        """Seal and cancel background personalization without yielding."""
+        if self._personalization_closed:
+            return
+        self._personalization_closed = True
+        for task in tuple(self._personalization_tasks):
+            task.cancel()
 
     def _register_default_tools(self) -> None:
         """Register the default set of tools."""
@@ -1506,6 +1524,18 @@ class AgentLoop:
         self._mcp_connecting = False  # 重置以免并发调用方永久阻塞
         await self.close_executor()  # 即使未配置 MCP 服务器也始终执行
 
+    async def close(self) -> None:
+        """Stop background personalization before closing runtime resources."""
+        async with self._close_lock:
+            if self._closed:
+                return
+            self.begin_close()
+            tasks = tuple(self._personalization_tasks)
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            await self.close_mcp()
+            self._closed = True
+
     def stop(self) -> None:
         """Stop the agent loop."""
         self._running = False
@@ -1670,9 +1700,7 @@ class AgentLoop:
                             answer=content,
                         )
 
-                    _t = asyncio.create_task(_extract())
-                    self._consolidation_tasks.add(_t)
-                    _t.add_done_callback(self._consolidation_tasks.discard)
+                    self._start_personalization_task(_extract)
                     # 正常继续：LLM 通过对话历史理解任务。
 
             else:
@@ -1819,9 +1847,7 @@ class AgentLoop:
             async def _post_learn():
                 await _p4.post_learn(content, final_content)
 
-            _t4 = asyncio.create_task(_post_learn())
-            self._consolidation_tasks.add(_t4)
-            _t4.add_done_callback(self._consolidation_tasks.discard)
+            self._start_personalization_task(_post_learn)
             # ── 步骤 4 结束 ────────────────────────────────────────────────────
 
         if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt.sent_in_turn:
