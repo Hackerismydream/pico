@@ -104,10 +104,15 @@ DeepSeek cache usage and estimated cost. It does not prove that Pico created
 DeepSeek's cache, that every production workload will achieve a 75.19% hit
 rate, or that the estimate has been reconciled against a Provider invoice.
 
-The report and per-call artifacts are retained outside git under
-`.pico/evidence/tokenwise-cost-deepseek-rebased/`. The report digest is
+The report was originally written outside git under
+`.pico/evidence/tokenwise-cost-deepseek-rebased/`, with declared digest
 `fcde99b98c8bc46d0852015d7a92c01a0de6a4e4216f773045375f2f06e75aec`.
-Repository policy forbids committing standalone report artifacts.
+As of 2026-08-13, that exact `report.json` is not present in the current
+evidence store or a durable release asset. The historical summary remains, but
+offline replay is blocked until the exact source artifact is recovered and its
+digest is verified. Repository policy forbids committing standalone report
+artifacts; the [candidate evidence index](candidate-evidence-index.md) records
+the availability state.
 
 ## Reproduction
 

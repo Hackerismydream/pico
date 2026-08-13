@@ -5,6 +5,23 @@
 > can support a frozen-workload efficiency claim, but it is not evidence that a
 > general-purpose model improves on arbitrary repositories.
 
+## Current published deterministic result
+
+The 2026-08-13 candidate at Pico
+`7c9655a82dfd1d84872fb4f0c2aecd5835ff6ef9` and Myna
+`924436f565d8235f02a781d776e87ea4cc176475` completed 144/144 formal Trials
+and 72/72 valid Pairs. Both arms passed 72/72 tasks. The Myna arm reduced
+repository reads by 50.0 percent, with a task-clustered 95 percent interval of
+29.166667 to 70.833333 percent. There were no stale-memory regressions or
+cross-repository Memory events.
+
+The result is eligible only as installed-candidate efficiency evidence for
+this frozen deterministic Pack. Capability uplift was zero, so no capability
+claim is eligible. Network Provider calls were forbidden and paid Provider
+calls were zero. Exact wheel and evidence hashes, the private artifact locator,
+and the v1 receipt limitation are recorded in the
+[candidate evidence index](candidate-evidence-index.md).
+
 The lightweight real-Agent subtrack below is the task-effect benchmark. It
 keeps this deterministic track as lifecycle calibration instead of relabeling
 its mechanically constrained repository-read result as general Agent uplift.
