@@ -55,3 +55,4 @@ benchmarks/pinchbench/results/*.json
 # 一次性小型真实演化运行目标，由 scripts/setup_small_real_subject.py 从
 # benchmarks/evolver/subject_template/ 生成。
 benchmarks/evolver/subject/
+feishu/images/
