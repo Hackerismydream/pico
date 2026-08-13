@@ -1,9 +1,7 @@
 # PicoBench Myna task-effect v1
 
-> **Status: implemented credential-free installed-candidate experiment.** The
-> deterministic Agent policy is a Runtime and Memory lifecycle calibration. It
-> can support a frozen-workload efficiency claim, but it is not evidence that a
-> general-purpose model improves on arbitrary repositories.
+> **Status: deterministic calibration and live real-Agent subtrack completed.**
+> Only the deterministic efficiency result passed a positive Claim Gate.
 
 ## Current published deterministic result
 
@@ -25,6 +23,23 @@ and the v1 receipt limitation are recorded in the
 The lightweight real-Agent subtrack below is the task-effect benchmark. It
 keeps this deterministic track as lifecycle calibration instead of relabeling
 its mechanically constrained repository-read result as general Agent uplift.
+
+## Current real-Agent result
+
+The live DeepSeek run completed 48/48 Trials and 24/24 valid Pairs with no
+contamination. Control passed 5/24 Pairs and Myna passed 10/24, an exploratory
+20.8333-point delta. Its task-clustered 95 percent interval was 0 to 41.6667
+points, so capability, general-Agent, and overall positive Claim Gates all
+failed. Only four Pairs passed in both arms; input tokens increased 18.1271
+percent and Tool Calls increased 5.9524 percent on that small concordant set,
+so the efficiency Gate also failed. Stale-memory regressions and
+cross-repository Memory events remained zero.
+
+The run is measurement-valid evidence of direction on this frozen 12-task
+Pack, not a resume-safe capability uplift. Its aggregate SHA-256 is
+`501dd637e85e63b9fa68f2884df328ee534a32101e2dd38614bff6c2288b6f25`;
+the manifest, claim, verifier, and inventory digests are recorded in the
+[candidate evidence index](candidate-evidence-index.md).
 
 ## Lightweight real-Agent subtrack
 

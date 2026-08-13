@@ -2,8 +2,8 @@
 
 > Current implementation checkpoint: PicoBench Ship-1 and its held-out semantic
 > v2 addendum, the Issue #21 V-LF closure recorded on 2026-07-27, and the
-> current Myna public-seam integration and its 2026-08-13 deterministic formal
-> evidence, plus historical Issue #65 and Issue #70 CodeCairn evidence. Issue
+> current Myna public-seam integration and its 2026-08-13 deterministic and
+> real-Agent evidence, plus historical Issue #65 and Issue #70 CodeCairn evidence. Issue
 > #79 task-effect v2 calibration is complete,
 > measurement-invalid, and blocked before its formal matrix. Campaign evidence
 > remains bound to the source commits named below.
@@ -58,13 +58,24 @@ coherent Runtime path while deliberately limiting unrelated product breadth:
   deterministic Trials and 72/72 valid Pairs with both arms passing 72/72. The
   Myna arm reduced repository reads by 50.0 percent on this frozen Pack, with a
   task-clustered 95 percent interval of 29.166667 to 70.833333 percent. This is
-  deterministic efficiency evidence, not general capability, production
-  performance, or real-Agent evidence.
+  deterministic efficiency evidence, not general capability or production
+  performance. A separate live 24-Pair real-Agent run observed a 20.8333-point
+  pass delta, but its 95 percent interval was 0 to 41.6667 points, so every
+  capability and positive Claim Gate failed.
+- The current CallEfficiency live campaign completed 72 Trials and 504
+  DeepSeek calls with both arms passing 36/36. Stable prefixes produced a
+  72.0750 percent task-clustered estimated cost reduction, with a 95 percent
+  interval of 68.8471 to 75.0961 percent, relative to a deliberately disrupted
+  prefix counterfactual.
+- The formal Tracing campaign completed 1,000 local pairs with 100 percent
+  correlation. Tracing added 2.245 ms at P95 and 25,717.2 bytes per enabled
+  Turn; it is an overhead measurement, not a low-overhead claim.
 - V-R0 exists as a fail-closed release driver, but no complete V-R0 result has
   passed.
-- Evolver has a public Beta workflow, deterministic V-E0 coverage, and a
-  tracked small-real subject harness. A real model has not yet completed that
-  small-real run.
+- Evolver has a public Beta workflow, deterministic V-E0 coverage, and one
+  completed real-model small-real run. Its single candidate moved train pass
+  rate from 40 to 60 percent and a four-case sealed test from 25 to 50 percent,
+  but was not credited at two sigma and remains `pending_human`.
 
 The remaining v1 release boundary includes a real small-real Evolution Run
 verdict and one clean, commit-bound full V-R0 run followed by versioning and
