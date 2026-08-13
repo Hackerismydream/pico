@@ -15,15 +15,17 @@ their failure boundaries.
 | Session files | `<workspace-state>/sessions/` | `SessionManager` |
 | Curator state | `<workspace-state>/memory/.curator/` | Context Engine |
 | local Workspace Skills | `<workspace-state>/skills/` | Local Skill catalog |
-| user Plugins | `~/.pico/plugins/` | Plugin discovery |
-| project Plugins | `<process-cwd>/.pico/plugins/` | Plugin discovery; note this uses current working directory, not configured Workspace |
+| user Plugins | `~/.pico/plugins/` | Operator-managed Plugin discovery |
+| installed Plugins | Python entry-point group `pico.plugins` | Package installation |
 | Myna repository Memory | Myna-owned runtime root | Initialized with `myna init` |
 | Tracing | `~/.pico/traces/` | `PICO_TRACING_DIR` |
 | Evolution Run | run-spec `work_dir` | Evolver |
 
 Pico does not automatically import external product state. An explicit
 `--workspace` or non-default configured Workspace is direct operation with
-colocated state on that path, not a migration protocol.
+colocated state on that path, not a migration protocol. Repositories are not
+automatic executable Plugin sources: normal CLI, TUI, Gateway, and
+`pico plugins` discovery ignore `<workspace>/.pico/plugins/`.
 
 ## Session: transcript authority
 
@@ -190,19 +192,23 @@ select `null`. Pico neither reads nor deletes data owned by retired backends.
 
 ## Plugin Registry
 
-Discovery sources and conflict priority:
+Automatic host discovery sources and conflict priority:
 
 | Priority | Source | Location |
 | ---: | --- | --- |
-| 4 | bundled | `pico/plugin/memory/<plugin-id>/` |
-| 3 | user | `~/.pico/plugins/<plugin-id>/` |
-| 2 | project | `<process-cwd>/.pico/plugins/<plugin-id>/` |
+| 3 | bundled | `pico/plugin/memory/<plugin-id>/` |
+| 2 | user | `~/.pico/plugins/<plugin-id>/` |
 | 1 | entry point | Python entry-point group `pico.plugins` |
 
 Directory discovery parses `pico-plugin.toml` without importing backend code.
 Entry-point discovery reads the manifest from the owning distribution's file
 inventory before importing its package. Distribution id, version, and Pico
-compatibility must match the manifest before activation begins.
+compatibility must match the manifest before admission begins. Admission
+records contribution names and factory references without importing Python or
+changing `sys.path`; a factory resolves only when its backend or Tool is built.
+
+`PluginDiscovery(project_dir=...)` remains an explicit low-level capability for
+trusted callers and tests. Pico hosts do not pass it automatically.
 
 Activated Plugins may contribute:
 

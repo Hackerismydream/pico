@@ -126,7 +126,9 @@ pico gateway --workspace "$PWD" --verbose
 | Myna 仓库绑定 | Myna 初始化选定的 Git common directory |
 
 正常启动会把 Pico 状态放在仓库之外。Myna 向导会在授权前展示计划写入，
-不导入历史，不安装 Hook。运维交付见 [Myna 指南](docs/onboarding/memory.zh-CN.md)和
+不导入历史，不安装 Hook。可执行 Plugin 只从 Pico 内置目录、operator 管理的
+`~/.pico/plugins/` 和已安装的 `pico.plugins` entry point 中发现；仓库里的
+`.pico/plugins/` 不会成为自动启动来源。运维交付见 [Myna 指南](docs/onboarding/memory.zh-CN.md)和
 [故障排查](docs/onboarding/troubleshooting.md)。
 
 ## 开发与验证

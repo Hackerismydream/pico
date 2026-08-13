@@ -98,28 +98,30 @@ class TestActivation:
         factory = reg.get_memory_backend_factory("example")
         assert factory is fake_factory
 
-    def test_failed_factory_import_does_not_leave_partial_activation(self) -> None:
+    def test_failed_factory_import_is_deferred_until_selected(self) -> None:
         def fake_factory(ctx):
             return ctx
 
         _install_test_module("_test_plugin_transaction", {"make_backend": fake_factory})
         reg = PluginRegistry()
 
-        with pytest.raises(PluginFactoryImportError):
-            reg.activate(
-                [
-                    _make_discovered(
-                        "transactional",
-                        backends=[
-                            ("first", "_test_plugin_transaction:make_backend"),
-                            ("second", "_missing_plugin_transaction:make_backend"),
-                        ],
-                    )
-                ]
-            )
+        reg.activate(
+            [
+                _make_discovered(
+                    "transactional",
+                    backends=[
+                        ("first", "_test_plugin_transaction:make_backend"),
+                        ("second", "_missing_plugin_transaction:make_backend"),
+                    ],
+                )
+            ]
+        )
 
-        assert reg.activated_ids() == []
-        assert reg.memory_backend_names() == []
+        assert reg.activated_ids() == ["transactional"]
+        assert reg.memory_backend_names() == ["first", "second"]
+        assert reg.get_memory_backend_factory("first") is fake_factory
+        with pytest.raises(PluginFactoryImportError):
+            reg.get_memory_backend_factory("second")
 
     def test_factory_invoked_with_context(self, tmp_path: Path) -> None:
         captured = {}
@@ -240,47 +242,50 @@ class TestConflicts:
 class TestFactoryResolutionErrors:
     def test_missing_module(self) -> None:
         reg = PluginRegistry()
+        reg.activate(
+            [
+                _make_discovered(
+                    "plug",
+                    backends=[
+                        ("example", "_nonexistent_module_zzz:make_backend"),
+                    ],
+                ),
+            ]
+        )
         with pytest.raises(PluginFactoryImportError, match="importing"):
-            reg.activate(
-                [
-                    _make_discovered(
-                        "plug",
-                        backends=[
-                            ("example", "_nonexistent_module_zzz:make_backend"),
-                        ],
-                    ),
-                ]
-            )
+            reg.get_memory_backend_factory("example")
 
     def test_module_lacks_attribute(self) -> None:
         _install_test_module("_test_plugin_g", {"other_thing": object()})
         reg = PluginRegistry()
+        reg.activate(
+            [
+                _make_discovered(
+                    "plug",
+                    backends=[
+                        ("example", "_test_plugin_g:make_backend"),
+                    ],
+                ),
+            ]
+        )
         with pytest.raises(PluginFactoryImportError, match="attribute"):
-            reg.activate(
-                [
-                    _make_discovered(
-                        "plug",
-                        backends=[
-                            ("example", "_test_plugin_g:make_backend"),
-                        ],
-                    ),
-                ]
-            )
+            reg.get_memory_backend_factory("example")
 
     def test_attribute_not_callable(self) -> None:
         _install_test_module("_test_plugin_h", {"make_backend": 42})
         reg = PluginRegistry()
+        reg.activate(
+            [
+                _make_discovered(
+                    "plug",
+                    backends=[
+                        ("example", "_test_plugin_h:make_backend"),
+                    ],
+                ),
+            ]
+        )
         with pytest.raises(PluginFactoryImportError, match="non-callable"):
-            reg.activate(
-                [
-                    _make_discovered(
-                        "plug",
-                        backends=[
-                            ("example", "_test_plugin_h:make_backend"),
-                        ],
-                    ),
-                ]
-            )
+            reg.get_memory_backend_factory("example")
 
 
 # ---------------------------------------------------------------------------
