@@ -863,7 +863,7 @@ def _serialized_call_records_complete(artifact: TrialArtifact) -> bool:
         expected = {
             "outcome": provider_record.outcome,
             "requested_model": provider_record.requested_model,
-            "actual_model": provider_record.actual_model or "",
+            "actual_model": _canonical_model(provider_record.actual_model) or "",
             "usage_complete": provider_record.usage_complete,
             "fresh_input_tokens": provider_record.fresh_input_tokens,
             "cache_read_tokens": provider_record.cache_read_tokens,
@@ -874,7 +874,7 @@ def _serialized_call_records_complete(artifact: TrialArtifact) -> bool:
         observed = {
             "outcome": raw_call_record.get("outcome"),
             "requested_model": raw_call_record.get("requested_model"),
-            "actual_model": raw_call_record.get("actual_model"),
+            "actual_model": _canonical_model(raw_call_record.get("actual_model")),
             "usage_complete": usage.get("complete"),
             "fresh_input_tokens": usage.get("input_tokens"),
             "cache_read_tokens": usage.get("cache_read_tokens"),
