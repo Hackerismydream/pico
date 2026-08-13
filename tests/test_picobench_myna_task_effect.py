@@ -410,14 +410,15 @@ def test_agent_report_requires_rebuildable_receipts_for_formal_evidence() -> Non
     assert report["claim"]["measurement_valid"] is False
 
 
-def test_agent_campaign_requires_approval_persists_and_resumes(tmp_path: Path) -> None:
+def test_agent_campaign_requires_approval_persists_and_resumes(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
     pico_wheel = tmp_path / "pico.whl"
     myna_wheel = tmp_path / "myna.whl"
     pico_wheel.write_bytes(b"pico-wheel")
     myna_wheel.write_bytes(b"myna-wheel")
     config = AgentCampaignConfig(
         corpus_path=TASK_ROOT / "agent.json",
-        output_root=tmp_path / "evidence",
+        output_root=Path("evidence"),
         pico_wheel=pico_wheel,
         myna_wheel=myna_wheel,
         pico_commit="a" * 40,
@@ -524,6 +525,8 @@ def test_agent_campaign_requires_approval_persists_and_resumes(tmp_path: Path) -
     assert first == second
     assert len(calls) == 48
     assert first["claim"]["positive_claim_eligible"] is True
+    high_water = json.loads((config.output_root / "provider-budget.high-water.json").read_text(encoding="utf-8"))
+    assert high_water["ledger_path"] == str((config.output_root / "provider-budget.jsonl").resolve())
     verification = verify_agent_evidence(config.output_root, corpus_path=config.corpus_path)
     assert verification["passed"] is True
     assert all(verification["gates"].values())
