@@ -1,4 +1,5 @@
 from .live import (
+    CURRENT_REPORT_SCHEMA,
     DEFAULT_HARD_CAP_USD,
     DEFAULT_MAX_PROVIDER_CALLS,
     DEFAULT_MODEL,
@@ -12,6 +13,7 @@ from .live import (
     TaskCorpus,
     build_arm,
     build_campaign_report,
+    build_current_campaign_report,
     load_task_corpus,
     rotated_cache_policies,
 )
@@ -35,6 +37,7 @@ __all__ = [
     "DEFAULT_HARD_CAP_USD",
     "DEFAULT_MAX_PROVIDER_CALLS",
     "DEFAULT_MODEL",
+    "CURRENT_REPORT_SCHEMA",
     "PRICE_SNAPSHOT",
     "ArmConfig",
     "CampaignBudget",
@@ -50,6 +53,7 @@ __all__ = [
     "assess_tokenwise_cost_claim",
     "build_arm",
     "build_campaign_report",
+    "build_current_campaign_report",
     "load_task_corpus",
     "rotated_cache_policies",
 ]

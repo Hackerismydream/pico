@@ -18,6 +18,7 @@ from .reducer import (
 
 TASK_CORPUS_SCHEMA = "pico.picobench.tokenwise-cost.tasks.v1"
 REPORT_SCHEMA = "pico.picobench.tokenwise-cost.report.v1"
+CURRENT_REPORT_SCHEMA = "pico.picobench.call-efficiency-cost.report.v2"
 DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
 DEFAULT_HARD_CAP_USD = 2.0
 DEFAULT_MAX_PROVIDER_CALLS = 1_200
@@ -104,7 +105,9 @@ class CampaignConfig:
     repetitions: int = 3
     hard_cap_usd: float = DEFAULT_HARD_CAP_USD
     max_provider_calls: int = DEFAULT_MAX_PROVIDER_CALLS
-    output_root: Path = Path(".pico/evidence/tokenwise-cost")
+    bootstrap_samples: int = 10_000
+    bootstrap_seed: int = 20_260_813
+    output_root: Path = Path(".pico/evidence/call-efficiency-cost-current")
 
     def __post_init__(self) -> None:
         if self.model != DEFAULT_MODEL:
@@ -115,6 +118,8 @@ class CampaignConfig:
             raise ValueError("hard_cap_usd must be positive")
         if self.max_provider_calls < 1:
             raise ValueError("max_provider_calls must be positive")
+        if self.bootstrap_samples < 1:
+            raise ValueError("bootstrap_samples must be positive")
 
 
 @dataclass
@@ -129,11 +134,11 @@ class CampaignBudget:
             raise CampaignError("provider call ceiling reached")
         if self.spent_usd >= self.hard_cap_usd:
             raise CampaignError("cost ceiling reached")
+        self.provider_calls += 1
 
     def record_call(self, *, cost_usd: float) -> None:
         if cost_usd < 0:
             raise ValueError("cost_usd must not be negative")
-        self.provider_calls += 1
         self.spent_usd += cost_usd
 
 
@@ -157,6 +162,14 @@ class LiveTrialResult:
     provider_calls: int
     latency_ms: int
     findings: tuple[str, ...]
+    runtime_assembly: bool = False
+    call_efficiency_mode: str | None = None
+    call_efficiency_records: int = 0
+    call_efficiency_records_complete: bool = False
+    call_efficiency_ledger_status: str | None = None
+    call_efficiency_accepted_records: int = 0
+    call_efficiency_persisted_records: int = 0
+    call_efficiency_lost_records: int = 0
 
     def measurement(self) -> TokenWiseCostMeasurement:
         return TokenWiseCostMeasurement(
@@ -277,7 +290,72 @@ def build_campaign_report(
     return payload
 
 
+def build_current_campaign_report(
+    *,
+    config: CampaignConfig,
+    corpus: TaskCorpus,
+    trials: tuple[LiveTrialResult, ...],
+) -> dict[str, Any]:
+    from .reducer import paired_cost_reduction_interval
+
+    payload = build_campaign_report(config=config, corpus=corpus, trials=trials)
+    payload["schema"] = CURRENT_REPORT_SCHEMA
+    interval = paired_cost_reduction_interval(
+        tuple(trial.measurement() for trial in trials),
+        samples=config.bootstrap_samples,
+        seed=config.bootstrap_seed,
+    )
+    gates = {
+        "legacy_cost_claim": bool(payload["claim"]["claim_eligible"]),
+        "current_runtime_assembly": bool(trials) and all(trial.runtime_assembly for trial in trials),
+        "call_efficiency_observe_mode": bool(trials)
+        and all(trial.call_efficiency_mode == "observe" for trial in trials),
+        "call_efficiency_per_attempt_complete": bool(trials)
+        and all(
+            trial.call_efficiency_records_complete and trial.call_efficiency_records == trial.provider_calls
+            for trial in trials
+        ),
+        "call_efficiency_ledger_healthy": bool(trials)
+        and all(
+            trial.call_efficiency_ledger_status == "healthy"
+            and trial.call_efficiency_accepted_records == trial.provider_calls
+            and trial.call_efficiency_persisted_records == trial.provider_calls
+            and trial.call_efficiency_lost_records == 0
+            for trial in trials
+        ),
+        "paired_cost_reduction_ci_above_zero": interval is not None and interval["lower"] > 0,
+    }
+    eligible = all(gates.values())
+    payload["campaign"].update(
+        {
+            "runtime_boundary": "shared_runtime_assembly",
+            "call_efficiency_mode": "observe",
+            "bootstrap_samples": config.bootstrap_samples,
+            "bootstrap_seed": config.bootstrap_seed,
+        }
+    )
+    payload["analysis"] = {"paired_cost_reduction_95_ci": interval}
+    payload["gates"] = gates
+    payload["claim"]["legacy_claim_eligible"] = payload["claim"]["claim_eligible"]
+    payload["claim"]["claim_eligible"] = eligible
+    payload["claim"]["paired_cost_reduction_95_ci"] = interval
+    if eligible and interval is not None:
+        payload["claim"]["cv_metrics"].update(
+            {
+                "paired_cost_reduction_ci_lower": interval["lower"],
+                "paired_cost_reduction_ci_upper": interval["upper"],
+            }
+        )
+    else:
+        payload["claim"]["cv_metrics"] = {}
+    payload["report_digest"] = canonical_digest(
+        {key: value for key, value in payload.items() if key != "report_digest"}
+    )
+    return payload
+
+
 __all__ = [
+    "CURRENT_REPORT_SCHEMA",
     "DEFAULT_HARD_CAP_USD",
     "DEFAULT_MAX_PROVIDER_CALLS",
     "DEFAULT_MODEL",
@@ -292,6 +370,7 @@ __all__ = [
     "TaskCorpus",
     "build_arm",
     "build_campaign_report",
+    "build_current_campaign_report",
     "load_task_corpus",
     "rotated_cache_policies",
 ]

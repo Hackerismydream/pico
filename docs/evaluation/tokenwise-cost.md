@@ -136,18 +136,25 @@ artifact.
 An `equivalent: true` result establishes artifact and reducer equivalence only.
 It is not a new live Runtime result.
 
-The original paid runner remains available behind its explicit execution flag:
+The current paid runner crosses the shared Runtime Assembly and observes every
+physical Provider attempt through CallEfficiency. It retains raw Provider and
+CallEfficiency receipts, applies a task-clustered paired bootstrap interval,
+and rebuilds the result offline. Paid modes remain behind an explicit flag:
 
 ```bash
 uv run python -m benchmarks.picobench.tokenwise_cost_campaign \
   --mode preflight \
-  --output-root .pico/evidence/tokenwise-cost-deepseek-rebased \
+  --output-root .pico/evidence/call-efficiency-cost-current \
   --execute-paid-campaign
 
 uv run python -m benchmarks.picobench.tokenwise_cost_campaign \
   --mode formal \
-  --output-root .pico/evidence/tokenwise-cost-deepseek-rebased \
+  --output-root .pico/evidence/call-efficiency-cost-current \
   --execute-paid-campaign
+
+uv run python -m benchmarks.picobench.tokenwise_cost_campaign \
+  --mode verify \
+  --output-root .pico/evidence/call-efficiency-cost-current
 ```
 
 The runner reads `DEEPSEEK_API_KEY`, then falls back to
@@ -155,9 +162,10 @@ The runner reads `DEEPSEEK_API_KEY`, then falls back to
 artifacts. It stops before a new call at either 1,200 Provider calls or USD 2
 of observed estimated spend.
 
-## Proposed evidence expansion
-
-The current 72-Trial result is CV-eligible. A proposed 320-Trial successor
-would expand task diversity and add paired confidence intervals; it is not yet
-authorized or executed. See the
-[TokenWise evidence expansion analysis](../plan/analysis/tokenwise-evidence-expansion.md).
+The formal campaign remains 12 frozen tasks times three repetitions times two
+arms: 36 pairs and 72 Trials. A positive claim additionally requires every task
+to pass, complete Usage and cost data, exact-model execution without fallback,
+one persisted CallEfficiency record per physical attempt, healthy ledgers, and
+a paired cost-reduction confidence interval whose lower bound is above zero.
+The verifier writes raw outcomes, the rebuilt aggregate, claim eligibility,
+verifier status, and a SHA-256 inventory without making Provider calls.
