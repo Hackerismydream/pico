@@ -1,4 +1,4 @@
-.PHONY: help install install-deps format check lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-reproduce picobench-scorecard-estimate picobench-scorecard-ship picobench-scorecard-score picobench-runtime-scheduler picobench-runtime-tools picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify picobench-call-efficiency-plan picobench-call-efficiency-preflight picobench-call-efficiency-run picobench-call-efficiency-verify picobench-myna-task-effect-plan picobench-myna-task-effect-run picobench-myna-task-effect-verify picobench-memory-agent-plan picobench-memory-agent-run picobench-memory-agent-verify verify-myna-integration verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
+.PHONY: help install install-deps format check lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-reproduce picobench-scorecard-estimate picobench-scorecard-ship picobench-scorecard-score picobench-runtime-scheduler picobench-runtime-tools picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify picobench-call-efficiency-plan picobench-call-efficiency-preflight picobench-call-efficiency-run picobench-call-efficiency-verify picobench-tracing-plan picobench-tracing-run picobench-tracing-verify picobench-myna-task-effect-plan picobench-myna-task-effect-run picobench-myna-task-effect-verify picobench-memory-agent-plan picobench-memory-agent-run picobench-memory-agent-verify verify-myna-integration verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
 
 PYTHON ?= python3
 PYTHON_LINT_TARGETS ?= scripts/check_commit_file.py scripts/check_commit_messages.py scripts/check_pr_title.py scripts/check_large_files.py scripts/commit_lint.py tests/test_commit_lint.py tests/test_large_file_check.py
@@ -10,6 +10,7 @@ PICO_MYNA_TASK_EFFECT_OUTPUT ?= .pico/evidence/myna-task-effect/$(PICO_MYNA_TASK
 PICO_MEMORY_AGENT_CORPUS := benchmarks/picobench/tasks/myna_task_effect/agent.json
 PICO_MEMORY_AGENT_OUTPUT ?= .pico/evidence/myna-task-effect/agent
 PICO_CALL_EFFICIENCY_OUTPUT ?= .pico/evidence/call-efficiency-cost-current
+PICO_TRACING_OUTPUT ?= .pico/evidence/tracing-overhead-current
 
 help:
 	@echo "Targets:"
@@ -32,6 +33,9 @@ help:
 	@echo "  picobench-call-efficiency-preflight Verify live DeepSeek prompt-cache behavior"
 	@echo "  picobench-call-efficiency-run Run or resume the approved 72-Trial cost campaign"
 	@echo "  picobench-call-efficiency-verify Rebuild cost evidence without Provider calls"
+	@echo "  picobench-tracing-plan Print the 1,000-pair Runtime tracing plan"
+	@echo "  picobench-tracing-run Run or resume the deterministic tracing on/off campaign"
+	@echo "  picobench-tracing-verify Rebuild tracing metrics and verify raw trace receipts"
 	@echo "  picobench-myna-task-effect-plan Freeze the installed Pico x Myna A/B plan"
 	@echo "  picobench-myna-task-effect-run Run or resume the credential-free A/B"
 	@echo "  picobench-myna-task-effect-verify Reinstall candidates and rebuild A/B evidence"
@@ -141,6 +145,12 @@ picobench-call-efficiency-plan picobench-call-efficiency-preflight picobench-cal
 		--mode $(if $(filter picobench-call-efficiency-run,$@),formal,$(patsubst picobench-call-efficiency-%,%,$@)) \
 		--output-root "$(PICO_CALL_EFFICIENCY_OUTPUT)" \
 		$(if $(filter picobench-call-efficiency-preflight picobench-call-efficiency-run,$@),--execute-paid-campaign,)
+
+picobench-tracing-plan picobench-tracing-run picobench-tracing-verify:
+	uv run --frozen --all-extras --exact python -m benchmarks.picobench.packs.tracing.overhead_experiment \
+		$(patsubst picobench-tracing-%,%,$@) \
+		--output-root "$(PICO_TRACING_OUTPUT)" \
+		$(if $(PICO_TRACING_COMMIT),--pico-commit "$(PICO_TRACING_COMMIT)",)
 
 picobench-myna-task-effect-plan picobench-myna-task-effect-run picobench-myna-task-effect-verify:
 	@test "$(PICO_MYNA_TASK_EFFECT_KIND)" = "calibration" -o "$(PICO_MYNA_TASK_EFFECT_KIND)" = "formal" || (echo "PICO_MYNA_TASK_EFFECT_KIND must be calibration or formal" >&2; exit 2)
