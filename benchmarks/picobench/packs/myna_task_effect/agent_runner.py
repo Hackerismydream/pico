@@ -61,8 +61,10 @@ class InstalledAgentTrialExecutor(InstalledTrialExecutor):
                 "source_sha256": hashlib.sha256(task.source_text.encode()).hexdigest(),
             }
         )
+        phase = "workspace_setup"
         try:
             if arm.arm_id == "memory_on":
+                phase = "memory_initialize"
                 self._run(
                     (
                         str(self._myna),
@@ -79,6 +81,7 @@ class InstalledAgentTrialExecutor(InstalledTrialExecutor):
                     ),
                     cwd=workspace,
                 )
+            phase = "prime"
             prime = self._worker_call(
                 self._turn_spec(
                     task,
@@ -91,6 +94,17 @@ class InstalledAgentTrialExecutor(InstalledTrialExecutor):
                 ),
                 trial_root / "prime-worker",
             )
+            prime_failure = _worker_failure(prime)
+            if prime_failure is not None:
+                return _failed_trial_record(
+                    task=task,
+                    repetition=repetition,
+                    arm=arm,
+                    fixture_digest=fixture_digest,
+                    failure_receipt=prime_failure,
+                    prime=prime,
+                )
+            phase = "evaluation"
             evaluation_spec = self._turn_spec(
                 task,
                 repetition=repetition,
@@ -112,8 +126,24 @@ class InstalledAgentTrialExecutor(InstalledTrialExecutor):
                 trial_root / "evaluation-worker",
                 environment_overrides={"PICO_BENCH_PROVIDER_API_KEY": self._provider_api_key},
             )
+            evaluation_failure = _worker_failure(evaluation)
+            if evaluation_failure is not None:
+                return _failed_trial_record(
+                    task=task,
+                    repetition=repetition,
+                    arm=arm,
+                    fixture_digest=fixture_digest,
+                    failure_receipt=evaluation_failure,
+                    prime=prime,
+                    evaluation=evaluation,
+                )
             operations = (
                 tuple(prime.get("myna_operations", ())) + tuple(evaluation.get("myna_operations", ()))
+                if arm.arm_id == "memory_on"
+                else ()
+            )
+            operation_receipt = (
+                tuple(prime.get("memory_operation_receipt", ())) + tuple(evaluation.get("memory_operation_receipt", ()))
                 if arm.arm_id == "memory_on"
                 else ()
             )
@@ -143,12 +173,19 @@ class InstalledAgentTrialExecutor(InstalledTrialExecutor):
                 findings = (*findings, "memory_off_control_touched_backend")
                 passed = False
             memory_hits = int(evaluation.get("memory_hits", 0) or 0)
+            failure_class = None if passed else ("infrastructure" if not control_isolated else "task")
             return AgentTrialRecord(
                 task_id=task.task_id,
                 task_class=task.task_class,
                 repetition=repetition,
                 arm_id=arm.arm_id,
-                status="passed" if passed else "task_failed",
+                status=(
+                    "passed"
+                    if passed
+                    else "infrastructure_failure"
+                    if failure_class == "infrastructure"
+                    else "task_failed"
+                ),
                 workspace_digest=fixture_digest,
                 tool_calls=metrics["tool_calls"],
                 input_tokens=int(evaluation.get("input_tokens", 0) or 0),
@@ -156,26 +193,53 @@ class InstalledAgentTrialExecutor(InstalledTrialExecutor):
                 provider_calls=int(evaluation.get("provider_calls", 0) or 0),
                 memory_hits=memory_hits,
                 myna_operations=operations,
+                failure_class=failure_class,
+                failure_receipt=(
+                    None
+                    if passed
+                    else {
+                        "schema": "pico.picobench.myna-agent-task-effect.failure-receipt.v2",
+                        "failure_class": failure_class,
+                        "phase": "verification",
+                        "error": {
+                            "code": "verification_failed",
+                            "message": ",".join(findings) or "Task verifier rejected the result",
+                            "type": "VerificationFailure",
+                        },
+                    }
+                ),
+                memory_operation_receipt=operation_receipt,
                 stale_memory_used=bool(task.task_class == "stale_conflict" and not passed and memory_hits),
                 cross_repository_memory=cross_repository,
                 findings=findings,
                 verification_receipt=receipt,
             )
         except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as exc:
-            treatment = arm.arm_id == "memory_on"
+            failure_class = "memory_backend" if phase == "memory_initialize" else "infrastructure"
             return AgentTrialRecord(
                 task_id=task.task_id,
                 task_class=task.task_class,
                 repetition=repetition,
                 arm_id=arm.arm_id,
-                status="task_failed" if treatment else "infrastructure_failure",
+                status="task_failed" if failure_class == "memory_backend" else "infrastructure_failure",
                 workspace_digest=fixture_digest,
                 tool_calls=0,
                 input_tokens=0,
                 output_tokens=0,
                 provider_calls=0,
                 memory_hits=0,
-                myna_operations=(("start",) if treatment else ()),
+                myna_operations=(),
+                failure_class=failure_class,
+                failure_receipt={
+                    "schema": "pico.picobench.myna-agent-task-effect.failure-receipt.v2",
+                    "failure_class": failure_class,
+                    "phase": phase,
+                    "error": {
+                        "code": type(exc).__name__,
+                        "message": str(exc),
+                        "type": type(exc).__name__,
+                    },
+                },
                 findings=(f"trial_execution_failed:{type(exc).__name__}",),
             )
 
@@ -219,6 +283,79 @@ class InstalledAgentTrialExecutor(InstalledTrialExecutor):
 __all__ = ["InstalledAgentTrialExecutor"]
 
 
+def _worker_failure(result: dict[str, object]) -> dict[str, object] | None:
+    receipt = result.get("failure_receipt")
+    if isinstance(receipt, dict) and receipt.get("failure_class") in {
+        "provider",
+        "transport",
+        "budget",
+        "infrastructure",
+        "memory_backend",
+    }:
+        return receipt
+    if result.get("terminal") != "completed":
+        return {
+            "schema": "pico.picobench.myna-agent-task-effect.failure-receipt.v2",
+            "failure_class": "infrastructure",
+            "phase": "worker_turn",
+            "error": {
+                "code": "missing_failure_receipt",
+                "message": "Worker Turn did not complete without a classified failure",
+                "type": "WorkerEvidenceFailure",
+            },
+        }
+    return None
+
+
+def _failed_trial_record(
+    *,
+    task: TaskDefinition,
+    repetition: int,
+    arm: ExperimentArm,
+    fixture_digest: str,
+    failure_receipt: dict[str, object],
+    prime: dict[str, object],
+    evaluation: dict[str, object] | None = None,
+) -> AgentTrialRecord:
+    evaluation = evaluation or {}
+    failure_class = str(failure_receipt["failure_class"])
+    operation_receipt = (
+        tuple(prime.get("memory_operation_receipt", ())) + tuple(evaluation.get("memory_operation_receipt", ()))
+        if arm.arm_id == "memory_on"
+        else ()
+    )
+    operations = tuple(
+        row["operation"]
+        for row in operation_receipt
+        if isinstance(row, dict) and row.get("outcome") == "succeeded" and isinstance(row.get("operation"), str)
+    )
+    metrics = _tool_metrics(evaluation.get("tool_events"))
+    return AgentTrialRecord(
+        task_id=task.task_id,
+        task_class=task.task_class,
+        repetition=repetition,
+        arm_id=arm.arm_id,
+        status=(
+            "task_failed"
+            if failure_class == "memory_backend"
+            else "provider_failure"
+            if failure_class in {"provider", "transport", "budget"}
+            else "infrastructure_failure"
+        ),
+        workspace_digest=fixture_digest,
+        tool_calls=metrics["tool_calls"],
+        input_tokens=int(evaluation.get("input_tokens", 0) or 0),
+        output_tokens=int(evaluation.get("output_tokens", 0) or 0),
+        provider_calls=int(evaluation.get("provider_calls", 0) or 0),
+        memory_hits=int(evaluation.get("memory_hits", 0) or 0),
+        myna_operations=operations,
+        failure_class=failure_class,
+        failure_receipt=failure_receipt,
+        memory_operation_receipt=operation_receipt,
+        findings=(f"{failure_class}_failure",),
+    )
+
+
 def _verification_receipt(
     task: TaskDefinition,
     workspace: Path,
@@ -239,7 +376,7 @@ def _verification_receipt(
         if path.is_file() and not path.is_relative_to(workspace / ".git")
     }
     return {
-        "schema": "pico.picobench.myna-agent-task-effect.verification-receipt.v1",
+        "schema": "pico.picobench.myna-agent-task-effect.verification-receipt.v2",
         "terminal": evaluation.get("terminal"),
         "artifact_sha256": artifact_sha256,
         "observed": observed,

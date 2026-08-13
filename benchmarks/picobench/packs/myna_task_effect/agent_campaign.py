@@ -6,7 +6,7 @@ import json
 import math
 import os
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import mean
@@ -33,14 +33,24 @@ from .campaign import (
 )
 
 AGENT_TASK_SCHEMA = "pico.picobench.myna-agent-task-effect.tasks.v1"
+AGENT_TRIAL_SCHEMA = "pico.picobench.myna-agent-task-effect.trial-record.v2"
+_AGENT_MANIFEST_SCHEMA = "pico.picobench.myna-agent-task-effect.manifest.v2"
+_AGENT_REPORT_SCHEMA = "pico.picobench.myna-agent-task-effect.report.v2"
+_AGENT_CANDIDATE_SCHEMA = "pico.picobench.myna-agent-task-effect.candidate-receipt.v2"
+_AGENT_VERIFICATION_SCHEMA = "pico.picobench.myna-agent-task-effect.verification-receipt.v2"
+_AGENT_INVENTORY_SCHEMA = "pico.picobench.myna-agent-task-effect.inventory.v2"
+_AGENT_VERIFIER_SCHEMA = "pico.picobench.myna-agent-task-effect.verifier.v2"
+_AGENT_OFFLINE_SCHEMA = "pico.picobench.myna-agent-task-effect.offline-verifier.v2"
+_AGENT_BUDGET_APPROVAL_SCHEMA = "pico.picobench.myna-agent-task-effect.budget-approval.v2"
 _AGENT_TASK_ID = re.compile(r"[a-z0-9][a-z0-9._-]{0,127}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-_EXPECTED_LIFECYCLE = ("start", "store", "stop", "start", "recall", "store", "stop")
+_EXPECTED_LIFECYCLE = ("start", "recall", "store", "stop", "start", "recall", "store", "stop")
 _PASS_NONINFERIORITY_FLOOR = -0.05
 _MIN_CONCORDANT_COVERAGE = 0.80
 _MIN_TOOL_CALL_REDUCTION_PERCENT = 15.0
 _MIN_INPUT_TOKEN_REDUCTION_PERCENT = 10.0
 _MIN_CAPABILITY_DELTA_PP = 10.0
+_CONTAMINATION_FAILURE_CLASSES = frozenset({"provider", "transport", "budget", "infrastructure"})
 _AGENT_INVENTORY_PATHS = (
     "manifest.json",
     "candidate-receipt.json",
@@ -69,10 +79,14 @@ class AgentTrialRecord:
     provider_calls: int
     memory_hits: int
     myna_operations: tuple[str, ...]
+    failure_class: str | None = None
+    failure_receipt: Mapping[str, Any] | None = None
+    memory_operation_receipt: tuple[Mapping[str, Any], ...] = ()
     stale_memory_used: bool = False
     cross_repository_memory: bool = False
     findings: tuple[str, ...] = ()
     verification_receipt: Mapping[str, Any] | None = None
+    schema: str = AGENT_TRIAL_SCHEMA
 
     @property
     def passed(self) -> bool:
@@ -153,7 +167,7 @@ class AgentCampaignConfig:
         if corpus.schema != AGENT_TASK_SCHEMA:
             raise ValueError("agent campaign requires the agent task corpus")
         return {
-            "schema": "pico.picobench.myna-agent-task-effect.manifest.v1",
+            "schema": _AGENT_MANIFEST_SCHEMA,
             "definition_kind": corpus.definition_kind,
             "task_corpus_digest": corpus.digest,
             "treatment_axis": {
@@ -261,6 +275,7 @@ def build_agent_report(
     expected_pairs = len(corpus.tasks) * repetitions
     valid_pairs: list[tuple[AgentTrialRecord, AgentTrialRecord]] = []
     complete_pairs = 0
+    contaminated_pairs = 0
     lifecycle_complete = True
     for task in corpus.tasks:
         for repetition in range(repetitions):
@@ -271,10 +286,22 @@ def build_agent_report(
             complete_pairs += 1
             control = by_arm["memory_off"]
             treatment = by_arm["memory_on"]
-            pair_axis_valid = not control.myna_operations and bool(treatment.myna_operations)
+            pair_axis_valid = not control.myna_operations and (
+                bool(treatment.myna_operations) or treatment.failure_class == "memory_backend"
+            )
             lifecycle_complete &= treatment.myna_operations == _EXPECTED_LIFECYCLE
             axis_valid &= pair_axis_valid
-            terminal = control.status != "infrastructure_failure" and treatment.status != "infrastructure_failure"
+            contaminated = any(
+                trial.failure_class in _CONTAMINATION_FAILURE_CLASSES
+                or trial.status
+                in {
+                    "provider_failure",
+                    "infrastructure_failure",
+                }
+                for trial in (control, treatment)
+            )
+            contaminated_pairs += int(contaminated)
+            terminal = not contaminated
             if pair_axis_valid and terminal and control.workspace_digest == treatment.workspace_digest:
                 valid_pairs.append((control, treatment))
 
@@ -287,11 +314,12 @@ def build_agent_report(
         )
         for trial in trials
     )
+    operation_receipts_valid = all(_memory_operation_receipt_passes(trial) for trial in trials)
     measurement_valid = bool(
         ship_complete
         and axis_valid
         and len(valid_pairs) == expected_pairs
-        and (receipts_valid or not require_verification_receipts)
+        and (receipts_valid and operation_receipts_valid or not require_verification_receipts)
     )
     denominator = len(valid_pairs)
     control_passes = sum(control.passed for control, _ in valid_pairs)
@@ -340,16 +368,18 @@ def build_agent_report(
         and safe
     )
     return {
-        "schema": "pico.picobench.myna-agent-task-effect.report.v1",
+        "schema": _AGENT_REPORT_SCHEMA,
         "task_corpus_digest": corpus.digest,
         "measurement": {
             "planned_pairs": expected_pairs,
             "complete_pairs": complete_pairs,
+            "contaminated_pairs": contaminated_pairs,
             "valid_pairs": denominator,
             "axis_valid": axis_valid,
             "lifecycle_complete": lifecycle_complete,
             "exploratory_task_count": len(corpus.tasks) < 30,
             "verification_receipts_valid": receipts_valid,
+            "memory_operation_receipts_valid": operation_receipts_valid,
         },
         "capability": {
             "control_passes": control_passes,
@@ -414,7 +444,7 @@ def run_agent_campaign(
         _freeze_json(
             output / "candidate-receipt.json",
             {
-                "schema": "pico.picobench.myna-agent-task-effect.candidate-receipt.v1",
+                "schema": _AGENT_CANDIDATE_SCHEMA,
                 "identity": dict(identity),
                 "identity_digest": canonical_digest(identity),
             },
@@ -429,6 +459,7 @@ def run_agent_campaign(
         if callable(configure_budget):
             configure_budget(ledger.path, budget_config)
         records = _read_agent_trial_journal(output / "raw-outcomes.jsonl")
+        _validate_agent_trial_set(records.values(), corpus=corpus, repetitions=config.repetitions)
         expected = {
             (task.task_id, repetition, arm.arm_id)
             for task in corpus.tasks
@@ -479,6 +510,7 @@ def verify_agent_evidence(output_root: Path, *, corpus_path: Path) -> dict[str, 
     if not isinstance(execution, dict) or not isinstance(execution.get("repetitions"), int):
         raise ValueError("agent evidence execution plan is invalid")
     records = tuple(_read_agent_trial_journal(output / "raw-outcomes.jsonl").values())
+    _validate_agent_trial_set(records, corpus=corpus, repetitions=execution["repetitions"])
     analysis = manifest.get("analysis")
     if not isinstance(analysis, dict):
         raise ValueError("agent evidence analysis plan is invalid")
@@ -503,7 +535,7 @@ def verify_agent_evidence(output_root: Path, *, corpus_path: Path) -> dict[str, 
         == _verifier_report(report),
     }
     return {
-        "schema": "pico.picobench.myna-agent-task-effect.offline-verifier.v1",
+        "schema": _AGENT_OFFLINE_SCHEMA,
         "passed": all(gates.values()),
         "gates": gates,
         "recomputed_report": report,
@@ -541,7 +573,7 @@ def _prepare_agent_budget(
         _freeze_json(
             approval_path,
             {
-                "schema": "pico.picobench.myna-agent-task-effect.budget-approval.v1",
+                "schema": _AGENT_BUDGET_APPROVAL_SCHEMA,
                 "approval_digest": approval_digest,
                 "ledger_prefix": prefix,
             },
@@ -604,7 +636,7 @@ def _verify_agent_manifest(output: Path, manifest: dict[str, Any], corpus: TaskC
     execution = manifest.get("execution")
     policy = manifest.get("claim_policy")
     return bool(
-        manifest.get("schema") == "pico.picobench.myna-agent-task-effect.manifest.v1"
+        manifest.get("schema") == _AGENT_MANIFEST_SCHEMA
         and manifest.get("definition_kind") == "agent"
         and manifest.get("task_corpus_digest") == corpus.digest
         and manifest.get("treatment_axis")
@@ -626,7 +658,7 @@ def _verify_candidate_receipt(output: Path) -> bool:
         return False
     identity = receipt.get("identity")
     return bool(
-        receipt.get("schema") == "pico.picobench.myna-agent-task-effect.candidate-receipt.v1"
+        receipt.get("schema") == _AGENT_CANDIDATE_SCHEMA
         and isinstance(identity, dict)
         and identity
         and receipt.get("identity_digest") == canonical_digest(identity)
@@ -640,7 +672,7 @@ def _write_agent_derived(output: Path, report: dict[str, Any]) -> None:
     _write_json(
         output / "inventory.json",
         {
-            "schema": "pico.picobench.myna-agent-task-effect.inventory.v1",
+            "schema": _AGENT_INVENTORY_SCHEMA,
             "files": [{"path": relative, "sha256": _sha256(output / relative)} for relative in _AGENT_INVENTORY_PATHS],
         },
     )
@@ -648,7 +680,7 @@ def _write_agent_derived(output: Path, report: dict[str, Any]) -> None:
 
 def _verifier_report(report: dict[str, Any]) -> dict[str, Any]:
     return {
-        "schema": "pico.picobench.myna-agent-task-effect.verifier.v1",
+        "schema": _AGENT_VERIFIER_SCHEMA,
         "measurement": report["measurement"],
         "safety": report["safety"],
         "passed": report["claim"]["measurement_valid"],
@@ -662,10 +694,19 @@ def _read_agent_trial_journal(path: Path) -> dict[tuple[str, int, str], AgentTri
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         try:
             raw = json.loads(line)
+            if "schema" not in raw:
+                raise ValueError("legacy agent raw outcomes cannot be resumed")
+            if raw.get("schema") != AGENT_TRIAL_SCHEMA:
+                raise ValueError("unsupported agent raw outcome schema")
             raw["myna_operations"] = tuple(raw.get("myna_operations", ()))
+            raw["memory_operation_receipt"] = tuple(raw.get("memory_operation_receipt", ()))
             raw["findings"] = tuple(raw.get("findings", ()))
             record = AgentTrialRecord(**raw)
-        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        except ValueError as exc:
+            if str(exc) == "legacy agent raw outcomes cannot be resumed":
+                raise
+            raise ValueError(f"invalid agent raw outcome at line {line_number}") from exc
+        except (TypeError, json.JSONDecodeError) as exc:
             raise ValueError(f"invalid agent raw outcome at line {line_number}") from exc
         key = (record.task_id, record.repetition, record.arm_id)
         if key in records:
@@ -688,14 +729,95 @@ def _validate_agent_trial(
         or record.arm_id != arm.arm_id
     ):
         raise ValueError("agent executor returned a record outside the planned trial")
-    if record.status not in {"passed", "task_failed", "infrastructure_failure"}:
+    if record.schema != AGENT_TRIAL_SCHEMA:
+        raise ValueError("agent executor returned an unsupported Trial schema")
+    if record.status not in {
+        "passed",
+        "task_failed",
+        "provider_failure",
+        "infrastructure_failure",
+    }:
         raise ValueError("agent executor returned an unknown status")
+    expected_failure_class = {
+        "passed": None,
+        "task_failed": record.failure_class,
+        "provider_failure": record.failure_class,
+        "infrastructure_failure": "infrastructure",
+    }[record.status]
+    if record.status == "provider_failure":
+        if record.failure_class not in {"provider", "transport", "budget"}:
+            raise ValueError("Provider failure requires a Provider failure class")
+    elif record.status == "task_failed":
+        if record.failure_class not in {"task", "memory_backend"}:
+            raise ValueError("task failure requires a product failure class")
+    elif record.failure_class != expected_failure_class:
+        raise ValueError("agent status and failure class disagree")
+    if record.failure_class is None:
+        if record.failure_receipt is not None:
+            raise ValueError("passing agent Trial cannot carry a failure receipt")
+    elif (
+        not isinstance(record.failure_receipt, Mapping)
+        or record.failure_receipt.get("schema") != "pico.picobench.myna-agent-task-effect.failure-receipt.v2"
+        or record.failure_receipt.get("failure_class") != record.failure_class
+    ):
+        raise ValueError("failed agent Trial requires a matching failure receipt")
+    operation_rows = record.memory_operation_receipt
+    if arm.arm_id == "memory_off":
+        if record.myna_operations or operation_rows:
+            raise ValueError("Memory-off Trial cannot carry Memory operation evidence")
+    else:
+        memory_failed_before_backend_call = bool(
+            record.failure_class == "memory_backend"
+            and isinstance(record.failure_receipt, Mapping)
+            and record.failure_receipt.get("phase") in {"memory_initialize", "runtime_assembly"}
+        )
+        if not operation_rows and not memory_failed_before_backend_call:
+            raise ValueError("Memory-on Trial requires actual Memory operation evidence")
+        successful_operations: list[str] = []
+        for row in operation_rows:
+            if not isinstance(row, Mapping):
+                raise ValueError("Memory operation receipt row must be an object")
+            operation = row.get("operation")
+            outcome = row.get("outcome")
+            if row.get("schema") != "pico.picobench.myna-agent-task-effect.memory-operation.v2":
+                raise ValueError("Memory operation receipt schema is invalid")
+            if operation not in {"start", "recall", "store", "feedback", "stop"}:
+                raise ValueError("Memory operation receipt has an unknown operation")
+            if outcome not in {"succeeded", "failed"} or row.get("phase") not in {"prime", "evaluate"}:
+                raise ValueError("Memory operation receipt row is invalid")
+            if outcome == "failed" and not isinstance(row.get("error"), Mapping):
+                raise ValueError("failed Memory operation requires error evidence")
+            if outcome == "succeeded":
+                successful_operations.append(str(operation))
+        if tuple(successful_operations) != record.myna_operations:
+            raise ValueError("Memory operation summary does not match its receipt")
     if record.passed and not _verification_receipt_passes(task, record.verification_receipt):
         raise ValueError("passing agent Trial requires a rebuildable verification receipt")
     for name in ("tool_calls", "input_tokens", "output_tokens", "provider_calls", "memory_hits"):
         value = getattr(record, name)
         if isinstance(value, bool) or value < 0:
             raise ValueError(f"{name} must not be negative")
+
+
+def _validate_agent_trial_set(
+    records: Iterable[AgentTrialRecord],
+    *,
+    corpus: TaskCorpus,
+    repetitions: int,
+) -> None:
+    tasks = {task.task_id: task for task in corpus.tasks}
+    arms = {ARM_MEMORY_OFF.arm_id: ARM_MEMORY_OFF, ARM_MEMORY_ON.arm_id: ARM_MEMORY_ON}
+    for record in records:
+        task = tasks.get(record.task_id)
+        arm = arms.get(record.arm_id)
+        if task is None or arm is None or not 0 <= record.repetition < repetitions:
+            raise ValueError("agent raw outcome falls outside the frozen plan")
+        _validate_agent_trial(
+            record,
+            task=task,
+            repetition=record.repetition,
+            arm=arm,
+        )
 
 
 def _verify_agent_inventory(output: Path) -> None:
@@ -708,7 +830,7 @@ def _verify_agent_inventory(output: Path) -> None:
         observed = {row["path"]: row["sha256"] for row in rows}
     except (KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
         raise ValueError("agent evidence inventory is invalid") from exc
-    if raw.get("schema") != "pico.picobench.myna-agent-task-effect.inventory.v1":
+    if raw.get("schema") != _AGENT_INVENTORY_SCHEMA:
         raise ValueError("agent evidence inventory schema is invalid")
     if set(observed) != set(_AGENT_INVENTORY_PATHS) or len(rows) != len(_AGENT_INVENTORY_PATHS):
         raise ValueError("agent evidence inventory file set is invalid")
@@ -743,13 +865,41 @@ def _verification_receipt_passes(
     if not isinstance(receipt, Mapping):
         return False
     return bool(
-        receipt.get("schema") == "pico.picobench.myna-agent-task-effect.verification-receipt.v1"
+        receipt.get("schema") == _AGENT_VERIFICATION_SCHEMA
         and receipt.get("terminal") == "completed"
         and isinstance(receipt.get("artifact_sha256"), str)
         and _SHA256.fullmatch(receipt["artifact_sha256"])
         and receipt.get("observed") == {"task_id": task.task_id, "value": task.expected_value}
         and receipt.get("unexpected_workspace_paths") == []
     )
+
+
+def _memory_operation_receipt_passes(record: AgentTrialRecord) -> bool:
+    rows = record.memory_operation_receipt
+    if record.arm_id == "memory_off":
+        return not rows and not record.myna_operations
+    if not rows:
+        return bool(
+            record.failure_class == "memory_backend"
+            and isinstance(record.failure_receipt, Mapping)
+            and record.failure_receipt.get("phase") in {"memory_initialize", "runtime_assembly"}
+            and not record.myna_operations
+        )
+    successful: list[str] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            return False
+        if row.get("schema") != "pico.picobench.myna-agent-task-effect.memory-operation.v2":
+            return False
+        if row.get("operation") not in {"start", "recall", "store", "feedback", "stop"}:
+            return False
+        if row.get("outcome") not in {"succeeded", "failed"} or row.get("phase") not in {"prime", "evaluate"}:
+            return False
+        if row["outcome"] == "failed" and not isinstance(row.get("error"), Mapping):
+            return False
+        if row["outcome"] == "succeeded":
+            successful.append(str(row["operation"]))
+    return tuple(successful) == record.myna_operations
 
 
 def _parse_agent_task(raw: Any) -> TaskDefinition:
