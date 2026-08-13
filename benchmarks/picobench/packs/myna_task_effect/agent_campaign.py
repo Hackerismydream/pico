@@ -437,7 +437,7 @@ def run_agent_campaign(
     identity = getattr(trial_executor, "identity", None)
     if not isinstance(identity, Mapping) or not identity:
         raise ValueError("installed candidate identity is required")
-    output = Path(config.output_root)
+    output = Path(config.output_root).resolve()
     output.mkdir(parents=True, exist_ok=True)
     with file_lock(output / ".run.lock", blocking=False):
         _freeze_json(output / "manifest.json", manifest)
