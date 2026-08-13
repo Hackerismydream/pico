@@ -161,6 +161,9 @@ make picobench-myna-task-effect-verify
 make picobench-memory-agent-plan
 make picobench-memory-agent-run
 make picobench-memory-agent-verify
+make picobench-tracing-plan
+make picobench-tracing-run
+make picobench-tracing-verify
 ```
 
 `make picobench-smoke` is credential-free and validates the contract,
@@ -183,6 +186,11 @@ The Memory Agent plan target freezes the 48-Trial task-effect manifest without
 calling a Provider. Its run target additionally requires explicit paid consent,
 the printed approval digest, and the printed CNY amount. Its verifier rebuilds
 the result from raw records and the Provider budget ledger without model calls.
+The [Tracing overhead track](tracing-overhead.md) runs 1,000 paired local Agent
+Turns through the shared Runtime Assembly. Both arms use the same deterministic
+Provider and one-Tool workload; only `PICO_TRACING` changes. Its verifier joins
+terminal Turn spans to model and Tool spans, checks retained file digests, and
+rebuilds latency and storage metrics without executing another Turn.
 
 The implementation hides:
 
