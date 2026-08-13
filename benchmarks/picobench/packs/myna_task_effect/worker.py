@@ -124,15 +124,20 @@ class DeterministicTaskProvider(LLMProvider):
         return "picobench/deterministic-task-policy-v1"
 
 
-class RecallRecorder:
-    def __init__(self, delegate: Any) -> None:
+class MemoryOperationRecorder:
+    def __init__(self, delegate: Any, *, stage: str) -> None:
         self._delegate = delegate
+        self._stage = stage
         self.calls = 0
         self.hits: list[dict[str, Any]] = []
+        self.receipt: list[dict[str, Any]] = []
+
+    async def start(self) -> None:
+        await self._record("start", self._delegate.start())
 
     async def recall(self, *args, **kwargs):
         self.calls += 1
-        hits = await self._delegate.recall(*args, **kwargs)
+        hits = await self._record("recall", self._delegate.recall(*args, **kwargs))
         self.hits = [
             {
                 "metadata": hit.metadata,
@@ -143,12 +148,45 @@ class RecallRecorder:
         ]
         return hits
 
+    async def store(self, *args, **kwargs) -> None:
+        await self._record("store", self._delegate.store(*args, **kwargs))
 
-def _context_factory(recorder_sink: list[RecallRecorder]):
+    async def feedback(self, *args, **kwargs) -> None:
+        await self._record("feedback", self._delegate.feedback(*args, **kwargs))
+
+    async def stop(self) -> None:
+        await self._record("stop", self._delegate.stop())
+
+    async def _record(self, operation: str, awaitable):
+        try:
+            result = await awaitable
+        except Exception as exc:
+            self.receipt.append(
+                {
+                    "schema": "pico.picobench.myna-agent-task-effect.memory-operation.v2",
+                    "operation": operation,
+                    "outcome": "failed",
+                    "phase": self._stage,
+                    "error": _error(exc),
+                }
+            )
+            raise
+        self.receipt.append(
+            {
+                "schema": "pico.picobench.myna-agent-task-effect.memory-operation.v2",
+                "operation": operation,
+                "outcome": "succeeded",
+                "phase": self._stage,
+            }
+        )
+        return result
+
+
+def _context_factory(recorder_sink: list[MemoryOperationRecorder], *, stage: str):
     def factory(**kwargs):
         backend = kwargs.get("backend")
         if backend is not None:
-            recorder = RecallRecorder(backend)
+            recorder = MemoryOperationRecorder(backend, stage=stage)
             recorder_sink.append(recorder)
             kwargs["backend"] = recorder
         return build_context_engine(**kwargs)
@@ -164,12 +202,33 @@ class ProviderRecorder(LLMProvider):
         self.input_tokens = 0
         self.output_tokens = 0
         self.generation = delegate.generation
+        self.failures: list[dict[str, Any]] = []
 
     async def chat(self, *args, **kwargs) -> LLMResponse:
         self.calls += 1
-        response = await self._delegate.chat(*args, **kwargs)
+        try:
+            response = await self._delegate.chat(*args, **kwargs)
+        except Exception as exc:
+            self.failures.append(_provider_failure_receipt(exc))
+            raise
         self.input_tokens += int(response.usage.get("prompt_tokens", response.usage.get("input_tokens", 0)) or 0)
         self.output_tokens += int(response.usage.get("completion_tokens", response.usage.get("output_tokens", 0)) or 0)
+        if response.finish_reason == "error":
+            category = (
+                response.error_classification.category if response.error_classification is not None else "unknown"
+            )
+            self.failures.append(
+                {
+                    "schema": "pico.picobench.myna-agent-task-effect.failure-receipt.v2",
+                    "failure_class": _provider_category_class(category),
+                    "phase": "provider_response",
+                    "error": {
+                        "code": category,
+                        "message": response.content or "Provider returned an error response",
+                        "type": "ProviderErrorResponse",
+                    },
+                }
+            )
         return response
 
     def get_default_model(self) -> str:
@@ -180,6 +239,7 @@ async def run_turn(
     spec: dict[str, Any],
     *,
     provider_override: LLMProvider | None = None,
+    backend_override: Any | None = None,
 ) -> dict[str, Any]:
     workspace = Path(spec["workspace"]).resolve()
     state = Path(spec["state_root"]).resolve()
@@ -205,7 +265,7 @@ async def run_turn(
     config.tools.tool_search.enabled = False
     pico_config = PicoConfig()
     memory_enabled = spec["arm_id"] == "memory_on"
-    pico_config.memory.backend = "myna" if memory_enabled else None
+    pico_config.memory.backend = "myna" if memory_enabled and backend_override is None else None
     pico_config.skill_forge.enabled = False
     pico_config.skill_forge.router.enabled = False
     pico_config.runtime.checkpoint.policy = "never"
@@ -213,10 +273,12 @@ async def run_turn(
     pico_config.token_wise.smart_routing.enabled = False
 
     build_calls = 0
+    original_memory_builder = None
     if not memory_enabled:
         from pico.plugin.registry import PluginRegistry
 
         original = PluginRegistry.build_memory_backend
+        original_memory_builder = original
 
         def counted(self, *args, **kwargs):
             nonlocal build_calls
@@ -225,29 +287,91 @@ async def run_turn(
 
         PluginRegistry.build_memory_backend = counted
 
-    recorders: list[RecallRecorder] = []
+    recorders: list[MemoryOperationRecorder] = []
     from pico.cli._runtime_assembly import assemble_runtime
 
-    runtime = assemble_runtime(
-        config,
-        pico_config,
-        provider=provider,
-        cron_service=None,
-        interactive=False,
-        context_engine_factory=_context_factory(recorders),
-        paths=RuntimePaths(workspace=workspace, state=state),
+    def build_runtime():
+        return assemble_runtime(
+            config,
+            pico_config,
+            provider=provider,
+            cron_service=None,
+            interactive=False,
+            context_engine_factory=_context_factory(recorders, stage=spec["stage"]),
+            paths=RuntimePaths(workspace=workspace, state=state),
+        )
+
+    try:
+        runtime = build_runtime()
+    except Exception as exc:
+        failure_class = "memory_backend" if memory_enabled else "infrastructure"
+        failure_receipt = {
+            "schema": "pico.picobench.myna-agent-task-effect.failure-receipt.v2",
+            "failure_class": failure_class,
+            "phase": "runtime_assembly",
+            "error": _error(exc),
+        }
+        return {
+            "backend_module": None,
+            "close_error": None,
+            "memory_backend_build_calls": build_calls,
+            "memory_hits": 0,
+            "model_calls": getattr(delegate, "calls", []),
+            "input_tokens": provider.input_tokens,
+            "output_tokens": provider.output_tokens,
+            "provider_calls": _provider_request_attempts(
+                delegate,
+                baseline=budget_attempts_before,
+                fallback=provider.calls,
+            ),
+            "failure_class": failure_class,
+            "failure_receipt": failure_receipt,
+            "failure_receipts": [failure_receipt],
+            "memory_operation_receipt": [],
+            "myna_operations": [],
+            "recall_calls": 0,
+            "recall_hits": [],
+            "terminal": "failed",
+            "tool_events": [],
+            "turn_error": _error(exc),
+            "used_memory": bool(getattr(delegate, "used_memory", False)),
+        }
+    finally:
+        if original_memory_builder is not None:
+            PluginRegistry.build_memory_backend = original_memory_builder
+    if backend_override is not None:
+        recorder = MemoryOperationRecorder(backend_override, stage=spec["stage"])
+        recorders.append(recorder)
+        runtime.agent_loop.context_engine = build_context_engine(
+            workspace=workspace,
+            config=pico_config.context,
+            builder=runtime.agent_loop.context,
+            provider=runtime.agent_loop.provider,
+            model=runtime.agent_loop.model,
+            context_window_tokens=runtime.agent_loop.context_window_tokens,
+            get_tool_definitions=runtime.agent_loop.tools.get_definitions,
+            backend=recorder,
+            memory_config=pico_config.memory,
+            skill_forge_router_config=pico_config.skill_forge.router,
+            skill_forge_config=pico_config.skill_forge,
+        )
+    else:
+        recorder = recorders[0] if recorders else None
+    backend_module = (
+        type(backend_override).__module__
+        if backend_override is not None
+        else type(runtime.backend).__module__
+        if runtime.backend is not None
+        else None
     )
-    operations: list[str] = []
+    if recorder is not None:
+        runtime.backend = recorder
+        runtime.agent_loop.backend = recorder
     events: list[Any] = []
-    await runtime.start_memory_backend()
-    if memory_enabled:
-        operations.append("start")
-    runner = AgentTurnRunner(runtime.agent_loop, stream=False)
 
     async def sink(event: Any) -> None:
         events.append(event)
 
-    scheduler = Scheduler(runner, OriginPools(user=1, system=1), sink)
     request = TurnRequest(
         origin=Origin.USER,
         source=Source(
@@ -263,25 +387,24 @@ async def run_turn(
     outcome = None
     turn_error: dict[str, str] | None = None
     close_error: dict[str, str] | None = None
+    scheduler: Scheduler | None = None
     try:
         try:
+            await runtime.start_memory_backend()
+            runner = AgentTurnRunner(runtime.agent_loop, stream=False)
+            scheduler = Scheduler(runner, OriginPools(user=1, system=1), sink)
             with _provider_scope(spec):
                 outcome = await asyncio.wait_for(
                     scheduler.submit(request).result(),
                     timeout=float(spec.get("timeout_seconds", 120)),
                 )
-            if memory_enabled:
-                if spec["stage"] == "evaluate":
-                    operations.append("recall")
-                operations.append("store")
         except Exception as exc:
             turn_error = _error(exc)
     finally:
-        await scheduler.shutdown(grace=5)
+        if scheduler is not None:
+            await scheduler.shutdown(grace=5)
         try:
             await runtime.close()
-            if memory_enabled:
-                operations.append("stop")
         except Exception as exc:
             close_error = _error(exc)
 
@@ -296,9 +419,49 @@ async def run_turn(
         if isinstance(terminal_event, TurnEnded)
         else "missing"
     )
-    recorder = recorders[0] if recorders else None
+    memory_failure = (
+        next(
+            (row for row in reversed(recorder.receipt) if row["outcome"] == "failed"),
+            None,
+        )
+        if recorder is not None
+        else None
+    )
+    memory_failure_receipt = None
+    if memory_failure is not None:
+        memory_failure_receipt = {
+            "schema": "pico.picobench.myna-agent-task-effect.failure-receipt.v2",
+            "failure_class": "memory_backend",
+            "phase": memory_failure["phase"],
+            "operation": memory_failure["operation"],
+            "error": memory_failure["error"],
+        }
+    infrastructure_failure_receipt = None
+    if (
+        not provider.failures
+        and memory_failure_receipt is None
+        and (turn_error is not None or close_error is not None or terminal == "failed")
+    ):
+        infrastructure_failure_receipt = {
+            "schema": "pico.picobench.myna-agent-task-effect.failure-receipt.v2",
+            "failure_class": "infrastructure",
+            "phase": "turn_execution",
+            "error": turn_error
+            or close_error
+            or {
+                "code": "turn_failed",
+                "message": terminal_event.error if isinstance(terminal_event, TurnFailed) else "Turn failed",
+                "type": "TurnFailed",
+            },
+        }
+    failure_receipts = [*provider.failures]
+    if infrastructure_failure_receipt is not None:
+        failure_receipts.append(infrastructure_failure_receipt)
+    if memory_failure_receipt is not None:
+        failure_receipts.append(memory_failure_receipt)
+    failure_receipt = failure_receipts[0] if failure_receipts else None
     return {
-        "backend_module": type(runtime.backend).__module__ if runtime.backend is not None else None,
+        "backend_module": backend_module,
         "close_error": close_error,
         "memory_backend_build_calls": build_calls,
         "memory_hits": outcome.memory_hits if outcome is not None else 0,
@@ -308,7 +471,15 @@ async def run_turn(
         "provider_calls": _provider_request_attempts(
             delegate, baseline=budget_attempts_before, fallback=provider.calls
         ),
-        "myna_operations": operations,
+        "failure_class": failure_receipt["failure_class"] if failure_receipt is not None else None,
+        "failure_receipt": failure_receipt,
+        "failure_receipts": failure_receipts,
+        "memory_operation_receipt": recorder.receipt if recorder is not None else [],
+        "myna_operations": (
+            [row["operation"] for row in recorder.receipt if row["outcome"] == "succeeded"]
+            if recorder is not None
+            else []
+        ),
         "recall_calls": recorder.calls if recorder is not None else 0,
         "recall_hits": recorder.hits if recorder is not None else [],
         "terminal": terminal,
@@ -433,6 +604,39 @@ def _error(exc: Exception) -> dict[str, str]:
         "message": str(exc),
         "type": type(exc).__name__,
     }
+
+
+def _provider_failure_receipt(exc: Exception) -> dict[str, Any]:
+    return {
+        "schema": "pico.picobench.myna-agent-task-effect.failure-receipt.v2",
+        "failure_class": _provider_exception_class(exc),
+        "phase": "provider_call",
+        "error": _error(exc),
+    }
+
+
+def _provider_exception_class(exc: Exception) -> str:
+    names: set[str] = set()
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        names.update(klass.__name__.lower() for klass in type(current).__mro__)
+        current = current.__cause__ or current.__context__
+    if any("budget" in name for name in names):
+        return "budget"
+    if any(marker in name for name in names for marker in ("connection", "network", "timeout", "transport")):
+        return "transport"
+    return "provider"
+
+
+def _provider_category_class(category: str) -> str:
+    lowered = category.lower()
+    if "budget" in lowered:
+        return "budget"
+    if any(marker in lowered for marker in ("connection", "network", "timeout", "transport")):
+        return "transport"
+    return "provider"
 
 
 def main() -> None:

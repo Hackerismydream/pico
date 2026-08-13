@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
 import pytest
 
+from benchmarks.picobench.budget import ProviderBudgetError
 from benchmarks.picobench.canonical import canonical_digest
 from benchmarks.picobench.packs.myna_task_effect.agent_campaign import (
     AgentCampaignConfig,
@@ -29,6 +31,8 @@ from benchmarks.picobench.packs.myna_task_effect.worker import run_turn
 from pico.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
 TASK_ROOT = Path(__file__).resolve().parents[1] / "benchmarks" / "picobench" / "tasks" / "myna_task_effect"
+MEMORY_OPERATION_SCHEMA = "pico.picobench.myna-agent-task-effect.memory-operation.v2"
+AGENT_LIFECYCLE = ("start", "recall", "store", "stop", "start", "recall", "store", "stop")
 
 
 def test_agent_corpus_is_lightweight_balanced_and_disjoint() -> None:
@@ -79,6 +83,7 @@ def test_agent_plan_freezes_48_trials_and_a_hard_spend_ceiling(tmp_path: Path) -
 
     manifest = config.manifest(load_agent_task_corpus(config.corpus_path))
 
+    assert manifest["schema"] == "pico.picobench.myna-agent-task-effect.manifest.v2"
     assert manifest["execution"]["planned_evaluation_trials"] == 48
     assert manifest["execution"]["repetitions"] == 2
     assert manifest["execution"]["provider_calls_paid"] == "approval_required"
@@ -89,9 +94,58 @@ def test_agent_plan_freezes_48_trials_and_a_hard_spend_ceiling(tmp_path: Path) -
     }
 
 
+def test_agent_campaign_rejects_legacy_unversioned_raw_outcomes(tmp_path: Path) -> None:
+    pico_wheel = tmp_path / "pico.whl"
+    myna_wheel = tmp_path / "myna.whl"
+    pico_wheel.write_bytes(b"pico-wheel")
+    myna_wheel.write_bytes(b"myna-wheel")
+    config = AgentCampaignConfig(
+        corpus_path=TASK_ROOT / "agent.json",
+        output_root=tmp_path / "evidence",
+        pico_wheel=pico_wheel,
+        myna_wheel=myna_wheel,
+        pico_commit="a" * 40,
+        myna_commit="b" * 40,
+        provider_name="deepseek",
+        model="deepseek/deepseek-v4-flash",
+    )
+    config.output_root.mkdir()
+    legacy = {
+        "task_id": "agent-fact-01",
+        "task_class": "fact",
+        "repetition": 0,
+        "arm_id": "memory_off",
+        "status": "passed",
+        "workspace_digest": "legacy",
+        "tool_calls": 1,
+        "input_tokens": 1,
+        "output_tokens": 1,
+        "provider_calls": 1,
+        "memory_hits": 0,
+        "myna_operations": [],
+    }
+    (config.output_root / "raw-outcomes.jsonl").write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+
+    class Executor:
+        identity = {"pico": "0.1.7", "myna": "0.1.1"}
+
+        def __call__(self, *args, **kwargs):
+            raise AssertionError("legacy evidence must fail before execution")
+
+    approval_digest = canonical_digest(config.manifest(load_agent_task_corpus(config.corpus_path)))
+    with pytest.raises(ValueError, match="legacy agent raw outcomes cannot be resumed"):
+        run_agent_campaign(
+            config,
+            approval_digest=approval_digest,
+            approved_cny=config.maximum_cost_cny,
+            execute_paid=True,
+            trial_executor=Executor(),
+        )
+
+
 def test_agent_report_uses_success_tool_calls_and_input_tokens() -> None:
     corpus = load_agent_task_corpus(TASK_ROOT / "agent.json")
-    lifecycle = ("start", "store", "stop", "start", "recall", "store", "stop")
+    lifecycle = AGENT_LIFECYCLE
     trials: list[AgentTrialRecord] = []
     for task in corpus.tasks:
         for repetition in range(2):
@@ -146,7 +200,7 @@ def test_agent_report_uses_success_tool_calls_and_input_tokens() -> None:
 
 def test_agent_report_fails_closed_on_stale_or_cross_repository_memory() -> None:
     corpus = load_agent_task_corpus(TASK_ROOT / "agent.json")
-    lifecycle = ("start", "store", "stop", "start", "recall", "store", "stop")
+    lifecycle = AGENT_LIFECYCLE
     trials: list[AgentTrialRecord] = []
     for task in corpus.tasks:
         trials.extend(
@@ -196,10 +250,135 @@ def test_agent_report_fails_closed_on_stale_or_cross_repository_memory() -> None
     assert report["claim"]["positive_claim_eligible"] is False
 
 
+def test_agent_report_rejects_24_pair_provider_failure_fake_uplift() -> None:
+    corpus = load_agent_task_corpus(TASK_ROOT / "agent.json")
+    lifecycle = AGENT_LIFECYCLE
+    trials: list[AgentTrialRecord] = []
+    for task in corpus.tasks:
+        for repetition in range(2):
+            workspace_digest = f"workspace-{task.task_id}-{repetition}"
+            trials.extend(
+                [
+                    AgentTrialRecord(
+                        task_id=task.task_id,
+                        task_class=task.task_class,
+                        repetition=repetition,
+                        arm_id="memory_off",
+                        status="provider_failure",
+                        failure_class="provider",
+                        workspace_digest=workspace_digest,
+                        tool_calls=0,
+                        input_tokens=0,
+                        output_tokens=0,
+                        provider_calls=1,
+                        memory_hits=0,
+                        myna_operations=(),
+                    ),
+                    AgentTrialRecord(
+                        task_id=task.task_id,
+                        task_class=task.task_class,
+                        repetition=repetition,
+                        arm_id="memory_on",
+                        status="passed",
+                        workspace_digest=workspace_digest,
+                        tool_calls=1,
+                        input_tokens=100,
+                        output_tokens=10,
+                        provider_calls=1,
+                        memory_hits=1,
+                        myna_operations=lifecycle,
+                    ),
+                ]
+            )
+
+    report = build_agent_report(
+        corpus=corpus,
+        trials=tuple(trials),
+        repetitions=2,
+        require_verification_receipts=False,
+    )
+
+    assert report["claim"]["ship_complete"] is True
+    assert report["measurement"]["contaminated_pairs"] == 24
+    assert report["measurement"]["valid_pairs"] == 0
+    assert report["claim"]["measurement_valid"] is False
+    assert report["claim"]["positive_claim_eligible"] is False
+
+
+def test_agent_report_retains_myna_backend_failure_in_capability_pair() -> None:
+    corpus = load_agent_task_corpus(TASK_ROOT / "agent.json")
+    task = corpus.tasks[0]
+    trials = (
+        AgentTrialRecord(
+            task_id=task.task_id,
+            task_class=task.task_class,
+            repetition=0,
+            arm_id="memory_off",
+            status="passed",
+            workspace_digest="workspace",
+            tool_calls=2,
+            input_tokens=100,
+            output_tokens=10,
+            provider_calls=1,
+            memory_hits=0,
+            myna_operations=(),
+        ),
+        AgentTrialRecord(
+            task_id=task.task_id,
+            task_class=task.task_class,
+            repetition=0,
+            arm_id="memory_on",
+            status="task_failed",
+            failure_class="memory_backend",
+            workspace_digest="workspace",
+            tool_calls=0,
+            input_tokens=0,
+            output_tokens=0,
+            provider_calls=0,
+            memory_hits=0,
+            myna_operations=("start", "stop"),
+            memory_operation_receipt=(
+                {
+                    "schema": MEMORY_OPERATION_SCHEMA,
+                    "operation": "start",
+                    "outcome": "succeeded",
+                    "phase": "evaluate",
+                },
+                {
+                    "operation": "recall",
+                    "outcome": "failed",
+                    "phase": "evaluate",
+                    "schema": MEMORY_OPERATION_SCHEMA,
+                    "error": {"type": "RuntimeError", "code": "RuntimeError", "message": "failed"},
+                },
+                {
+                    "schema": MEMORY_OPERATION_SCHEMA,
+                    "operation": "stop",
+                    "outcome": "succeeded",
+                    "phase": "evaluate",
+                },
+            ),
+        ),
+    )
+
+    report = build_agent_report(
+        corpus=TaskCorpus(schema=corpus.schema, definition_kind="agent", tasks=(task,)),
+        trials=trials,
+        repetitions=1,
+        require_verification_receipts=False,
+    )
+
+    assert report["measurement"]["contaminated_pairs"] == 0
+    assert report["measurement"]["valid_pairs"] == 1
+    assert report["capability"]["verified_pass_delta_pp"] == -100.0
+    assert report["claim"]["measurement_valid"] is True
+    assert report["claim"]["positive_claim_eligible"] is False
+
+
 def test_agent_report_requires_rebuildable_receipts_for_formal_evidence() -> None:
     corpus = load_agent_task_corpus(TASK_ROOT / "agent.json")
     task = corpus.tasks[0]
-    lifecycle = ("start", "store", "stop", "start", "recall", "store", "stop")
+    lifecycle = AGENT_LIFECYCLE
     trials = tuple(
         AgentTrialRecord(
             task_id=task.task_id,
@@ -226,6 +405,7 @@ def test_agent_report_requires_rebuildable_receipts_for_formal_evidence() -> Non
     )
 
     assert report["measurement"]["verification_receipts_valid"] is False
+    assert report["measurement"]["memory_operation_receipts_valid"] is False
     assert report["claim"]["measurement_valid"] is False
 
 
@@ -254,6 +434,45 @@ def test_agent_campaign_requires_approval_persists_and_resumes(tmp_path: Path) -
         def __call__(self, task, repetition, arm, _config):
             calls.append((task.task_id, repetition, arm.arm_id))
             treatment = arm.arm_id == "memory_on"
+            operation_receipt = (
+                (
+                    {"schema": MEMORY_OPERATION_SCHEMA, "operation": "start", "outcome": "succeeded", "phase": "prime"},
+                    {
+                        "schema": MEMORY_OPERATION_SCHEMA,
+                        "operation": "recall",
+                        "outcome": "succeeded",
+                        "phase": "prime",
+                    },
+                    {"schema": MEMORY_OPERATION_SCHEMA, "operation": "store", "outcome": "succeeded", "phase": "prime"},
+                    {"schema": MEMORY_OPERATION_SCHEMA, "operation": "stop", "outcome": "succeeded", "phase": "prime"},
+                    {
+                        "schema": MEMORY_OPERATION_SCHEMA,
+                        "operation": "start",
+                        "outcome": "succeeded",
+                        "phase": "evaluate",
+                    },
+                    {
+                        "schema": MEMORY_OPERATION_SCHEMA,
+                        "operation": "recall",
+                        "outcome": "succeeded",
+                        "phase": "evaluate",
+                    },
+                    {
+                        "schema": MEMORY_OPERATION_SCHEMA,
+                        "operation": "store",
+                        "outcome": "succeeded",
+                        "phase": "evaluate",
+                    },
+                    {
+                        "schema": MEMORY_OPERATION_SCHEMA,
+                        "operation": "stop",
+                        "outcome": "succeeded",
+                        "phase": "evaluate",
+                    },
+                )
+                if treatment
+                else ()
+            )
             return AgentTrialRecord(
                 task_id=task.task_id,
                 task_class=task.task_class,
@@ -266,9 +485,10 @@ def test_agent_campaign_requires_approval_persists_and_resumes(tmp_path: Path) -
                 output_tokens=100,
                 provider_calls=0,
                 memory_hits=int(treatment),
-                myna_operations=(("start", "store", "stop", "start", "recall", "store", "stop") if treatment else ()),
+                myna_operations=(AGENT_LIFECYCLE if treatment else ()),
+                memory_operation_receipt=operation_receipt,
                 verification_receipt={
-                    "schema": "pico.picobench.myna-agent-task-effect.verification-receipt.v1",
+                    "schema": "pico.picobench.myna-agent-task-effect.verification-receipt.v2",
                     "terminal": "completed",
                     "artifact_sha256": "0" * 64,
                     "observed": {"task_id": task.task_id, "value": task.expected_value},
@@ -310,6 +530,123 @@ def test_agent_campaign_requires_approval_persists_and_resumes(tmp_path: Path) -
     (config.output_root / "aggregate.json").write_text("{}\n", encoding="utf-8")
     with pytest.raises(ValueError, match="evidence digest changed"):
         verify_agent_evidence(config.output_root, corpus_path=config.corpus_path)
+
+
+def test_agent_campaign_rebuild_preserves_provider_failure_contamination(tmp_path: Path) -> None:
+    pico_wheel = tmp_path / "pico.whl"
+    myna_wheel = tmp_path / "myna.whl"
+    pico_wheel.write_bytes(b"pico-wheel")
+    myna_wheel.write_bytes(b"myna-wheel")
+    config = AgentCampaignConfig(
+        corpus_path=TASK_ROOT / "agent.json",
+        output_root=tmp_path / "evidence",
+        pico_wheel=pico_wheel,
+        myna_wheel=myna_wheel,
+        pico_commit="a" * 40,
+        myna_commit="b" * 40,
+        provider_name="deepseek",
+        model="deepseek/deepseek-v4-flash",
+    )
+    calls = 0
+
+    class Executor:
+        identity = {"pico": "0.1.7", "myna": "0.1.1"}
+
+        def __call__(self, task, repetition, arm, _config):
+            nonlocal calls
+            calls += 1
+            treatment = arm.arm_id == "memory_on"
+            lifecycle = AGENT_LIFECYCLE
+            operation_receipt = tuple(
+                {
+                    "schema": MEMORY_OPERATION_SCHEMA,
+                    "operation": operation,
+                    "outcome": "succeeded",
+                    "phase": phase,
+                }
+                for phase, operations in (
+                    ("prime", ("start", "recall", "store", "stop")),
+                    ("evaluate", ("start", "recall", "store", "stop")),
+                )
+                for operation in operations
+            )
+            if treatment:
+                return AgentTrialRecord(
+                    task_id=task.task_id,
+                    task_class=task.task_class,
+                    repetition=repetition,
+                    arm_id=arm.arm_id,
+                    status="passed",
+                    workspace_digest=f"workspace-{task.task_id}-{repetition}",
+                    tool_calls=1,
+                    input_tokens=100,
+                    output_tokens=10,
+                    provider_calls=0,
+                    memory_hits=1,
+                    myna_operations=lifecycle,
+                    memory_operation_receipt=operation_receipt,
+                    verification_receipt={
+                        "schema": "pico.picobench.myna-agent-task-effect.verification-receipt.v2",
+                        "terminal": "completed",
+                        "artifact_sha256": "0" * 64,
+                        "observed": {"task_id": task.task_id, "value": task.expected_value},
+                        "unexpected_workspace_paths": [],
+                    },
+                )
+            failure_receipt = {
+                "schema": "pico.picobench.myna-agent-task-effect.failure-receipt.v2",
+                "failure_class": "provider",
+                "phase": "provider_call",
+                "error": {
+                    "code": "ProviderError",
+                    "message": "provider unavailable",
+                    "type": "ProviderError",
+                },
+            }
+            return AgentTrialRecord(
+                task_id=task.task_id,
+                task_class=task.task_class,
+                repetition=repetition,
+                arm_id=arm.arm_id,
+                status="provider_failure",
+                failure_class="provider",
+                failure_receipt=failure_receipt,
+                workspace_digest=f"workspace-{task.task_id}-{repetition}",
+                tool_calls=0,
+                input_tokens=0,
+                output_tokens=0,
+                provider_calls=0,
+                memory_hits=0,
+                myna_operations=(),
+            )
+
+    approval_digest = canonical_digest(config.manifest(load_agent_task_corpus(config.corpus_path)))
+    first = run_agent_campaign(
+        config,
+        approval_digest=approval_digest,
+        approved_cny=config.maximum_cost_cny,
+        execute_paid=True,
+        trial_executor=Executor(),
+    )
+    second = run_agent_campaign(
+        config,
+        approval_digest=approval_digest,
+        approved_cny=config.maximum_cost_cny,
+        execute_paid=True,
+        trial_executor=Executor(),
+    )
+
+    assert first == second
+    assert calls == 48
+    assert first["measurement"]["contaminated_pairs"] == 24
+    assert first["claim"]["measurement_valid"] is False
+    rows = [json.loads(line) for line in (config.output_root / "raw-outcomes.jsonl").read_text().splitlines()]
+    assert all(row["schema"] == "pico.picobench.myna-agent-task-effect.trial-record.v2" for row in rows)
+    assert sum(row["failure_class"] == "provider" for row in rows) == 24
+    verification = verify_agent_evidence(config.output_root, corpus_path=config.corpus_path)
+    assert verification["passed"] is False
+    assert verification["gates"]["aggregate_reproduces"] is True
+    assert verification["recomputed_report"]["measurement"]["contaminated_pairs"] == 24
 
 
 def test_task_corpora_are_frozen_disjoint_and_cover_memory_risks() -> None:
@@ -590,3 +927,282 @@ async def test_worker_records_live_provider_usage_and_tools(tmp_path: Path) -> N
     assert result["input_tokens"] == 200
     assert result["output_tokens"] == 30
     assert sum(event["phase"] == "complete" for event in result["tool_events"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_worker_classifies_control_provider_exception(tmp_path: Path) -> None:
+    task = load_agent_task_corpus(TASK_ROOT / "agent.json").tasks[0]
+
+    class FailingProvider(LLMProvider):
+        async def chat(self, *args, **kwargs):
+            raise RuntimeError("provider unavailable")
+
+        def get_default_model(self) -> str:
+            return "deepseek/deepseek-v4-flash"
+
+    result = await run_turn(
+        {
+            "worker_mode": "turn",
+            "provider_mode": "live",
+            "arm_id": "memory_off",
+            "stage": "evaluate",
+            "task_id": task.task_id,
+            "task_class": task.task_class,
+            "source_path": task.source_path,
+            "output_path": task.output_path,
+            "workspace": str(tmp_path / "workspace"),
+            "state_root": str(tmp_path / "state"),
+            "prompt": task.evaluation_prompt,
+            "session_id": "provider-failure-session",
+            "message_id": "provider-failure-message",
+            "timeout_seconds": 30,
+        },
+        provider_override=FailingProvider(),
+    )
+
+    assert result["terminal"] == "failed"
+    assert result["failure_class"] == "provider"
+    assert result["failure_receipt"]["error"]["type"] == "RuntimeError"
+    assert result["memory_operation_receipt"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "expected_class"),
+    [
+        (ConnectionError("connection reset"), "transport"),
+        (ProviderBudgetError("budget exhausted"), "budget"),
+    ],
+)
+async def test_worker_classifies_transport_and_budget_failures(
+    tmp_path: Path,
+    error: Exception,
+    expected_class: str,
+) -> None:
+    task = load_agent_task_corpus(TASK_ROOT / "agent.json").tasks[0]
+
+    class FailingProvider(LLMProvider):
+        async def chat(self, *args, **kwargs):
+            raise error
+
+        def get_default_model(self) -> str:
+            return "deepseek/deepseek-v4-flash"
+
+    result = await run_turn(
+        {
+            "worker_mode": "turn",
+            "provider_mode": "live",
+            "arm_id": "memory_off",
+            "stage": "evaluate",
+            "task_id": task.task_id,
+            "task_class": task.task_class,
+            "source_path": task.source_path,
+            "output_path": task.output_path,
+            "workspace": str(tmp_path / expected_class / "workspace"),
+            "state_root": str(tmp_path / expected_class / "state"),
+            "prompt": task.evaluation_prompt,
+            "session_id": f"{expected_class}-failure-session",
+            "message_id": f"{expected_class}-failure-message",
+            "timeout_seconds": 30,
+        },
+        provider_override=FailingProvider(),
+    )
+
+    assert result["terminal"] == "failed"
+    assert result["failure_class"] == expected_class
+    assert result["failure_receipt"]["failure_class"] == expected_class
+
+
+@pytest.mark.asyncio
+async def test_worker_classifies_turn_timeout_as_infrastructure_failure(tmp_path: Path) -> None:
+    task = load_agent_task_corpus(TASK_ROOT / "agent.json").tasks[0]
+
+    class HangingProvider(LLMProvider):
+        async def chat(self, *args, **kwargs):
+            await asyncio.sleep(60)
+            raise AssertionError("unreachable")
+
+        def get_default_model(self) -> str:
+            return "deepseek/deepseek-v4-flash"
+
+    result = await run_turn(
+        {
+            "worker_mode": "turn",
+            "provider_mode": "live",
+            "arm_id": "memory_off",
+            "stage": "evaluate",
+            "task_id": task.task_id,
+            "task_class": task.task_class,
+            "source_path": task.source_path,
+            "output_path": task.output_path,
+            "workspace": str(tmp_path / "workspace"),
+            "state_root": str(tmp_path / "state"),
+            "prompt": task.evaluation_prompt,
+            "session_id": "timeout-session",
+            "message_id": "timeout-message",
+            "timeout_seconds": 0.01,
+        },
+        provider_override=HangingProvider(),
+    )
+
+    assert result["failure_class"] == "infrastructure"
+    assert result["failure_receipt"]["error"]["type"] == "TimeoutError"
+
+
+@pytest.mark.asyncio
+async def test_worker_treatment_provider_failure_has_no_fake_store(tmp_path: Path) -> None:
+    task = load_agent_task_corpus(TASK_ROOT / "agent.json").tasks[0]
+
+    class MemoryBackend:
+        async def start(self) -> None:
+            return None
+
+        async def recall(self, query, *, user_id=None, agent_id=None, top_k=5):
+            return []
+
+        async def store(self, session_id, messages) -> None:
+            return None
+
+        async def feedback(self, signals) -> None:
+            return None
+
+        async def stop(self) -> None:
+            return None
+
+    class FailingProvider(LLMProvider):
+        async def chat(self, *args, **kwargs):
+            raise RuntimeError("provider unavailable")
+
+        def get_default_model(self) -> str:
+            return "deepseek/deepseek-v4-flash"
+
+    result = await run_turn(
+        {
+            "worker_mode": "turn",
+            "provider_mode": "live",
+            "arm_id": "memory_on",
+            "stage": "evaluate",
+            "task_id": task.task_id,
+            "task_class": task.task_class,
+            "source_path": task.source_path,
+            "output_path": task.output_path,
+            "workspace": str(tmp_path / "workspace"),
+            "state_root": str(tmp_path / "state"),
+            "prompt": task.evaluation_prompt,
+            "session_id": "treatment-provider-failure-session",
+            "message_id": "treatment-provider-failure-message",
+            "timeout_seconds": 30,
+        },
+        provider_override=FailingProvider(),
+        backend_override=MemoryBackend(),
+    )
+
+    assert result["terminal"] == "failed"
+    assert result["failure_class"] == "provider"
+    assert [row["operation"] for row in result["memory_operation_receipt"]] == [
+        "start",
+        "recall",
+        "stop",
+    ]
+    assert all(row["outcome"] == "succeeded" for row in result["memory_operation_receipt"])
+    assert result["myna_operations"] == ["start", "recall", "stop"]
+
+
+@pytest.mark.asyncio
+async def test_worker_classifies_myna_backend_failure_as_product_failure(tmp_path: Path) -> None:
+    task = load_agent_task_corpus(TASK_ROOT / "agent.json").tasks[0]
+
+    class FailingMemoryBackend:
+        async def start(self) -> None:
+            return None
+
+        async def recall(self, query, *, user_id=None, agent_id=None, top_k=5):
+            raise RuntimeError("myna recall failed")
+
+        async def store(self, session_id, messages) -> None:
+            return None
+
+        async def feedback(self, signals) -> None:
+            return None
+
+        async def stop(self) -> None:
+            return None
+
+    result = await run_turn(
+        {
+            "worker_mode": "turn",
+            "arm_id": "memory_on",
+            "stage": "evaluate",
+            "task_id": task.task_id,
+            "task_class": task.task_class,
+            "source_path": task.source_path,
+            "output_path": task.output_path,
+            "workspace": str(tmp_path / "workspace"),
+            "state_root": str(tmp_path / "state"),
+            "prompt": task.evaluation_prompt,
+            "session_id": "memory-failure-session",
+            "message_id": "memory-failure-message",
+            "timeout_seconds": 30,
+        },
+        backend_override=FailingMemoryBackend(),
+    )
+
+    assert result["terminal"] == "failed"
+    assert result["failure_class"] == "memory_backend"
+    assert result["failure_receipt"]["operation"] == "recall"
+    assert [(row["operation"], row["outcome"]) for row in result["memory_operation_receipt"]] == [
+        ("start", "succeeded"),
+        ("recall", "failed"),
+        ("stop", "succeeded"),
+    ]
+    assert result["myna_operations"] == ["start", "stop"]
+
+
+@pytest.mark.asyncio
+async def test_worker_records_actual_prime_memory_lifecycle(tmp_path: Path) -> None:
+    task = load_agent_task_corpus(TASK_ROOT / "agent.json").tasks[0]
+
+    class MemoryBackend:
+        async def start(self) -> None:
+            return None
+
+        async def recall(self, query, *, user_id=None, agent_id=None, top_k=5):
+            return []
+
+        async def store(self, session_id, messages) -> None:
+            return None
+
+        async def feedback(self, signals) -> None:
+            return None
+
+        async def stop(self) -> None:
+            return None
+
+    result = await run_turn(
+        {
+            "worker_mode": "turn",
+            "arm_id": "memory_on",
+            "stage": "prime",
+            "task_id": task.task_id,
+            "task_class": task.task_class,
+            "source_path": task.source_path,
+            "output_path": task.output_path,
+            "workspace": str(tmp_path / "workspace"),
+            "state_root": str(tmp_path / "state"),
+            "prompt": task.memory_text,
+            "session_id": "prime-lifecycle-session",
+            "message_id": "prime-lifecycle-message",
+            "timeout_seconds": 30,
+        },
+        backend_override=MemoryBackend(),
+    )
+
+    assert result["terminal"] == "completed"
+    assert result["failure_class"] is None
+    assert result["myna_operations"] == ["start", "recall", "store", "stop"]
+    assert [row["operation"] for row in result["memory_operation_receipt"]] == [
+        "start",
+        "recall",
+        "store",
+        "stop",
+    ]

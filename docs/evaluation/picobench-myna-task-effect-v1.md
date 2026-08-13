@@ -44,6 +44,23 @@ Trial also carries the observed JSON, artifact SHA-256, terminal outcome, and
 unexpected-path inventory so task success is rebuilt rather than trusted as a
 stored boolean.
 
+The real-Agent evidence contract is version 2. Every raw Trial persists one
+failure class and the receipts emitted by actual Memory Backend calls. Provider,
+transport, budget, or benchmark-infrastructure failure in either arm
+contaminates the whole Pair: the Pair remains in ship-completeness accounting
+but is excluded from capability and efficiency reduction. Myna recall, store,
+startup, and shutdown failures remain treatment product failures and therefore
+stay in the capability denominator.
+
+Provider, transport, and Provider-budget classes share the established
+`provider_failure` Trial status while retaining their distinct `failure_class`;
+benchmark infrastructure keeps `infrastructure_failure`.
+
+The version-1 deterministic calibration remains independently rebuildable and
+is not rewritten. A version-1 real-Agent raw summary cannot prove which Memory
+operations actually ran or distinguish all Provider failures, so the version-2
+runner rejects it instead of resuming or upgrading it.
+
 Because 12 tasks are below the 30-task confirmatory threshold, bootstrap
 intervals are explicitly exploratory. A passing Gate supports only a scoped
 claim about this frozen lightweight Pack; `general_agent_claim_eligible`
@@ -79,6 +96,7 @@ The treatment executes the installed public seam:
 ```text
 prior Turn
   -> MemoryBackend.start
+  -> Context Memory recall
   -> Agent Loop after-Turn store
   -> process exit and MemoryBackend.stop
   -> fresh process and fresh Session
@@ -88,6 +106,12 @@ prior Turn
   -> Agent Loop after-Turn store
   -> MemoryBackend.stop
 ```
+
+The operation receipt is captured at this seam. A successful operation enters
+the compact `myna_operations` summary only after the awaited backend method
+returns. A failed operation is retained with its phase and structured error;
+the Scheduler returning no outcome is never treated as proof that recall or
+store occurred.
 
 The control executes the same prior and evaluation Turns with no Memory Backend
 construction or lifecycle operation. Trial state and Myna runtime roots are
@@ -127,7 +151,9 @@ The report keeps capability and efficiency claims separate.
 
 Myna startup, store, index, or Recall failure is retained as a treatment product
 failure. It is not removed as Provider infrastructure. A control-side Myna
-operation invalidates the treatment axis.
+operation invalidates the treatment axis. Provider, transport, budget, and
+benchmark-infrastructure failures invalidate the affected Pair regardless of
+which arm encountered them.
 
 ## Evidence
 
