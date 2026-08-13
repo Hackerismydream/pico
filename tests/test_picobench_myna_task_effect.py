@@ -88,6 +88,7 @@ def test_agent_plan_freezes_48_trials_and_a_hard_spend_ceiling(tmp_path: Path) -
     assert manifest["execution"]["planned_evaluation_trials"] == 48
     assert manifest["execution"]["repetitions"] == 2
     assert manifest["execution"]["provider_calls_paid"] == "approval_required"
+    assert manifest["budget"]["max_input_tokens_per_call"] == 16_384
     assert manifest["budget"]["maximum_cost_cny"] <= manifest["budget"]["hard_cap_cny"]
     assert manifest["treatment_axis"] == {
         "control": {"memory_backend": None},

@@ -108,7 +108,7 @@ class AgentCampaignConfig:
     seed: int = 20260812
     max_tool_iterations: int = 4
     max_attempts_per_call: int = 2
-    max_input_tokens_per_call: int = 8_192
+    max_input_tokens_per_call: int = 16_384
     max_output_tokens_per_call: int = 512
     context_window_tokens: int = 8_192
     input_cache_miss_usd_per_million: float = 0.14
