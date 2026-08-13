@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
@@ -13,10 +14,13 @@ from typing import Any
 from benchmarks.picobench.canonical import canonical_bytes, canonical_digest
 from pico.agent.loop import AgentLoop
 from pico.agent.tools.base import Tool
+from pico.call_efficiency.models import CallRecord
+from pico.config.paths import RuntimePaths
+from pico.config.pico import PicoConfig
+from pico.config.schema import Config
 from pico.providers.base import GenerationSettings, LLMResponse
 from pico.providers.litellm_provider import LiteLLMProvider
 from pico.spine import ChatType, Origin, Source, Text, TurnRequest
-from pico.token_wise.registry import StrategyRegistry
 
 from .live import (
     PRICE_SNAPSHOT,
@@ -28,7 +32,7 @@ from .live import (
     LiveTrialResult,
     TaskCorpus,
     build_arm,
-    build_campaign_report,
+    build_current_campaign_report,
     rotated_cache_policies,
 )
 
@@ -46,6 +50,8 @@ class ProviderCallRecord:
     cost_usd: float
     finish_reason: str
     latency_ms: int
+    outcome: str = "success"
+    error_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -53,6 +59,7 @@ class TrialArtifact:
     result: LiveTrialResult
     provider_calls: tuple[ProviderCallRecord, ...]
     outputs: tuple[str, ...]
+    call_efficiency_records: tuple[dict[str, Any], ...] = ()
 
 
 TrialExecutor = Callable[..., Awaitable[TrialArtifact]]
@@ -89,14 +96,18 @@ async def run_formal_campaign(
     if executor is execute_live_trial and (preflight_report is None or preflight_report.get("passed") is not True):
         raise CampaignError("a passing live cache preflight is required")
     manifest = {
-        "schema": "pico.picobench.tokenwise-cost.manifest.v1",
+        "schema": "pico.picobench.call-efficiency-cost.manifest.v2",
         "pico_commit": pico_commit,
         "model": config.model,
         "repetitions": config.repetitions,
         "hard_cap_usd": config.hard_cap_usd,
         "max_provider_calls": config.max_provider_calls,
+        "bootstrap_samples": config.bootstrap_samples,
+        "bootstrap_seed": config.bootstrap_seed,
         "task_corpus_digest": corpus.digest,
         "price_snapshot": PRICE_SNAPSHOT,
+        "runtime_boundary": "shared_runtime_assembly",
+        "call_efficiency_mode": "observe",
     }
     plan_digest = canonical_digest(manifest)
     manifest["plan_digest"] = plan_digest
@@ -147,7 +158,7 @@ async def run_formal_campaign(
             ),
         )
     )
-    report = build_campaign_report(config=config, corpus=corpus, trials=trials)
+    report = build_current_campaign_report(config=config, corpus=corpus, trials=trials)
     report["campaign"]["pico_commit"] = pico_commit
     report["campaign"]["plan_digest"] = plan_digest
     report["campaign"]["observed_cost_usd"] = sum(trial.cost_usd for trial in trials)
@@ -157,6 +168,116 @@ async def run_formal_campaign(
     report["report_digest"] = canonical_digest({key: value for key, value in report.items() if key != "report_digest"})
     _write_json(config.output_root / "report.json", report)
     return report
+
+
+def verify_retained_campaign(
+    *,
+    output_root: Path,
+    corpus: TaskCorpus,
+    pico_commit: str,
+) -> dict[str, Any]:
+    manifest_path = output_root / "manifest.json"
+    report_path = output_root / "report.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        retained_report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise CampaignError("retained campaign manifest or report is unreadable") from exc
+    expected_plan_digest = str(manifest.get("plan_digest") or "")
+    manifest_payload = {key: value for key, value in manifest.items() if key != "plan_digest"}
+    checks = {
+        "manifest_schema": manifest.get("schema") == "pico.picobench.call-efficiency-cost.manifest.v2",
+        "manifest_digest": expected_plan_digest == canonical_digest(manifest_payload),
+        "pico_commit": manifest.get("pico_commit") == pico_commit,
+        "task_corpus": manifest.get("task_corpus_digest") == corpus.digest,
+        "runtime_boundary": manifest.get("runtime_boundary") == "shared_runtime_assembly",
+        "call_efficiency_mode": manifest.get("call_efficiency_mode") == "observe",
+    }
+    try:
+        config = CampaignConfig(
+            model=str(manifest.get("model") or ""),
+            repetitions=int(manifest.get("repetitions", 0)),
+            hard_cap_usd=float(manifest.get("hard_cap_usd", 0)),
+            max_provider_calls=int(manifest.get("max_provider_calls", 0)),
+            bootstrap_samples=int(manifest.get("bootstrap_samples", 0)),
+            bootstrap_seed=int(manifest.get("bootstrap_seed", 0)),
+            output_root=output_root,
+        )
+    except (TypeError, ValueError) as exc:
+        raise CampaignError("retained campaign manifest is invalid") from exc
+    trial_paths = sorted((output_root / "trials").glob("*.json"))
+    try:
+        raw_rows = [json.loads(path.read_text(encoding="utf-8")) for path in trial_paths]
+    except (OSError, json.JSONDecodeError) as exc:
+        raise CampaignError("retained trial artifact is unreadable") from exc
+    artifacts = _load_retained_trials(output_root / "trials", plan_digest=expected_plan_digest)
+    expected_trials = len(corpus.tasks) * config.repetitions * 2
+    checks["trial_count"] = len(artifacts) == expected_trials
+    checks["raw_trial_file_count"] = len(trial_paths) == expected_trials
+    checks["raw_trial_schema"] = all(
+        row.get("schema") == "pico.picobench.call-efficiency-cost.trial.v2" for row in raw_rows
+    )
+    checks["raw_plan_binding"] = all(row.get("plan_digest") == expected_plan_digest for row in raw_rows)
+    checks["raw_call_receipts"] = all(_serialized_call_records_complete(artifact) for artifact in artifacts.values())
+    trials = tuple(
+        artifact.result
+        for _, artifact in sorted(
+            artifacts.items(),
+            key=lambda item: (
+                item[1].result.task_id,
+                item[1].result.repetition,
+                item[1].result.cache_policy,
+            ),
+        )
+    )
+    rebuilt = build_current_campaign_report(config=config, corpus=corpus, trials=trials)
+    rebuilt["campaign"]["pico_commit"] = pico_commit
+    rebuilt["campaign"]["plan_digest"] = expected_plan_digest
+    rebuilt["campaign"]["observed_cost_usd"] = sum(trial.cost_usd for trial in trials)
+    rebuilt["campaign"]["observed_provider_calls"] = sum(trial.provider_calls for trial in trials)
+    preflight_path = output_root / "preflight.json"
+    try:
+        preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise CampaignError("retained preflight is unreadable") from exc
+    checks["preflight_passed"] = preflight.get("passed") is True
+    rebuilt["campaign"]["preflight_digest"] = canonical_digest(preflight)
+    rebuilt["report_digest"] = canonical_digest(
+        {key: value for key, value in rebuilt.items() if key != "report_digest"}
+    )
+    checks["report_rebuilt"] = canonical_bytes(rebuilt) == canonical_bytes(retained_report)
+    verifier = {
+        "schema": "pico.picobench.call-efficiency-cost.verifier.v1",
+        "checks": checks,
+        "trial_count": len(trials),
+        "provider_call_count": sum(trial.provider_calls for trial in trials),
+        "report_digest": rebuilt["report_digest"],
+        "passed": all(checks.values()),
+    }
+    verifier["verifier_digest"] = canonical_digest(verifier)
+    _write_bytes(
+        output_root / "raw-outcomes.jsonl",
+        b"".join(canonical_bytes(row) + b"\n" for row in raw_rows),
+    )
+    _write_json(output_root / "aggregate.json", rebuilt)
+    _write_json(output_root / "verifier-report.json", verifier)
+    _write_json(
+        output_root / "claim-eligibility.json",
+        {
+            "schema": "pico.picobench.call-efficiency-cost.claim.v1",
+            "measurement_valid": verifier["passed"],
+            "positive_claim_eligible": verifier["passed"] and rebuilt["claim"]["claim_eligible"],
+            "gates": rebuilt["gates"],
+            "paired_cost_reduction_95_ci": rebuilt["claim"]["paired_cost_reduction_95_ci"],
+            "report_digest": rebuilt["report_digest"],
+        },
+    )
+    inventory = _build_inventory(output_root)
+    _write_json(output_root / "inventory.json", inventory)
+    if not verifier["passed"]:
+        failed = ", ".join(name for name, passed in checks.items() if not passed)
+        raise CampaignError(f"offline verification failed: {failed}")
+    return verifier
 
 
 async def run_cache_preflight(
@@ -263,20 +384,40 @@ async def execute_live_trial(
         budget=budget,
     )
     provider.generation = GenerationSettings(temperature=0.0, max_tokens=96)
-    strategy_registry = StrategyRegistry([arm.strategy] if arm.strategy is not None else [])
-    loop = AgentLoop(
+    runtime_config = Config()
+    runtime_config.agents.defaults.workspace = str(workspace)
+    runtime_config.agents.defaults.model = config.model
+    runtime_config.agents.defaults.max_tool_iterations = 6
+    runtime_config.agents.defaults.context_window_tokens = 200_000
+    runtime_config.agents.defaults.temperature = 0.0
+    runtime_config.agents.defaults.max_tokens = 96
+    runtime_config.agents.defaults.enable_personalization = False
+    runtime_config.tools.mcp_servers = {}
+    runtime_config.tools.sandbox.backend = "none"
+    pico_config = PicoConfig(base=runtime_config)
+    pico_config.memory.backend = None
+    pico_config.skill_forge.enabled = False
+    pico_config.skill_forge.router.enabled = False
+    pico_config.skill_forge.rewrite_enabled = False
+    pico_config.skill_forge.llm_gate_enabled = False
+    pico_config.call_efficiency.mode = "observe"
+    pico_config.call_efficiency.usage_tracking = True
+    pico_config.context.fast_path_threshold = 1.0
+    pico_config.runtime.checkpoint.policy = "never"
+    from pico.cli._runtime_assembly import assemble_runtime
+
+    runtime = assemble_runtime(
+        runtime_config,
+        pico_config,
         provider=provider,
-        workspace=workspace,
-        state=workspace / "state",
-        model=config.model,
-        max_iterations=6,
-        context_window_tokens=200_000,
-        mcp_servers={},
-        channels_config=None,
-        strategies=strategy_registry,
-        now_fn=lambda: datetime(2026, 8, 6, tzinfo=timezone.utc),
+        cron_service=None,
         interactive=False,
+        paths=RuntimePaths(workspace=workspace, state=workspace / "state"),
     )
+    loop = runtime.agent_loop
+    loop.now_fn = lambda: datetime(2026, 8, 6, tzinfo=timezone.utc)
+    if arm.strategy is not None:
+        loop.strategies.register(arm.strategy)
     loop.tools._tools.clear()
     if task.workload_class == "tool_accumulation":
         loop.tools.register(_LookupTool())
@@ -326,8 +467,7 @@ async def execute_live_trial(
     except Exception as exc:
         findings.append(f"runtime_error:{type(exc).__name__}")
     finally:
-        await loop.close_mcp()
-        await loop.close_executor()
+        await runtime.close()
 
     expected_tool_calls = task.turn_count * task.expected_tool_calls_per_turn
     if total_tool_calls != expected_tool_calls:
@@ -335,6 +475,14 @@ async def execute_live_trial(
     if total_tool_failures:
         findings.append("tool_failure")
     records = tuple(provider.records)
+    call_efficiency_records = runtime.call_efficiency.records if runtime.call_efficiency is not None else ()
+    serialized_call_efficiency_records = tuple(asdict(record) for record in call_efficiency_records)
+    ledger_id = getattr(getattr(runtime.call_efficiency, "ledger", None), "_ledger_id", None)
+    health = _load_call_efficiency_health(
+        workspace / "state" / "telemetry",
+        ledger_id=ledger_id,
+    )
+    call_records_complete = _call_efficiency_records_complete(records, call_efficiency_records)
     actual_models = {record.actual_model for record in records if record.actual_model}
     usage_complete = bool(records) and all(record.usage_complete for record in records)
     cost_complete = usage_complete and all(record.cost_usd >= 0 for record in records)
@@ -362,8 +510,21 @@ async def execute_live_trial(
         provider_calls=len(records),
         latency_ms=elapsed_ms,
         findings=tuple(findings),
+        runtime_assembly=True,
+        call_efficiency_mode=runtime.call_efficiency.mode if runtime.call_efficiency is not None else None,
+        call_efficiency_records=len(call_efficiency_records),
+        call_efficiency_records_complete=call_records_complete,
+        call_efficiency_ledger_status=health.get("status"),
+        call_efficiency_accepted_records=int(health.get("accepted_records", 0)),
+        call_efficiency_persisted_records=int(health.get("persisted_records", 0)),
+        call_efficiency_lost_records=int(health.get("lost_records", 0)),
     )
-    return TrialArtifact(result=result, provider_calls=records, outputs=tuple(outputs))
+    return TrialArtifact(
+        result=result,
+        provider_calls=records,
+        outputs=tuple(outputs),
+        call_efficiency_records=serialized_call_efficiency_records,
+    )
 
 
 class _RecordingDeepSeekProvider(LiteLLMProvider):
@@ -399,15 +560,43 @@ class _RecordingDeepSeekProvider(LiteLLMProvider):
         self._budget.reserve_call()
         started = time.perf_counter()
         requested_model = model or self.default_model
-        response = await super().chat(
-            messages=messages,
-            tools=tools,
-            model=model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            reasoning_effort=reasoning_effort,
-            tool_choice=tool_choice,
-        )
+        try:
+            response = await super().chat(
+                messages=messages,
+                tools=tools,
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                reasoning_effort=reasoning_effort,
+                tool_choice=tool_choice,
+            )
+        except BaseException as exc:
+            self.records.append(
+                ProviderCallRecord(
+                    request_digest=canonical_digest(
+                        {
+                            "model": requested_model,
+                            "messages": messages,
+                            "tools": tools or [],
+                            "max_tokens": max_tokens,
+                            "temperature": temperature,
+                        }
+                    ),
+                    requested_model=requested_model,
+                    actual_model=None,
+                    usage_complete=False,
+                    fresh_input_tokens=0,
+                    cache_write_tokens=0,
+                    cache_read_tokens=0,
+                    output_tokens=0,
+                    cost_usd=0.0,
+                    finish_reason="error",
+                    latency_ms=round((time.perf_counter() - started) * 1000),
+                    outcome="error",
+                    error_type=type(exc).__name__,
+                )
+            )
+            raise
         usage = response.usage or {}
         complete = all(
             field in usage and usage[field] is not None
@@ -579,10 +768,11 @@ def _trial_key(task_id: str, repetition: int, cache_policy: str) -> str:
 
 def _trial_payload(artifact: TrialArtifact, *, plan_digest: str) -> dict[str, Any]:
     return {
-        "schema": "pico.picobench.tokenwise-cost.trial.v1",
+        "schema": "pico.picobench.call-efficiency-cost.trial.v2",
         "plan_digest": plan_digest,
         "result": asdict(artifact.result),
         "provider_calls": [asdict(record) for record in artifact.provider_calls],
+        "call_efficiency_records": list(artifact.call_efficiency_records),
         "outputs": list(artifact.outputs),
     }
 
@@ -598,11 +788,103 @@ def _load_retained_trials(root: Path, *, plan_digest: str) -> dict[str, TrialArt
                 continue
             result = LiveTrialResult(**{**raw["result"], "findings": tuple(raw["result"]["findings"])})
             calls = tuple(ProviderCallRecord(**record) for record in raw["provider_calls"])
-            artifact = TrialArtifact(result=result, provider_calls=calls, outputs=tuple(raw["outputs"]))
+            artifact = TrialArtifact(
+                result=result,
+                provider_calls=calls,
+                outputs=tuple(raw["outputs"]),
+                call_efficiency_records=tuple(raw.get("call_efficiency_records", ())),
+            )
         except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
             continue
         retained[_trial_key(result.task_id, result.repetition, result.cache_policy)] = artifact
     return retained
+
+
+def _load_call_efficiency_health(
+    telemetry_dir: Path,
+    *,
+    ledger_id: str | None,
+) -> dict[str, Any]:
+    path = telemetry_dir / "call-efficiency-ledger-health.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    ledgers = payload.get("ledgers")
+    if ledger_id is not None and isinstance(ledgers, dict):
+        entry = ledgers.get(ledger_id)
+        return entry if isinstance(entry, dict) else {}
+    return payload
+
+
+def _call_efficiency_records_complete(
+    provider_records: tuple[ProviderCallRecord, ...],
+    call_records: tuple[CallRecord, ...],
+) -> bool:
+    if len(provider_records) != len(call_records):
+        return False
+    for provider_record, call_record in zip(provider_records, call_records, strict=True):
+        if provider_record.outcome != call_record.outcome:
+            return False
+        if provider_record.requested_model != call_record.requested_model:
+            return False
+        if provider_record.usage_complete != call_record.usage.complete:
+            return False
+        if provider_record.fresh_input_tokens != call_record.usage.input_tokens:
+            return False
+        if provider_record.cache_read_tokens != call_record.usage.cache_read_tokens:
+            return False
+        if provider_record.cache_write_tokens != call_record.usage.cache_write_tokens:
+            return False
+        if provider_record.output_tokens != call_record.usage.output_tokens:
+            return False
+        if provider_record.cost_usd != call_record.estimated_cost_usd:
+            return False
+    return True
+
+
+def _serialized_call_records_complete(artifact: TrialArtifact) -> bool:
+    if artifact.result.provider_calls != len(artifact.provider_calls):
+        return False
+    if artifact.result.call_efficiency_records != len(artifact.call_efficiency_records):
+        return False
+    if len(artifact.provider_calls) != len(artifact.call_efficiency_records):
+        return False
+    for provider_record, raw_call_record in zip(
+        artifact.provider_calls,
+        artifact.call_efficiency_records,
+        strict=True,
+    ):
+        usage = raw_call_record.get("usage")
+        if not isinstance(usage, dict):
+            return False
+        expected = {
+            "outcome": provider_record.outcome,
+            "requested_model": provider_record.requested_model,
+            "actual_model": provider_record.actual_model or "",
+            "usage_complete": provider_record.usage_complete,
+            "fresh_input_tokens": provider_record.fresh_input_tokens,
+            "cache_read_tokens": provider_record.cache_read_tokens,
+            "cache_write_tokens": provider_record.cache_write_tokens,
+            "output_tokens": provider_record.output_tokens,
+            "cost_usd": provider_record.cost_usd,
+        }
+        observed = {
+            "outcome": raw_call_record.get("outcome"),
+            "requested_model": raw_call_record.get("requested_model"),
+            "actual_model": raw_call_record.get("actual_model"),
+            "usage_complete": usage.get("complete"),
+            "fresh_input_tokens": usage.get("input_tokens"),
+            "cache_read_tokens": usage.get("cache_read_tokens"),
+            "cache_write_tokens": usage.get("cache_write_tokens"),
+            "output_tokens": usage.get("output_tokens"),
+            "cost_usd": raw_call_record.get("estimated_cost_usd"),
+        }
+        if observed != expected:
+            return False
+    return True
 
 
 def _freeze_json(path: Path, value: dict[str, Any]) -> None:
@@ -637,6 +919,35 @@ def _write_bytes(path: Path, payload: bytes) -> None:
             temp_path.unlink(missing_ok=True)
 
 
+def _build_inventory(root: Path) -> dict[str, Any]:
+    paths = [
+        root / "manifest.json",
+        root / "preflight.json",
+        root / "report.json",
+        root / "raw-outcomes.jsonl",
+        root / "aggregate.json",
+        root / "verifier-report.json",
+        root / "claim-eligibility.json",
+        *sorted((root / "trials").glob("*.json")),
+    ]
+    artifacts = []
+    for path in paths:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        artifacts.append(
+            {
+                "path": str(path.relative_to(root)),
+                "sha256": digest,
+                "bytes": path.stat().st_size,
+            }
+        )
+    payload = {
+        "schema": "pico.picobench.call-efficiency-cost.inventory.v1",
+        "artifacts": artifacts,
+    }
+    payload["inventory_digest"] = canonical_digest(payload)
+    return payload
+
+
 __all__ = [
     "ProviderCallRecord",
     "TrialArtifact",
@@ -644,4 +955,5 @@ __all__ = [
     "load_deepseek_key",
     "run_cache_preflight",
     "run_formal_campaign",
+    "verify_retained_campaign",
 ]

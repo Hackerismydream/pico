@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Mapping
+from statistics import mean
+
+from benchmarks.picobench.statistics import clustered_bootstrap_interval
 
 from .models import (
     TokenWiseArmSummary,
@@ -106,6 +109,45 @@ def assess_tokenwise_cost_claim(
     )
 
 
+def paired_cost_reduction_interval(
+    measurements: tuple[TokenWiseCostMeasurement, ...],
+    *,
+    samples: int,
+    seed: int,
+) -> dict[str, int | float | bool | str] | None:
+    grouped: dict[tuple[str, int], dict[str, TokenWiseCostMeasurement]] = defaultdict(dict)
+    for measurement in measurements:
+        grouped[(measurement.task_id, measurement.repetition)][measurement.cache_policy] = measurement
+    per_task: dict[str, list[float]] = defaultdict(list)
+    for (task_id, _repetition), policies in grouped.items():
+        if set(policies) != set(CACHE_POLICIES):
+            return None
+        control = policies[CACHE_POLICY_PREFIX_DISRUPTED]
+        treatment = policies[CACHE_POLICY_PREFIX_STABLE]
+        if control.cost_usd <= 0:
+            return None
+        per_task[task_id].append((control.cost_usd - treatment.cost_usd) / control.cost_usd)
+    if not per_task:
+        return None
+    interval = clustered_bootstrap_interval(
+        {task_id: tuple(values) for task_id, values in per_task.items()},
+        samples=samples,
+        seed=seed,
+    )
+    paired_values = [value for values in per_task.values() for value in values]
+    return {
+        "estimate": mean(paired_values),
+        "lower": interval.lower,
+        "upper": interval.upper,
+        "tasks": interval.tasks,
+        "pairs": len(paired_values),
+        "samples": interval.samples,
+        "seed": interval.seed,
+        "unit": "task_clustered_pair",
+        "exploratory": interval.exploratory,
+    }
+
+
 def _summarize_arm(
     measurements: tuple[TokenWiseCostMeasurement, ...],
     cache_policy: str,
@@ -172,4 +214,5 @@ __all__ = [
     "CACHE_POLICY_PREFIX_DISRUPTED",
     "CACHE_POLICY_PREFIX_STABLE",
     "assess_tokenwise_cost_claim",
+    "paired_cost_reduction_interval",
 ]
