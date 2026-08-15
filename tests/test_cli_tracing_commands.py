@@ -36,6 +36,21 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"Not found")
 
+    def do_POST(self):  # noqa: N802 — BaseHTTPRequestHandler 接口
+        if (
+            self.path == "/api/shutdown"
+            and getattr(self.server, "health_ok", False)
+            and self.headers.get("X-Pico-Viewer-Action") == "shutdown"
+        ):
+            body = json.dumps({"ok": True, "stopping": True}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(403)
+            self.end_headers()
+
     def log_message(self, *_a):
         pass
 
@@ -92,3 +107,12 @@ def test_viewer_env_preserves_unrelated_operator_environment(monkeypatch):
     monkeypatch.setenv("PICO_VIEWER_TEST_VALUE", "operator-value")
 
     assert tc._viewer_env(4318)["PICO_VIEWER_TEST_VALUE"] == "operator-value"
+
+
+def test_stop_dashboard_sends_guarded_shutdown_request():
+    port = _free_port()
+    srv = _serve(port, health_ok=True)
+    try:
+        tc._stop_dashboard(port)
+    finally:
+        srv.shutdown()
