@@ -18,11 +18,16 @@ module.exports = String.raw`<!doctype html>
       </div>
       <div class="app-status">
         <span class="status-pill" id="connectionStatus" data-i18n="status.disconnected">Disconnected</span>
+        <span class="window-pill" id="dataWindowStatus" hidden></span>
         <span class="status-text"><span data-i18n="header.updated">Updated</span>: <strong id="lastUpdated">--:--:--</strong></span>
         <div class="lang-switch" role="group" aria-label="Language">
           <button class="lang-pill" data-lang="en" type="button">EN</button>
           <button class="lang-pill" data-lang="zh" type="button">中</button>
         </div>
+        <button class="ghost-button auto-refresh-button" id="autoRefreshButton" type="button" aria-pressed="true">
+          <span class="auto-refresh-dot" aria-hidden="true"></span>
+          <span id="autoRefreshLabel" data-i18n="auto.on">Auto 15s</span>
+        </button>
         <button class="ghost-button app-action" id="refreshButton" type="button" data-i18n="action.refresh">Refresh</button>
       </div>
     </header>

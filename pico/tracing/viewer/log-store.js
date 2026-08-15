@@ -3,6 +3,7 @@ const os = require('os');
 const path = require('path');
 
 const DEFAULT_MAX_BYTES = 50 * 1024 * 1024;
+const DEFAULT_VIEWER_MAX_BYTES = 8 * 1024 * 1024;
 
 const KIND_FILES = {
   events: 'audit-events.log',
@@ -55,10 +56,8 @@ function toJsonText(value) {
   }
 }
 
-function readJsonlFile(filePath) {
-  if (!fs.existsSync(filePath)) return [];
-  return fs
-    .readFileSync(filePath, 'utf8')
+function parseJsonl(text) {
+  return text
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
@@ -70,6 +69,37 @@ function readJsonlFile(filePath) {
       }
     })
     .filter(Boolean);
+}
+
+function getViewerMaxBytes() {
+  const raw = Number(process.env.TRACE_VIEWER_MAX_BYTES || DEFAULT_VIEWER_MAX_BYTES);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_VIEWER_MAX_BYTES;
+}
+
+function readJsonlFileWindow(filePath, maxBytes) {
+  const stat = fs.statSync(filePath);
+  const bytesToRead = Math.min(stat.size, maxBytes);
+  const start = stat.size - bytesToRead;
+  const fd = fs.openSync(filePath, 'r');
+  let buffer;
+  try {
+    buffer = Buffer.allocUnsafe(bytesToRead);
+    const actualBytes = fs.readSync(fd, buffer, 0, bytesToRead, start);
+    buffer = buffer.subarray(0, actualBytes);
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  if (start > 0) {
+    const firstNewline = buffer.indexOf(0x0a);
+    buffer = firstNewline === -1 ? Buffer.alloc(0) : buffer.subarray(firstNewline + 1);
+  }
+
+  return {
+    records: parseJsonl(buffer.toString('utf8')),
+    bytesRead: bytesToRead,
+    truncated: start > 0
+  };
 }
 
 function walkFiles(rootDir) {
@@ -99,15 +129,27 @@ function walkFiles(rootDir) {
 function listLogFiles(kind) {
   const rootDir = getLogsDir();
   const baseName = KIND_FILES[kind];
-  const files = walkFiles(rootDir).filter((filePath) => {
+  const activeFile = path.join(rootDir, baseName);
+  const archiveDir = path.join(rootDir, 'archive');
+  const candidates = [
+    ...(fs.existsSync(activeFile) ? [activeFile] : []),
+    ...walkFiles(archiveDir)
+  ];
+  const files = candidates.filter((filePath) => {
     const name = path.basename(filePath);
     if (name === baseName) return true;
     if (!name.startsWith(baseName.replace('.log', ''))) return false;
     return name.endsWith('.log');
   });
   files.sort((a, b) => {
-    const statA = fs.existsSync(a) ? fs.statSync(a) : null;
-    const statB = fs.existsSync(b) ? fs.statSync(b) : null;
+    let statA = null;
+    let statB = null;
+    try {
+      statA = fs.statSync(a);
+    } catch {}
+    try {
+      statB = fs.statSync(b);
+    } catch {}
     const timeA = statA ? statA.mtimeMs : 0;
     const timeB = statB ? statB.mtimeMs : 0;
     if (timeA !== timeB) return timeA - timeB;
@@ -116,12 +158,60 @@ function listLogFiles(kind) {
   return files;
 }
 
-function readJsonl(kind) {
-  const records = [];
-  for (const filePath of listLogFiles(kind)) {
-    records.push(...readJsonlFile(filePath));
+function readJsonlWindow(kind, maxBytes = getViewerMaxBytes()) {
+  const files = listLogFiles(kind);
+  const recordGroups = [];
+  let bytesRead = 0;
+  let filesRead = 0;
+  let truncated = false;
+
+  for (let index = files.length - 1; index >= 0; index -= 1) {
+    const remaining = maxBytes - bytesRead;
+    if (remaining <= 0) {
+      truncated = true;
+      break;
+    }
+
+    let result;
+    try {
+      result = readJsonlFileWindow(files[index], remaining);
+    } catch {
+      truncated = true;
+      continue;
+    }
+    recordGroups.unshift(result.records);
+    bytesRead += result.bytesRead;
+    filesRead += 1;
+    if (result.truncated) {
+      truncated = true;
+      break;
+    }
+    if (index > 0 && bytesRead >= maxBytes) truncated = true;
   }
-  return records;
+
+  return {
+    records: recordGroups.flat(),
+    window: {
+      truncated,
+      bytesRead,
+      maxBytes,
+      filesRead,
+      filesAvailable: files.length
+    }
+  };
+}
+
+function logFingerprint() {
+  const entries = [];
+  for (const kind of Object.keys(KIND_FILES)) {
+    for (const filePath of listLogFiles(kind)) {
+      try {
+        const stat = fs.statSync(filePath);
+        entries.push([kind, filePath, stat.size, stat.mtimeMs]);
+      } catch {}
+    }
+  }
+  return JSON.stringify(entries);
 }
 
 function rotateIfNeeded(kind, nextText = '') {
@@ -157,7 +247,8 @@ module.exports = {
   getActiveLogPath,
   getArchiveDir,
   ensureDir,
-  readJsonl,
+  readJsonlWindow,
+  logFingerprint,
   appendJsonl,
   rotateIfNeeded,
   getDateKey
