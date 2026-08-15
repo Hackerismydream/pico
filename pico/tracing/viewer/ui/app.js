@@ -27,6 +27,7 @@ const state = {
   dataEtag: null,
   autoRefreshEnabled: true,
   consecutiveFailures: 0,
+  isShuttingDown: false,
   lang: (() => {
     try {
       const saved = localStorage.getItem('tracing:lang');
@@ -45,6 +46,12 @@ const elements = {
   lastUpdated: document.getElementById('lastUpdated'),
   autoRefreshButton: document.getElementById('autoRefreshButton'),
   autoRefreshLabel: document.getElementById('autoRefreshLabel'),
+  shutdownButton: document.getElementById('shutdownButton'),
+  shutdownDialog: document.getElementById('shutdownDialog'),
+  shutdownCancelButton: document.getElementById('shutdownCancelButton'),
+  shutdownConfirmButton: document.getElementById('shutdownConfirmButton'),
+  shutdownError: document.getElementById('shutdownError'),
+  shutdownState: document.getElementById('shutdownState'),
   traceScene: document.getElementById('traceScene'),
   apiScene: document.getElementById('apiScene'),
   listTitle: document.getElementById('listTitle'),
@@ -73,12 +80,24 @@ const I18N = {
     'status.disconnected': 'Disconnected',
     'status.loading': 'Refreshing',
     'header.updated': 'Checked',
+    'header.subtitle': 'Agent execution observability',
     'action.refresh': 'Refresh',
     'action.refreshing': 'Refreshing...',
+    'action.stop': 'Stop viewer',
+    'action.cancel': 'Cancel',
+    'action.confirmStop': 'Stop viewer',
+    'action.stopping': 'Stopping...',
     'auto.on': 'Auto 15s',
     'auto.off': 'Paused',
     'window.recent': ({ size, count }) => `Recent ${size} / ${count} spans`,
     'window.title': 'Older traces are preserved on disk and omitted from this view.',
+    'shutdown.kicker': 'Local viewer',
+    'shutdown.title': 'Stop the tracing viewer?',
+    'shutdown.copy': 'This stops the local server and automatic refresh. Trace files stay on disk.',
+    'shutdown.failed': 'Could not stop the viewer. Try pico tracing --stop in the terminal.',
+    'shutdown.stoppedKicker': 'Viewer stopped',
+    'shutdown.stoppedTitle': 'Tracing is no longer using this process.',
+    'shutdown.stoppedCopy': 'Your trace files are preserved. You can close this tab or run pico tracing to start again.',
     'view.api': 'API Calls',
     'view.trace': 'Traces',
     'sessions.title': 'Sessions',
@@ -166,12 +185,24 @@ const I18N = {
     'status.disconnected': '未连接',
     'status.loading': '刷新中',
     'header.updated': '检查',
+    'header.subtitle': 'Agent 执行观测',
     'action.refresh': '刷新',
     'action.refreshing': '刷新中...',
+    'action.stop': '关闭 Viewer',
+    'action.cancel': '取消',
+    'action.confirmStop': '关闭 Viewer',
+    'action.stopping': '正在关闭...',
     'auto.on': '自动 15 秒',
     'auto.off': '已暂停',
     'window.recent': ({ size, count }) => `最近 ${size} / ${count} 个 Span`,
     'window.title': '更早的追踪仍保存在磁盘中，此页面仅加载最近窗口。',
+    'shutdown.kicker': '本地 VIEWER',
+    'shutdown.title': '关闭 tracing viewer？',
+    'shutdown.copy': '这会停止本地服务和自动刷新，Trace 文件仍保留在磁盘中。',
+    'shutdown.failed': '无法关闭 Viewer，请在终端运行 pico tracing --stop。',
+    'shutdown.stoppedKicker': 'VIEWER 已关闭',
+    'shutdown.stoppedTitle': 'Tracing Viewer 进程已停止。',
+    'shutdown.stoppedCopy': 'Trace 文件仍然保留。你可以关闭此标签页，或运行 pico tracing 再次启动。',
     'view.api': 'API 调用',
     'view.trace': '会话追踪',
     'sessions.title': '会话列表',
@@ -2901,6 +2932,40 @@ function startAutoRefresh() {
   renderHeaderStatus();
 }
 
+function openShutdownDialog() {
+  elements.shutdownError.hidden = true;
+  elements.shutdownError.textContent = '';
+  elements.shutdownDialog.showModal();
+}
+
+async function stopViewer() {
+  if (state.isShuttingDown) return;
+  state.isShuttingDown = true;
+  elements.shutdownConfirmButton.disabled = true;
+  elements.shutdownConfirmButton.textContent = t('action.stopping');
+  elements.shutdownError.hidden = true;
+  try {
+    const response = await fetch('/api/shutdown', {
+      method: 'POST',
+      headers: { 'X-Pico-Viewer-Action': 'shutdown' }
+    });
+    if (!response.ok) throw new Error(`Shutdown failed with status ${response.status}`);
+    const payload = await response.json();
+    if (payload.stopping !== true) throw new Error('Shutdown was not acknowledged');
+    state.autoRefreshEnabled = false;
+    startAutoRefresh();
+    elements.shutdownDialog.close();
+    elements.shutdownState.hidden = false;
+    document.body.classList.add('viewer-stopped');
+  } catch (error) {
+    state.isShuttingDown = false;
+    elements.shutdownConfirmButton.disabled = false;
+    elements.shutdownConfirmButton.textContent = t('action.confirmStop');
+    elements.shutdownError.textContent = `${t('shutdown.failed')} ${error.message}`;
+    elements.shutdownError.hidden = false;
+  }
+}
+
 let contentSearchTimer = null;
 elements.searchInput.addEventListener('input', (event) => {
   state.search = event.target.value;
@@ -2958,6 +3023,15 @@ elements.refreshButton.addEventListener('click', () => {
 elements.autoRefreshButton.addEventListener('click', () => {
   state.autoRefreshEnabled = !state.autoRefreshEnabled;
   startAutoRefresh();
+});
+
+elements.shutdownButton.addEventListener('click', openShutdownDialog);
+elements.shutdownCancelButton.addEventListener('click', () => elements.shutdownDialog.close());
+elements.shutdownConfirmButton.addEventListener('click', stopViewer);
+elements.shutdownDialog.addEventListener('click', (event) => {
+  if (event.target === elements.shutdownDialog && !state.isShuttingDown) {
+    elements.shutdownDialog.close();
+  }
 });
 
 elements.appViewButtons.forEach((button) => {

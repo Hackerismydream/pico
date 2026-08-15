@@ -57,6 +57,7 @@ state import.
 | `pico provider login <name>` | Authenticate with an OAuth Provider |
 | `pico sessions list` | List resumable Sessions |
 | `pico tracing` | Open the local Tracing dashboard |
+| `pico tracing --stop` | Stop the detached local Tracing dashboard |
 
 ### 4. Verification
 

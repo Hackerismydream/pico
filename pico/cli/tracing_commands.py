@@ -146,6 +146,29 @@ def _open_dashboard(port: int) -> None:
     webbrowser.open(url)
 
 
+def _stop_dashboard(port: int) -> None:
+    if not _viewer_health(port):
+        console.print(f"Tracing dashboard is not running on [cyan]http://127.0.0.1:{port}/[/cyan]")
+        return
+
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/shutdown",
+        method="POST",
+        headers={"X-Pico-Viewer-Action": "shutdown"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=2) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        console.print(f"[red]Could not stop tracing dashboard:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    if response.status != 200 or payload.get("stopping") is not True:
+        console.print("[red]Tracing dashboard rejected the shutdown request.[/red]")
+        raise typer.Exit(1)
+    console.print(f"Stopped tracing dashboard at [cyan]http://127.0.0.1:{port}/[/cyan]")
+
+
 def _serve_foreground(port: int) -> None:
     node = _resolve_node()
     console.print(f"Serving tracing dashboard on http://127.0.0.1:{port}/  (Ctrl-C to stop)")
@@ -174,9 +197,13 @@ def register(app: typer.Typer) -> None:
         foreground: bool = typer.Option(
             False, "--foreground", "-f", help="Run the viewer in the foreground (blocks; Ctrl-C to stop)."
         ),
+        stop: bool = typer.Option(False, "--stop", help="Stop the viewer running on the selected port."),
     ) -> None:
         """Open the tracing dashboard (captured LLM/tool/memory spans)."""
         bind_port = port if port is not None else tracing_config.port()
+        if stop:
+            _stop_dashboard(bind_port)
+            return
         if foreground:
             _serve_foreground(bind_port)
         else:

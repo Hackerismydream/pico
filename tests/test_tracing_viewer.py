@@ -54,6 +54,18 @@ def _write_jsonl(path: Path, records: list[dict]) -> None:
     path.write_text("".join(f"{json.dumps(record)}\n" for record in records), encoding="utf-8")
 
 
+def test_viewer_ui_exposes_explicit_shutdown_lifecycle() -> None:
+    shell = (VIEWER_DIR / "ui/shell.js").read_text(encoding="utf-8")
+    app = (VIEWER_DIR / "ui/app.js").read_text(encoding="utf-8")
+
+    assert 'id="shutdownButton"' in shell
+    assert 'id="shutdownDialog"' in shell
+    assert 'id="shutdownState"' in shell
+    assert "fetch('/api/shutdown'" in app
+    assert "'X-Pico-Viewer-Action': 'shutdown'" in app
+    assert "classList.add('viewer-stopped')" in app
+
+
 def test_viewer_reads_a_bounded_recent_window(tmp_path: Path) -> None:
     logs = tmp_path / "logs"
     _write_jsonl(logs / "archive/2026-08-14/audit-spans-old.log", [_span(i) for i in range(20)])
@@ -145,3 +157,68 @@ def test_viewer_returns_not_modified_for_unchanged_history(tmp_path: Path) -> No
     finally:
         process.terminate()
         process.wait(timeout=5)
+
+
+def test_viewer_shutdown_requires_explicit_origin_bound_action(tmp_path: Path) -> None:
+    port = _free_port()
+    env = {
+        **os.environ,
+        "TRACING_STATE_DIR": str(tmp_path),
+        "TRACING_UI_PORT": str(port),
+    }
+    process = subprocess.Popen(
+        [_node(), str(VIEWER_DIR / "server.js")],
+        cwd=VIEWER_DIR,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    health_url = f"http://127.0.0.1:{port}/api/health"
+    try:
+        for _ in range(50):
+            try:
+                with urllib.request.urlopen(health_url, timeout=0.2) as response:
+                    if response.status == 200:
+                        break
+            except (OSError, urllib.error.URLError):
+                time.sleep(0.05)
+        else:
+            pytest.fail(f"Tracing viewer did not start: {process.stderr.read()}")
+
+        untrusted = urllib.request.Request(f"http://127.0.0.1:{port}/api/shutdown", method="POST")
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            urllib.request.urlopen(untrusted, timeout=2)
+        assert exc_info.value.code == 403
+        assert process.poll() is None
+
+        cross_origin = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/shutdown",
+            method="POST",
+            headers={
+                "Origin": "https://example.com",
+                "X-Pico-Viewer-Action": "shutdown",
+            },
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            urllib.request.urlopen(cross_origin, timeout=2)
+        assert exc_info.value.code == 403
+        assert process.poll() is None
+
+        trusted = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/shutdown",
+            method="POST",
+            headers={
+                "Origin": f"http://127.0.0.1:{port}",
+                "X-Pico-Viewer-Action": "shutdown",
+            },
+        )
+        with urllib.request.urlopen(trusted, timeout=2) as response:
+            assert response.status == 200
+            assert json.load(response)["stopping"] is True
+        process.wait(timeout=5)
+        assert process.returncode == 0
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            process.wait(timeout=5)

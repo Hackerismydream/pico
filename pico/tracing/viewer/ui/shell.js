@@ -11,9 +11,14 @@ module.exports = String.raw`<!doctype html>
   <body>
     <header class="app-header">
       <div class="app-brand">
-        <div class="app-logo" aria-hidden="true">∿</div>
-        <div>
-          <h1>Tracing Dashboard</h1>
+        <div class="app-logo" aria-hidden="true">◆</div>
+        <div class="app-brand-copy">
+          <div class="app-brand-line">
+            <h1>Pico</h1>
+            <span class="app-product">Tracing</span>
+            <span class="app-product-meta">local viewer</span>
+          </div>
+          <p data-i18n="header.subtitle">Agent execution observability</p>
         </div>
       </div>
       <div class="app-status">
@@ -29,6 +34,13 @@ module.exports = String.raw`<!doctype html>
           <span id="autoRefreshLabel" data-i18n="auto.on">Auto 15s</span>
         </button>
         <button class="ghost-button app-action" id="refreshButton" type="button" data-i18n="action.refresh">Refresh</button>
+        <button class="ghost-button danger-button" id="shutdownButton" type="button">
+          <svg aria-hidden="true" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M10 2.5v7"></path>
+            <path d="M5.1 5.3a7 7 0 1 0 9.8 0"></path>
+          </svg>
+          <span data-i18n="action.stop">Stop viewer</span>
+        </button>
       </div>
     </header>
     <nav class="workspace-tabs">
@@ -98,6 +110,27 @@ module.exports = String.raw`<!doctype html>
       </section>
     </div>
     <main class="scene scene-api" id="apiScene"></main>
+
+    <dialog class="shutdown-dialog" id="shutdownDialog" aria-labelledby="shutdownTitle">
+      <div class="dialog-mark" aria-hidden="true">◆</div>
+      <div class="dialog-copy">
+        <p class="dialog-kicker" data-i18n="shutdown.kicker">Local viewer</p>
+        <h2 id="shutdownTitle" data-i18n="shutdown.title">Stop the tracing viewer?</h2>
+        <p data-i18n="shutdown.copy">This stops the local server and automatic refresh. Trace files stay on disk.</p>
+        <p class="dialog-error" id="shutdownError" hidden></p>
+      </div>
+      <div class="dialog-actions">
+        <button class="ghost-button" id="shutdownCancelButton" type="button" data-i18n="action.cancel">Cancel</button>
+        <button class="ghost-button danger-button is-solid" id="shutdownConfirmButton" type="button" data-i18n="action.confirmStop">Stop viewer</button>
+      </div>
+    </dialog>
+
+    <div class="shutdown-state" id="shutdownState" hidden>
+      <div class="shutdown-state-mark" aria-hidden="true">◇</div>
+      <p class="shutdown-state-kicker" data-i18n="shutdown.stoppedKicker">Viewer stopped</p>
+      <h2 data-i18n="shutdown.stoppedTitle">Tracing is no longer using this process.</h2>
+      <p data-i18n="shutdown.stoppedCopy">Your trace files are preserved. You can close this tab or run pico tracing to start again.</p>
+    </div>
 
     <template id="emptyStateTemplate">
       <div class="empty-state">

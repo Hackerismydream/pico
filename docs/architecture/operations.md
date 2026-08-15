@@ -375,6 +375,8 @@ Tracing failures are swallowed; application exceptions are re-raised unchanged.
 The viewer reads a recent 8 MiB window per log kind, reports when older records
 are omitted, and uses conditional refreshes for unchanged data. Operators can
 override the read budget with `TRACE_VIEWER_MAX_BYTES`; archives remain on disk.
+Use the dashboard's **Stop viewer** action or `pico tracing --stop` to terminate
+the detached local viewer. Closing the browser tab alone does not stop it.
 
 Current limitations:
 

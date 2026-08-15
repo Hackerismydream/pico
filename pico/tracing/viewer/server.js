@@ -28,6 +28,14 @@ const CLI_DESCRIPTORS = (() => {
   const eq = argv.find((a) => a.startsWith('--descriptors='));
   return eq ? eq.slice('--descriptors='.length) : null;
 })();
+const SHUTDOWN_HEADER = 'x-pico-viewer-action';
+
+function isTrustedShutdownRequest(req) {
+  const origin = req.headers.origin;
+  return req.method === 'POST'
+    && req.headers[SHUTDOWN_HEADER] === 'shutdown'
+    && (!origin || origin === `http://127.0.0.1:${PORT}`);
+}
 
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
@@ -960,6 +968,19 @@ const server = http.createServer((req, res) => {
 
   if (url.pathname === '/api/health') {
     sendJson(res, 200, { ok: true, port: PORT, stateDir: STATE_DIR });
+    return;
+  }
+
+  if (url.pathname === '/api/shutdown') {
+    if (!isTrustedShutdownRequest(req)) {
+      sendJson(res, 403, { error: 'Forbidden' });
+      return;
+    }
+    sendJson(res, 200, { ok: true, stopping: true });
+    res.once('finish', () => {
+      server.close(() => process.exit(0));
+      setTimeout(() => process.exit(0), 1000).unref();
+    });
     return;
   }
 
