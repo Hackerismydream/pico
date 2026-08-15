@@ -153,10 +153,25 @@ body {
   height: 7px;
   border-radius: var(--r-pill);
   background: var(--error);
+  transition: background-color 140ms ease-out;
 }
 
 .status-pill.is-connected::before {
   background: var(--success);
+}
+
+.status-pill.is-loading::before {
+  background: var(--warning);
+}
+
+.window-pill {
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid rgba(244, 184, 78, 0.28);
+  border-radius: var(--r-pill);
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
 }
 
 .status-text {
@@ -196,7 +211,7 @@ body {
   font: inherit;
   font-size: var(--fs-sm);
   line-height: 1.4;
-  transition: 140ms ease;
+  transition: color 140ms ease-out, background-color 140ms ease-out, scale 140ms ease-out;
 }
 
 .lang-pill:hover {
@@ -206,6 +221,10 @@ body {
 .lang-pill.is-active {
   background: var(--accent-bg);
   color: var(--accent);
+}
+
+.lang-pill:active {
+  scale: 0.96;
 }
 
 /* ── 工作区标签页 ─────────────────────────────────────────────────────── */
@@ -342,7 +361,7 @@ body.app-view-api .scene-api {
   color: var(--text-soft);
   border-radius: var(--r-md);
   padding: var(--sp-2) var(--sp-5);
-  transition: 140ms ease;
+  transition: color 140ms ease-out, background-color 140ms ease-out, border-color 140ms ease-out, scale 140ms ease-out;
   font-size: var(--fs-md);
 }
 
@@ -350,6 +369,34 @@ body.app-view-api .scene-api {
   border-color: var(--border-strong);
   background: var(--surface-3);
   color: var(--text);
+}
+
+.ghost-button:active:not(:disabled) {
+  scale: 0.96;
+}
+
+.ghost-button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.auto-refresh-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.auto-refresh-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-pill);
+  background: var(--success);
+  transition: background-color 140ms ease-out, opacity 140ms ease-out;
+}
+
+.auto-refresh-button.is-paused .auto-refresh-dot {
+  background: var(--text-faint);
+  opacity: 0.7;
 }
 
 .tabs {
@@ -370,7 +417,7 @@ body.app-view-api .scene-api {
   border-radius: var(--r-sm);
   padding: var(--sp-2) var(--sp-4);
   font-size: var(--fs-md);
-  transition: 140ms ease;
+  transition: color 140ms ease-out, background-color 140ms ease-out;
 }
 
 .tab:hover {
@@ -380,6 +427,16 @@ body.app-view-api .scene-api {
 .tab.is-active {
   background: var(--surface-3);
   color: var(--text);
+}
+
+.ghost-button:focus-visible,
+.lang-pill:focus-visible,
+.workspace-tab:focus-visible,
+.tab:focus-visible,
+.api-window-pill:focus-visible,
+.api-status-pill:focus-visible {
+  outline: 0;
+  box-shadow: var(--focus-ring);
 }
 
 /* ── 控件与表单字段 ─────────────────────────────────────────────── */
@@ -473,7 +530,7 @@ body.app-view-api .api-only {
   background: var(--surface-2);
   color: var(--text);
   cursor: pointer;
-  transition: 140ms ease;
+  transition: color 140ms ease-out, background-color 140ms ease-out, border-color 140ms ease-out;
 }
 
 .session-card:hover {
@@ -673,7 +730,7 @@ body.app-view-api .api-only {
   background: var(--surface-1);
   color: var(--text);
   cursor: pointer;
-  transition: 140ms ease;
+  transition: color 140ms ease-out, background-color 140ms ease-out, border-color 140ms ease-out;
 }
 
 .span-node::before {
@@ -1523,7 +1580,7 @@ html[data-lang="zh"] .skill-summary-details[open] summary::after {
   font-size: var(--fs-sm);
   text-align: left;
   cursor: pointer;
-  transition: 140ms ease;
+  transition: color 140ms ease-out, background-color 140ms ease-out, border-color 140ms ease-out;
 }
 
 .jump-link:hover {
@@ -1653,7 +1710,7 @@ html[data-lang="zh"] .skill-summary-details[open] summary::after {
   padding: var(--sp-2) var(--sp-4);
   font: inherit;
   font-size: var(--fs-md);
-  transition: 140ms ease;
+  transition: color 140ms ease-out, background-color 140ms ease-out, border-color 140ms ease-out;
 }
 
 .api-window-pill:hover,

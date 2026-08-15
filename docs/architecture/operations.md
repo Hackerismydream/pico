@@ -372,6 +372,9 @@ targets and unsafe redirects in protected Tool paths.
 
 Tracing defaults on and can be disabled with Config or `PICO_TRACING=0`.
 Tracing failures are swallowed; application exceptions are re-raised unchanged.
+The viewer reads a recent 8 MiB window per log kind, reports when older records
+are omitted, and uses conditional refreshes for unchanged data. Operators can
+override the read budget with `TRACE_VIEWER_MAX_BYTES`; archives remain on disk.
 
 Current limitations:
 

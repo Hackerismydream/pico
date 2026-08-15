@@ -4,10 +4,11 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const { URL } = require('url');
 const { applyStateDirArg } = require('./state-dir');
 applyStateDirArg();
-const { readJsonl, getLogsDir } = require('./log-store');
+const { readJsonlWindow, logFingerprint, getLogsDir } = require('./log-store');
 
 const PORT = Number(process.env.TRACE_UI_PORT || process.env.TRACING_UI_PORT || 4318);
 const STATE_DIR =
@@ -34,6 +35,15 @@ function sendJson(res, statusCode, payload) {
     'Cache-Control': 'no-store'
   });
   res.end(JSON.stringify(payload));
+}
+
+function sendJsonText(res, statusCode, text, headers = {}) {
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-cache',
+    ...headers
+  });
+  res.end(text);
 }
 
 function sendText(res, statusCode, text, contentType = 'text/plain; charset=utf-8') {
@@ -667,11 +677,13 @@ function buildTraceGroups(sessionSpans) {
 }
 
 function buildSessions() {
-  const rawSpans = dedupeSpans(readJsonl('spans')).map(normalizeSpan);
+  const spanWindow = readJsonlWindow('spans');
+  const eventWindow = readJsonlWindow('events');
+  const rawSpans = dedupeSpans(spanWindow.records).map(normalizeSpan);
   const identityIndex = buildSessionIdentityIndex(rawSpans);
   const projectedSpans = rawSpans.map((span) => projectSpanForDisplay(span, identityIndex)).filter(Boolean);
   const spans = synthesizeSubagentCallSpans(projectedSpans, identityIndex);
-  const events = readJsonl('events');
+  const events = eventWindow.records;
   const spansBySessionId = new Map();
   for (const span of spans) {
     if (!span.sessionId) continue;
@@ -759,8 +771,30 @@ function buildSessions() {
 
   return {
     generatedAt: new Date().toISOString(),
-    sessions
+    sessions,
+    window: {
+      truncated: spanWindow.window.truncated || eventWindow.window.truncated,
+      spans: { ...spanWindow.window, records: spanWindow.records.length },
+      events: { ...eventWindow.window, records: eventWindow.records.length }
+    }
   };
+}
+
+let cachedData = null;
+
+function dataSnapshot() {
+  const fingerprint = logFingerprint();
+  if (cachedData?.fingerprint === fingerprint) return cachedData;
+
+  const payload = buildSessions();
+  const text = JSON.stringify(payload);
+  const digest = crypto.createHash('sha1').update(fingerprint).digest('hex').slice(0, 20);
+  cachedData = {
+    fingerprint,
+    etag: `"${digest}"`,
+    text
+  };
+  return cachedData;
 }
 
 function isSafeArtifactPath(filePath) {
@@ -940,7 +974,13 @@ const server = http.createServer((req, res) => {
   }
 
   if (url.pathname === '/api/data') {
-    sendJson(res, 200, buildSessions());
+    const snapshot = dataSnapshot();
+    if (req.headers['if-none-match'] === snapshot.etag) {
+      res.writeHead(304, { ETag: snapshot.etag, 'Cache-Control': 'no-cache' });
+      res.end();
+      return;
+    }
+    sendJsonText(res, 200, snapshot.text, { ETag: snapshot.etag });
     return;
   }
 

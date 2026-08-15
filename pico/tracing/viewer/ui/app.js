@@ -24,6 +24,9 @@ const state = {
   detailsRenderSignature: null,
   lastUpdated: null,
   connectionStatus: 'idle',
+  dataEtag: null,
+  autoRefreshEnabled: true,
+  consecutiveFailures: 0,
   lang: (() => {
     try {
       const saved = localStorage.getItem('tracing:lang');
@@ -34,11 +37,14 @@ const state = {
   })()
 };
 
-const AUTO_REFRESH_MS = 5000;
+const AUTO_REFRESH_MS = 15000;
 
 const elements = {
   connectionStatus: document.getElementById('connectionStatus'),
+  dataWindowStatus: document.getElementById('dataWindowStatus'),
   lastUpdated: document.getElementById('lastUpdated'),
+  autoRefreshButton: document.getElementById('autoRefreshButton'),
+  autoRefreshLabel: document.getElementById('autoRefreshLabel'),
   traceScene: document.getElementById('traceScene'),
   apiScene: document.getElementById('apiScene'),
   listTitle: document.getElementById('listTitle'),
@@ -65,8 +71,14 @@ const I18N = {
   en: {
     'status.connected': 'Connected',
     'status.disconnected': 'Disconnected',
-    'header.updated': 'Updated',
+    'status.loading': 'Refreshing',
+    'header.updated': 'Checked',
     'action.refresh': 'Refresh',
+    'action.refreshing': 'Refreshing...',
+    'auto.on': 'Auto 15s',
+    'auto.off': 'Paused',
+    'window.recent': ({ size, count }) => `Recent ${size} / ${count} spans`,
+    'window.title': 'Older traces are preserved on disk and omitted from this view.',
     'view.api': 'API Calls',
     'view.trace': 'Traces',
     'sessions.title': 'Sessions',
@@ -152,8 +164,14 @@ const I18N = {
   zh: {
     'status.connected': '已连接',
     'status.disconnected': '未连接',
-    'header.updated': '更新',
+    'status.loading': '刷新中',
+    'header.updated': '检查',
     'action.refresh': '刷新',
+    'action.refreshing': '刷新中...',
+    'auto.on': '自动 15 秒',
+    'auto.off': '已暂停',
+    'window.recent': ({ size, count }) => `最近 ${size} / ${count} 个 Span`,
+    'window.title': '更早的追踪仍保存在磁盘中，此页面仅加载最近窗口。',
     'view.api': 'API 调用',
     'view.trace': '会话追踪',
     'sessions.title': '会话列表',
@@ -318,6 +336,13 @@ function formatDuration(ms) {
   const mins = Math.floor(ms / 60000);
   const secs = Math.round((ms % 60000) / 1000);
   return `${mins}m ${secs}s`;
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function shortId(value, len = 12) {
@@ -2690,19 +2715,45 @@ function currentDetailsSignature() {
   return [state.appView, state.selectedTab, state.selectedSessionId, state.selectedTraceKey, state.selectedSpanId].join('::');
 }
 
+function renderHeaderStatus() {
+  const statusKey = state.connectionStatus === 'connected'
+    ? 'status.connected'
+    : state.connectionStatus === 'loading'
+      ? 'status.loading'
+      : 'status.disconnected';
+  elements.connectionStatus.textContent = t(statusKey);
+  elements.connectionStatus.classList.toggle('is-connected', state.connectionStatus === 'connected');
+  elements.connectionStatus.classList.toggle('is-loading', state.connectionStatus === 'loading');
+  elements.connectionStatus.classList.toggle('is-disconnected', state.connectionStatus === 'disconnected');
+  elements.lastUpdated.textContent = formatTimeOnly(state.lastUpdated);
+
+  const dataWindow = state.data?.window;
+  elements.dataWindowStatus.hidden = !dataWindow?.truncated;
+  if (dataWindow?.truncated) {
+    elements.dataWindowStatus.textContent = t('window.recent', {
+      size: formatBytes(dataWindow.spans?.bytesRead),
+      count: dataWindow.spans?.records || 0
+    });
+    elements.dataWindowStatus.title = t('window.title');
+  }
+
+  elements.autoRefreshButton.setAttribute('aria-pressed', String(state.autoRefreshEnabled));
+  elements.autoRefreshButton.classList.toggle('is-paused', !state.autoRefreshEnabled);
+  elements.autoRefreshLabel.textContent = t(state.autoRefreshEnabled ? 'auto.on' : 'auto.off');
+
+  const refreshButtons = [elements.refreshButton, document.getElementById('apiRefreshButton')].filter(Boolean);
+  for (const button of refreshButtons) {
+    button.disabled = state.isLoading;
+    button.textContent = t(state.isLoading ? 'action.refreshing' : 'action.refresh');
+  }
+}
+
 function render() {
   captureScrollState();
   syncSelection();
   renderAgentFilter();
   renderApiFilters();
-  if (elements.connectionStatus) {
-    elements.connectionStatus.textContent = state.connectionStatus === 'connected' ? t('status.connected') : t('status.disconnected');
-    elements.connectionStatus.classList.toggle('is-connected', state.connectionStatus === 'connected');
-    elements.connectionStatus.classList.toggle('is-disconnected', state.connectionStatus !== 'connected');
-  }
-  if (elements.lastUpdated) {
-    elements.lastUpdated.textContent = formatTimeOnly(state.lastUpdated);
-  }
+  renderHeaderStatus();
   document.body.classList.toggle('app-view-api', state.appView === 'api');
   if (state.appView === 'api') {
     elements.apiScene.innerHTML = renderApiDashboard();
@@ -2711,6 +2762,7 @@ function render() {
     const providerInline = document.getElementById('apiProviderFilterInline');
     const modelInline = document.getElementById('apiModelFilterInline');
     const apiRefreshButton = document.getElementById('apiRefreshButton');
+    renderHeaderStatus();
     agentInline?.addEventListener('change', (event) => {
       state.agent = event.target.value;
       render();
@@ -2791,17 +2843,33 @@ async function loadData(options = {}) {
   if (state.isLoading) return;
   state.isLoading = true;
   if (!silent) {
-    elements.refreshButton.disabled = true;
+    state.connectionStatus = 'loading';
+    renderHeaderStatus();
   }
   try {
-    const response = await fetch(`/api/data?ts=${Date.now()}`, { cache: 'no-store' });
+    const headers = state.dataEtag ? { 'If-None-Match': state.dataEtag } : {};
+    const response = await fetch('/api/data', { cache: 'no-cache', headers });
+    if (response.status === 304) {
+      state.connectionStatus = 'connected';
+      state.consecutiveFailures = 0;
+      state.lastUpdated = new Date().toISOString();
+      renderHeaderStatus();
+      return;
+    }
     if (!response.ok) throw new Error(`API failed with status ${response.status}`);
     state.data = await response.json();
+    state.dataEtag = response.headers.get('ETag');
     state.connectionStatus = 'connected';
+    state.consecutiveFailures = 0;
     state.lastUpdated = new Date().toISOString();
     render();
   } catch (error) {
     state.connectionStatus = 'disconnected';
+    state.consecutiveFailures += 1;
+    if (state.consecutiveFailures >= 3) {
+      state.autoRefreshEnabled = false;
+      startAutoRefresh();
+    }
     if (!silent) {
       elements.sessionList.innerHTML = `
         <div class="empty-state">
@@ -2810,11 +2878,10 @@ async function loadData(options = {}) {
         </div>
       `;
     }
+    renderHeaderStatus();
   } finally {
     state.isLoading = false;
-    if (!silent) {
-      elements.refreshButton.disabled = false;
-    }
+    renderHeaderStatus();
   }
 }
 
@@ -2822,10 +2889,16 @@ function startAutoRefresh() {
   if (state.autoRefreshTimer) {
     clearInterval(state.autoRefreshTimer);
   }
+  state.autoRefreshTimer = null;
+  if (!state.autoRefreshEnabled) {
+    renderHeaderStatus();
+    return;
+  }
   state.autoRefreshTimer = window.setInterval(() => {
     if (document.hidden) return;
     loadData({ silent: true });
   }, AUTO_REFRESH_MS);
+  renderHeaderStatus();
 }
 
 let contentSearchTimer = null;
@@ -2880,6 +2953,11 @@ elements.statusFilter.addEventListener('change', (event) => {
 elements.refreshButton.addEventListener('click', () => {
   state.artifactCache.clear();
   loadData();
+});
+
+elements.autoRefreshButton.addEventListener('click', () => {
+  state.autoRefreshEnabled = !state.autoRefreshEnabled;
+  startAutoRefresh();
 });
 
 elements.appViewButtons.forEach((button) => {
