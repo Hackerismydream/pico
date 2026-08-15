@@ -2848,7 +2848,7 @@ async function loadData(options = {}) {
   }
   try {
     const headers = state.dataEtag ? { 'If-None-Match': state.dataEtag } : {};
-    const response = await fetch('/api/data', { cache: 'no-cache', headers });
+    const response = await fetch('/api/data', { cache: 'no-store', headers });
     if (response.status === 304) {
       state.connectionStatus = 'connected';
       state.consecutiveFailures = 0;
