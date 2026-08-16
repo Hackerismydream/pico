@@ -10,7 +10,7 @@ feishu/
 ├── chapters/              # 全部 18 章的 markdown 快照（2026-08 抓取）
 │   ├── P00…P12           # 阅读线章节
 │   └── P90…P93           # 话术线章节
-└── prompts/               # 可以直接交给远程写作 agent 的提示词
+└── prompts/               # P06A、P07 等可直接交给远程写作 agent 的提示词
 ```
 
 ## 各章状态（当前快照）
@@ -23,7 +23,7 @@ feishu/
 | P03 Agent Loop | 原始版 |
 | **P04 上下文工程** | **样板章：P05-P12 的风格基准** |
 | P05 Session 与恢复 | 飞书 revision 361 文本快照，仍在人工修改 |
-| P06A Memory | 已有重写稿 |
+| P06A Memory | 飞书 revision 77 文本快照；已有减法重写 Prompt |
 | P06B-P12 | 待继续重写 |
 | P90-P93 话术线 | 原始版，依赖主线定稿 |
 
