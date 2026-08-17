@@ -1,4 +1,9 @@
-"""Read access to registered Local Skills."""
+"""提供对已注册 Local Skill 正文与解析后资源路径的只读访问。
+
+`SkillReadTool` 接受精确 Skill name，通过共享 `LocalSkillCatalog` 加载最多一个 Skill 的完整
+Context 形状。它用于主模型先看到紧凑 reference 后按需读取正文，不重新扫描或自行解析未知
+目录；找不到名称返回 Error，Catalog 的 trust 和路径规则保持唯一事实源。
+"""
 
 from __future__ import annotations
 

@@ -1,24 +1,19 @@
-"""Per-trial cheap metadata extraction for downstream stratification.
+"""为 downstream stratification 低成本提取 per-trial proxy metadata。
 
-Reads a legacy-runner trial dir and emits a :class:`ProxyFeatures` dataclass per
-trial. The features are cheap to compute (parse one session.jsonl + one
-result.json, no replay, no LLM, no container) and stable enough to feed
-into the cold-start bandit's K-means sub-strata on the ``stable_fail`` 0/3
-bucket — where ~70% of tasks land under v7 and where the bandit needs to
-slice the population for cohort selection.
+模块读取 legacy-runner trial dir，为每个 trial 生成 :class:`ProxyFeatures`。计算只解析一个
+``session.jsonl`` 和一个 ``result.json``，不 replay、不调用 LLM、不启动 container，因此可用于
+cold-start bandit 在 ``stable_fail`` 0/3 bucket 上做 K-means sub-strata；v7 下约 70% task
+落在该 bucket，bandit 需要进一步切分 population 选择 cohort。
 
-Feature set (all per-trial, all O(session.jsonl)):
+所有 feature 都是 per-trial、O(session.jsonl)：``turn_count`` 是至少包含一个 Tool call 的
+assistant Turn 数；``final_exit_status`` 是 :class:`ExitStatus` category；
+``has_tool_calls_ever`` 表示是否曾调用 Tool；``assistant_text_length_avg`` 是全部 assistant
+content 的 mean character length；``docker_error_count`` 统计 Tool response 与 exception
+traceback 中的 docker-error pattern。
 
-- ``turn_count``               — assistant turns with at least one tool call
-- ``final_exit_status``        — categorical (:class:`ExitStatus`)
-- ``has_tool_calls_ever``      — bool: did the agent ever invoke a tool
-- ``assistant_text_length_avg``— mean length (chars) of assistant.content across all assistant messages
-- ``docker_error_count``       — count of docker-error patterns across tool responses + exception traceback
-
-The docker-error count is a noise indicator (container-side issues that
-surface as docker daemon errors during exec). It is intentionally loose
-since per-trial occurrences should be rare; spikes indicate infra issues
-worth filtering out before bandit stratification.
+docker error 是 container-side noise indicator，pattern 有意宽松，因为正常 per-trial occurrence
+应很少，spike 提示 bandit stratification 前应过滤 infra issue。Proxy 只用于分层，不是 task
+正确性、Agent 能力或性能提升的直接证据。
 """
 
 from __future__ import annotations
@@ -38,12 +33,11 @@ __all__ = [
 
 
 class ExitStatus(str, Enum):
-    """Outcome of a trial as observed at the harness level.
+    """Harness level 观察到的 trial exit category。
 
-    ``PASSED`` / ``FAILED_VERIFIER`` are the normal exit modes; the rest
-    encode different failure modes the bandit may want to filter out
-    (e.g. wall-cap-bound tasks shouldn't be in the same K-means cluster
-    as agent-decision-bound tasks).
+    ``PASSED`` / ``FAILED_VERIFIER`` 是正常 exit mode；其余值区分 Agent timeout、Verifier
+    timeout、reward file missing、Runtime error、no Session 与 other failure，供 bandit 过滤。
+    例如 wall-cap-bound task 不应与 agent-decision-bound task 落入同一 K-means cluster。
     """
 
     PASSED = "passed"
@@ -58,6 +52,12 @@ class ExitStatus(str, Enum):
 
 @dataclass(frozen=True)
 class ProxyFeatures:
+    """一个 trial 的不可变 cheap feature snapshot。
+
+    ``trial_id`` 保留 attempt directory name，``task_id`` 去掉 ``__`` 后的 attempt suffix；其余
+    字段只来自本地 result/session files。对象不持有原始 trajectory。
+    """
+
     trial_id: str
     task_id: str
     turn_count: int
@@ -90,7 +90,11 @@ _EXCEPTION_TO_STATUS = {
 
 
 def _classify_exit(result_json: dict, reward_passed: bool | None) -> ExitStatus:
-    """Map result.json's exception_info / reward.txt into an ExitStatus."""
+    """把 ``result.json`` exception_info 与 ``reward.txt`` 映射为 ``ExitStatus``。
+
+    reward pass 优先得到 ``PASSED``；known exception type 映射专属状态；明确 reward failure
+    得到 ``FAILED_VERIFIER``；unknown exception 为 ``OTHER``；两类证据都缺失为 ``NO_SESSION``。
+    """
     if reward_passed is True:
         return ExitStatus.PASSED
     exc = (result_json.get("exception_info") or {}).get("exception_type")
@@ -125,7 +129,11 @@ def _read_result_json(trial_dir: Path) -> dict:
 
 
 def _session_path(trial_dir: Path) -> Path | None:
-    """Locate the agent's session.jsonl file under a trial dir."""
+    """定位 trial dir 下 Agent ``session.jsonl``。
+
+    优先 ``agent/workspace/sessions/tb2-task.jsonl``；不存在时取排序后的首个 ``*.jsonl``。
+    sessions dir 缺失或无候选时返回 ``None``。
+    """
     sessions_dir = trial_dir / "agent" / "workspace" / "sessions"
     if not sessions_dir.is_dir():
         return None
@@ -138,12 +146,12 @@ def _session_path(trial_dir: Path) -> Path | None:
 
 
 def _scan_session(session_path: Path) -> tuple[int, bool, float, int]:
-    """Walk session.jsonl once and emit
-    ``(turn_count, has_tool_calls_ever, assistant_text_length_avg, docker_error_count)``.
+    """单次扫描 Session，提取四个 proxy feature。
 
-    Iteration is a single pass over the file; each line is parsed once
-    and three counters are updated. Returns 0/False/0.0/0 for an empty
-    or unreadable session.
+    返回 ``(turn_count, has_tool_calls_ever, assistant_text_length_avg,
+    docker_error_count)``。每行只解析一次；malformed line 跳过。assistant record 更新 content
+    length 与 Tool-call Turn 数，Tool record 扫描 Docker error。empty/unreadable Session 返回
+    ``0/False/0.0/0``，因此调用方不能把零与完整的 honest zero 自动等同。
     """
     turn_count = 0
     has_tool_calls_ever = False
@@ -182,10 +190,11 @@ def _trial_task_id(trial_name: str) -> str:
 
 
 def extract_features(trial_dir: str | Path) -> ProxyFeatures:
-    """Extract :class:`ProxyFeatures` from a single trial dir.
+    """从单个 trial dir 提取 :class:`ProxyFeatures`。
 
-    Raises :class:`FileNotFoundError` when ``trial_dir`` does not exist
-    or is not a directory.
+    ``trial_dir`` 不存在或不是 directory 时抛出 :class:`FileNotFoundError`。函数读取 result、
+    reward 与可选 Session，再把 exception traceback 中的 Docker error 加入 Session count。
+    返回 snapshot，不修改 trial files。
     """
     p = Path(trial_dir)
     if not p.is_dir():
@@ -221,7 +230,11 @@ def extract_features(trial_dir: str | Path) -> ProxyFeatures:
 
 
 def _find_attempt_root(trial_dir: Path) -> Path:
-    """Same logic as stability_bucket: discriminate by ``verifier/`` subdir."""
+    """按与 ``stability_bucket`` 相同逻辑定位 attempt root。
+
+    直接包含带 ``__`` 且有 ``verifier/`` 的 child 时使用当前目录；仅有一个 nested dir 时
+    进入该目录；否则保留当前目录。输入不是 directory 时抛出 ``NotADirectoryError``。
+    """
     if not trial_dir.is_dir():
         raise NotADirectoryError(trial_dir)
     has_trial_children = any(p.is_dir() and "__" in p.name and (p / "verifier").is_dir() for p in trial_dir.iterdir())
@@ -234,10 +247,11 @@ def _find_attempt_root(trial_dir: Path) -> Path:
 
 
 def extract_trial_dir(trial_dir: str | Path) -> dict[str, ProxyFeatures]:
-    """Extract :class:`ProxyFeatures` for every trial under ``trial_dir``.
+    """为 ``trial_dir`` 下每个合法 trial 提取 :class:`ProxyFeatures`。
 
-    Accepts either the legacy jobs_dir or the dated subdir; returns
-    ``{trial_id: ProxyFeatures}``.
+    输入可为 legacy ``jobs_dir`` 或 dated subdir。只处理 name 含 ``__``、有 ``result.json``
+    且存在 ``verifier`` directory 的 child；返回 ``{trial_id: ProxyFeatures}``。不合 shape 的
+    entry 静默跳过。
     """
     root = _find_attempt_root(Path(trial_dir))
     out: dict[str, ProxyFeatures] = {}

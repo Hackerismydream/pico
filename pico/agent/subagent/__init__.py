@@ -1,10 +1,10 @@
-"""SubagentManager — spawns child AgentLoops for delegated tasks.
+"""重导出为 Delegated Task 创建 Child AgentLoops 的 SubagentManager。
 
-Implementation lives in ``manager.py``.
-
-External callers should keep using:
+Implementation 位于 ``manager.py``。External Caller 应保持稳定 Import：
 
     from pico.agent.subagent import SubagentManager
+
+该入口不启动 Child、Sandbox 或 Background Task，只稳定 Package Surface。
 """
 
 from pico.agent.subagent.manager import SubagentManager

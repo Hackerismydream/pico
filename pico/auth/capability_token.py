@@ -1,24 +1,21 @@
-"""Capability tokens — scaffold for multi-agent coordination.
+"""Capability Tokens，是 Multi-agent Coordination 的 Scaffold。
 
-Scaffolding only: this module defines the ``CapabilityToken``
-dataclass and a deterministic HMAC-based issue / verify pair so future
-work has a stable seam. There are no callers yet — AgentLoop / subagent
-spawning don't consult tokens. Once a concrete multi-agent flow needs
-"this subagent may only invoke these tools" enforcement, the wire-up
-goes through these primitives.
+目前 **仅是 Scaffolding**：模块定义 `CapabilityToken` Dataclass 与 Deterministic HMAC-based Issue /
+Verify Pair，为未来工作保留 Stable Seam。现在尚无 Callers，`AgentLoop` 与 Subagent Spawning 都不会
+查询 Token。等具体 Multi-agent Flow 需要强制“这个 Subagent 只能调用这些 Tools”时，才会通过这些
+Primitives 接入 Enforcement。
 
-Design choices:
+Design Choices：
 
-- **Tokens are JSON + HMAC**, not JWT — we don't need the JWT
-  algorithm-agility surface, and JSON keeps the payload readable in
-  logs / debug dumps.
-- **Tokens are issuer-bound by id**, not by rotating signing keys —
-  the secret is the workspace-local config value. Rotation policy
-  is an operator concern, deferred until there's a deployment that
-  needs it.
-- **Verification fails closed** — any structural mismatch, signature
-  mismatch, or expiry returns ``None``. Callers should treat ``None``
-  as "no capability".
+- **Tokens 使用 JSON + HMAC，不用 JWT**：当前不需要 JWT Algorithm-agility Surface，JSON 也让
+  Payload 在 Logs / Debug Dumps 中保持可读；
+- **Tokens 按 ID 绑定 Issuer，不按 Rotating Signing Keys**：Secret 来自 Workspace-local Config；
+  Rotation Policy 属于 Operator Concern，延后到真实 Deployment 需要时决定；
+- **Verification Fails Closed**：Structure、Signature、Expiry 任一不匹配都返回 `None`。Callers 必须
+  把 `None` 解释为 ``no capability``。
+
+由于尚未 Wire-up，成功 Issue 或 Verify 只证明令牌格式和签名有效，**不证明任何运行时权限已经被
+执行**。
 """
 
 from __future__ import annotations
@@ -36,7 +33,12 @@ _SIG_ALGO = hashlib.sha256
 
 @dataclass
 class CapabilityToken:
-    """One token grants one agent identity a bundle of capabilities."""
+    """一个 Token 为一个 Agent Identity 描述一组 Capabilities。
+
+    `agent_id` 标识主体，`capabilities` 保存允许能力的字符串列表，`issued_at` / `expires_at` 描述时间
+    边界，`metadata` 携带不参与专门类型约束的扩展信息。Dataclass 是可序列化 Carrier，本身不会把
+    能力应用到 Tool Registry；真正授权仍需未来 Caller 在执行入口验证并解释这些字段。
+    """
 
     agent_id: str
     capabilities: list[str] = field(default_factory=list)
@@ -71,8 +73,12 @@ class CapabilityToken:
 
 
 def issue_token(token: CapabilityToken, secret: str) -> str:
-    """Serialize and HMAC-sign a token. Returns ``payload.signature``
-    where both halves are URL-safe base64.
+    """序列化并用 HMAC 签署 Token，返回 ``payload.signature``。
+
+    Payload JSON 使用稳定 Key Order 与紧凑分隔符，之后编码为 URL-safe Base64；Signature 对编码后的
+    Payload 使用 Workspace Secret 和 SHA-256 计算，再做同样编码。两个 Half 都可安全放入 URL 风格
+    字符串，但没有加密 Payload，持有者仍可读取内容；Secret 为空也不会在此被拒绝，配置层必须保证
+    密钥质量。
     """
     raw = json.dumps(token.to_payload(), sort_keys=True, separators=(",", ":"))
     payload_b64 = _b64(raw.encode("utf-8"))
@@ -82,8 +88,12 @@ def issue_token(token: CapabilityToken, secret: str) -> str:
 
 
 def verify_token(token_str: str, secret: str) -> CapabilityToken | None:
-    """Reverse of :func:`issue_token`. Returns ``None`` on any failure
-    mode (malformed, bad signature, expired, decode error).
+    """执行 :func:`issue_token` 的 Reverse，验证成功后返回 `CapabilityToken`。
+
+    Malformed、Bad Signature、Expired 或 Decode Error 等任意 Failure Mode 都返回 `None`。Signature
+    使用 `hmac.compare_digest` 做 Constant-time Comparison，验证通过后才解析 JSON 并检查过期时间。
+    返回对象只证明 Token 在当前 Secret 下结构、签名与时间有效；在 Enforcement 尚未接入前，它不会
+    自动限制任何 Agent 或 Tool。
     """
     if not isinstance(token_str, str) or token_str.count(".") != 1:
         return None

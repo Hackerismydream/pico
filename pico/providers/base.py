@@ -1,4 +1,10 @@
-"""Base LLM provider interface."""
+"""定义所有 LLM Provider 共享的 Request、Response、Streaming、Error 与 Retry Contract。
+
+具体 Provider 只负责供应商 API Shape；AgentLoop 统一依赖 `LLMProvider`、`LLMResponse`、
+`StreamDelta` 与 `ToolCallRequest`。Base Layer 还规范 Empty Content、Provider-safe Message Keys、
+结构化 Error Classification、Same-model Backoff 和 Cross-model Fallback，避免各实现用字符串猜测
+失败或产生不一致终态。
+"""
 
 import asyncio
 import json
@@ -15,13 +21,12 @@ from pico.tracing import semconv, trace
 
 @dataclass(frozen=True)
 class ErrorClassification:
-    """Structured verdict on a failed LLM call — replaces substring guessing.
+    """记录 Failed LLM Call 的 Structured Verdict，取代 Caller Substring Guessing。
 
-    Drives the recovery strategy:
-      - ``retryable``       → retry the same model after backoff
-      - ``should_fallback`` → a different model/provider might succeed
-      - ``should_compress`` → context-window overflow; shrink then retry
-    ``category`` is for logging/telemetry only.
+    ``retryable`` 驱动 Backoff 后重试 Same Model；``should_fallback`` 表示 Different Model/Provider
+    可能成功；``should_compress`` 专指 Context-window Overflow，应先 Shrink 再 Retry。``category``
+    只用于 Logging/Telemetry 与稳定错误表达，不应单独决定 Recovery。Frozen Object 让一次失败
+    在 Retry、Fallback 与 AgentLoop 间保持同一 Verdict。
     """
 
     category: str
@@ -32,7 +37,12 @@ class ErrorClassification:
 
 @dataclass
 class ToolCallRequest:
-    """A tool call request from the LLM."""
+    """承载 LLM 生成的一次规范化 Tool Call Request。
+
+    ``id`` 关联 Tool Result/Event，``name`` 用于 Registry Dispatch，``arguments`` 是已解析 Object。
+    两层 ``provider_specific_fields`` 分别保留 Tool Call 与 Function 的供应商扩展，使 History
+    Round-trip 不必丢信息，同时核心执行只依赖统一字段。该对象不表示 Tool 已执行。
+    """
 
     id: str
     name: str
@@ -41,7 +51,12 @@ class ToolCallRequest:
     function_provider_specific_fields: dict[str, Any] | None = None
 
     def to_openai_tool_call(self) -> dict[str, Any]:
-        """Serialize to an OpenAI-style tool_call payload."""
+        """序列化为 OpenAI-style ``tool_call`` Payload。
+
+        Arguments 使用 `json.dumps(..., ensure_ascii=False)` 变成 Function Arguments String，保留
+        CJK；Call Type 固定 ``function``。存在的 Provider-specific Fields 会放回原层级。返回新
+        Dict，不修改 Request，也不验证 Argument Schema。
+        """
         tool_call = {
             "id": self.id,
             "type": "function",
@@ -59,7 +74,13 @@ class ToolCallRequest:
 
 @dataclass
 class LLMResponse:
-    """Response from an LLM provider."""
+    """统一表示一次 LLM Provider 调用完成后的完整 Response。
+
+    ``content`` 可为空，Tool Calls 可与正文并存；``finish_reason`` 区分 stop/tool_calls/error，Usage、
+    Reasoning 与 Anthropic Thinking Blocks 保留 Provider Evidence。Error Response 可附
+    `ErrorClassification`，避免 Retry Layer 丢失 Live Exception 信息；``model``、Call Record、Cache
+    Policy 支持 Accounting/Tracing。Response 只描述模型调用，不代表 Turn 或用户 Task 完成。
+    """
 
     content: str | None
     tool_calls: list[ToolCallRequest] = field(default_factory=list)
@@ -76,18 +97,23 @@ class LLMResponse:
 
     @property
     def has_tool_calls(self) -> bool:
-        """Check if response contains tool calls."""
+        """返回 Response 是否包含至少一个规范化 Tool Call。
+
+        该 Property 只检查 List Truthiness，不推断 finish_reason，也不验证 Name/Arguments。AgentLoop
+        据此进入 Tool Execution Branch；空 List 即 False。
+        """
         return bool(self.tool_calls)
 
 
 @dataclass
 class StreamDelta:
-    """Single normalized delta from a streaming LLM response.
+    """表示 Streaming LLM Response 的一个 Normalized Delta。
 
-    Producers (provider.chat_stream) yield one of these per non-empty chunk.
-    Consumers (AgentLoop on_token_delta path, TUI SubscriptionEmitter) read
-    `.content` for incremental token text; `tool_call_delta` / `usage` are
-    optional carriers for in-stream tool deltas and final usage snapshots.
+    Producer ``provider.chat_stream`` 为每个 non-empty chunk Yield 一项；AgentLoop ``on_token_delta``
+    Path 与
+    TUI SubscriptionEmitter 读取 ``.content`` 作为 Incremental Text。``tool_call_delta`` 携带 In-stream
+    Tool Fragment，``usage`` 通常在 Final Chunk 给 Snapshot；Reasoning、Finish Reason、Classification、
+    Model、Cache Policy 与 Call Record 允许流结束后重建 Shape-compatible LLMResponse。
     """
 
     content: str | None
@@ -103,12 +129,11 @@ class StreamDelta:
 
 @dataclass(frozen=True)
 class GenerationSettings:
-    """Default generation parameters for LLM calls.
+    """保存 LLM Call 的 Default Generation Parameters。
 
-    Stored on the provider so every call site inherits the same defaults
-    without having to pass temperature / max_tokens / reasoning_effort
-    through every layer.  Individual call sites can still override by
-    passing explicit keyword arguments to chat() / chat_with_retry().
+    Provider 持有 Temperature、``max_tokens``、``reasoning_effort``，使所有 Caller 无需逐层 Thread 同一
+    Default；具体 Call 仍可向 ``chat()`` / ``chat_with_retry()`` 传 Explicit Keyword Override。
+    Frozen Settings 是 Config Snapshot，不根据 Model Capability 自动修正参数。
     """
 
     temperature: float = 0.7
@@ -117,11 +142,14 @@ class GenerationSettings:
 
 
 class LLMProvider(ABC):
-    """
-    Abstract base class for LLM providers.
+    """规定各 LLM Provider 在隐藏供应商 API 差异后必须提供的一致接口。
 
-    Implementations should handle the specifics of each provider's API
-    while maintaining a consistent interface.
+    Concrete Implementation 负责 Authentication、Endpoint、Payload 与 Response Parsing；Base Class
+    提供 Request Sanitization、Streaming Fallback、Error Classification、Retry Ladder、Model Chain
+    Fallback 与 Generation Default。AgentLoop 因而只处理统一 LLMResponse，不 import Provider SDK。
+
+    `chat` 与 `get_default_model` 是必实现边界；未实现真实 Streaming 的 Provider 自动把完整 Chat
+    Response 包成一个 Terminal Delta。Cancellation 始终向外传播，不能被 Retry 当普通 Error。
     """
 
     _CHAT_RETRY_DELAYS = (1, 2, 4)
@@ -137,10 +165,12 @@ class LLMProvider(ABC):
 
     @staticmethod
     def _sanitize_empty_content(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Replace empty text content that causes provider 400 errors.
+        """替换会导致 Provider 400 的 Empty Text Content，同时保留 Tool-call Structure。
 
-        Empty content can appear when MCP tools return nothing. Most providers
-        reject empty-string content or empty text blocks in list content.
+        MCP 等 Tool 可能返回 Nothing，多数 Provider 拒绝 Empty String 或 List 中空 Text Block。
+        普通空内容替换为 ``(empty)``；带 Tool Calls 的 Assistant 必须用 ``None``，维持合法协议。
+        List 会过滤空 text/input_text/output_text，Dict Content 规范为 Single-item List。返回新 List，
+        没有需要清理的 Message 可复用原 Dict。
         """
         result: list[dict[str, Any]] = []
         for msg in messages:
@@ -187,7 +217,12 @@ class LLMProvider(ABC):
         messages: list[dict[str, Any]],
         allowed_keys: frozenset[str],
     ) -> list[dict[str, Any]]:
-        """Keep only provider-safe message keys and normalize assistant content."""
+        """只保留 ``allowed_keys`` 中的 Provider-safe Message Field，并规范 Assistant Content。
+
+        每条消息投影为新 Dict；Assistant 若过滤后没有 ``content``，显式补 ``None``，避免 SDK 因
+        Missing Key 拒绝 Tool-call Message。函数不清理 Empty String（由 `_sanitize_empty_content`
+        负责），也不验证 Role Sequence。
+        """
         sanitized = []
         for msg in messages:
             clean = {k: v for k, v in msg.items() if k in allowed_keys}
@@ -207,19 +242,14 @@ class LLMProvider(ABC):
         reasoning_effort: str | None = None,
         tool_choice: str | dict[str, Any] | None = None,
     ) -> LLMResponse:
-        """
-        Send a chat completion request.
+        """发送一次 Chat Completion Request，并返回统一 `LLMResponse`。
 
-        Args:
-            messages: List of message dicts with 'role' and 'content'.
-            tools: Optional list of tool definitions.
-            model: Model identifier (provider-specific).
-            max_tokens: Maximum tokens in response.
-            temperature: Sampling temperature.
-            tool_choice: Tool selection strategy ("auto", "required", or specific tool dict).
+        ``messages`` 是含 role/content 的 Provider-ready List；``tools`` 可带 Function Definitions，
+        ``model`` 是 Provider-specific Identifier。``max_tokens``、``temperature`` 与可选
+        ``reasoning_effort`` 控制生成，``tool_choice`` 支持 ``"auto"``、``"required"`` 或 Specific
+        Tool Dict。实现应返回 Content、Tool Calls 或 Structured Error，不把供应商对象泄漏给 Caller。
 
-        Returns:
-            LLMResponse with content and/or tool calls.
+        该 Abstract Method 只执行 Single Attempt；Retry/Fallback 由 `chat_with_retry` 统一所有。
         """
         pass
 
@@ -233,14 +263,14 @@ class LLMProvider(ABC):
         reasoning_effort: str | None = None,
         tool_choice: str | dict[str, Any] | None = None,
     ) -> AsyncIterator[StreamDelta]:
-        """Non-streaming fallback: emit the full ``chat()`` response as a single
-        terminal delta.
+        """为无 Real Streaming 实现的 Provider 提供 Single Terminal Delta Fallback。
 
-        The TUI agent loop drives turns via ``chat_stream``; providers without a
-        real streaming implementation (custom-bespoke / azure / codex) would
-        otherwise ``AttributeError`` there. This default makes any provider that
-        implements ``chat`` usable in the streaming path — without token-level
-        streaming. ``LiteLLMProvider`` overrides this with true streaming.
+        TUI AgentLoop 始终通过 ``chat_stream`` 驱动 Turn；Custom-bespoke/Azure/Codex 若只有 ``chat``
+        本会 AttributeError。本默认调用一次 ``chat()``，把全部 Content、Usage、Reasoning、Finish/Error
+        信息放进一个 StreamDelta；ToolCallRequest 也转换为带 Index/Name/JSON Arguments 的 Delta。
+
+        这只保证 Streaming Path 可用，不提供 Token-level Streaming。``LiteLLMProvider`` 覆盖为真实
+        Incremental 实现，Caller 不应根据接口存在就假定逐 Token 到达。
         """
         response = await self.chat(
             messages=messages,
@@ -278,7 +308,12 @@ class LLMProvider(ABC):
 
     @staticmethod
     def _extract_status_code(exc: BaseException | None) -> int | None:
-        """Walk the exception's cause/context chain for an HTTP status code."""
+        """沿 Exception Cause/Context Chain 查找第一个合法 HTTP Status Code。
+
+        每层依次读取 status_code、http_status、code，只接受 100–599 Integer；Seen Object ID 防止
+        Cycle。没有 Exception 或任何有效值时返回 ``None``。函数不 import Provider SDK，也不从
+        Error Message 猜数字。
+        """
         seen: set[int] = set()
         cur: BaseException | None = exc
         while cur is not None and id(cur) not in seen:
@@ -292,10 +327,11 @@ class LLMProvider(ABC):
 
     @staticmethod
     def _error_type_names(exc: BaseException | None) -> set[str]:
-        """Lowercased class names across the exception's MRO + cause chain.
+        """收集 Exception MRO 与 Cause Chain 上全部 Lowercased Class Names。
 
-        Lets us recognize provider exception types (RateLimitError,
-        ContextWindowExceededError, ...) without importing any provider SDK.
+        这样无需 import Provider SDK，也能识别 RateLimitError、ContextWindowExceededError 等类型。
+        Seen ID 防止 Cause Cycle，Result Set 同时包含 Base Class Name，供 Classification 做稳定匹配；
+        空 Exception 返回空 Set。
         """
         names: set[str] = set()
         seen: set[int] = set()
@@ -313,12 +349,15 @@ class LLMProvider(ABC):
         exc: BaseException | None = None,
         content: str | None = None,
     ) -> ErrorClassification:
-        """Classify a failed call by exception type + HTTP status + message.
+        """结合 Exception Type、HTTP Status 与 Message 分类 Failed LLM Call。
 
-        Precise when given the live exception (status code + class names);
-        degrades to substring matching when the provider already swallowed it
-        into ``content``. Order matters: context-overflow and rate-limit are
-        checked before the generic 400/server buckets.
+        有 Live Exception 时使用 Status/Class Name 获得精确 Verdict；Provider 已吞掉异常时退化为
+        ``content`` Substring Matching。Order 是 Contract：Context Overflow 和 Rate Limit 必须先于
+        Generic 400/Server Bucket，否则会选错 Recovery。
+
+        Overflow 只 should_compress；429、Server 5xx、Network 可 Retry 且 Fallback；Auth 与普通
+        Invalid Request Fatal；Billing/Model unavailable 只 Fallback；无法识别返回 unknown。函数不
+        Sleep、不重试，也不把 Message 原文写入 Category。
         """
         status = cls._extract_status_code(exc)
         names = cls._error_type_names(exc)
@@ -420,17 +459,29 @@ class LLMProvider(ABC):
 
     @classmethod
     def _is_transient_error(cls, content: str | None) -> bool:
-        """Back-compat shim — retryable verdict from the string classifier."""
+        """提供旧 Caller 所需的 Back-compat Transient Error Boolean。
+
+        它只把 String Content 交给 `classify_error` 并返回 ``retryable`` Verdict；新代码应直接消费
+        ErrorClassification，避免再次维护 Substring Rule。
+        """
         return cls.classify_error(content=content).retryable
 
     @classmethod
     def _should_fallback(cls, content: str | None) -> bool:
-        """Back-compat shim — fallback verdict from the string classifier."""
+        """提供旧 Caller 所需的 Back-compat Fallback Boolean。
+
+        String Content 经统一 Classifier 后返回 ``should_fallback``。该 Shim 不包含 Model Chain 或
+        Remaining Model 判断，只保持旧接口行为。
+        """
         return cls.classify_error(content=content).should_fallback
 
     @staticmethod
     def _jittered(delay: float) -> float:
-        """Apply +/-10% jitter to a backoff delay to avoid synchronized retries."""
+        """给 Backoff Delay 应用 ±10% Random Jitter，避免多个 Caller 同步重试。
+
+        ``delay <= 0`` 精确返回 0；正值乘 0.9–1.1 Uniform Factor。函数不 Sleep，也不改变 Retry
+        Count；Test 可 Patch Random 以获得确定结果。
+        """
         if delay <= 0:
             return 0.0
         return delay * random.uniform(0.9, 1.1)
@@ -448,13 +499,15 @@ class LLMProvider(ABC):
         response_observer: Callable[[LLMResponse, str | None], Awaitable[None]] | None = None,
         attempt_started: Callable[[str | None], None] | None = None,
     ) -> LLMResponse:
-        """Run a single model through the retry ladder, classifying each failure.
+        """让 Single Model 走完整 Retry Ladder，并为每次 Failure 建立 Classification。
 
-        ``len(_CHAT_RETRY_DELAYS)`` sleeping attempts + 1 final no-sleep attempt.
-        Retries only ``retryable`` errors (with jittered backoff); a
-        non-retryable error returns immediately. The returned error response
-        always carries an ``error_classification`` so the caller (model-chain
-        fallback) can decide without re-classifying.
+        总 Attempt 数是 ``len(_CHAT_RETRY_DELAYS)`` 个可 Sleep Retry + 1 个 Final no-sleep Attempt。
+        只有 ``retryable`` Error 用 Jittered Backoff 重试；Non-retryable 或最后一次立即返回。Thrown
+        Exception（除 Cancel）转为 finish_reason=error 的 LLMResponse，Response Model 缺失时补当前值。
+
+        Provider Attached Classification 优先，其次 Live Exception，最后 String。每次 Response 可交
+        Observer，Attempt Start 可通知 Accounting。最终 Error 必带 ``error_classification``，让外层
+        Model-chain Fallback 无需 Reclassify。
         """
         total_attempts = len(self._CHAT_RETRY_DELAYS) + 1
         last_response: LLMResponse | None = None
@@ -530,18 +583,15 @@ class LLMProvider(ABC):
         response_observer: Callable[[LLMResponse, str | None], Awaitable[None]] | None = None,
         attempt_started: Callable[[str | None], None] | None = None,
     ) -> LLMResponse:
-        """Call chat() with retry on transient failures, then fall back models.
+        """先对 ``chat()`` 的 Transient Failure 重试，再按配置 Model Chain Fallback。
 
-        Each model in ``[model, *fallback_models]`` is run through the full
-        retry ladder. When a model is exhausted with a fallback-worthy error
-        (``error_classification.should_fallback``) and another model remains,
-        the next model is tried; otherwise the error surfaces to the caller.
-        With ``fallback_models`` empty this is exactly the old single-model
-        retry behavior.
+        ``[model, *fallback_models]`` 每个 Model 都走完整 Retry Ladder。只有当前模型耗尽且
+        ``error_classification.should_fallback``、同时仍有 Next Model 时才继续；否则 Error 原样向
+        Caller 暴露。Fallback List 为空时与旧 Single-model Retry Byte-for-behavior 一致。
 
-        Parameters default to ``self.generation`` when not explicitly passed,
-        so callers no longer need to thread temperature / max_tokens /
-        reasoning_effort through every layer.
+        未显式传 max_tokens/temperature/reasoning_effort 时读取 ``self.generation``，Caller 无需逐层
+        Thread Default。可选 request_transform 对每个 Model 生成实际 Messages/Tools/Model；Observer
+        与 Attempt Callback 传入内层。成功立即返回，全部失败返回最后 Structured Error。
         """
         if max_tokens is self._SENTINEL:
             max_tokens = self.generation.max_tokens
@@ -596,5 +646,9 @@ class LLMProvider(ABC):
 
     @abstractmethod
     def get_default_model(self) -> str:
-        """Get the default model for this provider."""
+        """返回该 Provider 在 Caller 未指定时使用的 Stable Default Model Identifier。
+
+        Concrete Provider 必须实现并使用其 API 可接受名称。该方法不探测 Network、不保证 Model
+        当前 Available；Unavailable Error 仍由 Classification/Fallback 处理。
+        """
         pass

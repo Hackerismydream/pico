@@ -1,4 +1,9 @@
-"""Session management for conversation history."""
+"""管理 Conversation Session 的 Append-only History、JSONL Persistence 与并发代际边界。
+
+Session 保存消息事实与少量交互状态；SessionManager 负责 Channel/Chat Key 到嵌套文件的映射、
+跨进程锁、Append/Atomic Rewrite、Storage Epoch、Resolve/List/Fork/Delete。Consolidation 只在 Memory
+文件生成摘要，不回写消息；Session Transcript 也不能恢复 Tool Side Effect 或 Agent Runtime。
+"""
 
 import copy
 import errno
@@ -25,11 +30,11 @@ from pico.utils.helpers import ensure_dir, safe_filename
 
 
 def new_chat_id(now: datetime | None = None) -> str:
-    """Mint an opaque, sortable per-session chat_id: ``YYYYMMDD_HHMMSS_xxxxxx``.
+    """生成 Opaque、Sortable 的 Per-session Chat ID：``YYYYMMDD_HHMMSS_xxxxxx``。
 
-    Sortable by value (timestamp prefix) and collision-safe (uuid suffix);
-    channel-agnostic. Becomes the session key's chat_id segment and the JSONL
-    filename stem.
+    Timestamp Prefix 使 Value 可按创建时间排序，6-char UUID Suffix 降低同秒 Collision；格式与
+    Channel 无关。该值成为 ``channel:chat_id`` Key 的 Chat Segment 与 JSONL Filename Stem，不编码
+    User Identity，也不保证全局 Cryptographic Uniqueness。
     """
     ts = (now or datetime.now()).strftime("%Y%m%d_%H%M%S")
     return f"{ts}_{uuid.uuid4().hex[:6]}"
@@ -37,13 +42,12 @@ def new_chat_id(now: datetime | None = None) -> str:
 
 @dataclass(frozen=True)
 class SessionResolution:
-    """Outcome of resolving a user-supplied session id to a full key.
+    """记录 User-supplied Session ID 解析为 Full Key 的 Outcome。
 
-    ``status`` is one of ``"resolved"`` / ``"ambiguous"`` / ``"not_found"``.
-    ``key`` carries the full ``channel:chat_id`` when resolved; ``candidates``
-    carries the matching full keys when ambiguous. The no-match case is reported
-    as ``not_found`` so each caller decides its own tail — the agent
-    ``--session`` path mints ``cli:<value>``, while a read-only export errors.
+    ``status`` 只能是 ``"resolved"``、``"ambiguous"``、``"not_found"``。Resolved 时 ``key`` 携带
+    ``channel:chat_id``；Ambiguous 时 ``candidates`` 给出全部 Full Keys。No-match 保持 not_found，
+    Caller 自己决定 Tail：Agent ``--session`` 可 Mint ``cli:<value>``，Read-only Export 必须 Error，
+    Resolver 不替不同 Workflow 猜策略。
     """
 
     status: str
@@ -53,14 +57,16 @@ class SessionResolution:
 
 @dataclass
 class Session:
-    """
-    A conversation session.
+    """保存一段 Conversation 的 Message Fact、Metadata 与 Persistence State。
 
-    Stores messages in JSONL format for easy reading and persistence.
+    Messages 以 JSONL 易读持久化，正常写入为 Append-only，以保持 Ordering 与 LLM Cache Efficiency。
+    ``last_consolidated`` 只标明哪些消息已总结进 MEMORY.md/HISTORY.md；Consolidation does NOT 修改
+    messages list，也不改变 ``get_history()`` 输出的 Tail Fact。Clear/Undo 是显式 History Rewrite，
+    必须经 Manager Fence Concurrent Writer 后落盘。
 
-    Important: Messages are append-only for LLM cache efficiency.
-    The consolidation process writes summaries to MEMORY.md/HISTORY.md
-    but does NOT modify the messages list or get_history() output.
+    pending_clarification 是当前等待偏好答案的 Interaction State，不是普通 History；Storage Epoch、
+    Persisted Snapshot 与 Rewrite Flag 属于 Manager 并发控制。Session 本身不执行 I/O，Caller 必须
+    调用 SessionManager.save/commit_history_rewrite。
     """
 
     key: str  # channel:chat_id 格式的键
@@ -83,25 +89,38 @@ class Session:
     _requires_rewrite: bool = field(default=False, repr=False, compare=False)
 
     def add_message(self, role: str, content: str, **kwargs: Any) -> None:
-        """Add a message to the session."""
+        """用 ``role``、``content`` 与扩展 Field 向 Session 追加一条 Message。
+
+         方法只组装 Dict 并委托 `record`，因此 Timestamp、Append Order 与 updated_at 规则保持单一
+        入口。它不立即写 Disk，也不校验 Provider Role Sequence；Persistence 由 Manager 负责。
+        """
         self.record({"role": role, "content": content, **kwargs})
 
     def record(self, msg: dict[str, Any]) -> None:
-        """Append a message dict, stamping a wall-clock timestamp.
+        """向内存 Tail 追加 Message Dict，并在缺失时 Stamp Wall-clock Timestamp。
 
-        The single choke point for session writes — every persistence path
-        (``add_message``, the agent loop's ``_save_turn``, clarification
-        appends) must come through here so no message lands unstamped. A
-        caller-set ``timestamp`` is preserved. Per-message ordering and
-        turn grouping derive from append order and the ``role`` boundary,
-        so no separate received_at / turn_id stamp is kept.
+        这是 Session Write 的 Single Choke Point：``add_message``、AgentLoop ``_save_turn``、
+        Clarification Append 都必须经过这里，确保没有 Unstamped Message。Caller-set ``timestamp``
+        保留；Per-message Order 与 Turn Group 直接来自 Append Order 和 ``role`` Boundary，不维护另一套
+        received_at/turn_id。
+
+        方法原地接纳 Dict、更新 updated_at，但不 Save；Caller 后续修改同 Dict 会影响 Session，因而
+        应把传入对象视为已转移所有权。
         """
         msg.setdefault("timestamp", datetime.now().isoformat())
         self.messages.append(msg)
         self.updated_at = datetime.now()
 
     def get_history(self, max_messages: int = 500) -> list[dict[str, Any]]:
-        """Return unconsolidated messages for LLM input, aligned to a user turn."""
+        """返回供 LLM 使用的 Unconsolidated Message View，并对齐到 User Turn 起点。
+
+         先取 ``messages[last_consolidated:]``，再保留最后 ``max_messages`` 项；若切片从 Assistant/
+         Tool 中间开始，丢弃首个 User 之前内容，避免 Orphan Tool Result。输出只保留 Provider 所需
+         Role/Content、Tool Pair 与 Reasoning/Thinking Field，移除 Timestamp/Metadata。
+
+         返回新 Dict List，不修改 Append-only Messages。``max_messages=0`` 的 Python Slice 语义会取
+        完整 Tail，供 Legacy Context Path 使用；此方法不执行 Token Budget Trimming。
+        """
         unconsolidated = self.messages[self.last_consolidated :]
         sliced = unconsolidated[-max_messages:]
 
@@ -121,21 +140,27 @@ class Session:
         return out
 
     def clear(self) -> None:
-        """Clear all messages and reset session to initial state."""
+        """清空全部 Message，并把 Session Interaction State 重置为 Initial State。
+
+        Messages 变空、last_consolidated 归零、pending_clarification 清除、updated_at 刷新。该操作只
+        修改内存对象，不自动删除/改写 JSONL；Caller 必须用 `commit_history_rewrite` Fence Old
+        Writer。Metadata/Created_at 保留，Session Identity 不变。
+        """
         self.messages = []
         self.last_consolidated = 0
         self.pending_clarification = None
         self.updated_at = datetime.now()
 
     def undo_last_turn(self, n: int = 1) -> int:
-        """Drop the last ``n`` user-turn blocks from the unconsolidated tail.
+        """从 Unconsolidated Tail 删除最后 ``n`` 个 User-turn Blocks。
 
-        A turn starts at a ``role == "user"`` message and runs to the next
-        user message (its assistant/tool followers inherit it). Only the
-        unconsolidated tail (``messages[last_consolidated:]``) is eligible —
-        content already summarized into MEMORY.md is never crossed. Returns
-        the number of messages removed (0 when the tail has no user message).
-        Persistence is the caller's job via ``SessionManager.save``.
+        Turn 从 ``role == "user"`` 开始，到下一 User Message 前结束，后续 Assistant/Tool 都继承该
+        Block。只允许修改 ``messages[last_consolidated:]``；已经总结进 MEMORY.md 的内容绝不跨越。
+        ``n < 1`` 或 Tail 无 User 时返回 0，否则返回实际 Removed Message Count，并清 Waiting
+        Clarification。
+
+        这是内存 Rewrite，Persistence 仍是 Caller 责任，应经 ``SessionManager.save`` 的 Rewrite/Fence
+        Path，而不是普通 Append。
         """
         if n < 1:
             return 0
@@ -174,10 +199,14 @@ class Session:
 
 
 class SessionManager:
-    """
-    Manages conversation sessions.
+    """管理 Conversation Session Cache 与 Sessions Directory 中的 JSONL Storage。
 
-    Sessions are stored as JSONL files in the sessions directory.
+    每个 Key 映射 ``sessions/<safe channel>/<safe chat_id>.jsonl``。Manager 用 Metadata Record 保存
+    Authoritative Key/Time/State，用 Message Record 保存 Append Fact；Cross-process Lock 与 Epoch 防止
+    Concurrent Writer Lost Update，Atomic Rewrite 处理 Undo/Clear/Partial Tail。
+
+    Cache 只优化对象复用，不是 Persistence Truth。Read-only Caller 应用 `peek`，未知 Key 不会因查询
+    创建 Lazy Session；Delete/Fork/Resolve/List 都维护 Logical Generation Boundary。
     """
 
     def __init__(self, workspace: Path):
@@ -186,19 +215,22 @@ class SessionManager:
         self._cache: dict[str, Session] = {}
 
     def _get_session_path(self, key: str) -> Path:
-        """Get the file path for a session: sessions/{channel}/{chat_id}.jsonl."""
+        """把 Full Session Key 映射为 ``sessions/{channel}/{chat_id}.jsonl`` Path。
+
+        Key 以首个 Colon 分成 Channel 与 Chat ID，两段都经 safe_filename，形成嵌套路径。函数不创建
+        Parent、不检查存在，也无法从 Sanitized Name 恢复被折叠字符；Authoritative Identity 仍在
+        Metadata Record。
+        """
         channel, _, chat_id = key.partition(":")
         return self.sessions_dir / safe_filename(channel) / f"{safe_filename(chat_id)}.jsonl"
 
     @staticmethod
     def key_from_path(path: Path) -> str:
-        """Best-effort reverse of the nested filename encoding for a session
-        file: channel is the parent directory, chat_id is the stem.
+        """Best-effort 反向解析 Nested Filename：Parent 是 Channel，Stem 是 ``chat_id``。
 
-        The on-disk ``_type:metadata`` key is authoritative when present and
-        wins over this; callers use it only as the fallback for metadata-less
-        files. ``safe_filename`` is non-invertible, so any character it folds
-        to ``_`` (``/``, ``:``, ...) is not recovered here.
+        Disk 上 ``_type:metadata`` 的 Key 存在时是 Authoritative 并优先；本函数只服务 Metadata-less
+        File Fallback。``safe_filename`` Non-invertible，折叠成 ``_`` 的 ``/``、``:`` 等 Character
+        无法恢复，所以返回值不是任意原 Key 的可靠逆函数。
         """
         return f"{path.parent.name}:{path.stem}"
 
@@ -342,19 +374,13 @@ class SessionManager:
             raise FileNotFoundError(f"session changed before rewrite: {path}")
 
     def resolve_key(self, value: str) -> SessionResolution:
-        """Resolve a session id to a full ``channel:chat_id`` key across channels.
+        """跨 Channel 把 Session ID 解析为 Full ``channel:chat_id`` Key。
 
-        Shared resolution core for the agent ``--session`` path and session
-        export:
+        Agent ``--session`` 与 Export 共用此 Core：含 ``:`` 直接视为 Full Key；跨 Channel 精确 Chat ID
+        唯一命中优先，其次唯一 Prefix；多个 Match 返回 Ambiguous Candidate，零 Match 返回 not_found。
 
-        - a value containing ':' is already a full key -> resolved;
-        - exactly one exact chat_id match across channels -> resolved;
-        - exactly one prefix match -> resolved;
-        - more than one match -> ambiguous (candidate full keys);
-        - no match -> not_found.
-
-        The no-match tail is reported as ``not_found``; callers decide whether to
-        mint (agent ``--session``) or error (read-only export).
+        No-match 不在此 Mint 或 Error，Caller 决定 Agent Path 创建 ``cli:<value>``，还是 Read-only
+        Export 拒绝。Resolver 读取 List Snapshot，不锁定之后 Session 仍存在。
         """
         if ":" in value:
             return SessionResolution("resolved", key=value)
@@ -368,17 +394,14 @@ class SessionManager:
         return SessionResolution("not_found")
 
     def find_most_recent_chat_id(self, channel: str) -> str | None:
-        """Return the chat_id of the most-recently-updated session on this
-        channel, or None if no such session exists.
+        """返回 Channel 中最近更新 Session 的 Chat ID，无有效 Session 时返回 None。
 
-        Used by cron delivery at trigger time to auto-resolve where to
-        forward ephemeral (cli / tui) reminders, so users don't need to
-        know their own open_id / chat_id on the target channel.
+        Cron Delivery 在 Trigger Time 用它自动选择 Ephemeral CLI/TUI Reminder 目标，User 无需知道
+        Target Channel 的 open_id/chat_id。方法扫描 Candidate JSONL 的 Last Metadata，验证
+        Authoritative ``<channel>:<chat_id>``，按 ``updated_at`` 比较；缺时间时回退 File mtime。
 
-        Reads each candidate file's metadata line (first line of the JSONL)
-        to get the authoritative session key ``<channel>:<chat_id>`` and
-        ``updated_at``; recency is decided by ``updated_at``, falling back
-        to file mtime for files that lack it.
+        Corrupt/Identity-mismatch File 经 `_scan_file` 跳过。结果只是一刻 Snapshot，不创建 Session 或
+        持久化 Cron Binding。
         """
         channel_dir = self.sessions_dir / safe_filename(channel)
         if not channel_dir.is_dir():
@@ -409,11 +432,11 @@ class SessionManager:
 
     @staticmethod
     def _scan_file(path: Path) -> tuple[dict[str, Any] | None, int]:
-        """Validate one session file and return its last metadata and message count.
+        """单 Pass 验证 Session File，并返回 Last Metadata 与 Message Count。
 
-        One metadata record is appended per save, so the last reflects
-        current state. Message lines are counted without keeping them in
-        memory.
+        每次 Save 追加 Metadata Record，所以最后一条代表 Current State；普通 Message 只计数不保留，
+        降低 List Scan Memory。函数验证 JSON Object、Metadata Key 与 Path Identity、Field Types，并
+        容忍最后一个未换行 Partial Record；中间损坏或 Identity Drift 返回 ``(None, 0)``。
         """
         meta: dict[str, Any] | None = None
         identity: str | None = None
@@ -471,14 +494,12 @@ class SessionManager:
         return meta, count
 
     def get_or_create(self, key: str) -> Session:
-        """
-        Get an existing session or create a new one.
+        """取得 ``key`` 的 Existing Session，Disk 不存在时创建 Lazy Empty Session。
 
-        Args:
-            key: Session key (usually channel:chat_id).
-
-        Returns:
-            The session.
+        Cache Hit 直接返回同一 Instance；否则 `_load_state` 读取稳定 Snapshot。没有 File 时建立未
+        Persist 的 Session 并记录 Storage Epoch，只有后续 Dirty Save 才创建 JSONL。这里的 ``key``
+        通常采用 ``channel:chat_id``，因此它同时标识消息来源与一次对话。Read-only Caller 不应使用
+        本方法查询未知 Key，应使用 `peek`，避免 Cache 中产生空逻辑 Session。
         """
         if key in self._cache:
             return self._cache[key]
@@ -491,7 +512,13 @@ class SessionManager:
         return session
 
     def _load_state(self, key: str) -> tuple[Session | None, int]:
-        """Load a session and its missing-path generation from one snapshot."""
+        """从一个稳定 Storage Snapshot 加载 Session 与 Missing-path Generation。
+
+        首选 locked_read；只在 Permission/Read-only Lock 不可用时，用 Epoch-before/after + Exists 一致
+        的三次尝试读取。Known Generation Primary File 缺失或无法取得 Stable Snapshot 视为
+        StorageCorruptionError。成功 Decode Metadata/Messages，标记 Persisted Count/Snapshot 与 Partial
+        Tail Rewrite Requirement；其他异常包装为 Corruption，不静默返回空 Session。
+        """
         path = self._get_session_path(key)
 
         try:
@@ -549,17 +576,25 @@ class SessionManager:
             raise StorageCorruptionError(f"failed to load session {key}") from exc
 
     def _load(self, key: str) -> Session | None:
-        """Load a session from disk."""
+        """从 Disk 加载 Session，并丢弃 `_load_state` 同时返回的 Epoch 辅助值。
+
+        File 不存在且 Generation 合法时返回 None；Corruption 继续抛出。方法不写 Cache，供 `peek`
+        Read-only Path 使用。
+        """
         session, _storage_epoch = self._load_state(key)
         return session
 
     def save(self, session: Session, *, force_rewrite: bool = False) -> None:
-        """Save a session to disk.
+        """在 Cross-process Concurrency Fence 下把 Session 保存为 JSONL。
 
-        Appends a fresh metadata record plus the not-yet-persisted messages
-        under a cross-process lock, so concurrent writers never lose each
-        other's turns and a turn's messages stay contiguous. A shrunken
-        message list or forced history fence rewrites the file atomically.
+        正常 Append Path 写一条 Fresh Metadata 与 `_persisted_count` 后的新 Messages，Cross-process Lock
+        保证 Concurrent Writer 不丢 Turn，且单 Turn Messages 连续。Message List 缩短、Partial Tail、
+        Forced History Fence 或非 Append-only Drift 走 Atomic Rewrite，先验证 Expected Snapshot/Epoch，
+        防止覆盖别人已提交状态。
+
+        Metadata 每次保存都包含 Reserved Source/Channel/Chat/Title/Parent Slot、Consolidation 与 Pending
+        Clarification。成功后更新 Persisted Count、Epoch、Snapshot 与 Cache；Conflict/Corruption 向外
+        抛，Caller 不能把 Failed Save 当成功。
         """
         path = self._get_session_path(session.key)
 
@@ -649,7 +684,12 @@ class SessionManager:
         self._cache[session.key] = session
 
     def commit_history_rewrite(self, session: Session) -> None:
-        """Commit a clear or undo while fencing writers of the old history."""
+        """提交 Clear/Undo History Rewrite，并 Fence 仍引用 Old Generation 的 Writer。
+
+        Persisted 或 Dirty Session 强制 `save(..., force_rewrite=True)`；从未 Persist 的空 Session 则对
+        Missing Path 执行 locked_delete Fence 并递增 Epoch，使 Stale Reference 不能稍后复活旧历史。
+        成功后 Cache 指向当前对象，方法不改变 Session Key。
+        """
         if session._persisted or session._is_dirty():
             self.save(session, force_rewrite=True)
             return
@@ -666,7 +706,11 @@ class SessionManager:
         self._cache[session.key] = session
 
     def invalidate(self, key: str) -> None:
-        """Remove a session from the in-memory cache."""
+        """按 Key 从 In-memory Cache 移除 Session，缺失时 No-op。
+
+        该操作不删除 JSONL、不改变 Epoch，也不使 Caller 已持有的 Session Reference 失效；需要逻辑
+        Delete 与 Stale-writer Fence 时必须调用 `delete`。
+        """
         self._cache.pop(key, None)
 
     def delete(
@@ -677,12 +721,12 @@ class SessionManager:
         expected_epoch: int | None = None,
         expected_exists: bool | None = None,
     ) -> bool:
-        """Invalidate the current logical session generation.
+        """删除/Invalidate 当前 Logical Session Generation，并 Fence Stale References。
 
-        Returns True when the matching persisted or cached lazy Session was
-        removed. ``allow_cached_missing`` treats a known lazy Session as
-        logically deleted after fencing stale references. Deleting an unknown
-        key is a safe no-op.
+        locked_delete 可校验 Expected Epoch/Existence，Cached Lazy Session 即使无 File 也用 fence_missing
+        推进 Generation。成功后 Invalidate Cache。匹配 Persisted File 被移除时 True；
+        ``allow_cached_missing`` 可把 Known Lazy Session 的 Logical Delete 也视为 True；Unknown Key Safe
+        No-op。OSError 记录并返回 False，不假报删除。
         """
         path = self._get_session_path(key)
         cached = key in self._cache
@@ -701,14 +745,19 @@ class SessionManager:
         return removed or (allow_cached_missing and cached and expected_exists is False)
 
     def exists(self, key: str) -> bool:
-        """Return True if the session has a file on disk (lazy sessions don't)."""
+        """返回 Session Primary JSONL 是否存在于 Disk。
+
+        Lazy Cached Session 在 First Save 前返回 False；结果不验证 File 内容或 Cache，也不说明 Session
+        当前 Generation 可安全写入。需要读取请使用 `peek`。
+        """
         return self._get_session_path(key).exists()
 
     def peek(self, key: str) -> "Session | None":
-        """Return the cached session if present; else load from disk without caching.
+        """返回 Cached Session；否则从 Disk Load，但不把结果加入 Cache。
 
-        Callers that need read-only access to a session should use this instead
-        of get_or_create, which would cache a fresh empty session for unknown keys.
+        Read-only Caller 应使用本方法而非 get_or_create，因为未知 Key 会返回 None，不会创建/缓存 Fresh
+        Empty Session。Cache Hit 返回 Mutable Original Instance，Caller 若只读不应修改；Disk Corruption
+        继续抛出。
         """
         cached = self._cache.get(key)
         if cached is not None:
@@ -716,17 +765,15 @@ class SessionManager:
         return self._load(key)
 
     def fork(self, source_key: str, *, title: str | None = None) -> "Session | None":
-        """Fork ``source_key`` at its head into a new diverging child session.
+        """在 ``source_key`` 当前 Head 创建可独立 Diverge 的 Child Session。
 
-        Full-copy semantics: the child is minted with a fresh chat_id on the
-        source's channel, a deep copy of the source's messages, and
-        ``parent_session_id`` set to the source key (the reserved lineage slot).
-        The child inherits ``last_consolidated`` (so its active-context window
-        matches the source at the fork point) and resets ``pending_clarification``
-        (interaction wait-state is not history). The child is persisted eagerly.
+        Full-copy Semantics：Child 沿 Source Channel Mint Fresh ``chat_id``，Deep-copy 全部 Messages，Reserved
+        ``parent_session_id`` 记录 Lineage。继承 ``last_consolidated``，使 Fork Point Active Context 与
+        Parent 一致；``pending_clarification`` 不继承，因为 Interaction Wait-state 不是 History。
+        Explicit Title 优先，否则 Parent Title 加 ``(fork)``。
 
-        Returns the persisted child, or None when the source does not exist or
-        has zero messages, or when the source cannot be flushed first.
+        Child Eager Persist。Source 不存在、Flush Failed、Zero Messages 时返回 None；成功返回 Persisted
+        Child。Fork 不建立后续同步，Parent/Child 从此独立。
         """
         source = self.peek(source_key)
         if source is None:
@@ -753,11 +800,11 @@ class SessionManager:
         return child
 
     def flush(self, key: str) -> bool:
-        """Save the cached session iff it has unpersisted messages.
+        """仅在 Cached Session 有 Unpersisted State 时 Save，并用 Boolean 汇报 Attempt Outcome。
 
-        Returns False only when a save was attempted and failed (the failure
-        is swallowed); True otherwise, including the no-op cases (key not
-        cached / no persisted-state changes).
+        Key 未 Cache 或 Snapshot 无变化是 No-op True；Dirty 时调用 Save，任何 Failure 记录后吞掉并
+        返回 False。该 Contract 让 Fork/Shutdown 决定是否继续，而不把“无需保存”误判失败；False
+        不包含具体 Error，诊断看 Log。
         """
         cached = self._cache.get(key)
         if cached is None:
@@ -771,10 +818,11 @@ class SessionManager:
         return True
 
     def list_sessions(self, channel: str | None = None) -> list[dict[str, Any]]:
-        """List sessions, optionally filtered by channel.
+        """列出 Valid Persisted Sessions，并可按 Channel Filter。
 
-        Each entry carries: key, created_at, updated_at, path, message_count.
-        Sorted by updated_at descending. Each file is read in a single pass.
+        每个 JSONL Single-pass Scan，Corrupt File 跳过；Entry 带 key、created_at、updated_at、path、
+        message_count 与 metadata，按 updated_at Descending。Filter 比较 Sanitized Channel Directory；
+        Lazy Cache-only Session 不出现，因为它尚无 Durable Fact。
         """
         sessions = []
 

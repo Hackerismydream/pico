@@ -1,4 +1,13 @@
-"""Stable request and evidence models for Provider calls."""
+"""Provider Calls 使用的 Stable Request 与 Evidence Models。
+
+`PreparedCall` 固化实际发给 Provider 前的 Messages、Tools、Model 与 Cache Policy；`CallUsage` 统一
+不同 Provider 返回的 Token 维度，并用 `complete` 标记计量是否完整；`CallRecord` 再把 Requested、
+Attempted、Actual 与 Accounting Model、Outcome、Trace Correlation 和 Cost 汇成带 Schema 的持久化
+收据。
+
+这些 Frozen Dataclasses 让证据生成后不被后续逻辑原地改写。`CallRecord` 能投影为历史
+`UsageSnapshot` 以兼容 TokenWise，但兼容投影不会增加原记录中不存在的证据。
+"""
 
 from __future__ import annotations
 

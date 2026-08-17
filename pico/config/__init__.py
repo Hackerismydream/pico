@@ -1,15 +1,14 @@
-"""Configuration module for Pico.
+"""Pico Configuration 的公开入口。
 
-This package exposes two layers:
+Package 暴露 Two Layers：
 
-    Base layer (agent runtime):
-        ``Config`` + ``load_config`` + path helpers — the fields inherited
-        from the base agent framework (agents, channels, providers, tools).
+Base Agent Runtime Layer 使用 ``Config`` + ``load_config`` + Path Helpers，覆盖从基础 Agent Framework
+继承的 Agents、Channels、Providers、Tools Fields。Pico Feature Layer 使用 ``PicoConfig`` +
+``load_pico_config`` + Per-feature Blocks，例如 ``ContextConfig``、``CallEfficiencyConfig``、
+``SkillForgeConfig``，定义于 :mod:`pico.config.pico`。
 
-    Pico feature layer:
-        ``PicoConfig`` + ``load_pico_config`` + per-feature blocks
-        (``ContextConfig``, ``CallEfficiencyConfig``,
-        ``SkillForgeConfig``). Defined in :mod:`pico.config.pico`.
+Loader 负责把 Disk/Env/Overrides 解析成类型化对象，Path Helpers 统一持久化根。配置加载成功只证明
+Schema/迁移通过，不证明 Provider Credentials、Channel Connectivity 或 Sandbox Backend 实际可用。
 """
 
 from pico.config.loader import get_config_path, load_config

@@ -1,20 +1,18 @@
-"""asyncio JSON-RPC 2.0 server loop over a full-duplex socket (or, for tests, a
-POSIX pipe pair).
+"""在 full-duplex socket 上运行 asyncio JSON-RPC 2.0 server loop。
 
-Topology: the parent listens on a TCP-loopback socket; the Node child connects,
-sends an auth token line, then exchanges newline-JSON frames over the same
-connection. ``RpcServer`` is given the accepted socket *object* and wires it via
-``loop.connect_accepted_socket`` (cross-platform: selector + proactor loops).
-A legacy pipe path (``request_fd``/``notify_fd`` + ``connect_read/write_pipe``)
-is retained for the ``--check`` smoke and unit tests.
+production topology 是 parent 监听 TCP-loopback socket，Node child 连接后先发送一行 auth
+token，再在同一 connection 上交换 newline-JSON frame。``RpcServer`` 接收 accepted socket
+object，并通过 ``loop.connect_accepted_socket`` 接入 selector/proactor event loop。为
+``--check`` smoke 与 unit test 保留 legacy POSIX pipe pair 路径：``request_fd``、
+``notify_fd`` 加 ``connect_read/write_pipe``。
 
-`RpcServer` owns the read pump (one line-delimited JSON frame per iteration),
-dispatches concurrently via `asyncio.create_task` so a long-running streaming
-subscription doesn't block other RPC calls, and serializes writes with an
-`asyncio.Lock` so concurrent dispatch tasks can't interleave bytes on the wire.
+``RpcServer`` 拥有 read pump，每次读取一个 line-delimited JSON frame。每帧用
+``asyncio.create_task`` 并发 dispatch，避免 long-running streaming subscription 阻塞其他
+RPC call；所有 response 与 notification 通过同一个 ``asyncio.Lock`` 序列化写入，防止
+concurrent task 在 wire 上交错 bytes。
 
-Frame size limit: 1 MiB (specs §2.5). Larger frames trigger immediate
-shutdown of the connection.
+按 specs §2.5，frame size limit 是 1 MiB，超限立即关闭 connection。RPC response 成功只
+表示 handler 调用结束；server 本身不判断 Agent 任务或最终交付是否成功。
 """
 
 from __future__ import annotations
@@ -37,14 +35,17 @@ MAX_FRAME_BYTES = 1 * 1024 * 1024  # 1 MiB 上限
 
 
 class RpcServer:
-    """Read JSON-RPC frames from `request_fd`, write responses to `notify_fd`.
+    """读取 JSON-RPC frame，并把 response/notification 写回 Node TUI。
 
-    Args:
-        request_fd: POSIX fd opened for reading (the Node→Python pipe).
-        notify_fd:  POSIX fd opened for writing (the Python→Node pipe).
-        dispatcher: a `Dispatcher` instance with all handlers registered.
+    ``request_fd`` 是 Node-to-Python pipe 的 POSIX read fd，``notify_fd`` 是
+    Python-to-Node pipe 的 write fd；production 通常改用 ``sock`` 传入已连接 TCP-loopback
+    socket object。``dispatcher`` 必须是已经注册 handlers 的 ``Dispatcher``。
+    ``auth_token`` 非 ``None`` 时，
+    对端必须在任何 JSON-RPC frame 前发送完全匹配的 token line。
 
-    The server takes ownership of the FDs: they are closed on `stop()`.
+    Server 拥有传入 transport/FD，shutdown 时关闭它们。实例生命周期从
+    ``serve_forever()`` attach transport 开始，到 EOF、frame error、显式 ``stop()`` 或 task cancel
+    后的 ``_shutdown()`` 结束；pending dispatch task 会被取消并 drain。
     """
 
     def __init__(
@@ -77,16 +78,23 @@ class RpcServer:
 
     @property
     def started(self) -> asyncio.Event:
-        """Set once the read pump has attached to the FD; useful for tests."""
+        """返回 read pump attach 到 FD 或 socket transport 后会被 set 的 ``Event``。
+
+        test 和启动编排可等待它，避免在 transport 尚未就绪时发送 frame。Event set 只表示
+        attach 完成；若启用了 auth token，此时认证可能尚未通过。
+        """
         return self._started
 
     # ----- 写入端 -------------------------------------------------------
 
     async def send_frame(self, frame: dict) -> None:
-        """Serialize and write a single JSON frame + newline to `notify_fd`.
+        """序列化并写出单个 JSON frame 加 newline。
 
-        All writes (responses + notifications) MUST go through this method so
-        the lock serializes them.
+        ``frame`` 使用 UTF-8、``ensure_ascii=False`` 编码。transport 尚未由
+        ``serve_forever()`` 建立时抛出 ``RuntimeError``。legacy pipe 路径写入
+        ``notify_fd``；所有 response 与 notification
+        MUST 经过本方法，由 ``_write_lock`` 保证单帧 bytes 不与并发写入交错；调用返回只
+        表示 bytes 已交给 transport，不保证 Node 已读取或处理。
         """
         if self._write_transport is None:
             raise RuntimeError("RpcServer.send_frame called before serve_forever()")
@@ -97,7 +105,16 @@ class RpcServer:
     # ----- 主循环 --------------------------------------------------------
 
     async def serve_forever(self) -> None:
-        """Run the read/dispatch/write pump until EOF or `stop()`."""
+        """运行 read/dispatch/write pump，直到 EOF、连接错误或 ``stop()``。
+
+        方法根据 ``sock``、socket FD pair 或 pipe pair 选择 transport，建立最多 1 MiB 的
+        ``StreamReader``，设置 ``started``，再执行可选 auth-token gate。认证失败、10 秒内
+        未收到 token 或 frame 超限都会关闭连接。
+
+        每条完整 newline frame 创建独立 ``_handle_frame`` task；EOF 的 partial bytes 被记录
+        后丢弃。无论循环如何结束，``finally`` 都调用 ``_shutdown()`` 取消并 drain pending
+        task、关闭 write transport 并设置 stopped。
+        """
         loop = asyncio.get_running_loop()
 
         reader = asyncio.StreamReader(limit=MAX_FRAME_BYTES)
@@ -260,7 +277,12 @@ class RpcServer:
         logger.info("tui_rpc: RpcServer stopped (pid={})", os.getpid())
 
     async def stop(self) -> None:
-        """Signal the read loop to exit and wait for cleanup."""
+        """通知 read loop 在可退出点停止。
+
+        方法设置 ``_stopped``。当前实现无法直接中断正在等待的 ``readuntil``；关闭写端并
+        收到 EOF 后，下一轮检查才会退出，因此调用方通常仍需取消 ``serve_forever`` task
+        或关闭 peer transport。cleanup 由 ``serve_forever`` 的 ``finally`` 完成。
+        """
         self._stopped.set()
         # 无法轻易中断 `readuntil`，但关闭写端并设置 `_stopped` 后，EOF 之后的下一次迭代
         # 会退出。调用方通常只需取消 serve_forever 任务。

@@ -1,4 +1,9 @@
-"""Segment 1 - ``# Pico`` identity / runtime. Host-owned."""
+"""构建 Host-owned Segment 1：``# Pico`` identity 与 runtime 说明。
+
+`IdentitySegmentBuilder` 从 Workspace 和可选 State 路径调用 `render.identity_text`，把 Agent
+身份、目录与运行时约束放在 System Prompt 最前。它不依赖前缀，因此属于 Phase A；每轮都
+返回一个 Segment，不读取 Session History，也不拥有 Memory、Skill 或 User message。
+"""
 
 from __future__ import annotations
 

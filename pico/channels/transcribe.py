@@ -1,8 +1,8 @@
-"""Audio transcription helper for channels — a thin wrapper over the Groq
-provider (:mod:`pico.providers.transcription`).
+"""Channel Audio Transcription Helper，是 Groq Provider 的 Thin Wrapper。
 
-An empty ``api_key`` is passed through so the provider can fall back to the
-``GROQ_API_KEY`` env var and decide for itself; returns "" on any failure.
+真实实现位于 :mod:`pico.providers.transcription`。Empty ``api_key`` 传为 `None`，让 Provider 自行回退
+``GROQ_API_KEY`` Env；Import、Auth、Network、Decode 等任何 Failure 都 Warning 后返回 ``""``。空结果表示
+无可用 Transcript，不能与“音频内容为空”区分。
 """
 
 from __future__ import annotations

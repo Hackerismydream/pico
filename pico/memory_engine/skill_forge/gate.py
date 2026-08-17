@@ -1,12 +1,12 @@
-"""LLM gate - relevance filter over router candidates.
+"""LLM Gate：对 Router Candidates 执行 Relevance + Executability Filter。
 
-The gate runs after :class:`SkillForgeRouter` fan-out + RRF: it sees
-the candidate name + description + a short body excerpt and asks an LLM
-to plan, filter against the agent's available tools, and pick at most
-``max_select`` skills. Empty result is a valid "inject nothing"
-decision. Infra failures (parse error, timeout, provider error) fall
-back to ``candidates[:legacy_top_k]`` rather than [] so a broken gate
-never silently empties the ``# Skills`` block.
+Gate 位于 :class:`SkillForgeRouter` Fan-out + RRF 之后。它看到 Candidate Name、Description 与 Short Body
+Excerpt，让 LLM 先规划 Task，再对照 Agent Available Tools 排除无法执行的 Skill，最多选择
+``max_select``。Empty Result 是合法的 ``inject nothing`` Decision，表示宁可不注入也不选错误说明。
+
+Infra Failure，包括 Parse Error、Timeout、Provider Error，会回退到
+``candidates[:legacy_top_k]`` 而不是 `[]`，使 Broken Gate 不会 Silently Empty ``# Skills`` Block。回退
+只保持旧检索可用性，不等于候选已通过 LLM Gate。
 """
 
 from __future__ import annotations
@@ -33,11 +33,12 @@ _GATE_LOG_PATH_ENV = "PICO_GATE_LOG_PATH"
 
 
 class LLMGateFilter:
-    """LLM-based selector that picks 0..N relevant skills from a pool.
+    """从 Candidate Pool 中选择 0..N 个 Relevant Skills 的 LLM-based Selector。
 
-    Constructed once with the agent's shared :class:`LLMProvider` and
-    gate-tuning knobs from :class:`SkillForgeConfig`. ``filter`` is
-    called once per ``# Skills`` segment build.
+    实例以 Agent Shared :class:`LLMProvider` 和 :class:`SkillForgeConfig` Gate-tuning Knobs 构造；每次
+    ``# Skills`` Segment Build 调用一次 `filter`。它拥有 Model/Temperature/Token/Timeout Policy，但不拥有
+    Candidate Retrieval 或最终 Prompt Rendering。Provider Success 后仍只接受可解析 JSON 与 Exact
+    Qualified IDs，Unknown IDs 被忽略。
     """
 
     def __init__(

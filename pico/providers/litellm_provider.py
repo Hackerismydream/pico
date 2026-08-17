@@ -1,4 +1,10 @@
-"""LiteLLM provider implementation for multi-provider support."""
+"""实现基于 LiteLLM 的 Multi-provider LLMProvider。
+
+该 Adapter 用 Provider Registry 解析 Gateway、Model Prefix、Env、Capability 与 Override，把 OpenRouter、
+Anthropic、OpenAI、Gemini、MiniMax 等统一为 Base Contract。它同时实现真实 Streaming、Usage/Cache
+Token 归一化、Tool Call ID Compatibility、Provider-safe Message Replay 与 Structured Error；不在
+代码中维护 Provider if-elif Chain。
+"""
 
 import hashlib
 import os
@@ -94,17 +100,24 @@ def _normalize_usage_payload(usage: Any) -> dict[str, Any]:
 
 
 def _short_tool_id() -> str:
-    """Generate a 9-char alphanumeric ID compatible with all providers (incl. Mistral)."""
+    """生成所有 Provider（包括 Mistral）都接受的 9-char Alphanumeric Tool Call ID。
+
+    每个字符用 `secrets.choice` 从 ASCII Letter/Digit 选择，避免 UUID Symbol 或过长 ID 被 Strict API
+    拒绝。该 ID 只用于当前 Normalized Response 与后续 Tool Result 配对，不是 Security Token。
+    """
     return "".join(secrets.choice(_ALNUM) for _ in range(9))
 
 
 class LiteLLMProvider(LLMProvider):
-    """
-    LLM provider using LiteLLM for multi-provider support.
+    """通过 LiteLLM 为多种 LLM Provider 提供统一 Chat 与 Streaming Interface。
 
-    Supports OpenRouter, Anthropic, OpenAI, Gemini, MiniMax, and many other providers through
-    a unified interface.  Provider-specific logic is driven by the registry
-    (see providers/registry.py) — no if-elif chains needed here.
+    支持 OpenRouter、Anthropic、OpenAI、Gemini、MiniMax 等。Provider-specific Logic 全由
+    ``providers/registry.py`` 的 Spec 驱动，Class 内不需要 if-elif Catalog。Constructor 检测 Gateway/
+    Local、设置必要 Env 与 Attribution Header，配置 Extra Body、Transport Retry 与 Drop Params。
+
+    Request 解析 Original/Resolved Model，清理 Message 与 Tool ID，按 Capability 应用 Cache Control；
+    Response 统一 Content、Tool Calls、Reasoning、Thinking 与 Usage。Base chat_with_retry 继续拥有
+    Same-model/Model-chain Recovery，LiteLLM 自身 Transport Retry 可独立配置。
     """
 
     def __init__(
@@ -157,7 +170,13 @@ class LiteLLMProvider(LLMProvider):
         self.transport_num_retries = num_retries
 
     def _setup_env(self, api_key: str, api_base: str | None, model: str) -> None:
-        """Set environment variables based on detected provider."""
+        """根据已检测 Gateway 或 Model Provider 设置 LiteLLM 所需 Environment Variables。
+
+        找不到 Spec 或 OAuth-only Spec 没有 env_key 时 no-op。Gateway/Local 会覆盖主 Env Key，确保
+        当前显式 Config 生效；Standard Provider 使用 setdefault，避免破坏既有 Process Config。
+        ``env_extras`` 中 ``{api_key}`` 与 ``{api_base}`` 会替换，Base 缺失时用 spec.default_api_base。
+        方法持久修改 Process Environment，不能记录 Secret。
+        """
         spec = self._gateway or find_by_model(model)
         if not spec:
             return
@@ -181,7 +200,12 @@ class LiteLLMProvider(LLMProvider):
             os.environ.setdefault(env_name, resolved)
 
     def _resolve_model(self, model: str) -> str:
-        """Resolve model name by applying provider/gateway prefixes."""
+        """按 Gateway 或 Provider Spec 为 Model Name 应用 Canonical LiteLLM Prefix。
+
+        Gateway Mode 优先：可选 Strip Existing Provider Prefix，再添加 Gateway litellm_prefix；不会再
+        应用模型自身 Provider Prefix。Standard Mode 先 Canonicalize Explicit Alias，再在不命中
+        skip_prefixes 时添加 Spec Prefix。未知 Model 原样返回，函数不探测 Network。
+        """
         if self._gateway:
             # 网关模式：应用网关前缀，跳过 Provider 专属前缀。
             prefix = self._gateway.litellm_prefix
@@ -202,7 +226,11 @@ class LiteLLMProvider(LLMProvider):
 
     @staticmethod
     def _canonicalize_explicit_prefix(model: str, spec_name: str, canonical_prefix: str) -> str:
-        """Normalize explicit provider prefixes like `github-copilot/...`."""
+        """把 ``github-copilot/...`` 等 Explicit Provider Prefix 规范为 Canonical Prefix。
+
+        没有 Slash 时原样返回；首段转 Lowercase 并把 ``-`` 换 ``_`` 后必须等于 spec_name，才保留
+        Remainder 并换成 canonical_prefix。其他显式 Prefix 不动，避免把跨 Provider Model 错误改名。
+        """
         if "/" not in model:
             return model
         prefix, remainder = model.split("/", 1)
@@ -211,7 +239,12 @@ class LiteLLMProvider(LLMProvider):
         return f"{canonical_prefix}/{remainder}"
 
     def _supports_cache_control(self, model: str) -> bool:
-        """Return True when the provider supports cache_control on content blocks."""
+        """判断当前 Gateway/Provider 是否支持 Content Block 上的 ``cache_control``。
+
+        Gateway 已识别时读取其 supports_prompt_caching；否则按 Model 查 Standard Spec。未知 Model
+        返回 False。该 Capability 只表示协议支持，Actual Injection 还受 disable_auto_cache_control
+        与 CallEfficiency Request Transform 控制。
+        """
         if self._gateway is not None:
             return self._gateway.supports_prompt_caching
         spec = find_by_model(model)
@@ -225,7 +258,12 @@ class LiteLLMProvider(LLMProvider):
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
-        """Return copies of messages and tools with cache_control injected."""
+        """返回注入 ``cache_control`` 的 Message/Tool Copies，不修改 Caller Input。
+
+        System Content 是 String 时转成 Single Text Block 并标 ephemeral；已是 Block List 时只 Copy
+        List 并标最后一块。Tool List 存在时 Copy 并标最后一个 Definition。其他 Message Object 可
+        复用原引用。Caller 必须先确认 Provider Capability；Empty Block List 不在此函数处理。
+        """
         new_messages = []
         for msg in messages:
             if msg.get("role") == "system":
@@ -247,7 +285,12 @@ class LiteLLMProvider(LLMProvider):
         return new_messages, new_tools
 
     def _apply_model_overrides(self, model: str, kwargs: dict[str, Any]) -> None:
-        """Apply model-specific parameter overrides from the registry."""
+        """把 Registry 中首个匹配的 Model-specific Parameter Override 写入 Request kwargs。
+
+        Model Lowercase 后按 ProviderSpec.model_overrides 顺序做 Substring Match，例如 Kimi Temperature；
+        命中即 kwargs.update 并返回。未知 Provider/无 Pattern no-op。Override 有意覆盖 Caller Default，
+        因为它表达 API Hard Requirement。
+        """
         model_lower = model.lower()
         spec = find_by_model(model)
         if spec:
@@ -258,7 +301,12 @@ class LiteLLMProvider(LLMProvider):
 
     @staticmethod
     def _extra_msg_keys(original_model: str, resolved_model: str) -> frozenset[str]:
-        """Return provider-specific extra keys to preserve in request messages."""
+        """返回 Request Sanitization 必须额外保留的 Provider-specific Message Keys。
+
+        Original/Resolved Model 命中 Anthropic Spec、名称含 Claude 或 Prefix 为 anthropic 时保留
+        ``thinking_blocks``；其他返回空 Set。双 Model 输入处理 Gateway Prefix 改写前后差异，避免
+        Extended Thinking 在 Multi-turn Replay 中丢失。
+        """
         spec = find_by_model(original_model) or find_by_model(resolved_model)
         if (
             (spec and spec.name == "anthropic")
@@ -275,7 +323,12 @@ class LiteLLMProvider(LLMProvider):
 
     @staticmethod
     def _normalize_tool_call_id(tool_call_id: Any) -> Any:
-        """Normalize tool_call_id to a provider-safe 9-char alphanumeric form."""
+        """把 ``tool_call_id`` 规范为 Provider-safe 9-char Alphanumeric Form。
+
+        非 String 原样返回；已经 9 位且 isalnum 时保持。其他 String 用 SHA-1 Hex 前 9 位做稳定
+        Mapping，同一原 ID 在 Assistant Tool Call 与 Tool Result 间能一致缩短。它解决 Strict
+        Provider Length/Charset Contract，不用于 Cryptographic Integrity。
+        """
         if not isinstance(tool_call_id, str):
             return tool_call_id
         if len(tool_call_id) == 9 and tool_call_id.isalnum():
@@ -288,7 +341,15 @@ class LiteLLMProvider(LLMProvider):
         extra_keys: frozenset[str] = frozenset(),
         require_reasoning_content_replay: bool = False,
     ) -> list[dict[str, Any]]:
-        """Strip non-standard keys and ensure assistant messages have a content key."""
+        """移除 Non-standard Message Keys，并维护 Assistant/Tool Replay 的 Provider Contract。
+
+        Allowed Set 是 Standard Keys 加 ``extra_keys``；Base Sanitizer 会确保 Assistant Content Key。
+        对要求 Reasoning Replay 的 Provider，带 Tool Calls 但无 reasoning_content 的 Assistant 补空
+        String。所有 Assistant ``tool_calls[].id`` 与 Tool ``tool_call_id`` 通过同一 id_map 同步缩短，
+        否则 Strict Provider 会拒绝断裂关联。
+
+        返回 Sanitized Copy，不修改 Session History；Empty Content 在 Caller 先由 Base Helper 清理。
+        """
         allowed = _ALLOWED_MSG_KEYS | extra_keys
         sanitized = LLMProvider._sanitize_request_messages(messages, allowed)
         id_map: dict[str, str] = {}
@@ -334,18 +395,16 @@ class LiteLLMProvider(LLMProvider):
         reasoning_effort: str | None = None,
         tool_choice: str | dict[str, Any] | None = None,
     ) -> LLMResponse:
-        """
-        Send a chat completion request via LiteLLM.
+        """通过 LiteLLM 发送 Single Chat Completion，并返回统一 LLMResponse。
 
-        Args:
-            messages: List of message dicts with 'role' and 'content'.
-            tools: Optional list of tool definitions in OpenAI format.
-            model: Model identifier (e.g., 'anthropic/claude-sonnet-4-5').
-            max_tokens: Maximum tokens in response.
-            temperature: Sampling temperature.
+        ``messages`` 是 role/content Dict List，``tools`` 使用 OpenAI Format，Model 可为例如
+        ``anthropic/claude-sonnet-4-5``。方法解析 Model Prefix/Capability，按需应用 Cache Control，
+        清 Empty/Non-standard Message，``max_tokens`` 最低 1，设置 600 秒 Endpoint Timeout，并加入
+        Temperature、Reasoning、Tool Choice、API/Base/Header/Extra Body 与 Transport Retry。
 
-        Returns:
-            LLMResponse with content and/or tool calls.
+        Model-specific Override 最后修正 Hard Requirement。LiteLLM Success 交 `_parse_response`；Live
+        Exception 在退化成 String 前 `classify_error(e)`，返回 finish_reason=error，供 Base Retry/
+        Fallback 使用。方法本身不 Sleep 或切 Model。
         """
         original_model = model or self.default_model
         model = self._resolve_model(original_model)
@@ -426,16 +485,16 @@ class LiteLLMProvider(LLMProvider):
         reasoning_effort: str | None = None,
         tool_choice: str | dict[str, Any] | None = None,
     ) -> AsyncIterator[StreamDelta]:
-        """Streaming counterpart to chat().
+        """提供与 ``chat()`` Signature 一致的真实 Streaming Counterpart。
 
-        Yields one StreamDelta per non-empty chunk. Signature matches chat()
-        so callers can swap providers transparently. The existing chat() is
-        NOT modified — non-TUI paths (channels / Cron / ...)
-        continue to use chat() with no behavioral change.
+        每个 Non-empty Chunk Yield 一个 StreamDelta，Caller 可透明替换 Provider。Existing ``chat()``
+        NOT modified，Non-TUI Path（Channels/Cron 等）继续使用旧行为。Request Preparation 与 Chat
+        保持 Model、Message、Cache、Credential、Tool 与 Override 规则一致，同时设置 ``stream=True``
+        和 include_usage，让 Final Chunk 带 Token Snapshot。
 
-        Provider-specific chunk shapes (e.g. dashscope) are handled inside
-        `_normalize_stream_chunk`. The default OpenAI shape extraction lives
-        in that hook; subclasses or implementer additions can override.
+        Raw Chunk 交 `_normalize_stream_chunk`。默认处理 OpenAI Shape；DashScope 等 Provider-specific
+        Shape 应在真实 Smoke Evidence 后加入该 Hook。该方法不实施 Base Retry，因为 Partial Stream
+        重试会重复已交付内容。
         """
         original_model = model or self.default_model
         model = self._resolve_model(original_model)
@@ -488,17 +547,15 @@ class LiteLLMProvider(LLMProvider):
                 yield delta
 
     def _normalize_stream_chunk(self, chunk: Any) -> StreamDelta | None:
-        """Normalize a raw provider chunk into a StreamDelta.
+        """把 Raw Provider Chunk 归一为 `StreamDelta`，无有效 Payload 时返回 None。
 
-        Default: OpenAI shape — `chunk.choices[0].delta.content` (str | None),
-        `delta.tool_calls` (list | None), and a final `chunk.usage` snapshot
-        on the trailing chunk for some providers. Returns None when the chunk
-        carries no content / tool_call / usage payload so callers can skip.
+        Default OpenAI Shape 读取 ``chunk.choices[0].delta.content``、``delta.tool_calls`` 与 Trailing
+        ``chunk.usage``；Usage-only Final Chunk 也必须返回。Tool Delta 优先用 Pydantic v2 model_dump，
+        不支持时手工 Snapshot Index/ID/Function，完整累积属于 Consumer。Reasoning 与 Model 同步保留。
 
-        Provider-specific shapes (e.g. Qwen dashscope) are decided at
-        implementation time after a real-provider smoke test (per design.md
-        §D4 + tasks.md T3.4). Add a hardcoded branch here keyed on
-        `self._gateway` / `find_by_model(...).name` if/when needed.
+        Qwen DashScope 等 Provider-specific Shape 必须在 Real-provider Smoke 后按 design.md §D4 与
+        tasks.md T3.4 加显式 Branch，可按 ``self._gateway`` / ``find_by_model(...).name`` 选择。当前
+        Attribute/Index Shape Error 返回 None，不让单个空 Chunk 打断 Stream。
         """
         try:
             usage = getattr(chunk, "usage", None)
@@ -556,7 +613,16 @@ class LiteLLMProvider(LLMProvider):
             return None
 
     def _parse_response(self, response: Any) -> LLMResponse:
-        """Parse LiteLLM response into our standard format."""
+        """把 LiteLLM Completion Response 解析为 Pico Standard LLMResponse。
+
+        部分 Provider（如 GitHub Copilot）把 Content 与 Tool Calls 拆到 Multiple Choices，方法会合并
+        所有 Raw Tool Calls，并选择相应 Finish Reason/首个非空 Content。Arguments String 用
+        json_repair 解析；每项换成 9-char ID，同时保留 Call/Function Provider-specific Fields。
+
+        Usage 经 Cache/Reasoning-aware Normalizer，Message Reasoning/Thinking Blocks 原样携带，Actual
+        Model 也写入 Response。函数假设至少一个 Choice；Transport/Shape Exception 由 Chat Boundary
+        转 Structured Error。
+        """
         choice = response.choices[0]
         message = choice.message
         content = message.content
@@ -615,5 +681,9 @@ class LiteLLMProvider(LLMProvider):
         )
 
     def get_default_model(self) -> str:
-        """Get the default model."""
+        """返回 Constructor Config 的 Default Model Identifier。
+
+        值尚未经过 Gateway/Provider Prefix Resolution，实际 Call 时 `_resolve_model` 再转换；方法不
+        Import Catalog、不探测 Endpoint，也不验证 Credential。
+        """
         return self.default_model

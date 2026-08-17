@@ -1,13 +1,15 @@
-"""Historical TokenWise compatibility surface.
+"""保留 Historical TokenWise 的 Compatibility Surface。
 
-Public API:
-    - ``StrategyRegistry``       — chains TokenStrategy hooks around LLM calls.
-    - ``UsageTracker``           — strategy 1: records tokens + cost per call.
-    - ``CacheOptimizer``         — strategy 2: Anthropic cache_control placement.
-    - ``estimate_cost_usd``      — compatibility alias to CallEfficiency.
+Public API 包含：
 
-New Runtime integrations use ``pico.call_efficiency``. These names remain for
-frozen benchmarks, historical schemas, and source-compatible extensions.
+- ``StrategyRegistry``：在 LLM Calls 前后串联 `TokenStrategy` Hooks；
+- ``UsageTracker``：Strategy 1，记录每次调用的 Tokens 与 Cost；
+- ``CacheOptimizer``：Strategy 2，安排 Anthropic ``cache_control`` 的位置；
+- ``estimate_cost_usd``：指向 CallEfficiency 定价实现的 Compatibility Alias。
+
+新的 Runtime Integration 使用 ``pico.call_efficiency``。这里继续导出旧名称，是为了让 Frozen
+Benchmarks、Historical Schemas 与 Source-compatible Extensions 不必立刻迁移；兼容入口的存在不
+表示 TokenWise 仍是新功能应依赖的主实现。
 """
 
 from pico.token_wise.cache_optimizer import CacheOptimizer

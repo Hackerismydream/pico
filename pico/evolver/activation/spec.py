@@ -1,66 +1,41 @@
-"""activation_spec — a node's machine-checkable "when do I take effect".
+"""定义 node 的 machine-checkable activation_spec：“我何时生效”。
 
-Kinds (one per mechanism class, design section 3):
+design section 3 为每类 mechanism 定义一种 kind：
 
-- ``trajectory_regex``    code class. Counts trajectories containing a line
-                          matching ``pattern`` within ``scope`` records.
-                          (Delta-3's "pure cd" predicate is this kind.)
-- ``consecutive_repeat``  hook class, repetition-trigger family. Counts
-                          trajectories with >= ``threshold`` consecutive
-                          identical ``scope`` contents. Empty/whitespace
-                          contents are skipped by default (``ignore_empty: false``
-                          to count them). Other hook trigger families express as
-                          trajectory_regex or get a new kind + evaluator here.
-- ``short_content_run``   hook class, reasoning-visibility family. Counts
-                          trajectories with >= ``threshold`` consecutive
-                          tool-call iterations whose visible assistant content
-                          is shorter than ``max_chars`` (default 80). Uses the
-                          shared predicate ``is_short_toolcall_iteration`` from
-                          pico.evolver.activation.predicates, the same function the
-                          ReasoningVisibilityHook calls at runtime: only records
-                          carrying tool_calls count; a record WITHOUT tool_calls
-                          (or a long-content one) resets the run. Content is
-                          measured after stripping ``<think>...</think>`` blocks
-                          and collapsing whitespace. Approximation: the hook
-                          reads the live ``response.content``; over recorded
-                          sessions we read the ``content`` field of the assistant
-                          record (Qwen's chain-of-thought lands in a separate
-                          ``reasoning_content`` field the hook does not read).
-- ``empty_run``           hook class, response-quality family. Counts
-                          trajectories with >= ``threshold`` consecutive empty
-                          iterations. Uses the shared predicate
-                          ``is_empty_response`` (pico.evolver.activation.predicates),
-                          the same the EmptyRunBreakerHook calls: an iteration is
-                          empty iff its content is blank AND it carries no
-                          tool_calls. A blank-content record that still issues a
-                          tool call is NOT empty (round-1 incident C1: the old
-                          content-only predicate predicted 64.8% reachable while
-                          the tool_calls-respecting hook fired 0). Any non-empty
-                          iteration resets the run.
-- ``repeated_failure_run`` hook class, robustness family. Counts trajectories
-                          with >= ``threshold`` consecutive failures of the same
-                          command (same head token). Walks raw records: assistant
-                          content sets a pending head token (first whitespace-split
-                          token); tool record resolves it (failed iff exit code
-                          is nonzero); same head + fail grows the run; success
-                          or head-change resets it. Tool records without an
-                          "Exit code:" line count as success (conservative:
-                          under-counts reachability, never over-counts).
-                          ``scope`` is ignored (the kind inherently walks
-                          assistant and tool records).
-- ``min_iterations``      hook class, budget family. Counts trajectories with
-                          >= ``threshold`` assistant iterations — the wrap-up
-                          nudge trigger is an iteration-count crossing,
-                          structurally drift-free (no semantic predicate).
-- ``skill_routing``       skill class. Reachability is answered by a routing
-                          dry-query, not by corpus replay — the chamber
-                          delegates; evaluate_spec rejects it.
-- ``presence``            always-on class. Answered by offline render/config
-                          assert in the preflight CLI; evaluate_spec rejects
-                          it likewise.
+* ``trajectory_regex`` 属于 code class，统计 ``scope`` record 中至少一行匹配 ``pattern`` 的
+  trajectory；Delta-3 的 ``pure cd`` predicate 属于此类。
+* ``consecutive_repeat`` 属于 hook repetition-trigger family，统计连续至少 ``threshold`` 个
+  相同 ``scope`` content。默认跳过 empty/whitespace；设置 ``ignore_empty: false`` 才计入。
+  其他 hook trigger family 应用 ``trajectory_regex`` 表达，或在此新增 kind + evaluator。
+* ``short_content_run`` 属于 reasoning-visibility hook，要求连续至少 ``threshold`` 个
+  Tool-call iteration 的 visible assistant content 短于 ``max_chars``，默认 80。它复用
+  ``pico.evolver.activation.predicates.is_short_toolcall_iteration``，与 Runtime
+  ``ReasoningVisibilityHook`` 完全相同：只有带 ``tool_calls`` 的 record 才计数；WITHOUT
+  tool_calls 或 long-content record 会 reset。content 在去除 ``<think>...</think>`` 并折叠
+  whitespace 后测量。近似边界是 hook 读取 live ``response.content``，recorded Session 读取
+  assistant record 的 ``content``；Qwen chain-of-thought 位于独立 ``reasoning_content``，
+  hook 本来也不读取。
+* ``empty_run`` 属于 response-quality hook，要求连续至少 ``threshold`` 个 empty iteration，
+  复用 Runtime ``EmptyRunBreakerHook`` 使用的 ``is_empty_response``。empty 当且仅当 content
+  blank AND 无 ``tool_calls``；blank 但发出 Tool call 的 record NOT empty。round-1 incident
+  C1 中旧 content-only predicate 预测 64.8% reachable，而尊重 tool_calls 的 hook fired 0。
+  任一 non-empty iteration reset。
+* ``repeated_failure_run`` 属于 robustness hook，统计 same command head 连续失败至少
+  ``threshold`` 次。assistant content 设置 pending head token，Tool record 用 exit code 判定
+  failure；same head + fail 增长 run，success 或 head change reset。无 ``Exit code:`` 的 Tool
+  record 按 success，属于 conservative under-count，绝不 over-count。该 kind 必须遍历
+  assistant + Tool raw record，所以忽略 ``scope``。
+* ``min_iterations`` 属于 budget hook，统计 assistant iteration 至少 ``threshold`` 的
+  trajectory；wrap-up nudge 是 iteration-count crossing，不用 semantic predicate，因此结构上
+  drift-free。
+* ``skill_routing`` 属于 Skill class，可达性由 routing dry-query 判断，不做 corpus replay；
+  chamber 委托其他路径，``evaluate_spec`` 拒绝它。
+* ``presence`` 属于 always-on class，由 preflight CLI 的 offline render/config assert 判断，
+  ``evaluate_spec`` 同样拒绝。
 
-``evaluate_spec(spec, corpus) -> int`` returns HOW MANY trajectories the
-spec is reachable in. 0 = the mechanism would never run = block.
+``evaluate_spec(spec, corpus) -> int`` 返回 spec 在 HOW MANY trajectories 中可达；0 表示该
+corpus 上机制不会运行，gate 应 block。正数只证明可达性，不证明 candidate 在真实 trial 已
+触发、更不证明效果或任务完成。
 """
 
 from __future__ import annotations
@@ -88,19 +63,33 @@ _DEFAULT_MAX_CHARS = 80
 
 
 def _normalize_record(r: dict) -> dict:
-    """Coerce a logged session record into the predicate record shape
-    (content as str, tool_calls as list) so the shared predicate functions
-    see the same view the hooks build via normalize_response()."""
+    """把 logged Session record 转为 shared predicate 所需 shape。
+
+    ``content`` 强制为 string，``tool_calls`` 缺失时为空 list，使离线 predicate 看到与 hook
+    通过 ``normalize_response()`` 构建的相同 view。函数不验证 Tool schema。
+    """
     return {"content": str(r.get("content") or ""), "tool_calls": r.get("tool_calls") or []}
 
 
 @dataclass
 class ActivationSpec:
+    """一个 mechanism 的 activation kind 与 kind-specific raw 参数。
+
+    对象由 ``from_dict`` 验证构造；``kind`` 决定 evaluator，``raw`` 保存除 kind 外的原始字段。
+    property 只在对应 kind 含字段时使用，否则可能抛出 ``KeyError``。
+    """
+
     kind: str
     raw: dict = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: dict) -> "ActivationSpec":
+        """验证 dict 并构造 ``ActivationSpec``。
+
+        缺少/unknown kind、缺少各 kind 必填字段、invalid regex，或 threshold/max_chars 无法
+        转为 int 时抛出 ``ValueError``。``skill_routing`` 要求 ``skill_name``，``presence``
+        要求 ``needle``。验证只保证配置 shape，不判断 corpus 可达性。
+        """
         kind = d.get("kind")
         if not kind:
             raise ValueError("activation_spec requires a 'kind' field")
@@ -178,6 +167,15 @@ def _scope_contents(traj: list[dict], scope: str) -> list[str]:
 
 
 def evaluate_spec(spec: ActivationSpec, corpus: list[list[dict]]) -> int:
+    """统计 ``spec`` 在 ``corpus`` 中可达的 trajectory 数量。
+
+    仅接受 ``_CORPUS_KINDS``；``skill_routing``/``presence`` 抛出 ``ValueError``，要求走
+    preflight CLI。各 trajectory 最多计一次命中。regex、repeat、short/empty run、same-command
+    failure 与 minimum iteration 分别按模块 docstring 的规则评估。
+
+    返回 0 表示当前 corpus 无可达证据；返回正数不是 activation ledger、task success 或
+    candidate improvement 的替代证据。
+    """
     if spec.kind not in _CORPUS_KINDS:
         raise ValueError(f"{spec.kind} is not corpus-evaluable; use the preflight CLI path")
     scope = spec.raw.get("scope", "assistant")

@@ -1,18 +1,14 @@
-"""The run/status/finalize state machine over durable artifacts.
+"""在 durable artifacts 之上实现 run/check/status/finalize state machine。
 
-Resume model: work is proven by artifacts, not by process state.
+resume model 以 artifact 证明工作，而不是 process state。phase 1 cold start 的 proof 是 vanilla
+trial result file，resume 只补 missing trial；phase 2 round 的 proof 是
+``journal/rounds.jsonl``，``loop.run`` replay completed round 后继续；phase 3 unseal 的 proof 是
+``run_meta.json`` 的 ``unsealed_at``。unseal one-way，stamped run 默认拒绝 resume；``--force``
+可覆盖，但之后 round 是否 retention-invalid 由 caller 承担。
 
-- phase 1 (cold start): proof = vanilla trial result files. Resume fills
-  only the missing trials.
-- phase 2 (rounds): proof = journal/rounds.jsonl. Resume replays completed
-  rounds (loop.run's built-in journal replay) and continues.
-- phase 3 (unseal): proof = the ``unsealed_at`` stamp in run_meta.json.
-  Unsealing is one-way — a stamped run refuses to resume (--force overrides,
-  marking any further rounds as retention-invalid is on the caller).
-
-``status`` never reads the sealed directory: while a run is resumable, test
-numbers must stay invisible (SOP §0) — the only path to them is natural
-termination or an explicit ``finalize``.
+``status`` 在 run 可恢复期间绝不读取 sealed directory；按 SOP §0，test number 必须保持不可见，
+只有 natural termination 或 explicit ``finalize`` 能揭示。command exit 0 表示状态机路径完成，
+不等同于 candidate accepted 或 sealed improvement。
 """
 
 from __future__ import annotations
@@ -150,12 +146,12 @@ def _remove_registered_worktrees(spec: RunSpec) -> None:
 
 
 def _claim_ephemeral_root(spec: RunSpec, meta: RunMeta) -> None:
-    """Park ephemeral git worktrees under work_dir; sweep hard-kill leftovers.
+    """把 ephemeral Git worktree 放在 work_dir，并清理 hard-kill residue。
 
-    Normal exits (including Ctrl-C) clean them via context managers — only a
-    SIGKILL'd run leaves them behind, still registered against the subject
-    repo. A valid persisted RunMeta proves this is a dedicated run directory
-    before any prior ``tmp`` tree is removed.
+    normal exit 包括 Ctrl-C 会由 context manager cleanup；只有 SIGKILL 可能留下仍注册在 subject
+    repo 的 worktree。删除 ``tmp``/legacy ``wt`` 前，必须用 persisted ``RunMeta`` 的 config hash
+    与 created_at 证明这是 active dedicated run directory，并拒绝 symlink。随后 prune Git
+    registry 并设置 ``git_ops`` ephemeral root。
     """
     persisted = RunMeta.load(spec.work_dir)
     marker = Path(spec.work_dir) / META_FILENAME
@@ -187,7 +183,12 @@ def _claim_ephemeral_root(spec: RunSpec, meta: RunMeta) -> None:
 
 
 def _meta_guard(spec: RunSpec, *, force: bool) -> RunMeta:
-    """Config-drift + one-way-unseal guards; returns the (possibly new) meta."""
+    """执行 config-drift 与 one-way-unseal guard，返回 existing/new ``RunMeta``。
+
+    empty owned work_dir 可创建 meta；nonempty 但无 valid marker 拒绝 claim。已 unsealed 或 config
+    fingerprint drift 时，除非 ``force``，均以 ``SystemExit(2)`` 停止。base_sha 由 HEAD default
+    导致 drift 时输出 original root 提示。guard 通过不执行任何 trial。
+    """
     snapshot = spec.snapshot()
     meta = RunMeta.load(spec.work_dir)
     if meta is None:
@@ -244,7 +245,15 @@ def _refresh_summary(spec: RunSpec) -> Path:
 def _unseal_and_report(
     spec: RunSpec, bundle: BenchBundle, orch, records: list[dict], meta: RunMeta, reason: str
 ) -> bool:
-    """Returns True on success; False when unseal scoring failed (not stamped)."""
+    """执行 sealed scoring、one-way stamp 与 retention report 写入。
+
+    bench 无 sealed test 时记录说明并 stamp，返回 ``True``。有 unseal closure 时 blind-score；
+    environment/scorer failure 返回 ``False`` 且不 stamp，允许修复后 retry。scoring 成功后先 stamp
+    再写 ``retention.json``，消除 test number 已出现但 run 仍可 resume 的 crash window；若之后
+    crash，finalize 会检测 missing report 并 recompute。
+
+    ``True`` 表示 unseal/report 流程成功，不代表 retention 或 sealed_credited_2sigma 为正。
+    """
     if bundle.unseal is None:
         _say("no sealed test set configured; skipping unseal")
         if not meta.unsealed_at:
@@ -282,6 +291,11 @@ def _unseal_and_report(
 
 
 def cmd_run(config_path: str, *, smoke: bool = False, force: bool = False) -> int:
+    """启动或恢复 Evolution Run，并用 non-blocking file lock 防止双写。
+
+    lock 被其他 mutating process 占用时返回 2；否则委托 ``_cmd_run`` 完成 cold start、rounds 与
+    unseal。KeyboardInterrupt 通常返回 130并保留 durable work，environment failure 返回 1。
+    """
     spec = _load_spec(config_path, smoke)
     try:
         with file_lock(_evolution_lock_path(spec), blocking=False):
@@ -372,11 +386,11 @@ def _cmd_run(spec: RunSpec, *, force: bool) -> int:
 
 
 def cmd_check(config_path: str, *, smoke: bool = False) -> int:
-    """Validate everything cheap before spending: config, models, bench setup.
+    """付费前验证所有 cheap dependency：config、models、bench setup。
 
-    Builds the model call_fns (catches a missing claude binary / bad spec) and
-    the bench bundle (catches dead whitelist entries, missing task files or
-    subject config, absent AppWorld install) without running anything.
+    构建 model call_fn，捕获 missing Claude binary/bad spec；构建 BenchBundle，捕获 dead
+    whitelist、missing task/subject config、absent AppWorld install；可选 precheck 探测 environment
+    与 subject endpoint。函数不运行 trial。返回 0 只表示 readiness check 通过。
     """
     spec = _load_spec(config_path, smoke)
     _note_defaulted_base(spec)
@@ -414,6 +428,12 @@ def _node_status_counts(work_dir: Path) -> dict[str, int]:
 
 
 def cmd_status(config_path: str, *, smoke: bool = False) -> int:
+    """从 durable state 输出 sealed-safe Run progress。
+
+    未开始时报告 phase 0；每次刷新 deterministic evolution summary，显示 outcome/integrity；已
+    unsealed 时只指出 retention report。仍 resumable 时只读 cold-start count 与 round journal，
+    绝不访问 sealed result。返回 0 不表示 run 已完成。
+    """
     spec = _load_spec(config_path, smoke)
     meta = RunMeta.load(spec.work_dir)
     if meta is None:
@@ -473,6 +493,11 @@ def cmd_status(config_path: str, *, smoke: bool = False) -> int:
 
 
 def cmd_finalize(config_path: str, *, smoke: bool = False, yes: bool = False) -> int:
+    """显式结束 Run 并执行 one-way unseal。
+
+    使用与 run 相同的 mutating lock。首次 finalize 无 ``--yes`` 返回 2；若已有 unseal stamp 但
+    report 因 interruption 缺失，会在保持 final 状态下 recompute。函数不再运行 evolution round。
+    """
     spec = _load_spec(config_path, smoke)
     try:
         with file_lock(_evolution_lock_path(spec), blocking=False):

@@ -1,10 +1,9 @@
-"""Lazy LLM provider: defer building the real provider until the first model call.
+"""延迟到 First Model Call 才构建 Real LLM Provider。
 
-Building the real provider imports litellm (~2-7s), which — when done eagerly at
-``AgentLoop`` construction — stalls startup even though tools/skills/memory do not
-need it. ``LazyProvider`` answers the two things read before the first call
-(``get_default_model`` and ``generation``) from config, and builds the real
-provider (memoized, thread-safe) only when a chat method is actually invoked.
+Real Provider 会 import litellm，耗时约 ~2-7s；若在 ``AgentLoop`` Construction Eager 执行，即使
+Tools/Skills/Memory 不需要它也会 Stall Startup。``LazyProvider`` 直接从 Config 回答 Call 前只会
+读取的 ``get_default_model`` 与 ``generation``，Chat/Stream/Cache Capability 首次需要时才通过
+Memoized Thread-safe Factory 建立真实实例。
 """
 
 from __future__ import annotations
@@ -17,7 +16,12 @@ from pico.providers.base import GenerationSettings, LLMProvider, LLMResponse, St
 
 
 class LazyProvider(LLMProvider):
-    """Proxy that builds the real provider on first chat call (memoized)."""
+    """在 First Chat-related Call 构建 Real Provider 的 Memoized Proxy。
+
+    `_built` 使用 Double-check + Thread Lock，Prewarm Thread 与 Event-loop First Call Race 时只会创建
+    一次实例。Chat、Stream、Retry 与 Cache Capability 都原样 Delegate；Default Model 与 Generation
+    无需触发 Import。Factory Error 不缓存为假 Provider，会由实际 Call 明确暴露。
+    """
 
     def __init__(
         self,
@@ -40,10 +44,12 @@ class LazyProvider(LLMProvider):
         return self._provider
 
     def prewarm(self) -> None:
-        """Build the real provider in a daemon thread so the ~2-7s litellm import
-        is hidden behind render + user think-time. Safe to race with the first
-        real call (``_built`` is lock-guarded); build errors are left for the
-        first call to surface."""
+        """在 Daemon Thread 预建 Provider，把 ~2-7s litellm Import 隐藏在 Render/User Think-time 后。
+
+        与 First Real Call Race 是安全的，因为 ``_built`` 有 Lock Guard。Prewarm Error 被吞掉，不在
+        Background Thread 打断 Startup；First Call 会再次/正式 Surface Build Error。Daemon Thread
+        不阻止 Process Exit，方法立即返回。
+        """
 
         def _run() -> None:
             try:

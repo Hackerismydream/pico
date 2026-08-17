@@ -1,10 +1,12 @@
-"""Curator context engine.
+"""实现为主 Agent 准备下一轮 Context window 的内部 Curator。
 
-The Curator is an internal, bounded agent loop that prepares the main
-agent's next context window. It never executes user-facing tools and never
-answers the user; it can only inspect a compact manifest, archive/retrieve
-messages, and submit a structured context plan. A deterministic assembler
-validates and builds the final messages used by the main agent.
+Curator 是有迭代上限的内部 Agent Loop，但它既不执行面向用户的 Tool，也不回答用户。它只
+能查看压缩 manifest、归档或取回历史消息、调整 relevance 与 working state，最后提交结构化
+`ContextPlan`。因此它拥有“选择哪些历史进入窗口”的提案权，不拥有主请求执行与交付权。
+
+`CuratorArchiveStore` 保存 manifest、archives、working state 和 trace；`CuratorAssembler`
+再以确定性规则验证计划、维护 Tool call 配对并按精确预算裁剪。只有该 Assembler 产出的
+provider-safe messages 会交给主 Agent，Curator 的自然语言判断不能越过预算和结构门禁。
 """
 
 from __future__ import annotations
@@ -45,7 +47,13 @@ def _persisted_json(value: Any, *, indent: int | None = None) -> str:
 
 @dataclass
 class TurnContext:
-    """Per-turn inputs needed to build the main agent context."""
+    """汇集构建主 Agent 本轮 Context 所需的当前请求输入。
+
+    ``current_message`` 是本轮用户文本，``media`` 携带路径或已验证 Media，``channel`` 与
+    ``chat_id`` 用于运行时上下文，``selected_skills`` 保留兼容的预选 Skill 槽位。它不包含
+    Session History 或 TokenBudget；前者由 Engine 单独传入，后者由 Host 计算，避免把当前
+    请求载荷与历史所有权混在一个对象里。
+    """
 
     current_message: str
     media: list[str | Media] | None = None
@@ -94,7 +102,17 @@ class CuratorState:
 
 
 class CuratorArchiveStore:
-    """Disk storage for Curator manifest, archives, working state, and traces."""
+    """在磁盘上管理 Curator manifest、archives、working state 与 traces。
+
+    每个 ``session_key`` 经安全文件名映射到独立 manifest 和 working-state 文件，Archive 按
+    日期写 JSONL，Trace 按 Turn 追加。Store 负责序列化清理、路径组织和 relevance 持久化，
+    不决定哪些消息应进入最终 Context；选择由 Curator plan 提出，结构与预算由 Assembler
+    验证。
+
+    读取缺失或损坏状态时返回受限空结构，写入时限制 goals、open_threads、decisions 数量并
+    清理 payload。归档会降低对应 ManifestItem relevance 并保存 archive_ref，但原始 Session
+    append-only log 仍由 Session 所有，本 Store 不把归档文件冒充会话事实源。
+    """
 
     def __init__(self, workspace: Path, config: ContextConfig, now_fn: Callable[[], datetime] | None = None):
         self.workspace = workspace
@@ -334,14 +352,16 @@ class CuratorArchiveStore:
 
 
 class CuratorAssembler:
-    """Validates Curator plans and builds provider-safe message lists.
+    """验证 Curator plan，并构建 Provider 可接受且不超预算的消息列表。
 
-    Prefix-based: the system prompt's segments 1–5 are already assembled
-    by :class:`ContextAssembler` and handed in as
-    :class:`AssembledPrefix` on the per-turn :class:`CuratorState`. This
-    assembler only appends segment 6 (``# Curator Working State``) from
-    the plan, selects ``*history``, and budget-trims against the full
-    fixed overhead (prefix + seg6 + user + tools).
+    这是 prefix-based Assembler：System Prompt 的 segments 1–5 已由 :class:`ContextAssembler`
+    完成，并作为每 Turn :class:`CuratorState` 上的 :class:`AssembledPrefix` 传入。本对象只从
+    plan 追加 segment 6 ``# Curator Working State``、选择 ``*history``，再让 `HistoryTrimmer`
+    对完整 fixed overhead（prefix + seg6 + user + tools）做预算裁剪。
+
+    `build` 返回 `AssembledContext` 与 validation 证据；`validate_candidate` 还检查 Provider
+    消息结构，失败时允许 Curator 重试。若内部 Agent 没有给出可用计划，`fallback_plan` 用
+    protected、relevant、recent 三组消息产生 deterministic fallback，而不是跳过门禁。
     """
 
     def __init__(
@@ -368,7 +388,12 @@ class CuratorAssembler:
 
     @staticmethod
     def working_state_segment(working_state: str | None) -> str:
-        """Render segment 6 text (``# Curator Working State``) or ``""``."""
+        """把非空 working state 渲染为 segment 6 ``# Curator Working State``。
+
+        输入先去除首尾空白；有内容时加固定标题并返回 System Segment 文本，无内容时精确返回
+        ``""``。该函数不解释或补全 state，也不把空标题加入 Prompt，因此是否注入完全由
+        ContextPlan 的实际内容决定。
+        """
         ws = (working_state or "").strip()
         return f"# Curator Working State\n\n{ws}" if ws else ""
 
@@ -849,7 +874,16 @@ def _limit_str_list(value: Any, limit: int) -> list[str]:
 
 
 def _curator_input_payload(state: CuratorState, archive: CuratorArchiveStore) -> dict[str, Any]:
-    """The JSON payload describing the manifest/budget for the slow-path LLM."""
+    """构造 slow-path LLM 用来理解 Manifest 与预算的 JSON payload。
+
+    载荷包含截断后的当前 User message、完整 TokenBudget、消息/Token/归档统计、最近 12 条
+    ManifestItem、按 relevance 排序的最多 40 个候选，以及磁盘 working state。Instructions
+    明确要求最终调用 ``curator_build_context``，并优先 protected、recent、relevant、unresolved
+    消息。
+
+    该 payload 只是 Curator 的决策输入，不直接进入主 Agent Context；文本通过 `_snippet`
+    限长，ArchiveStore 的读取失败边界也已收敛。最终计划仍必须由 CuratorAssembler 再验证。
+    """
     recent = [asdict(item) for item in state.manifest[-12:]]
     candidates = sorted(state.manifest, key=lambda item: (item.relevance, item.id), reverse=True)[:40]
     return {

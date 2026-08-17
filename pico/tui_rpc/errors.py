@@ -1,8 +1,11 @@
-"""Custom RPC exception classes mapped to JSON-RPC 2.0 error codes.
+"""定义映射到 JSON-RPC 2.0 error code 的 Runtime 异常类型。
 
-Code table — frozen in `specs/tui-ipc.md` §4 (server-defined range -32000..-32099):
+handler 不应把 Python 异常细节随意暴露给 TUI，而应抛出这里的 ``RpcError`` 子类；
+``Dispatcher`` 随后读取稳定的 ``CODE``、``MESSAGE`` 和可选 ``data`` 形成协议 error。
+code table 冻结在 ``specs/tui-ipc.md`` §4，server-defined range 为
+``-32000..-32099``：
 
-| code   | message                       | meaning                          |
+| code   | message                       | 含义                             |
 |--------|-------------------------------|----------------------------------|
 | -32001 | session_not_found             | session_key unknown              |
 | -32002 | session_locked                | session held by another client   |
@@ -13,14 +16,15 @@ Code table — frozen in `specs/tui-ipc.md` §4 (server-defined range -32000..-3
 | -32011 | config_validation_error       | Pydantic / semver validation     |
 | -32012 | not_supported_in_v01          | unsupported provider auth action |
 
-JSON-RPC pre-defined codes (-32700/-32600/-32601/-32602) are emitted directly
-by the dispatcher and have no dedicated exception class.
+JSON-RPC pre-defined codes ``-32700/-32600/-32601/-32602`` 由 dispatcher 直接
+产生，没有专用 exception class。``-32603 internal_error`` 也用于未捕获的 handler
+exception，但仍提供 ``InternalError``，使 dispatcher 之外的路径——尤其是由
+``_spawn_agent_loop_task`` 调用的 ``_build_tui_agent_loop`` factory——可以跨模块抛出
+有类型的 ``-32603``。没有它时，初始化 crash 会被错误混同为 ``-32008
+model_not_available``。
 
--32603 ``internal_error`` is also dispatcher-emitted for uncaught handler
-exceptions, but it has a dedicated ``InternalError`` class so non-dispatcher
-code-paths (notably the ``_build_tui_agent_loop`` factory invoked from
-``_spawn_agent_loop_task``) can raise typed -32603 cross-module. Without it
-those paths conflated init crashes into -32008 ``model_not_available``.
+协议 error 只说明调用失败的分类；它本身不证明 Runtime 是否已经回滚副作用，也不能
+用来推断 Session 持久化、任务完成或最终交付状态。
 """
 
 from __future__ import annotations
@@ -29,11 +33,16 @@ from typing import Any, ClassVar
 
 
 class RpcError(Exception):
-    """Base class for all RPC errors mapped to JSON-RPC error frames.
+    """所有可序列化为 JSON-RPC error frame 的异常基类。
 
-    Subclasses set the class-level `CODE` and `MESSAGE` constants; the
-    dispatcher reads them when serializing the error frame. `data` is
-    optional structured context (echoed into JSON-RPC `error.data`).
+    子类通过 class-level ``CODE`` 和 ``MESSAGE`` 声明稳定协议身份，dispatcher 在构造
+    error frame 时读取它们。初始化参数 ``detail`` 是开发者诊断文本；``data`` 是可选的
+    structured context，会原样放入 JSON-RPC ``error.data``，因此调用方必须确保其中不
+    含 secrets 或不应暴露的内部状态。
+
+    实例只携带一次 RPC 失败的信息，不拥有错误恢复生命周期。``public_message`` 优先读取
+    非空 ``data["public_message"]``，否则回退到稳定 ``MESSAGE``；它不保证适合日志之外
+    的所有终端，也不表示失败动作没有产生部分副作用。
     """
 
     CODE: ClassVar[int] = -32099  # 兜底错误

@@ -1,14 +1,11 @@
-"""AgentLoop - the Pico L2 ReAct executor.
+"""重导出 Pico L2 ReAct Executor `AgentLoop` 与内部 TurnOutcome。
 
-The full ``AgentLoop`` implementation lives in ``main.py``. The package
-shape is in place so the file can later be split into ``main.py`` /
-``dispatch.py`` / ``runner.py`` without further import churn.
-
-External callers should keep using:
+完整 ``AgentLoop`` Implementation 位于 ``main.py``。Package Shape 预留未来拆分为 ``main.py`` /
+``dispatch.py`` / ``runner.py`` 的空间，不让 External Import 再次变化。Caller 应持续使用：
 
     from pico.agent.loop import AgentLoop
 
-which re-exports through here.
+该入口只稳定 Symbol Path，不改变 AgentLoop 的 Runtime/Turn Ownership。
 """
 
 from pico.agent.loop.main import AgentLoop, TurnOutcome

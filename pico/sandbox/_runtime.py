@@ -1,19 +1,17 @@
-"""Internal helper: build a BoxLite runtime rooted at Pico's data dir.
+"""Internal Helper：构造 Rooted at Pico Data Dir 的 BoxLite Runtime。
 
-Every boxlite usage inside Pico (BoxliteExecutor, SandboxDebugServer)
-goes through this helper so that the runtime's home_dir (DB, images, layers)
-lives under <data_dir>/sandbox/boxlite rather than the boxlite default of
-~/.boxlite.
+Pico 内所有 BoxLite Usage，包括 `BoxliteExecutor` 与 `SandboxDebugServer`，都通过这里取得 Runtime，
+使其 ``home_dir`` 中的 DB、Images、Layers 位于 ``<data_dir>/sandbox/boxlite``，而不是 BoxLite 默认
+``~/.boxlite``。
 
-The runtime is memoised per (Boxlite class, home_dir) because boxlite's Rust
-core takes a process-wide filesystem lock per home_dir that is only released
-when the ``Boxlite`` instance is dropped — building a fresh ``Boxlite`` on
-every call would conflict with the still-alive previous instance and panic
-with "Another BoxliteRuntime is already using directory: …".
+Runtime 按 ``(Boxlite class, home_dir)`` Memoised。BoxLite Rust Core 会为每个 Home Dir 取得
+Process-wide Filesystem Lock，且只有 ``Boxlite`` Instance 被 Drop 才释放；每次调用都新建 Instance 会
+与仍存活的前一个 Runtime 冲突，并 Panic：
+``Another BoxliteRuntime is already using directory: …``。
 
-The class object is part of the cache key (not just the home_dir) so that
-unit tests which ``mock.patch("boxlite.Boxlite")`` get a fresh mocked runtime
-on each patch instead of the cached real-Boxlite from a prior test.
+Cache Key 不只包含 Home Dir，还包含 Class Object。这样 Unit Tests 用
+``mock.patch("boxlite.Boxlite")`` 时，每次 Patch 都取得新的 Mocked Runtime，而不会复用先前测试缓存的
+Real BoxLite。Helper 只创建 Runtime，不启动具体 VM。
 """
 
 from __future__ import annotations

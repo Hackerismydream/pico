@@ -1,13 +1,11 @@
-"""
-Provider Registry — single source of truth for LLM provider metadata.
+"""Provider Registry 是 LLM Provider Metadata 的 Single Source of Truth。
 
-Adding a new provider:
-  1. Add a ProviderSpec to PROVIDERS below.
-  2. Add a field to ProvidersConfig in config/schema.py.
-  Done. Env vars, prefixing, config matching, status display all derive from here.
+新增 Provider 只需两步：在下方 PROVIDERS 增加 ProviderSpec，再在 config/schema.py 的
+ProvidersConfig 增加 Field。Env Vars、Model Prefix、Config Matching 与 Status Display 均从这里
+推导，不能在多个模块复制 Provider Table。
 
-Order matters — it controls match priority and fallback. Gateways first.
-Every entry writes out all fields so you can copy-paste as a template.
+Registry Order 控制 Match Priority 与 Fallback，Gateway 必须优先。每项显式写全 Field，既作为
+可 Copy-paste Template，也让 Default/Capability 差异可审查。
 """
 
 from __future__ import annotations
@@ -18,11 +16,15 @@ from typing import Any
 
 @dataclass(frozen=True)
 class ProviderSpec:
-    """One LLM provider's metadata. See PROVIDERS below for real examples.
+    """描述一个 LLM Provider 的匹配、配置、路由与能力 Metadata。
 
-    Placeholders in env_extras values:
-      {api_key}  — the user's API key
-      {api_base} — api_base from config, or this spec's default_api_base
+    Identity Field 决定 Config Name/Display/Keyword；Prefix Field 规范 LiteLLM Model ID；Gateway/Local
+    Detection 可按 Provider Name、Key Prefix、Base URL；Capability 说明 OAuth、Direct、Prompt Cache、
+    Reasoning Replay 与 Default Model。具体实例见下方 PROVIDERS。
+
+    ``env_extras`` Value 支持 ``{api_key}``（User API Key）与 ``{api_base}``（Config Base 或 Spec
+    ``default_api_base``）Placeholder。Frozen Spec 是 Registry Fact，不持有真实 Client 或 Secret
+    Lifecycle。
     """
 
     # 身份
@@ -425,8 +427,12 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
 
 
 def find_by_model(model: str) -> ProviderSpec | None:
-    """Match a standard provider by model-name keyword (case-insensitive).
-    Skips gateways/local — those are matched by api_key/api_base instead."""
+    """按 Model-name Keyword Case-insensitive 匹配 Standard Provider。
+
+    Gateway 与 Local Spec 会跳过，因为它们应由 Provider Name、``api_key``/``api_base`` Detection
+    决定；否则
+    任意可路由 Model Name 可能误判。按 PROVIDERS Order 返回首个 Keyword Hit，无匹配为 None。
+    """
     model_lower = model.lower()
     model_normalized = model_lower.replace("-", "_")
     model_prefix = model_lower.split("/", 1)[0] if "/" in model_lower else ""
@@ -449,15 +455,13 @@ def find_gateway(
     api_key: str | None = None,
     api_base: str | None = None,
 ) -> ProviderSpec | None:
-    """Detect gateway/local provider.
+    """按明确优先级检测 Gateway 或 Local Provider。
 
-    Priority:
-      1. provider_name — if it maps to a gateway/local spec, use it directly.
-      2. api_key prefix — e.g. "sk-or-" → OpenRouter.
-      3. api_base keyword — e.g. "aihubmix" in URL → AiHubMix.
+    1）``provider_name`` 若直接映射 Gateway/Local，立即采用；2）匹配 ``api_key`` Prefix，例如
+    ``"sk-or-"`` → OpenRouter；3）匹配 API Base Keyword，例如 URL 中 ``"aihubmix"`` → AiHubMix。
 
-    A standard provider with a custom api_base (e.g. DeepSeek behind a proxy)
-    will NOT be mistaken for vLLM — the old fallback is gone.
+    Standard Provider 使用 Custom api_base（例如 Proxy 后的 DeepSeek）不会被误判为 vLLM，旧的
+    Generic Fallback 已移除。输入空或无匹配返回 None，Secret 不记录。
     """
     # 1. 按配置键直接匹配。
     if provider_name:
@@ -476,5 +480,9 @@ def find_gateway(
 
 
 def find_by_name(name: str) -> ProviderSpec | None:
-    """Find a provider spec by config field name, e.g. "dashscope"."""
+    """按 Config Field Name 精确查找 ProviderSpec，例如 ``"dashscope"``。
+
+    搜索遵循 Registry Order，但 Name 设计为唯一；不存在返回 None。函数不做 Display Name、Model
+    Keyword 或 Alias Matching，Caller 应使用对应专用入口。
+    """
     return next((spec for spec in PROVIDERS if spec.name == name), None)

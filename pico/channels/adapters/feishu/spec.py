@@ -1,5 +1,8 @@
-"""Declarative descriptor for the Feishu channel. Importing this module does not
-import lark_oapi — the SDK import is deferred into the factory."""
+"""Feishu Channel 的 Declarative `ChannelSpec`。
+
+Import 本 Module **不会** Import ``lark_oapi``；Heavy SDK Import 延迟到 Factory 真正构造 `FeishuChannel`。
+Spec 声明 Non-streaming Capabilities 与 ``live-gated`` Evidence Maturity，不启动连接。
+"""
 
 from __future__ import annotations
 

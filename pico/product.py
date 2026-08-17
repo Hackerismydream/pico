@@ -1,4 +1,12 @@
-"""Pico product identity and persistent-state roots."""
+"""集中定义 Pico Product Identity 与 Persistent-state Roots。
+
+模块统一保存产品名、CLI 名、Distribution Name、Logo 与 `.pico` 状态目录约定，并提供从
+`PICO_HOME`、用户 Home 和 Workspace 派生实际路径的函数。Project State Directory 使用解析后的
+Workspace 名称加 SHA-256 摘要，既保持可读性，也避免不同绝对路径的同名目录发生碰撞。
+
+这里仅计算路径，不创建目录。调用方应区分 Global Product Home、Default Workspace、Workspace-local
+State 与按项目隔离的 Global State，避免把一个项目的持久化状态写进另一个项目。
+"""
 
 from __future__ import annotations
 

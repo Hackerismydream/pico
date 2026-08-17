@@ -1,7 +1,12 @@
-"""Network security utilities — SSRF protection for outbound URL fetches.
+"""Network Security Utilities，为 Outbound URL Fetches 提供 SSRF Protection。
 
-Ported from nanobot/security/network.py (MIT) with the module-level CIDR
-allowlist removed; revisit if a Tailscale-style whitelist becomes needed.
+代码从 ``nanobot/security/network.py``（MIT）Ported，并移除了 Module-level CIDR Allowlist；如果未来
+需要 Tailscale-style Whitelist，应重新评估而不是绕过当前检查。模块只允许 HTTP/HTTPS，解析目标
+Hostname 的全部地址，并拒绝 Loopback、Private、Link-local 与其他 Internal Networks。
+
+检查应同时用于 Original Target 和 Redirect 后的 Final URL，防止公开地址把请求重定向到内网。
+DNS 在验证后到真实连接前仍可能变化，因此这是一层 Fail-closed Target Validation，不是完整的网络
+Sandbox。
 """
 
 from __future__ import annotations
@@ -29,9 +34,15 @@ def _is_private(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
 
 
 def validate_url_target(url: str) -> tuple[bool, str]:
-    """Validate a URL is safe to fetch: scheme, hostname, and resolved IPs.
+    """通过 Scheme、Hostname 与 Resolved IPs 验证 URL 是否可安全 Fetch。
 
-    Returns (ok, error_message). When ok is True, error_message is empty.
+    只接受 `http` / `https`，要求存在 Domain 与 Hostname，并用 `getaddrinfo` 解析 IPv4/IPv6。任一可
+    解析地址落入 Blocked Networks 就拒绝整个 Target，避免多地址域名混入 Internal Address。
+
+    Returns:
+        ``(ok, error_message)``。`ok` 为 `True` 时 Error Message 为空；解析失败、不支持的 Scheme、
+        DNS Failure 或 Private Address 都返回 `False` 与可诊断原因。成功只证明验证瞬间的目标地址
+        通过规则，不代表远端内容可信。
     """
     try:
         p = urlparse(url)
@@ -64,5 +75,10 @@ def validate_url_target(url: str) -> tuple[bool, str]:
 
 
 def validate_resolved_url(url: str) -> tuple[bool, str]:
-    """Validate a reported final URL with the same fail-closed policy as the original target."""
+    """以与 Original Target 相同的 Fail-closed Policy 验证 Reported Final URL。
+
+    下载器在跟随 Redirect 后应调用此入口，确保 Final Destination 没有转向 Private/Internal Address。
+    当前实现直接复用 `validate_url_target`，返回值与错误语义完全相同；它不比较原域名与最终域名是否
+    一致，只重新验证最终目标本身。
+    """
     return validate_url_target(url)

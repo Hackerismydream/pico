@@ -1,21 +1,14 @@
-"""Context engine factory — one engine.
+"""从共享依赖构建唯一 ContextAssembler 及其扁平 SegmentBuilder 列表。
 
-There is a single :class:`ContextAssembler`. Per the context-builder
-design it runs three lanes per turn (the prior ``legacy`` / ``curator`` /
-``default`` split is gone):
+旧 ``legacy`` / ``curator`` / ``default`` Engine 分派已经移除。当前每轮由一套 Assembler 协调：
+Curator lane 建 manifest 并走 fast/slow/fallback History 选择，写入 ``# Curator Working State``
+且独占 ``*history``；Memory lane 调用 ``backend.recall(user_id=...)`` 形成 segment 3
+``# Memory``；Local Skill lane 用 :class:`SkillForgeRouter` 形成 segment 5 ``# Skills``；Host
+通过 :class:`ContextBuilder` 提供 identity、bootstrap 与 always-skills。
 
-- **Curator lane** — manifest build + fast / slow / fallback history
-  selection + ``# Curator Working State``. Owns ``*history``.
-- **Memory lane** — ``backend.recall(user_id=...)`` (segment 3,
-  ``# Memory``).
-- **Local Skill lane** — :class:`SkillForgeRouter` over the operator-managed
-  Local Skill catalog (segment 5, ``# Skills``).
-- **Host** — identity / bootstrap / always-skills, rendered by
-  :class:`ContextBuilder`.
-
-The SkillForgeRouter always wraps the builder's existing ``LocalPool`` and
-``SkillRegistry`` without a second disk scan. Memory selection does not change
-Local Skill availability.
+SkillForgeRouter 包装 Builder 已有 ``LocalPool`` 与 ``SkillRegistry``，不会再扫一次磁盘。
+Memory 是否启用只影响 Memory Segment，不改变 Local Skill 可用性。Factory 的责任是接线和
+默认配置，不执行某一 Turn 的选择；最终总是返回同一个 :class:`ContextAssembler` 类型。
 """
 
 from __future__ import annotations
@@ -82,13 +75,16 @@ def build_context_engine(
     skill_forge_router_config: "SkillForgeRouterConfig | None" = None,
     skill_forge_config: "SkillForgeConfig | None" = None,
 ) -> ContextEngine:
-    """Build the one :class:`ContextAssembler` from a flat SegmentBuilder list.
+    """从扁平 SegmentBuilder 列表构建唯一 :class:`ContextAssembler`。
 
-    ``config.engine`` is no longer a dispatch key — there is a single
-    engine. The field is retained in :class:`ContextConfig` for config
-    back-compat but is ignored here. ``builder`` is used only as the
-    holder of the shared ``MemoryStore`` / ``LocalSkillCatalog`` until it
-    is retired.
+    ``config.engine`` 已不再是 dispatch key，因为只有一个 Engine；字段留在
+    :class:`ContextConfig` 仅为配置 back-compat，本函数有意忽略。``builder`` 当前只作为共享
+    ``MemoryStore`` / ``LocalSkillCatalog`` 的持有者，待低层兼容结构退休后可移除。
+
+    缺失 Memory 与 SkillForgeRouter 配置时创建默认值。Memory Segment 仅在 Backend 存在时
+    enabled；Skill injection_mode 为 summary 时 ``activation_max=0``，否则采用 inject_max 或
+    router top_k。Builder 按 identity、bootstrap、memory、active skills、router skills、
+    Curator 顺序交给 Assembler，Tool definitions 使用延迟 callable 保持注册表为当前值。
     """
     from pico.config.pico import (
         MemoryConfig as _MemoryConfig,
@@ -147,7 +143,13 @@ def _build_router(
     builder: ContextBuilder,
     skill_forge_router_config: "SkillForgeRouterConfig",
 ) -> "SkillForgeRouter":
-    """Assemble the Local Skill router for segment 5."""
+    """为 segment 5 组装只包含 operator-managed Local Skill 的路由器。
+
+    `LocalSkillSource` 直接复用 ``builder.skills.pool`` 与 ``builder.skills.registry``，并应用
+    ``local_min_score``；这避免重新扫描磁盘或建立第二份 Registry。返回的 `SkillForgeRouter`
+    当前只有该 Source，top-k 与 activation 数量由上层 `SkillsSegmentBuilder` 控制，本函数不
+    执行检索。
+    """
     from pico.memory_engine.skill_forge import (
         LocalSkillSource,
         SkillForgeRouter,

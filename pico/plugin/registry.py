@@ -1,19 +1,14 @@
-"""Plugin registry - admits manifests and resolves factories on demand.
+"""Plugin Registry：Admit Manifests，并在真正使用时 Resolve Factories。
 
-Two responsibilities, split deliberately:
+职责刻意拆成 Two Phases：
 
-1. **Activation** (:meth:`activate`) admits manifests according to config,
-   validates contribution conflicts, and records unresolved factory refs. It
-   does not import plugin Python or widen ``sys.path``.
+1. **Activation**（:meth:`activate`）依据 Config Admit Manifest、验证 Contribution Conflicts、记录尚未
+   Resolve 的 Factory Refs；此阶段不 Import Plugin Python，也不扩展 ``sys.path``。
+2. **Build** 只 Resolve/Cache Host 实际构造的 Backend 或 Tool Factory，并用 Fresh `PluginContext` 调用。
 
-2. **Build** resolves and caches only the factory for a backend or Tool that a
-   host actually constructs.
-
-Across-manifest name conflicts (two activated plugins both contributing
-the same memory backend name) raise :class:`PluginConflictError` -
-which the host treats as a startup failure. The discovery layer already
-deduplicated *plugins* by id; the registry adds the second layer of
-deduplication on *contribution names*.
+Across-manifest Name Conflict 会抛出 :class:`PluginConflictError`，Host 视为 Startup Failure。Discovery
+已按 ID Deduplicate *Plugins*；Registry 再按 Slot Name Deduplicate *Contributions*。Activation Success 与
+Factory Import/Construction Success 是独立证据边界。
 """
 
 from __future__ import annotations
@@ -44,26 +39,41 @@ ToolFactory = Callable[[Any], Any]
 
 
 class PluginError(Exception):
-    """Base for plugin-system errors. Catchable as a single class so
-    CLI / host startup can render a unified diagnostic banner."""
+    """Plugin-system Errors 的 Base Class。
+
+    CLI / Host Startup 可捕获一个类型并渲染 Unified Diagnostic Banner，同时具体 Subclass 保留 Conflict、
+    Import、Not-found 差异。
+    """
 
 
 class PluginConflictError(PluginError):
-    """Two activated plugins contributed the same name into one slot."""
+    """Two Activated Plugins 向同一 Slot Contribution 了相同 Name。
+
+    Registry Fail Closed，避免 Contribution Winner 取决于偶然 Activation Order。
+    """
 
 
 class PluginFactoryImportError(PluginError):
-    """A manifest pointed at ``module.path:callable`` we couldn't import
-    or resolve."""
+    """Manifest 指向的 ``module.path:callable`` 无法 Import、Resolve 或不是 Callable。
+
+    该异常只在 First Factory Use 暴露，因为 Activation 保持 Pure-data。
+    """
 
 
 class PluginNotFoundError(PluginError):
-    """The user asked for a backend name no activated plugin contributes."""
+    """用户请求的 Backend/Tool Name 没有 Activated Plugin Contribution。
+
+    错误通常同时列出 Registered Names，帮助区分拼写错误、Disabled Plugin 与 Discovery Missing。
+    """
 
 
 @dataclass(frozen=True)
 class _ActivatedFactory:
-    """Unresolved factory reference plus provenance for diagnostics."""
+    """Unresolved Factory Reference 与 Diagnostics Provenance。
+
+    Record 保存 Plugin ID、Contribution Name、Factory Ref、Source 与 Manifest Location；不持有 Imported
+    Module 或 Constructed Object。
+    """
 
     plugin_id: str
     name: str
@@ -73,7 +83,11 @@ class _ActivatedFactory:
 
 
 class PluginRegistry:
-    """Single registration center for activated contribution factories."""
+    """Activated Contribution Factories 的 Single Registration Center。
+
+    Registry 拥有 Activated Manifests、Memory Backend/Tool Slot Maps 与 Lazy Resolved Factory Cache。
+    生命周期通常覆盖 Host Startup 到 Shutdown；它不拥有由 Factory 返回的 Backend/Tool Lifecycle。
+    """
 
     def __init__(self) -> None:
         self._manifests: dict[str, PluginManifest] = {}
@@ -89,14 +103,12 @@ class PluginRegistry:
         *,
         disabled: frozenset[str] = frozenset(),
     ) -> None:
-        """Admit manifests without importing Plugin Python code.
+        """在不 Import Plugin Python Code 的情况下 Admit Manifests。
 
-        A plugin is admitted iff:
-
-        - its id is not in ``disabled`` (user opt-out), AND
-        - ``enabled_by_default`` is True OR the host has another reason
-          to include it. PG-2 enforces only the first rule; PG-3 layers
-          on the second when wired to the user config.
+        Plugin ID 不在 ``disabled`` **AND** ``enabled_by_default`` 为 True 才 Admit；若前者命中 User
+        Opt-out，**OR** 后者为 False，当前实现 Skip 并记录
+        Explicit Opt-in 尚待支持。满足条件的 Manifest 进入 `_activate_one`，Contribution Conflict 立即
+        抛错。PG-2/PG-3 演进说明的核心仍是配置 Admission 与 Code Import 分离。
         """
         for d in discovered:
             mf = d.manifest
@@ -164,11 +176,11 @@ class PluginRegistry:
 
     @staticmethod
     def _ensure_importable(source: Source, location: Path | None) -> None:
-        """Expose a file-based Plugin directory immediately before import.
+        """在 Import 前暴露 File-based Plugin Directory。
 
-        USER and explicit PROJECT Plugins may ship code next to the manifest.
-        Their directory is appended only when a caller resolves a contributed
-        factory. Automatic project discovery is disabled at the host boundary.
+        USER 与 Explicit PROJECT Plugins 可把 Code 放在 Manifest 旁；只有 Caller 真正 Resolve Contribution
+        Factory 时才把目录 Append 到 ``sys.path``。Host Boundary 已禁用 Automatic Project Discovery。
+        Bundled/Entry-point Source 使用正常 Import Path，不在此修改。
         """
         if source not in (Source.USER, Source.PROJECT) or location is None:
             return
@@ -178,10 +190,11 @@ class PluginRegistry:
 
     @staticmethod
     def _resolve_factory(plugin_id: str, ref: str) -> MemoryBackendFactory:
-        """Import ``module`` and grab ``callable`` from it.
+        """Import ``module``，并从中取得 ``callable``。
 
-        Manifest validation already enforced the ``module.path:callable``
-        shape, so this just splits and imports.
+        Manifest Validation 已强制 ``module.path:callable`` Shape，因此这里只 Split、`import_module`、
+        `getattr` 与 Callable Check。Import Error、Missing Attribute、Non-callable 都转换为带 Plugin ID 的
+        `PluginFactoryImportError`；成功返回是 Factory Object，尚未调用。
         """
         module_path, attr = ref.split(":", 1)
         try:
@@ -219,15 +232,19 @@ class PluginRegistry:
     # ── 内省 ─────────────────────────────────────────────────────
 
     def activated_ids(self) -> list[str]:
-        """Stable-ordered list of activated plugin ids."""
+        """返回 Stable-ordered Activated Plugin IDs；不包含 Disabled/Skipped Manifests。"""
         return sorted(self._manifests)
 
     def memory_backend_names(self) -> list[str]:
-        """Stable-ordered list of registered memory-backend names."""
+        """返回 Stable-ordered Registered Memory-backend Names；Factories 可能尚未 Import。"""
         return sorted(self._memory_backends)
 
     def get_memory_backend_factory(self, name: str) -> MemoryBackendFactory:
-        """Resolve the backend factory for ``name`` on first use."""
+        """First Use 时 Resolve 并 Cache ``name`` 对应 Backend Factory。
+
+        Name Missing 抛出 `PluginNotFoundError`；Import/Resolution Failure 抛出 `PluginFactoryImportError`。
+        返回 Factory 不调用它，也不启动 Backend。
+        """
         try:
             entry = self._memory_backends[name]
         except KeyError as e:
@@ -237,7 +254,10 @@ class PluginRegistry:
         return self._get_factory("memory_backend", entry)
 
     def memory_backend_identity(self, name: str) -> tuple[str, str]:
-        """Return the owning plugin id and declared factory reference."""
+        """返回 ``(owning_plugin_id, declared_factory_reference)``。
+
+        只读 Activated Record，不触发 Import；Name Missing 抛出 `PluginNotFoundError`。
+        """
         try:
             entry = self._memory_backends[name]
         except KeyError as e:
@@ -247,16 +267,19 @@ class PluginRegistry:
         return entry.plugin_id, entry.factory_ref
 
     def tool_names(self) -> list[str]:
-        """Stable-ordered list of registered plugin-tool names."""
+        """返回 Stable-ordered Registered Plugin-tool Names；不包含 Host Builtin Tools。"""
         return sorted(self._tools)
 
     def tool_plugin_id(self, name: str) -> str | None:
-        """Plugin id that contributed tool ``name``, or ``None``."""
+        """返回 Contribution Tool ``name`` 的 Plugin ID；Unknown Name 返回 `None`，且不 Import Factory。"""
         entry = self._tools.get(name)
         return entry.plugin_id if entry is not None else None
 
     def get_tool_factory(self, name: str) -> ToolFactory:
-        """Resolve the Tool factory for ``name`` on first use."""
+        """First Use 时 Resolve 并 Cache ``name`` 对应 Tool Factory。
+
+        Failure Semantics 与 `get_memory_backend_factory` 相同；返回值尚未构造 Tool。
+        """
         try:
             entry = self._tools[name]
         except KeyError as e:
@@ -266,7 +289,10 @@ class PluginRegistry:
         return self._get_factory("tool", entry)
 
     def manifest_for(self, plugin_id: str) -> PluginManifest | None:
-        """Return the manifest of an activated plugin, or None."""
+        """返回 Activated Plugin 的 Manifest；Unknown/Skipped ID 返回 `None`。
+
+        Manifest 是 Frozen Pure Data，可用于 Diagnostics，不触发 Factory Resolution。
+        """
         return self._manifests.get(plugin_id)
 
     # ── 构建（PG-3 入口）─────────────────────────────────────────
@@ -280,12 +306,11 @@ class PluginRegistry:
         services: "ServiceLocator",
         logger: logging.Logger | None = None,
     ) -> Any:
-        """Resolve the named factory and call it with a fresh ``PluginContext``.
+        """Resolve Named Factory，并用 Fresh ``PluginContext`` 构造 Memory Backend。
 
-        Construction is synchronous — factories that need async setup
-        return a backend whose ``start()`` will be awaited later by the
-        host. Any exception from the factory propagates so the host
-        sees the real cause rather than a wrapped one.
+        Construction 是 Synchronous；需要 Async Setup 的 Factory 返回 Backend，Host 稍后 Await 其
+        ``start()``。Config、Service Locator 与 Plugin-bound Logger 进入 Context。Factory Exception 原样
+        Propagate，让 Host 看到 Real Cause，而不是 Wrapped Error。返回对象尚未 Start。
         """
         from pico.plugin.context import PluginContext  # 局部导入以规避循环依赖
 
@@ -306,13 +331,11 @@ class PluginRegistry:
         services: "ServiceLocator",
         logger: logging.Logger | None = None,
     ) -> Any:
-        """Resolve the named tool factory and call it with a fresh
-        ``PluginContext``, returning the constructed ``Tool``.
+        """Resolve Named Tool Factory，用 Fresh ``PluginContext`` 返回 Constructed ``Tool``。
 
-        Symmetric with :meth:`build_memory_backend`: synchronous
-        construction, exceptions propagate so the host sees the real
-        cause. The host registers the returned tool into the agent's
-        :class:`ToolRegistry`.
+        与 :meth:`build_memory_backend` Symmetric：Synchronous Construction，Exceptions Propagate。Host 之后
+        把返回 Tool 注册进 Agent :class:`ToolRegistry`；Factory 返回成功不表示 Registration 或 Tool
+        Execution 已成功。
         """
         from pico.plugin.context import PluginContext  # 局部导入以规避循环依赖
 

@@ -1,9 +1,10 @@
-"""Atomic operations for channel config sections.
+"""Channel Config Sections 的 Atomic Read-modify-write Operations。
 
-This module is the ONLY write path for channel configuration. All entry
-points (CLI commands, future wizard, future WebUI, future REPL slash)
-must call functions defined here. Direct load_config / save_config on
-the channels section is forbidden -- see plan rule.
+本模块是 Channel Configuration **ONLY Write Path**。CLI Commands、Future Wizard/WebUI/REPL Slash 等所有
+Entry Points 都必须调用这里；禁止对 Channels Section 直接 `load_config` / `save_config`。共享路径统一完成
+Schema Reflection、Secret Detection/Redaction、Coercion、Validate-before-write 与 Atomic Replace。
+
+写入成功只表示 Config Published；Channel Restart/Connection/Delivery 仍由 Runtime 验证。
 """
 
 from __future__ import annotations
@@ -31,7 +32,10 @@ from pico.config.update import (
 
 
 def _channel_names() -> list[str]:
-    """Return channel field names defined on ChannelsConfig (BaseModel subfields only)."""
+    """返回 `ChannelsConfig` 中代表 Channel 的 Field Names，仅包含 `BaseModel` Subfields。
+
+    `send_progress` 等 Global Fields 不进入结果。
+    """
     return [
         name
         for name, field in ChannelsConfig.model_fields.items()
@@ -40,7 +44,10 @@ def _channel_names() -> list[str]:
 
 
 def _channel_schema_cls(name: str) -> type[BaseModel]:
-    """Look up the Pydantic class for a Channel name."""
+    """按 Channel Name 查找其 Pydantic Schema Class。
+
+    Unknown Name 或目标不是 Nested Model 时抛 ``KeyError``，并列出 Available Channels。
+    """
     field = ChannelsConfig.model_fields.get(name)
     if field is None:
         raise KeyError(f"Unknown channel '{name}'. Available channels: {sorted(_channel_names())}")
@@ -60,11 +67,11 @@ _SECRET_SUFFIXES = (
 
 
 def _is_secret_field(field_name: str, field_info: Any) -> bool:
-    """Detect secret fields, in order:
+    """按优先顺序 Detect Secret Fields。
 
-    1. Explicit: ``field_info.json_schema_extra.get('secret') is True``
-    2. Exact name match (``token``, ``secret``, ``password``, ``api_key``)
-    3. Suffix match (``_token``, ``_secret``, ``_key``, ``_password``)
+    先看 Explicit ``field_info.json_schema_extra.get('secret') is True``，再匹配 Exact Names ``token`` /
+    ``secret`` / ``password`` / ``api_key``，最后匹配 ``_token`` / ``_secret`` / ``_key`` / ``_password``
+    Suffix。返回值用于 UI Redaction，不对实际 String 加密。
     """
     extra = getattr(field_info, "json_schema_extra", None)
     if isinstance(extra, dict) and extra.get("secret") is True:
@@ -75,20 +82,20 @@ def _is_secret_field(field_name: str, field_info: Any) -> bool:
 
 
 def _is_required_field(field_info: Any) -> bool:
-    """A field is required when explicitly marked ``json_schema_extra={'required': True}``.
+    """显式 ``json_schema_extra={'required': True}`` 时 Field 才视为 Required。
 
-    Every channel field carries a Pydantic default (so partial/disabled configs load),
-    so pydantic's own required flag is always False; requiredness is an explicit UX marker.
+    每个 Channel Field 都有 Pydantic Default，使 Partial/Disabled Config 可 Load，因此 Pydantic Own Required
+    Flag 始终 False；这里的 Requiredness 是 UX Marker，Runtime 仍需在 Enable/Start 时检查非空值。
     """
     extra = getattr(field_info, "json_schema_extra", None)
     return isinstance(extra, dict) and extra.get("required") is True
 
 
 def _flatten_fields(cls: type[BaseModel], prefix: str = "") -> dict[str, dict[str, Any]]:
-    """Recurse into nested ``BaseModel`` fields, producing a flat dict of specs.
+    """递归 Nested ``BaseModel`` Fields，生成 Flat Dotted-path Specs Dict。
 
-    For ``Literal[...]`` fields with no user-provided description, the choice
-    list is rendered into ``description`` so CLI consumers can surface it.
+    每项包含 Type、Default、Secret、Required、``description``。``Literal[...]`` 若无 User Description，会把
+    Choice List 渲染进 Description，供 CLI Surface。函数只反射 Schema，不读取用户值。
     """
     out: dict[str, dict[str, Any]] = {}
     for fname, finfo in cls.model_fields.items():
@@ -118,11 +125,10 @@ def _flatten_fields(cls: type[BaseModel], prefix: str = "") -> dict[str, dict[st
 
 
 def channel_field_specs(name: str) -> dict[str, dict[str, Any]]:
-    """Reflect a channel schema into a flat ``dotted-path -> spec`` map.
+    """把 Channel Schema Reflect 成 Flat ``dotted-path -> spec`` Map。
 
-    Each entry has keys: ``type``, ``default``, ``is_secret``, ``required``, ``description``.
-    Used by CLI parsers, the ``channels help`` command, and ``get_channel_config``
-    to know which fields exist and which to redact.
+    每项 Keys 为 ``type``、``default``、``is_secret``、``required``、``description``。CLI Parsers、
+    ``channels help`` 与 `get_channel_config` 用它确定合法 Fields 与 Redaction；Unknown Channel 抛 KeyError。
     """
     cls = _channel_schema_cls(name)
     return _flatten_fields(cls)
@@ -134,14 +140,11 @@ def enable_channel(
     *,
     config_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Set ``channels.<name>.enabled = True`` and optionally patch credential fields.
+    """设置 ``channels.<name>.enabled = True``，并可同时 Patch Credential Fields。
 
-    Atomic: all fields are validated before anything is written. Returns the
-    map of previous values for the patched fields (for caller logging).
-
-    Raises:
-        KeyError: unknown channel name or unknown field path.
-        ValidationError: a field value violates the channel's Pydantic schema.
+    Atomic Contract：所有 Fields 在任何 Write 前完成 Validation。返回 Patched Fields 的 Previous Values，
+    供 Caller Log。Unknown Channel/Field 抛 `KeyError`，违反 Pydantic Schema 抛 `ValidationError`。Enabled
+    Published 不表示 Channel 已连接。
     """
     payload = dict(fields or {})
     payload["enabled"] = True
@@ -153,7 +156,10 @@ def disable_channel(
     *,
     config_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Set ``channels.<name>.enabled = False``. Credential fields are preserved."""
+    """设置 ``channels.<name>.enabled = False``，保留 Credential Fields。
+
+    返回 Previous Enabled Value Map；Runtime 是否立即 Stop Channel 取决于 Caller 后续 Reload/Restart。
+    """
     return _patch_channel(name, {"enabled": False}, config_path)
 
 
@@ -163,11 +169,10 @@ def set_channel_fields(
     *,
     config_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Patch specific fields on a channel.
+    """Patch Channel 的 Specific Fields。
 
-    Returns ``{field_path: previous_value}`` for caller logging.
-
-    Atomic: same validation contract as :func:`enable_channel`.
+    返回 ``{field_path: previous_value}`` 供 Logging；Empty Input 返回 Empty Dict 且不写。Atomic Validation
+    Contract 与 :func:`enable_channel` 相同。
     """
     if not fields:
         return {}
@@ -180,12 +185,10 @@ def get_channel_config(
     redact_secrets: bool = True,
     config_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Return current channel configuration as a flat ``dotted-path -> value`` dict.
+    """以 Flat ``dotted-path -> value`` Dict 返回 Current Channel Configuration。
 
-    Secret fields are redacted by default:
-
-    - non-empty value renders as ``'****set****'``
-    - empty / None renders as ``'(empty)'``
+    Secret Fields 默认 Redacted：Non-empty 渲染 ``'****set****'``，Empty/None 渲染 ``'(empty)'``。Raw Section
+    Validation 失败时显示 Schema Defaults，而不修改 Disk；`redact_secrets=False` 仅供受信 Caller。
     """
     cls = _channel_schema_cls(name)
     path = config_path or get_config_path()
@@ -217,11 +220,10 @@ def reset_channel(
     *,
     config_path: Path | None = None,
 ) -> None:
-    """Reset ``channels.<name>`` to schema defaults.
+    """把 ``channels.<name>`` Reset 为 Schema Defaults。
 
-    The section's key is preserved so that downstream discovery still sees
-    the channel; only field values revert. Equivalent to instantiating the
-    Pydantic class fresh and writing its ``model_dump(by_alias=True)``.
+    保留 Section Key，使 Downstream Discovery 仍看到 Channel，只 Revert Field Values。等价于 Fresh Pydantic
+    Instance 的 ``model_dump(by_alias=True)`` 后 Atomic Write；Credentials 会被清空为 Defaults。
     """
     cls = _channel_schema_cls(name)
     path = config_path or get_config_path()
@@ -243,7 +245,11 @@ def _patch_channel(
     fields: dict[str, Any],
     config_path: Path | None,
 ) -> dict[str, Any]:
-    """Validate-then-write core. Used by enable / disable / set."""
+    """Enable / Disable / Set 共用的 Validate-then-write Core。
+
+    先反射 Specs 并拒绝 Unknown Fields，读取 Raw Section，构造 Current Model，按 Annotation Coerce Dotted
+    Values，再用完整 Schema Validate，最后 Alias Dump + Atomic Write。返回 Previous Raw Leaf Values。
+    """
     cls = _channel_schema_cls(name)
     specs = channel_field_specs(name)
 

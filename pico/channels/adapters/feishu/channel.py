@@ -1,5 +1,17 @@
-"""Feishu/Lark adapter — receives events over a lark-oapi WebSocket long
-connection and sends replies via the lark Open API."""
+"""把 Feishu/Lark 消息接入 Pico Runtime，并把 Runtime 回复交付回会话。
+
+没有 Agent 开发经验的读者可以把本模块理解为一座双向桥：入站方向由
+``lark-oapi`` 的 WebSocket long connection 接收事件，完成去重、群聊寻址、
+allowlist 校验、媒体下载和语音转写后，通过 ``ChannelIntake`` 发布给 Runtime；
+出站方向则把文本、卡片、图片或文件转换为 lark Open API 请求。
+
+关键入口是 ``FeishuChannel``。它持有 SDK client、WebSocket 线程、主事件循环引用
+和本进程内的消息去重窗口。收到事件只表示平台已把消息交给适配器；发布到
+``ChannelIntake`` 也不等于 Agent 任务完成。相应地，API 返回成功只证明 Feishu
+接受了发送请求，不证明用户已阅读回复，更不能单独作为任务完成或正向结论可用的证据。
+本模块不负责 Agent 推理、Session 持久化、调度策略，也不负责配置凭证或授予
+``speech_to_text:speech`` 权限。
+"""
 
 from __future__ import annotations
 
@@ -43,7 +55,17 @@ _DEDUP_CAP = 1000
 
 
 class FeishuChannel(ChannelBase):
-    """Feishu bot over a WebSocket long connection — no public IP / webhook."""
+    """通过 WebSocket long connection 运行的 Feishu bot 适配器。
+
+    实例随 Channel Runtime 启动并在 ``stop()`` 时停止接收入站消息，不需要 public
+    IP 或 webhook。对象拥有 lark Open API client、WebSocket 专用线程、回投主
+    ``asyncio`` loop 的引用、最近消息去重表以及本次生命周期内的 native STT
+    禁用状态；这些状态都不会跨进程持久化。
+
+    入站消息最终交给基类注入的 ``ChannelIntake``，出站交付由 ``send()`` 完成。
+    ``ChannelManager`` 管理实例生命周期，``pico.spine`` 消费已发布的入站消息。
+    适配器只确认平台调用是否成功，不拥有 Agent 任务状态、最终交付判定或用户已读状态。
+    """
 
     name = "feishu"
     display_name = "Feishu"
@@ -103,12 +125,14 @@ class FeishuChannel(ChannelBase):
             await asyncio.sleep(1)
 
     def _run_ws_supervised(self) -> None:
-        """Drive the lark WebSocket client on a dedicated event loop.
+        """在专用线程和事件循环中监督 lark WebSocket client。
 
-        lark_oapi grabs a module-level ``loop = asyncio.get_event_loop()``;
-        giving this thread its own idle loop (and pointing lark's module at
-        it) avoids clashing with the already-running main loop. Reconnects
-        with a fixed backoff until the channel is stopped.
+        ``lark_oapi`` 会在模块级保存 ``loop = asyncio.get_event_loop()``。如果直接
+        复用 Pico 已运行的主事件循环，SDK 自己驱动 loop 时会发生冲突。因此本方法为
+        WebSocket 线程建立一个空闲 loop，并把 ``lark_oapi.ws.client.loop`` 指向它。
+
+        ``start()`` 抛出的异常会记录为警告；只要 channel 仍处于 running 状态，就固定
+        等待 5 秒后重连。退出循环后关闭线程自己的 loop，但不会关闭 Pico 主 loop。
         """
         import lark_oapi.ws.client as lark_ws
 
@@ -345,12 +369,17 @@ class FeishuChannel(ChannelBase):
     # ── 转写 ──────────────────────────────────────────────────────
 
     async def _transcribe(self, path: str) -> str:
-        """Transcribe a voice file, preferring Feishu's own speech-to-text
-        (no external key) and falling back to the base Whisper provider.
+        """把语音文件转成文本，优先使用 Feishu native STT，失败时回退到 Whisper。
 
-        Native STT is skipped once it has definitively failed this session
-        (no permission / unavailable on the tenant's plan), so we don't pay
-        its latency on every subsequent voice message."""
+        ``path`` 是已下载到本地的语音文件路径。Feishu speech-to-text 不需要额外的
+        provider key；当它返回非空文本时直接作为结果。若 native STT 在本次 channel
+        生命周期内已被判定为权限不足或租户套餐不可用，后续消息会跳过该调用，避免每次
+        都承担已知无效的网络延迟。其余失败由 ``transcribe_audio()`` 使用基类配置的
+        Whisper provider 处理。
+
+        返回值是转写文本；下游仍需把它作为用户输入参与 Agent 执行。转写成功只证明
+        获得了文字，不证明语义正确，也不代表任务完成或回复已经交付。
+        """
         if not self._native_stt_disabled:
             loop = asyncio.get_running_loop()
             native = await loop.run_in_executor(None, self._lark_stt_sync, path)
@@ -359,9 +388,16 @@ class FeishuChannel(ChannelBase):
         return await transcribe_audio(path, self.transcription_api_key, channel=self.name)
 
     def _lark_stt_sync(self, path: str) -> str | None:
-        """One-shot recognition via Feishu's file_recognize API. Feishu voice
-        messages are opus, which the API accepts directly (no transcoding).
-        Returns ``None`` on any failure so the caller can fall back."""
+        """同步调用 Feishu ``file_recognize`` API 识别一个语音文件。
+
+        Feishu 语音消息采用 ``opus``，API 可以直接接收，因此这里只做 base64 编码，
+        不进行转码。请求固定使用 ``format="opus"`` 和 ``engine_type="16k_auto"``，
+        并为每次识别生成新的 ``file_id``。错误码 ``99991400`` 最多退避重试两次；
+        其他确定性失败会调用 ``_disable_native_stt()``，避免后续重复尝试。
+
+        成功时返回 ``recognition_text``；任何 API 拒绝、空结果或异常均返回 ``None``，
+        由调用方回退到 Whisper。``None`` 是降级信号，不表示音频内容为空。
+        """
         from lark_oapi.api.speech_to_text.v1 import (
             FileConfig,
             FileRecognizeSpeechRequest,
@@ -401,9 +437,16 @@ class FeishuChannel(ChannelBase):
         return None
 
     def _disable_native_stt(self, code: int | None, msg: str) -> None:
-        """Turn off native STT for this session after a definitive failure and
-        emit a single actionable hint. Operators read this to know whether to
-        grant a scope, upgrade the Feishu plan, or rely on the Whisper key."""
+        """在确定性失败后停用本次生命周期内的 native STT，并记录修复提示。
+
+        ``code`` 和 ``msg`` 来自 Feishu API。``99991672`` 表示应用缺少
+        ``speech_to_text:speech`` 权限；``99991400`` 表示 ``file_recognize`` 被限流
+        或当前 tenant plan 不可用；其他错误保留原始 code 和 msg 供排查。方法只设置
+        内存中的 ``_native_stt_disabled``，不会修改配置或持久化状态。
+
+        日志帮助 operator 判断应授予 scope、升级 Feishu plan，还是继续依赖 Whisper
+        key。停用 native STT 不等于语音消息处理失败，因为调用链仍可以走 Whisper 回退。
+        """
         self._native_stt_disabled = True
         if code == 99991672:  # 应用缺少 speech_to_text:speech 权限
             logger.warning(
@@ -426,7 +469,13 @@ class FeishuChannel(ChannelBase):
     # ── 入站 ──────────────────────────────────────────────────────
 
     def _on_message_sync(self, data: Any) -> None:
-        """Bridge the lark WS thread back onto the main event loop."""
+        """把 lark WebSocket（WS）线程收到的事件安全地投递到 Pico 主事件循环。
+
+        ``lark.ws.Client`` 没有 ``stop()``，底层 socket 可能在 channel 停止后继续回调；
+        因此 ``_running`` 为假时必须丢弃事件，避免旧实例向已重启的 Runtime 再次发布。
+        主 loop 存在且仍运行时，使用 ``asyncio.run_coroutine_threadsafe()`` 调度
+        ``_on_message()``。本方法只完成跨线程调度，不代表入站消息已通过校验或被处理。
+        """
         if not self._running:
             # lark.ws.Client 没有 stop()：socket 可能比 stop() 活得更久并继续投递。
             # 此处丢弃僵尸投递，确保已停止（或已重启）的实例不会再次发布。
@@ -518,4 +567,8 @@ class FeishuChannel(ChannelBase):
 
     @staticmethod
     def _ignore_event(_data: Any) -> None:
-        """No-op sink for reaction/read/p2p-enter events (silences SDK noise)."""
+        """消费但不处理 reaction、read 与 p2p-enter 事件，避免 SDK 输出无关噪声。
+
+        这些事件会被 dispatcher 正常接收，但当前 Runtime 不把它们转换为 Agent 输入，
+        也不据此推断用户已读、任务完成或交付成功。参数 ``_data`` 被有意忽略。
+        """

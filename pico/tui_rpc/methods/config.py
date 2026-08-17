@@ -1,25 +1,23 @@
-"""``config.get`` / ``config.set`` RPC handlers (specs §3.6).
+"""实现 ``config.get`` / ``config.set`` RPC handlers（specs §3.6）。
 
-Contract source: ``docs/openspec/changes/tui-ipc-bridge/specs/tui-ipc.md §3.6``.
+契约来源是 ``docs/openspec/changes/tui-ipc-bridge/specs/tui-ipc.md §3.6``。
+v0.1 surface 只开放四个 hot-changeable key；其他 write target 抛出
+:class:`ConfigFieldReadonlyError`（``-32010``）。值以 dotted-path nesting 写入
+``~/.pico/config.json``，例如 ``tui.theme`` 对应
+``{"tui": {"theme": "..."}}``，使 legacy ``pico.config.loader`` 无需额外 schema
+转换就能读取同一文件。
 
-The v0.1 surface exposes only **four hot-changeable** keys; any other write
-target raises :class:`ConfigFieldReadonlyError` (-32010). Values are stored
-in ``~/.pico/config.json`` using dotted-path nesting (``tui.theme`` →
-``{"tui": {"theme": "..."}}``) so that the same file is loadable by the legacy
-``pico.config.loader`` without any schema gymnastics.
+每个 key 的验证边界如下：
 
-Validation
-----------
+* ``agent.thinking_budget`` 必须是 non-negative integer，且 bool 不算 integer；
+* ``agent.temperature`` 必须是 int/float，范围闭区间 ``[0.0, 2.0]``；
+* ``tui.theme`` 必须是匹配 ``[A-Za-z0-9_-]+`` 的 non-empty string；
+* ``tui.show_token_usage`` 必须是 boolean。
 
-Per-key validators reject:
-
-* ``agent.thinking_budget``: must be a non-negative integer.
-* ``agent.temperature``: must be a number (int/float) in the closed range
-  ``[0.0, 2.0]``.
-* ``tui.theme``: must be a non-empty string matching ``[A-Za-z0-9_-]+``.
-* ``tui.show_token_usage``: must be a boolean.
-
-Anything else → :class:`ConfigValidationError` (-32011).
+其他不合规输入抛出 :class:`ConfigValidationError`（``-32011``）。读取成功只表示拿到
+磁盘值或默认值；写入成功表示 JSON 已保存并不等于所有已运行组件都热重载。特殊 key
+``model`` 会先构造 prospective provider，再持久化并替换 live loop，避免构造失败留下
+半写入状态。本模块不负责完整配置 schema、secret 管理或跨进程配置同步。
 """
 
 from __future__ import annotations
@@ -141,13 +139,14 @@ def _config_path() -> Path:
 
 
 def _load_config() -> dict[str, Any]:
-    """Load ``config.json`` for a read-modify-write (get/set/_set_model).
+    """为 get/set/_set_model 的 read-modify-write 读取 ``config.json``。
 
-    Absent / empty -> ``{}`` (safe to create fresh). A present-but-unparseable
-    file raises ConfigValidationError rather than the old empty-dict fallback:
-    returning ``{}`` here and then ``_save_config`` would overwrite the user's
-    whole config with just the changed key (data loss). The on-disk file is the
-    source of truth; downstream loaders read the same file independently.
+    文件 absent 或 empty 时返回 ``{}``，允许安全创建新配置。文件存在但无法解析时抛出
+    ``ConfigValidationError``，不能沿用旧版 empty-dict fallback：若此时返回 ``{}``，
+    后续 ``_save_config`` 会用单个改动 key 覆盖用户完整配置，造成 data loss。
+
+    on-disk file 是 source of truth，下游 loader 会独立读取同一文件；本函数返回的是本次
+    read-modify-write 使用的 dict snapshot，不提供锁或跨进程事务保证。
     """
     from pico.config.loader import ConfigReadError, read_raw_or_raise
 
@@ -164,7 +163,12 @@ def _save_config(payload: dict[str, Any]) -> None:
 
 
 def _get_nested(payload: dict[str, Any], dotted_key: str) -> Any | None:
-    """Return the value at the dotted path, or None if absent."""
+    """读取 ``payload`` 中 ``dotted_key`` 指向的值，缺失时返回 ``None``。
+
+    路径用 ``.`` 分段；任一中间节点不是 dict，或 key 不存在，都视为 absent。调用方需
+    注意：该返回约定无法区分“路径缺失”和“磁盘显式保存 JSON null”，两者都会得到
+    ``None``，当前 config.get 会在这种情况下使用默认值。
+    """
     parts = dotted_key.split(".")
     cur: Any = payload
     for part in parts:
@@ -192,9 +196,14 @@ def _set_nested(payload: dict[str, Any], dotted_key: str, value: Any) -> None:
 
 
 async def config_get(params: dict) -> dict:
-    """Return values for whitelisted keys.
+    """返回请求的 writable whitelist 配置值。
 
-    Spec §3.6: unknown keys are silently omitted (NOT an error).
+    ``params["keys"]`` 缺失时读取全部 ``CONFIG_WRITABLE_KEYS``；提供时必须是
+    ``list[str]``，否则抛出 ``ConfigValidationError``。每个已知 key 优先返回磁盘值，
+    absent 时返回 ``_DEFAULTS``。
+
+    按 Spec §3.6，unknown key 必须 silently omitted，而不是 error。返回形状是
+    ``{"config": {...}}``。调用成功只表示读取 snapshot 成功，不保证其他进程看到相同值。
     """
     requested_raw = params.get("keys") if isinstance(params, dict) else None
     if requested_raw is None:
@@ -223,14 +232,16 @@ async def config_set(
     *,
     agent_loop_factory: "AgentLoopFactory | None" = None,
 ) -> dict:
-    """Write a single whitelisted key. Returns ``{applied, previous}``.
+    """验证并写入单个 whitelist key，返回 ``{applied, previous}``。
 
-    The special key ``"model"`` switches the live agent loop's provider/model
-    (returns ``{applied, previous, value}``); see :func:`_set_model`.
+    ``params`` 必须包含 non-empty string ``key`` 和 ``value``。普通 key 先由专属 validator
+    规范化，再 read-modify-write 到 ``config.json``。特殊 key ``"model"`` 会切换 live
+    agent loop 的 provider/model，并返回 ``{applied, previous, value}``；细节见
+    :func:`_set_model`。``agent_loop_factory`` 只在 model 切换时使用。
 
-    Raises:
-        ConfigValidationError (-32011): params shape or value invalid.
-        ConfigFieldReadonlyError (-32010): key not in writable whitelist.
+    参数 shape 或 value 无效时抛出 ``ConfigValidationError``（``-32011``）；key 不在
+    writable whitelist 时抛出 ``ConfigFieldReadonlyError``（``-32010``）。普通配置的
+    ``applied=True`` 表示文件已写入，不表示所有运行组件立即采用新值。
     """
     if not isinstance(params, dict):
         raise ConfigValidationError(
@@ -275,10 +286,17 @@ def _set_model(
     raw_value: Any,
     agent_loop_factory: "AgentLoopFactory | None",
 ) -> dict:
-    """Switch the global model (and provider) and reassign the live loop.
+    """切换 global model（及 provider），并更新 live AgentLoop。
 
-    Build the provider from the prospective config BEFORE persisting, so a
-    rebuild failure aborts cleanly with the on-disk model untouched.
+    ``raw_value`` 必须是 non-empty model string；可选 ``params["provider"]`` 必须是
+    string。未显式提供 provider 时，函数尝试用 ``find_by_model()`` 推导；gateway 或 local
+    model 无匹配时保留原强制 provider。存在 active Turn 时抛出
+    ``ModelSwitchInTurnError``，避免执行中的 loop 被中途换模。
+
+    关键顺序是 BEFORE 持久化，先基于 prospective config 构造 provider：构造失败会抛出
+    ``ModelNotAvailableError``，on-disk model 保持 untouched。保存成功后，如果 live loop
+    提供 ``replace_provider`` 就调用它，否则直接更新 ``provider`` 与 ``model`` 属性。
+    返回 ``{applied, previous, value}``；它表示切换步骤完成，不证明后续模型调用一定成功。
     """
     if not isinstance(raw_value, str) or not raw_value:
         raise ConfigValidationError(
@@ -344,7 +362,11 @@ def register_config_methods(
     *,
     agent_loop_factory: "AgentLoopFactory | None" = None,
 ) -> None:
-    """Register ``config.get`` / ``config.set`` on a dispatcher instance."""
+    """在 ``dispatcher`` 上注册 ``config.get`` 与 ``config.set``。
+
+    ``agent_loop_factory`` 被闭包捕获，只供特殊 ``model`` 写入更新 live loop。重复注册由
+    Dispatcher 抛出 ``ValueError``。函数不读取配置，也不触发模型切换。
+    """
 
     async def _set(params: dict) -> dict:
         return await config_set(params, agent_loop_factory=agent_loop_factory)

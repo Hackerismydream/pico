@@ -1,7 +1,8 @@
-"""Outbound send-error classifiers shared by channel adapters.
+"""Channel Adapters 共用的 Outbound Send-error Classifiers。
 
-A true result identifies a failure worth raising through the DeliveryHub's
-retry path. Platform rejections can instead use its terminal failure path.
+Classifier 返回 True 表示 Failure 值得通过 `DeliveryHub` Retry Path Raise，例如 Connection Drop/Timeout/5xx。
+Platform Business Rejection 应走 Terminal Failure Path，不能无意义重试。这里仅分类异常，不执行 Retry、
+Backoff 或 Delivery Outcome 记录。
 """
 
 from __future__ import annotations
@@ -33,13 +34,19 @@ TRANSIENT_NETWORK_ERRORS: tuple[type[BaseException], ...] = tuple(_transient_bas
 
 
 def transient_network(err: BaseException) -> bool:
-    """True for network-ish failures worth a manager retry (connection drops,
-    timeouts, websocket closes). SDK business errors stay outside on purpose."""
+    """Connection Drop、Timeout、WebSocket Close 等 Network-ish Failure 返回 `True`。
+
+    可选 SDK Exception Types 只在 Dependency Installed 时加入。SDK Business Errors 刻意排除，让 Manager
+    不把永久拒绝当 Transient Retry。
+    """
     return isinstance(err, TRANSIENT_NETWORK_ERRORS)
 
 
 def retryable_http(err: Exception) -> bool:
-    """httpx flavor: timeouts / transport errors and 5xx responses."""
+    """判断 Httpx Error 是否 Retryable：Timeout/Transport Error 与 5xx Response 为 True。
+
+    4xx 通常表示 Request/Auth/Policy Error，返回 False；非 Httpx Exception 也返回 False。
+    """
     if isinstance(err, httpx.TimeoutException | httpx.TransportError):
         return True
     if isinstance(err, httpx.HTTPStatusError):

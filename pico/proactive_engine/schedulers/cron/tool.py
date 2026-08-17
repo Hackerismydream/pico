@@ -1,12 +1,14 @@
-"""Cron tool for scheduling reminders and tasks.
+"""用于 Scheduling Reminders 与 Tasks 的 Cron Tool。
 
-Two layers live here:
+模块包含 Two Layers：
 
-1. ``CronTool`` — the LLM-facing agent tool. Creates jobs with the
-   request-time channel/chat_id verbatim; no forwarding decision here.
-2. ``resolve_cron_delivery`` — delivery resolver consumed at TRIGGER
-   time by ``pico.cli._cron_handler``. Pass-through for real
-   channels; broadcast/forward for ephemeral ones (cli/tui).
+1. ``CronTool``：面向 LLM 的 Agent Tool。创建 Job 时原样保存 Request-time ``channel/chat_id``，这里不做
+   Forwarding Decision；
+2. ``resolve_cron_delivery``：在 **TRIGGER Time** 由 ``pico.cli._cron_handler`` 消费的 Delivery
+   Resolver。Real Channels 直接 Pass-through，Ephemeral Channels（CLI/TUI）才 Broadcast/Forward。
+
+把创建与交付分开，保证任务触发时使用最新 Enabled Channels 和 Recent Session，而不是把易变路由冻结
+在 Job 中。Tool 返回 Created 只证明 Job 进入 Store，不证明未来 Trigger 或 Delivery 成功。
 """
 
 from contextvars import ContextVar
@@ -28,20 +30,23 @@ if TYPE_CHECKING:
 
 @dataclass
 class DeliveryTarget:
-    """One concrete (channel, chat_id) the cron handler should deliver to."""
+    """Cron Handler 应交付到的一个 Concrete ``(channel, chat_id)`` Target。
+
+    `channel` 选择 Platform Adapter，`chat_id` 标识该平台内 Recipient/Conversation。Dataclass 只携带已
+    解析目标，不包含 Delivery Result；一个 Cron Fire 可解析成多个 `DeliveryTarget`。
+    """
 
     channel: str
     chat_id: str
 
 
 def is_ephemeral_channel(channel: str, enabled_channels: set[str]) -> bool:
-    """An ephemeral channel cannot deliver to itself after its host
-    process exits (cli/tui REPL closes; webui session ends). Rule:
-    anything not in ``ChannelManager.enabled_channels`` is ephemeral
-    and needs forwarding.
+    """判断 Channel 是否为 Host Process 退出后无法自行 Deliver 的 Ephemeral Channel。
 
-    Today this matches ``cli`` + ``tui``. Future webui / desktop
-    frontends are covered automatically with no code change.
+    CLI/TUI REPL 关闭、WebUI Session 结束后，原进程内通道不再存在。Rule 是：任何不在
+    ``ChannelManager.enabled_channels`` 中的 Channel 都视为 Ephemeral，并需要 Forwarding。Today
+    主要匹配 ``cli`` + ``tui``；Future WebUI / Desktop Frontends 会按同一规则自动覆盖，无需新增名称
+    分支。返回值只反映当前 Enabled Set，不探测进程存活。
     """
     return channel not in enabled_channels
 
@@ -54,18 +59,15 @@ def resolve_cron_delivery(
     enabled_channels: set[str],
     session_manager: "SessionManager | None" = None,
 ) -> tuple[list[DeliveryTarget], list[str]]:
-    """Resolve final delivery targets for a cron job at trigger time.
+    """在 Trigger Time 为 Cron Job 解析 Final Delivery Targets。
 
-    Returns ``(targets, warnings)``:
-      - non-ephemeral channels pass through directly (per-job binding);
-      - ephemeral channels (cli/tui) broadcast per ``forward_channels``:
-        ``["*"]`` expands to ``enabled_channels``, specific names
-        restrict; each target's chat_id comes from ``session_manager``
-        (most-recent session). Channels with no recent session are
-        skipped with a warning.
+    返回 ``(targets, warnings)``：Non-ephemeral Channels 依据 Per-job Binding 直接 Pass Through；
+    Ephemeral CLI/TUI 按 ``forward_channels`` Broadcast。``["*"]`` 展开为全部 ``enabled_channels``，
+    Specific Names 则限制范围；每个 Target 的 ``chat_id`` 由 `session_manager` 中 Most-recent Session
+    提供。没有 Recent Session 的 Channel 被跳过并产生 Warning。
 
-    Warnings are surfaced via log, never raised — one stale forward
-    target won't break a fire that has other valid targets.
+    Warnings 供日志暴露，Never Raised；一个 Stale Forward Target 不应破坏仍有其他 Valid Targets 的
+    Fire。空 Targets 表示当前没有可交付位置，不等同于 Cron Callback 本身未执行。
     """
     if not is_ephemeral_channel(channel, enabled_channels):
         return [DeliveryTarget(channel=channel, chat_id=chat_id)], []
@@ -98,7 +100,13 @@ def resolve_cron_delivery(
 
 
 class CronTool(Tool):
-    """Tool to schedule reminders and recurring tasks."""
+    """供 Agent 创建、列出与删除 Reminders/Recurring Tasks 的 LLM-facing Tool。
+
+    `set_context` 在每个请求前绑定 Source Channel 与 Chat ID，`execute` 再把它们写入新 Job。Tool 同时用
+    `ContextVar` 标记 Cron Callback Context，阻止计划任务在自身执行时继续创建新 Cron，避免自我复制。
+    Schedule 选择、Dedup 与持久化委托给 `CronService`；Description 中的长协议指导模型区分 One-shot
+    与 Explicit Recurrence。
+    """
 
     def __init__(self, cron_service: CronService):
         self._cron = cron_service
@@ -107,16 +115,28 @@ class CronTool(Tool):
         self._in_cron_context: ContextVar[bool] = ContextVar("cron_in_context", default=False)
 
     def set_context(self, channel: str, chat_id: str) -> None:
-        """Set the current session context for delivery."""
+        """设置当前 Session Context，供后续创建 Job 绑定 Delivery。
+
+        `channel` 与 `chat_id` 原样保存在 Tool Instance，直到下一次设置；方法不验证目标是否可达，也不
+        修改已有 Jobs。调用栈必须在每个请求边界正确刷新，避免把提醒绑定到前一个 Session。
+        """
         self._channel = channel
         self._chat_id = chat_id
 
     def set_cron_context(self, active: bool):
-        """Mark whether the tool is executing inside a cron job callback."""
+        """标记 Tool 当前是否在 Cron Job Callback 内执行。
+
+        使用 `ContextVar` 使并发 Async Context 各自隔离；返回的 Token 必须交给 `reset_cron_context`，以
+        在 Callback 结束后恢复先前状态。Active 时 `add` 会被拒绝，List/Remove 仍按正常路径处理。
+        """
         return self._in_cron_context.set(active)
 
     def reset_cron_context(self, token) -> None:
-        """Restore previous cron context."""
+        """使用 `ContextVar` Token 恢复 Previous Cron Context。
+
+        应与 `set_cron_context` 成对放在 `finally` 中调用，确保异常或取消不会让当前 Task 永久停留在
+        Cron Context。传入不属于该 ContextVar 的 Token 时底层异常会向上传播。
+        """
         self._in_cron_context.reset(token)
 
     @property

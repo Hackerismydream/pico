@@ -1,29 +1,17 @@
-"""LocalPool — BM25 keyword retrieval over file-based skills.
+"""`LocalPool`：对 File-based Skills 执行 BM25 Keyword Retrieval。
 
-The "local" pool covers everything that lives as a SKILL.md file on disk:
+``local`` Pool 覆盖 Disk 上全部 ``SKILL.md``：User-authored ``workspace/skills/``、Packaged Builtin（原始设计
+为 9 个 Shipped Skills）、Configured External 与 Mirror Directories。池规模通常几十到几百且频繁编辑，
+因此 In-memory BM25 合适：不加载 Embedding Model，Milliseconds 启动；Specific Tool Intent 如 ``pdf`` /
+``weather`` 的 Keyword Match 往往优于 Dense Semantic；该规模下 Query Tokenize 成本低。
 
-  - workspace/skills/ (user-authored)
-  - packaged builtin/ (the 9 shipped skills)
-  - configured external and mirror directories
+Index 在 ``__init__`` Eager Build，并由 Public ``rebuild_index()`` Refresh。Catalog 的
+``invalidate_skill_cache`` 把 File-watcher/Evolver Invalidation 传入 BM25。历史 ``SkillService.select``
+调用该检索层；Steady-state ``search`` 只需
+Query Tokenize + 对 Precomputed ``doc_freqs`` 的 BM25 Scoring；Per-doc Tokenize/IDF 仅在文件变化时运行。
 
-These pools are small (tens to a few hundred skills) and frequently edited,
-so BM25 over the in-memory corpus is the right shape:
-  - no embedding model loaded → starts in milliseconds
-  - relevance is keyword-driven → user intent on a specific tool
-    ("pdf" / "weather") matches better than dense semantic
-  - re-tokenize per ``select`` is cheap at this scale
-
-Index is built eagerly in ``__init__`` and refreshed via the public
-``rebuild_index()`` — :class:`SkillService` calls it from
-``invalidate_skill_cache`` so every file-watcher / evolver invalidation
-flows through to the BM25 state. Steady-state ``search`` therefore
-costs one query-side tokenize + one BM25 dot-product over precomputed
-``doc_freqs``; the per-doc tokenize and IDF accumulation only run when
-files actually changed.
-
-BM25 + tokenization come from :mod:`pico.utils.bm25` (a self-contained
-Okapi BM25, no ``rank_bm25`` / ``jieba`` / ``nltk`` dependency, with CJK-aware
-tokenization) — shared with the agent tool catalog.
+BM25/Tokenization 来自 :mod:`pico.utils.bm25`，无 ``rank_bm25`` / ``jieba`` / ``nltk`` 依赖且 CJK-aware，
+与 Agent Tool Catalog 共享。Ranking 是关键词证据，不代表 Skill Workflow 可执行。
 """
 
 from __future__ import annotations
@@ -40,28 +28,26 @@ if TYPE_CHECKING:
 
 
 def _format_skill_text(meta: SkillMeta, body_max: int = 4000) -> str:
-    """One-line representation fed into the BM25 index. Heavier on signal
-    fields (name, description) than body — ``"weather"`` should fire on
-    the weather skill even when the body talks about HTTP and caching."""
+    """构造送入 BM25 Index 的 One-line Representation。
+
+    Name 与 Description 重复加权，Body 最多取 `body_max` Characters；这样 ``"weather"`` 即使 Body 主要
+    谈 HTTP/Caching，也能命中 Weather Skill。函数只拼接检索文本，不修改 `SkillMeta`。
+    """
     body = (meta.content or "")[:body_max]
     # 重复名称和描述，使它们在 BM25 词频中的权重高于较长正文。
     return f"{meta.name} {meta.name} {meta.description or ''} {body}"
 
 
 class LocalPool:
-    """BM25 retrieval wrapper around a file-based ``SkillRegistry``.
+    """围绕 File-based ``SkillRegistry`` 的 BM25 Retrieval Wrapper。
 
-    Holds a prebuilt ``_BM25Okapi`` over the current registry contents.
-    :class:`SkillService` calls :meth:`rebuild_index` from its
-    ``invalidate_skill_cache`` hook so file-watcher events and evolver
-    writes refresh the index directly, leaving ``search`` to a single
-    query-side tokenize + BM25 dot product.
+    实例持有 Current Registry Contents 的 Prebuilt ``_BM25Okapi``。历史 :class:`SkillService` 从
+    ``invalidate_skill_cache`` 调用 :meth:`rebuild_index`，当前由 Catalog 承接，让 File-watcher 与 Evolver Writes 直接 Refresh，
+    `search` 只做 Query-side Tokenize + BM25 Dot Product。
 
-    Thread-safety: an internal :class:`threading.Lock` guards the
-    ``(metas, _BM25Okapi)`` pair. ``rebuild_index`` does the expensive
-    tokenize + BM25 construction *outside* the lock and only takes it
-    for the atomic swap; ``search`` holds the lock only long enough
-    to capture the two references, then scores + sorts outside.
+    Thread-safety：内部 :class:`threading.Lock` 保护 ``(metas, _BM25Okapi)`` Pair。Rebuild 在 Lock 外完成
+    Expensive Tokenize/Construction，只在 Atomic Swap 时持锁；Search 仅捕获两个 References 后在锁外
+    Score/Sort。In-flight Search 因而使用一致 Snapshot。
     """
 
     def __init__(self, registry: "SkillRegistry") -> None:
@@ -75,14 +61,12 @@ class LocalPool:
         self.rebuild_index()
 
     def rebuild_index(self) -> None:
-        """Re-read the registry and rebuild the BM25 index in place.
+        """重新读取 Registry，并 In-place 替换 BM25 Index Snapshot。
 
-        Called from :meth:`SkillService.invalidate_skill_cache` on every
-        watcher event / evolver write, and once from ``__init__`` for the
-        initial build. Idempotent and safe to call concurrently — the
-        last writer's index wins; in-flight searches retain their
-        previously captured references and finish against a consistent
-        snapshot.
+        初始由 ``__init__`` 调用；历史入口是 :meth:`SkillService.invalidate_skill_cache`，当前每次 Watcher
+        Event / Evolver Write 通过 Catalog Invalidation 调用。
+        方法 Idempotent 且可 Concurrent Call：Last Writer Index Wins；In-flight Searches 保留此前捕获
+        References，在 Consistent Snapshot 上完成。Registry Empty 时原子清空 Meta 与 Index。
         """
         metas = self._registry.list_all()
         if not metas:
@@ -100,7 +84,12 @@ class LocalPool:
             self._bm25 = bm25
 
     def search(self, query: str, top_k: int = 50) -> list[ScoredSkill]:
-        """Return top-K matches by BM25 over the prebuilt index."""
+        """在 Prebuilt Index 上返回 BM25 Top-K Matches。
+
+        Empty Query/Index 返回空。只保留 Positive Score，并排除 ``always`` Skills，因为它们已通过
+        ``# Active Skills`` 注入，避免同一 Body 重复。结果按 Score Descending，返回 Legacy
+        `ScoredSkill(name, score, source)`，Body 由后续 `LocalSkillSource` 从 Registry O(1) 补齐。
+        """
         query_tokens = _tokenize(query)
         if not query_tokens:
             return []

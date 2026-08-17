@@ -1,4 +1,4 @@
-"""Self-evolution orchestrator — a deterministic harness over the seven-step funnel.
+"""在 seven-step funnel 之上运行 deterministic self-evolution Harness。
 
 The canonical evolver package (``pico.evolver.{scheduler,analysis,judge,tree}``)
 ships every deterministic operator the self-evolution SOP needs — anchor
@@ -20,7 +20,8 @@ The driver model (diagnose / design / verdict) only ever makes small,
 schema-validated calls through the existing judge backends
 (``pico.evolver.judge.llm_client``), which already route self-hosted Qwen,
 Claude, and OpenRouter models. That is what lets a weaker model drive the loop:
-the harness carries the control-flow burden the model cannot.
+Harness 承担 model 无法可靠记忆的 control-flow burden。Orchestrator 只根据 train artifacts 推进
+round；sealed test 属于终止后的独立边界，中间状态不得推断为最终正向结论。
 """
 
 from __future__ import annotations

@@ -1,5 +1,8 @@
-"""Declarative descriptor for the WeCom channel. Importing this module does not
-import wecom_aibot_sdk — the SDK import is deferred into the factory."""
+"""WeCom Channel 的 Declarative `ChannelSpec`。
+
+Import 本 Module **不会** Import ``wecom_aibot_sdk``；SDK 延迟到 Factory 构造 `WecomChannel`。Spec Maturity
+为 ``beta``，只声明当前 Evidence Level，不启动 Long Connection。
+"""
 
 from __future__ import annotations
 

@@ -1,18 +1,15 @@
-"""dry_query — offline probe of the real skill discovery + selection path.
+"""离线探测真实 Skill discovery 与 selection 路径的 ``dry_query``。
 
-Round-4 forensics found that a custom skill authored on disk under
-``skill_library/tb2_gap_fill/`` was never injected: the benchmark agent
-constructs ``SkillForgeConfig(enabled=False)`` with empty ``local_dirs``, so
-the directory is never mounted as a discovery layer and ``select()`` returns
-``[]`` before any retrieval runs. ``dry_query`` answers, without an LLM or the
-SR server, "which skill names would routing inject for this task?" by building
-a real :class:`LocalSkillCatalog` + :class:`SkillForgeRouter` whose
-``local_dirs`` point at ``library_root`` and running the actual BM25 retrieval
-+ resolve path.
+Round-4 forensics 发现，写在 ``skill_library/tb2_gap_fill/`` 的 custom Skill 从未注入：
+benchmark Agent 构造 ``SkillForgeConfig(enabled=False)`` 且 ``local_dirs`` 为空，目录未挂载
+为 discovery layer，``select()`` 在 retrieval 前就返回 ``[]``。``dry_query`` 不依赖 LLM 或
+SR server，通过真实 :class:`LocalSkillCatalog` 与 :class:`SkillForgeRouter`，把
+``library_root`` 放入 ``local_dirs``，运行实际 BM25 retrieval + resolve path，回答“这个 task
+会注入哪些 Skill name”。
 
-No LLM is involved: the LLM gate and query rewriter are disabled, so selection
-reduces to filesystem discovery + lexical (BM25) scoring — the deterministic
-core of the real path that the benchmark must wire up.
+LLM gate 与 query rewriter 被禁用，所以 selection 退化为 filesystem discovery + lexical
+BM25 scoring，即 benchmark 必须接线的 deterministic core。query 命中只证明离线路由可发现
+Skill，不证明 benchmark live Runtime 已挂载同一目录、Skill 已注入或任务效果改善。
 """
 
 from __future__ import annotations
@@ -25,21 +22,18 @@ __all__ = ["dry_query"]
 
 
 def dry_query(task_text: str, *, library_root: Path | None = None) -> list[str]:
-    """Return the skill names routing would inject for ``task_text``.
+    """返回 routing 会为 ``task_text`` 注入的 Skill name 列表。
 
-    Args:
-        task_text: The task description fed to skill selection.
-        library_root: Root dir mounted as an extra discovery layer (the
-            recursive ``SKILL.md`` scan walks its subtree, so
-            ``.../skill_library`` surfaces ``tb2_gap_fill/<skill>/SKILL.md``).
-            ``None`` exercises the default layers only (workspace + builtin).
+    ``task_text`` 是交给 Skill selection 的任务描述。``library_root`` 非空时作为额外
+    discovery layer；recursive ``SKILL.md`` scan 会遍历子树，因此 ``.../skill_library`` 能
+    暴露 ``tb2_gap_fill/<skill>/SKILL.md``。``None`` 只测试 workspace + builtin 默认层。
 
-    Returns:
-        Flat list of skill names (``SkillMeta.name``) routing would inject,
-        in injection order. This mirrors the benchmark's two injection
-        surfaces (ContextBuilder.build_system_prompt): the ``always: true``
-        skills rendered under "Active Skills", followed by the retrieval
-        ``select()`` hits, deduped by name.
+    返回按 injection order 排列的 flat ``SkillMeta.name`` list。顺序镜像 benchmark 在
+    ``ContextBuilder.build_system_prompt`` 的两类注入面：先是 ``always: true``、渲染在
+    ``Active Skills`` 下的 Skill，再是 retrieval ``select()`` hit，最后按 name 去重。
+
+    函数创建 temporary workspace 且关闭 watcher，不持久化 catalog；发现结果是当前文件与
+    BM25 规则的 snapshot。
     """
     from pico.config.pico import LocalDirConfig, SkillForgeConfig
 

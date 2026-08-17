@@ -1,4 +1,9 @@
-"""Agent core module."""
+"""提供 Agent Core 的轻量入口，并延迟重导出高成本 Runtime 类型。
+
+`AgentLoop`、`ContextBuilder` 与 `MemoryStore` 通过 PEP 562 ``__getattr__`` 按需 Import；普通
+``pico.agent`` Submodule 导入不会急切加载 AgentLoop 与 LiteLLM，降低 CLI Cold Start。`__dir__`
+仍返回稳定 Public Surface，未知名称明确抛 AttributeError。
+"""
 
 from typing import TYPE_CHECKING
 

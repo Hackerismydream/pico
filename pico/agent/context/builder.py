@@ -1,4 +1,10 @@
-"""Context builder for assembling agent prompts."""
+"""提供 Legacy Host renderer 与消息辅助函数，供 Agent Context 组装复用。
+
+当前 Turn Request Path 的最终所有者已经是 `ContextAssembler`，本 `ContextBuilder` 仍持有共享
+MemoryStore/LocalSkillCatalog，并为 MemoryConsolidator 与 Token Budget 生成 Representative
+System Prompt。它还统一追加 Assistant/Tool message、包裹 untrusted Tool output，并保留旧调用
+方的完整消息构建形状；不要把估算 Renderer 误认为实时 Segment 选择器。
+"""
 
 import base64
 import mimetypes
@@ -20,7 +26,16 @@ if TYPE_CHECKING:
 
 
 class ContextBuilder:
-    """Builds the context (system prompt + messages) for the agent."""
+    """持有 Host Memory/Skill 资源，并提供 Agent Prompt 的共享低层构建能力。
+
+    构造时区分 ``workspace`` 与可选 ``state``：前者是执行目录，后者存储 Memory、Skill 与
+    Bootstrap；同时可注入 fake clock 让长期 Benchmark 的 Runtime Time 与 Session timestamp
+    一致。LocalSkillCatalog 的 Watcher 可关闭，避免测试启动后台任务。
+
+    单 Turn 组装已经转交 ContextAssembler；`build_system_prompt`/`build_messages` 只服务估算与
+    Legacy caller。`add_tool_result` 是所有 Tool output 的 untrusted fence，`add_assistant_message`
+    则维护 Provider reasoning/thinking 形状。
+    """
 
     # L4 支柱布局：Agent 身份和行为位于 agent_memory 下。此处省略 user.md，因为
     # MemoryStore 已将它注入 ``# Memory`` 块，避免重复加载同一文件。
@@ -61,21 +76,19 @@ class ContextBuilder:
         *,
         include_memory: bool = True,
     ) -> str:
-        """Render a representative system prompt for token estimation.
+        """渲染用于 Token estimation 的 Representative System Prompt。
 
-        Since the unified :class:`ContextAssembler` took over per-turn
-        prompt assembly (via :class:`SegmentBuilder`), this method is no
-        longer on the request path. It survives only as the host-side
-        renderer that :class:`MemoryConsolidator` and
-        ``AgentLoop._make_token_budget`` use to *estimate* prompt size —
-        it renders identity / bootstrap / host ``# Memory`` / always-
-        skills / a skills summary, with no plugin recall, router hits,
-        or Curator working state (those are owned by the assembler's
-        segment builders now).
+        统一 :class:`ContextAssembler` 已经通过 :class:`SegmentBuilder` 接管 per-turn assembly，
+        所以本方法 no longer on request path。它只为 :class:`MemoryConsolidator` 与
+        ``AgentLoop._make_token_budget`` 估算固定开销：渲染 identity、bootstrap、Host
+        ``# Memory``、always-skills 和 Skill summary，不包含 Plugin recall、Router hits 或 Curator
+        working state；这些事实由 Assembler Builder 独占。
 
-        When ``current_message`` is supplied, MemoryStore picks the H2
-        sections of user.md most relevant to it rather than dumping the
-        whole file.
+        提供 ``current_message`` 时，MemoryStore 只挑 user.md 中最相关的 H2 sections，不 dump
+        whole file。``include_memory=False`` 可移除 Host Memory。Full-body 模式最多内联 inject_max
+        个已选 Skill，并 best-effort 写 skill_injections.jsonl；Telemetry failure 不得阻断 Agent。
+        Summary 模式只输出 XML Catalog 与 read_file 指令。返回值适合保守估算，不能作为本轮
+        实际 injected Skill/Memory evidence。
         """
         parts = [self._get_identity()]
 
@@ -170,7 +183,13 @@ Skills with available="false" need dependencies installed first - you can try in
         return "\n\n---\n\n".join(parts)
 
     def _get_identity(self) -> str:
-        """Get the core identity section."""
+        """渲染核心 Identity、Runtime、Workspace 与 Pico Guidelines Section。
+
+        Workspace/State 解析为绝对路径，OS 决定 Windows 或 POSIX Policy，并写入 Python Runtime、
+        User Profile、Episodic Log、Custom Skills 位置。Guidelines 规定 Tool 前不得预报结果、修改
+        前先读、冲突以最新 User 决定为准、歧义使用 ask_user，以及外部内容始终按 untrusted data
+        处理。函数不加载这些文件正文，只返回 System 文本。
+        """
         workspace_path = str(self.workspace.expanduser().resolve())
         state_path = str(self.state.expanduser().resolve())
         system = platform.system()
@@ -219,7 +238,12 @@ Your workspace is at: {workspace_path}
 Reply directly with text for conversations. Only use the 'message' tool to send to a specific chat channel."""
 
     def _build_runtime_context(self, channel: str | None, chat_id: str | None) -> str:
-        """Build untrusted runtime metadata block for injection before the user message."""
+        """构建置于 User Message 前的 Untrusted Runtime Metadata Block。
+
+        当前时间来自注入 `_now_fn`，Timezone 缺失时使用 UTC；Channel 与 Chat ID 必须同时存在才
+        加入。结果始终以 `_RUNTIME_CONTEXT_TAG` 标明 metadata only, not instructions，避免模型把
+        动态地址当高优先级指令。Session 保存路径会剥离该前缀。
+        """
         now = self._now_fn().strftime("%Y-%m-%d %H:%M (%A)")
         tz = time.strftime("%Z") or "UTC"
         lines = [f"Current Time: {now} ({tz})"]
@@ -228,7 +252,12 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         return ContextBuilder._RUNTIME_CONTEXT_TAG + "\n" + "\n".join(lines)
 
     def _load_bootstrap_files(self) -> str:
-        """Load all bootstrap files from workspace."""
+        """从 State Root 读取所有存在的 Bootstrap Files 并按配置顺序连接。
+
+        遍历 BOOTSTRAP_FILES，缺失文件跳过，存在内容按 UTF-8 读取；Heading 只使用 Basename，
+        因此 ``agent_memory/profile/soul.md`` 渲染为对应 filename 标题而非完整路径。全部缺失时
+        返回空字符串，方法不创建默认文件或捕获非法编码错误。
+        """
         parts = []
 
         for filename in self.BOOTSTRAP_FILES:
@@ -250,8 +279,13 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         channel: str | None = None,
         chat_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Build a complete message list (used by MemoryConsolidator for
-        token estimation; the request path uses :class:`ContextAssembler`)."""
+        """构建估算用完整 Message List；真实 Request Path 使用 :class:`ContextAssembler`。
+
+        方法生成 Runtime Context 与 User content，合并成单条 User Message，避免部分 Provider 拒绝
+        consecutive same-role messages；前方放 Representative System Prompt 与传入 History。
+        MemoryConsolidator 用该形状估算 Token。Media 只支持旧 path list；当前 Turn 的 Media
+        Snapshot 由 Segment render 路径负责。返回新列表，不修改 History。
+        """
         runtime_ctx = self._build_runtime_context(channel, chat_id)
         user_content = self._build_user_content(current_message, media)
 
@@ -274,7 +308,13 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         ]
 
     def _build_user_content(self, text: str, media: list[str] | None) -> str | list[dict[str, Any]]:
-        """Build user message content with optional base64-encoded images."""
+        """把 User Text 与可选 Image Paths 构建成 String 或 Base64 Multimodal Content。
+
+        没有 Media 时返回原 String。每个真实文件读取 Bytes，先按 Magic Bytes 检测 MIME，失败再
+        由 Filename 猜测；非 Image 与缺失路径跳过。存在图片时按输入顺序生成 ``image_url``
+        data URI，最后追加 Text Block；没有有效图片仍返回纯文本。该 Legacy Helper 不表示
+        Non-image Attachment，也不上传文件。
+        """
         if not media:
             return text
 
@@ -302,11 +342,12 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         tool_name: str,
         result: str,
     ) -> list[dict[str, Any]]:
-        """Add a tool result to the message list.
+        """把一个 Tool Result 作为受保护的不可信数据追加到 Message List。
 
-        Tool output is attacker-influenceable (web pages, file/command
-        contents, MCP returns), so it is fenced as untrusted data before it
-        reaches the model — every tool result funnels through here.
+        Web Page、File/Command Content、MCP Return 都可能受攻击者影响，因此 every Tool Result
+        funnels through here，并先由 `wrap_untrusted(result, source=tool_name)` 加随机配对 Boundary，
+        再写入 role=tool、tool_call_id、name、content。方法原地 append 并返回同一 List；它不根据
+        Result 内容执行指令，也不判断 failed 状态。
         """
         content = wrap_untrusted(result, source=tool_name)
         messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": tool_name, "content": content})
@@ -320,7 +361,12 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         reasoning_content: str | None = None,
         thinking_blocks: list[dict] | None = None,
     ) -> list[dict[str, Any]]:
-        """Add an assistant message to the message list."""
+        """以统一 Provider Shape 向 Message List 追加 Assistant Message。
+
+        `build_assistant_message` 组合可空 Content、Tool Calls、reasoning_content 与 thinking_blocks，
+        保持普通和 Thinking Model 的多 Turn Contract。方法原地 append 并返回同一 List，不清理
+        Think tag，也不执行 Tool；后续 Provider Gate 可按目标能力移除不支持字段。
+        """
         messages.append(
             build_assistant_message(
                 content,

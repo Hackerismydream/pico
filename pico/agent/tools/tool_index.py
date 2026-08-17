@@ -1,28 +1,17 @@
-"""BM25 keyword index over the agent's tool catalog.
+"""为 Agent Tool Catalog 建立 CJK-aware BM25 Keyword Index。
 
-Backs ``tool_search``: ranks tools by a query over each tool's name,
-description and parameter schema, reusing the shared Okapi BM25 in
-:mod:`pico.utils.bm25` (CJK-aware, so Chinese queries match). The name is
-repeated in the indexed text so a hit on the tool name outranks an incidental
-body hit — the same field-weighting idea as the skill ``LocalPool``. Parameter
-names, their descriptions and enum values are folded into the indexed body:
-many tools carry the discriminating keywords (a repo owner, a channel id, an
-image size) in the schema rather than the one-line description, so indexing the
-schema lifts recall without touching the schema the model sees.
+该索引支撑 ``tool_search``：查询同时匹配 Tool name、description 与 parameter schema，复用
+:mod:`pico.utils.bm25` 的 Okapi BM25。Name 在索引文本中重复三次，让直接命中名称优先于正文
+偶然出现，沿用 Skill ``LocalPool`` 的 field-weighting；Property name、description 和 enum 也
+进入 body，因为 Repo owner、Channel id、Image size 等区分词常只存在于 Schema。
 
-The index rebuilds only when the catalog's ``(name, description, parameters)``
-set changes (startup + each MCP connect is one burst); steady-state ``search``
-is one query-side tokenize plus a BM25 dot product over precomputed
-``doc_freqs``. Each ``ensure`` flattens every tool's text to compute the
-signature (cheap string work); the expensive BM25 rebuild is skipped on a hit.
+Catalog 的完整 ``(name, description, parameters)`` 文本集合形成 Signature。每次 ``ensure`` 会
+做便宜的 flatten 比较，只有 Startup、MCP connect 或 hot-reload 真正改变已索引字段时才重建；
+Steady-state ``search`` 只需 query tokenize 与预计算 ``doc_freqs`` 上的 BM25 score。
 
-A single process-level slot caches the most recently built index keyed by that
-same signature, so the many short-lived agent loops a resident process spins up
-over one fixed tool set reuse one prebuilt BM25 rather than each rebuilding an
-identical one. A single slot suffices because only the main loop feeds this
-index (subagents run a separate minimal tool set), so one signature dominates;
-keying on the full indexed text (not just the name) also forces a rebuild when
-a tool's description or parameters change under hot-reload.
+Process-level 单槽缓存最近 Built Index，使 Resident Process 创建的多个 short-lived agent loops
+复用相同 BM25；Subagents 使用独立最小 Tool set，所以一个主 Signature 通常占主导。Build 在锁外
+完成，Slot swap 有锁；罕见并发重复 Build 是纯且同结果的可接受工作。
 """
 
 from __future__ import annotations
@@ -54,11 +43,11 @@ _cached_index: _BuiltIndex | None = None
 
 
 def _schema_text(parameters: "dict[str, Any] | None") -> str:
-    """Natural-language keywords drawn from a JSON-Schema parameter block.
+    """从 JSON-Schema Parameter block 提取具备搜索信号的 Natural-language keywords。
 
-    Collects property names, their ``description`` strings and enum values,
-    recursing through nested objects and array items. Types and structural
-    keywords are skipped — they carry no query signal.
+    函数递归收集 property names、``description`` strings、enum values 与 array items，跳过 Types
+    与 structural keywords，因为它们无法区分具体能力。递归深度受 `_MAX_SCHEMA_DEPTH` 限制，
+    非 dict 输入返回空字符串；结果只用于索引，不修改模型实际看到的 Schema。
     """
     if not isinstance(parameters, dict):
         return ""
@@ -87,20 +76,23 @@ def _schema_text(parameters: "dict[str, Any] | None") -> str:
 
 
 def _format_tool_text(tool: "Tool") -> str:
-    """Indexed text for one tool: name ×3, then description + parameter-schema
-    keywords ×1 — TF-based field weighting so a query term on the name
-    dominates a hit in the body."""
+    """生成单 Tool Indexed Text：name ×3，description 与 parameter-schema keywords ×1。
+
+    这种 TF-based field weighting 让 Query 直接命中 Tool name 时高于 body 偶然命中，同时仍能
+    通过参数描述召回能力。空 Description 被当作空文本，末尾空白移除；函数不 tokenize，返回
+    字符串会同时用于 Signature 与 BM25 Corpus。
+    """
     name = tool.name
     body = f"{tool.description or ''} {_schema_text(tool.parameters)}".strip()
     return f"{name} {name} {name} {body}".rstrip()
 
 
 def _get_or_build(sig: _Signature, items: list[tuple[str, str]]) -> _BuiltIndex:
-    """Return the shared prebuilt index for ``sig``, building it once on miss.
+    """返回 ``sig`` 对应的 Shared prebuilt index，Cache miss 时构建并发布。
 
-    ``items`` are ``(name, indexed-text)`` pairs already flattened by the
-    caller, so the text is computed once per ``ensure`` (for the signature) and
-    reused here rather than recomputed.
+    ``items`` 是 Caller 每次 ``ensure`` 已 flattened 的 ``(name, indexed-text)`` pairs，同一文本
+    既算 Signature 又构建 Corpus，不重复读取 Tool。Slot hit 在锁内直接返回；miss 时在锁外 tokenize/build，最后
+    短暂加锁替换 Cache。并发 miss 可能重复纯 Build，但不会返回半成品 Pair。
     """
     global _cached_sig, _cached_index
     with _cache_lock:
@@ -115,11 +107,14 @@ def _get_or_build(sig: _Signature, items: list[tuple[str, str]]) -> _BuiltIndex:
 
 
 class ToolIndex:
-    """Prebuilt BM25 over a tool catalog, rebuilt on (name, description, parameters) change.
+    """维护 Tool Catalog 的 Prebuilt BM25，并在 name/description/parameters 变化时重建。
 
-    Thread-safety: a lock guards the ``(names, BM25Okapi)`` pair. The expensive
-    build is delegated to the shared ``_get_or_build`` slot; the lock here is
-    held only for the atomic swap and for capturing references in ``search``.
+    Thread-safety 由实例 lock 保护 ``(names, BM25Okapi)`` Pair。昂贵 Build 委托共享
+    ``_get_or_build`` slot，实例锁只用于 atomic swap 与 ``search`` 捕获一致引用。仅实例或注册
+    顺序变化但完整 Signature 相同时可复用 Process cache。
+
+    `ensure` 必须在 Search 前同步 Live Registry；Search 返回名称而非 Tool instance，使 Controller
+    可再次以 Registry 为 Source of Truth 处理热删除。
     """
 
     def __init__(self) -> None:
@@ -129,7 +124,12 @@ class ToolIndex:
         self._bm25: BM25Okapi | None = None
 
     def ensure(self, tools: "list[Tool]") -> None:
-        """Adopt the shared index iff the (name, description, parameters) set changed."""
+        """仅当 Tool ``(name, description, parameters)`` Set 变化时采用新 Shared Index。
+
+        先 Flatten 当前 Tool 并计算 frozenset Signature；与实例现有 Signature 相同且 BM25 已存在
+        时 no-op。否则获取或构建 Pair，再在实例锁内同时更新 names、bm25、sig，Search 不会观察
+        到不匹配的名称与分数数组。
+        """
         items = [(t.name, _format_tool_text(t)) for t in tools]
         sig: _Signature = frozenset(items)
         with self._lock:
@@ -140,7 +140,12 @@ class ToolIndex:
             self._names, self._bm25, self._sig = names, bm25, sig
 
     def search(self, query: str, limit: int) -> list[str]:
-        """Return up to ``limit`` tool names ranked by BM25, zero-score dropped."""
+        """按 BM25 排名返回最多 ``limit`` 个 Tool names，并丢弃 zero-score hit。
+
+        Query 使用共享 CJK-aware tokenizer；Index 未建立或没有 Token 时返回空列表。方法在锁内
+        只捕获 BM25/names 引用，评分与排序在锁外完成，按 Score 降序返回。结果不带 Description/
+        Schema，Controller 会从 Live Registry 再组装。
+        """
         tokens = tokenize(query)
         with self._lock:
             bm25, names = self._bm25, self._names

@@ -1,14 +1,11 @@
-"""Query rewriter - judges whether skill retrieval is needed and rewrites
-verbose queries into concise skill-routing queries.
+"""Query Rewriter：判断是否需要 Skill Retrieval，并把 Verbose Query 改写为 Concise Routing Query。
 
-One LLM call does two things: (1) decide whether the user query needs skill retrieval
-at all (chat / greetings / general knowledge → skip the router fan-out
-entirely); (2) when retrieval IS needed, strip noise (paths, IDs,
-timestamps) and keep task type + domain so BM25 / dense fan-outs hit the
-relevant skills.
+一次 LLM Call 同时完成两件事：一是判断 User Query 是否需要 Skill Retrieval，Chat / Greetings / General
+Knowledge 可完全 Skip Router Fan-out；二是在 Retrieval **IS** Needed 时移除 Paths、IDs、Timestamps 等
+Noise，保留 Task Type + Domain + Required Capabilities，让 BM25 / Dense Fan-outs 命中相关 Skills。
 
-Failures default to ``need_retrieval=True`` (safe fallback: keep doing
-retrieval) so a flaky provider never silently turns off the skill lane.
+Failure 默认 ``need_retrieval=True``，这是 Safe Fallback：继续检索而非让 Flaky Provider Silently Turn
+Off Skill Lane。改写结果只影响检索 Query，不回答或执行用户任务。
 """
 
 from __future__ import annotations
@@ -53,12 +50,12 @@ class RewriteResult:
 
 
 class QueryRewriter:
-    """Judges retrieval necessity and rewrites queries via the agent's
-    shared :class:`LLMProvider`.
+    """通过 Agent Shared :class:`LLMProvider` 判断 Retrieval Necessity 并 Rewrite Query。
 
-    Routed through ``chat_with_retry`` so retry policy, generation
-    defaults and provider extras (cache control, routing affinity) match
-    the agent's main path.
+    调用统一走 ``chat_with_retry``，使 Retry Policy、Generation Defaults 与 Provider Extras，如 Cache
+    Control、Routing Affinity，与 Agent Main Path 一致。`analyze` 最多读取 Query 前 2000 Characters，并
+    要求 JSON ``need_retrieval`` / ``rewritten_query``；Timeout、Provider Error、Invalid JSON 都 Fail Open
+    到 Retrieval。实例不持久化 Query 或结果。
     """
 
     def __init__(

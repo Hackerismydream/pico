@@ -1,16 +1,13 @@
-"""Skill body ref-path resolution.
+"""Skill Body 中 Local Ref Paths 的 Resolution。
 
-Replaces `{baseDir}/x` placeholders and markdown links to bundled files
-(``references/``, ``scripts/``, ``assets/``, ``examples/``) with absolute
-paths rooted at the skill's directory. Used by both the active-skills
-render path (in :class:`LocalSkillCatalog`) and the router-hits render
-path (in :class:`SkillsSegmentBuilder`'s post-gate hydrate step) so the
-two flows produce identical bodies.
+模块把 ``{baseDir}/x`` Placeholder 与指向 Bundled Files 的 Markdown Links 转为 Rooted at Skill Directory
+的 Absolute Paths。支持 ``references/``、``scripts/``、``assets/``、``examples/``。Active-skills Render
+Path（:class:`LocalSkillCatalog`）与 Router-hits Post-gate Hydrate Path（`SkillsSegmentBuilder`）共同使用，
+保证 Two Flows 产生 Identical Bodies。
 
-Resolution is per-ref existence-checked: a ``{baseDir}/x`` whose target
-is missing on disk is left literal rather than handed to the agent as a
-confident 404. Code fences are skipped entirely so example markup is not
-silently mutated.
+Resolution 对每个 Ref 做 Existence Check：Target Missing 的 ``{baseDir}/x`` 保持 Literal，而不是交给
+Agent 一个 Confident 404。Code Fences 完全跳过，避免 Example Markup 被 Silently Mutated。路径解析成功
+只证明文件存在，不证明内容安全或已被读取。
 """
 
 from __future__ import annotations
@@ -30,18 +27,16 @@ _CODE_FENCE_RE = re.compile(r"(```.*?```)", re.S)
 
 
 def resolve_refs(body: str, skill_dir: Path | str | None) -> tuple[str, bool]:
-    """Return ``(rewritten_body, any_resolved)``.
+    """返回 ``(rewritten_body, any_resolved)``。
 
-    ``skill_dir`` is the directory of ``SKILL.md`` — bundled files live
-    under it (``<skill_dir>/references/x.md`` etc.). When ``None`` or
-    not a real directory, the function strips ``{baseDir}/`` to bare
-    relative paths and leaves markdown links alone — the agent then sees
-    a bare ``references/x.md`` it can't auto-resolve but at least no
-    nonsense literal ``{baseDir}/`` remains in the prompt.
+    ``skill_dir`` 是 ``SKILL.md`` 所在目录，Bundled Files 位于例如
+    ``<skill_dir>/references/x.md``。为 `None` 或非真实 Directory 时，函数把 ``{baseDir}/`` Strip 成 Bare
+    Relative Paths，并保持 Markdown Links；Agent 至少不会在 Prompt 中看到无意义 Literal Placeholder，
+    虽然 ``references/x.md`` 仍无法自动 Resolve。
 
-    Returns ``any_resolved=True`` when at least one substitution
-    materialized a real path on disk, so callers can decide whether to
-    emit a "Skill directory: ..." hint header.
+    至少一个 Substitution Materialized Real On-disk Path 时 ``any_resolved=True``，Caller 可据此输出
+    ``Skill directory: ...`` Hint Header。Empty Body 返回 ``("", False)``。存在 Fragment/Query 的 Link
+    会只检查基础文件，再保留后缀。
     """
     if not body:
         return "", False

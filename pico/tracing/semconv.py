@@ -1,10 +1,12 @@
-"""Semantic conventions for Pico's tracing standard.
+"""Pico Tracing Standard 的 Semantic Conventions。
 
-Owns both the standard span attribute/artifact *builders* (low-level helpers)
-and the per-span-kind *extractors* used by ``@trace.instrument(extract=...)``.
-Extraction is duck-typed / by-name binding, so it stays framework-agnostic and
-survives Pico refactors as long as the documented shapes hold.
-See ``docs/TRACING_STANDARD_API.md``.
+模块同时拥有 Standard Span Attribute/Artifact *Builders*（Low-level Helpers），以及
+``@trace.instrument(extract=...)`` 使用的 Per-span-kind *Extractors*。Extractor 根据参数名与 Duck-typed
+Shape 读取 Runtime 对象，保持 Framework-agnostic；只要 Documented Shapes 不变，就能承受 Pico Refactor。
+历史说明见 ``docs/TRACING_STANDARD_API.md``。
+
+这里定义“记录什么”和字段名，不负责 Span Lifecycle/Storage。Extractor Failure 必须由 Tracing Layer
+隔离，不能改变被观测 Host Behavior；Artifact 存在也不等于任务或交付成功。
 """
 
 from __future__ import annotations
@@ -32,11 +34,12 @@ def _split_session_key(session_key: str | None) -> tuple[str | None, str | None]
 
 
 def _turn_capabilities(loop: Any) -> dict[str, Any]:
-    """Snapshot what this turn's agent has loaded: tools, plugin backend +
-    plugin-contributed tools, and the available skills. Read off the AgentLoop
-    (``self``) at the turn probe. Each piece is best-effort — a missing attr
-    just omits that field, never breaks the turn span. This makes every trace
-    self-describing (e.g. a TUI trace plainly shows backend=null / no plugins)."""
+    """Snapshot 本 Turn Agent 已加载的 Tools、Plugin Backend/Tools 与 Available Skills。
+
+    数据在 Turn Probe 从 `AgentLoop` ``self`` 读取。每部分 Best-effort：Missing Attr 只 Omit Field，Never
+    Break Turn Span。由此 Trace 可 Self-describing，例如 TUI Trace 会明确显示 ``backend=null`` / No
+    Plugins。Snapshot 反映当时可见 Capability，不证明具体 Tool/Skill 被使用。
+    """
     caps: dict[str, Any] = {}
     try:
         names = loop.tools.tool_names
@@ -66,13 +69,12 @@ def _turn_capabilities(loop: Any) -> dict[str, Any]:
 
 
 def _provider_label(model: str | None, provider_class: str | None) -> str | None:
-    """Logical routing backend for a call.
+    """返回一次 Call 的 Logical Routing Backend Label。
 
-    Pico reaches every gateway through a single ``LiteLLMProvider`` class, so
-    the class name hides which backend actually served the call. LiteLLM encodes
-    that as the model prefix (``openrouter/anthropic/claude-...``), so the first
-    path segment is the backend (``openrouter``). Fall back to the provider class
-    name when the model carries no prefix (e.g. a native provider).
+    Pico 通过同一 ``LiteLLMProvider`` Class 访问多个 Gateways，Class Name 会隐藏真实 Backend。LiteLLM 在
+    Model Prefix 中编码它，例如 ``openrouter/anthropic/claude-...`` 的 First Segment 是
+    ``openrouter``。Model 无 Prefix 时回退到 Provider Class Name，例如 Native Provider；两者都缺失返回
+    `None`。
     """
     if model and "/" in model:
         return model.split("/", 1)[0]
@@ -120,15 +122,12 @@ def _coerce_text(value: Any) -> str:
 def _llm_input_payload(
     provider: str, model: str | None, messages: Any, tools: Any, provider_class: str | None = None
 ) -> dict:
-    """Artifact payload for the model-input card.
+    """构造 Model-input Viewer Card 的 Artifact Payload。
 
-    Pico passes ONE flat ``messages`` list (system + prior turns + current).
-    We split it into three non-overlapping views for the viewer:
-      - ``systemPrompt``: the system message,
-      - ``prompt``: the latest user message (the current input to this call),
-      - ``historyMessages``: the prior turns only — everything EXCEPT the system
-        message and that latest user message (so it doesn't duplicate them).
-    ``messages`` keeps the full raw list as the ground truth of what was sent.
+    Pico 传入 ONE Flat ``messages`` List，包含 System + Prior Turns + Current。函数拆成 Three
+    Non-overlapping Views：``systemPrompt`` 是第一条 System Message；``prompt`` 是 Latest User Message；
+    ``historyMessages`` 是 Prior Turns，即 **EXCEPT** 所有 System 与该 Latest User，避免重复。``messages`` 仍保留
+    Full Raw List，作为实际发送内容的 Ground Truth；``tools`` 也原样附带。
     """
     msgs = messages if isinstance(messages, list) else []
     system_prompt = ""
@@ -177,7 +176,11 @@ def _llm_output_payload(resp: Any) -> Any:
 
 
 def _skill_name_from_path(path: str | None) -> str | None:
-    """``…/skills/weather/SKILL.md`` → ``weather`` (the skill dir name)."""
+    """把 ``…/skills/weather/SKILL.md`` 转成 Skill Dir Name ``weather``。
+
+    同时兼容 Windows/Posix Separator；Path 不以 ``SKILL.md`` 结尾时返回 Last Segment，Empty 输入返回
+    `None`。该名称用于 Trace Label，不执行 Registry Validation。
+    """
     if not path:
         return None
     parts = [p for p in str(path).replace("\\", "/").split("/") if p]
@@ -187,12 +190,11 @@ def _skill_name_from_path(path: str | None) -> str | None:
 
 
 def _skill_read_path(name: str, params: Any) -> str | None:
-    """If a read_file targets a SKILL.md, return that path; else ``None``.
+    """``read_file`` Target 是 ``SKILL.md`` 时返回 Path，否则 `None`。
 
-    This is the discovery→injection follow-through: Pico's summary mode
-    tells the agent to ``read_file`` a skill's SKILL.md, and subagents (which
-    only get the skill *catalog*) do the same. Those reads carry the real body
-    into context but look like a plain file read — re-type them to skill.read.
+    这是 Discovery→Injection Follow-through：Pico Summary Mode 告诉 Agent 用 ``read_file`` 读取 Skill Body，
+    只获得 Skill *Catalog* 的 Subagents 也如此。这些 Reads 把真实 Body 带入 Context，却表面像普通 File
+    Read，因此 Tracing 将其 Re-type 为 ``skill.read``。函数只按 Tool Name/Path Suffix 识别，不证明读取成功。
     """
     if name not in _FILE_READ_TOOLS:
         return None
@@ -232,7 +234,11 @@ CHANNEL_OUTCOMES = (CHANNEL_DELIVERED, CHANNEL_DROPPED, CHANNEL_NO_OUTLET)
 
 
 def spine_turn_open(req: Any, conversation_id: str) -> dict[str, Any]:
-    """Opening attributes for the ``spine.turn`` root span."""
+    """构造 ``spine.turn`` Root Span 的 Opening Attributes。
+
+    从 Turn Request 提取 Conversation ID、Origin、Source Channel 与 Busy Policy。返回 Dict 只描述 Turn
+    Start Context，不包含 Terminal Outcome。
+    """
     source = getattr(req, "source", None)
     return {
         "spine.conversation_id": conversation_id,
@@ -243,11 +249,11 @@ def spine_turn_open(req: Any, conversation_id: str) -> dict[str, Any]:
 
 
 def spine_turn_failed(exc: BaseException, *, started: bool) -> dict[str, Any]:
-    """Terminal attributes for a Turn whose runner raised.
+    """构造 Runner Raised 的 Turn Terminal Attributes。
 
-    ``ProviderTurnError`` is matched by class name so tracing keeps its
-    no-import-of-the-host discipline; its ``category`` is the Provider's own
-    failure label, never the exception message.
+    ``ProviderTurnError`` 按 Class Name 匹配，使 Tracing 保持 No-import-of-host Discipline；其 ``category``
+    使用 Provider Own Failure Label，Never Exception Message。其他 Exception 标为 Generic Error。
+    `started` 决定 Terminal Event 是 ``TurnFailed`` 还是尚未真正开始的 ``TurnStarted`` Failure。
     """
     error_class = type(exc).__name__
     outcome = SPINE_PROVIDER_FAILED if error_class == "ProviderTurnError" else SPINE_ERROR
@@ -270,10 +276,11 @@ def spine_turn_cancelled(*, started: bool) -> dict[str, Any]:
 
 
 def spine_turn_ended(outcome: Any, latency_ms: float) -> dict[str, Any]:
-    """Terminal attributes for a Turn that reached ``TurnEnded``.
+    """构造到达 ``TurnEnded`` 的 Terminal Attributes。
 
-    A Turn that answered around a broken Tool is a completion, but not the same
-    evidence as a clean one, so it gets its own outcome value.
+    即使 Tool Broken，Turn 仍可能绕过失败给出 Answer，属于 Completion，但证据不同于 Clean One，因此
+    使用 ``completed_with_tool_failure``。同时记录 Tool Calls/Failures、Explicit Reply 与 Latency。到达
+    TurnEnded 不等于 Channel Delivery 成功。
     """
     tool_failures = int(getattr(outcome, "tool_failures", 0) or 0)
     return {
@@ -295,7 +302,11 @@ def channel_deliver(
     attempts: int = 0,
     error: str | None = None,
 ) -> dict[str, Any]:
-    """Attributes for one ``channel.deliver`` span (a terminal deliverable)."""
+    """构造一次 ``channel.deliver`` Span 的 Attributes，即 Terminal Deliverable Evidence。
+
+    字段包括 Channel、Event、Conversation ID、Outcome、Attempts/Derived Retries 与 Error。Caller 必须传入
+    ``delivered`` / ``dropped`` / ``no_outlet`` 等真实终态；Span 创建本身不能把 Attempt 变成 Delivery。
+    """
     return {
         "channel.name": channel,
         "channel.event": event,
@@ -339,12 +350,11 @@ __all__ = [
 
 
 def subagent(span, bound: dict[str, Any], result: Any, exc: BaseException | None) -> None:
-    """Extractor for ``SubagentManager._run_subagent``.
+    """``SubagentManager._run_subagent`` 的 Extractor。
 
-    The subagent runs the same decorated primitives (``chat_with_retry`` /
-    ``tools.execute``), so its llm/tool spans are captured automatically and — via
-    the contextvars snapshot ``asyncio.create_task`` takes at spawn — nest under
-    this node under the spawning turn. This node just describes the spawn.
+    Subagent 使用同一 Decorated Primitives ``chat_with_retry`` / ``tools.execute``，所以 LLM/Tool Spans 自动
+    Capture；Spawn 时 ``asyncio.create_task`` 取得 Contextvars Snapshot，使它们 Nest 在本 Node、再位于
+    Spawning Turn 下。此 Node 只描述 Spawn Task/Label/Origin/Status，不重复记录 Child Calls。
     """
     origin = bound.get("origin") or {}
     outcome_status = getattr(result, "status", None)
@@ -367,7 +377,11 @@ def subagent(span, bound: dict[str, Any], result: Any, exc: BaseException | None
 
 
 def plugin_load(contribution: str):
-    """Return an extractor for a sync ``PluginRegistry.build_*`` factory call."""
+    """返回 Sync ``PluginRegistry.build_*`` Factory Call 的 Extractor。
+
+    Closure 固定 Contribution Kind，并记录 Plugin Name、Result Type 与 Opt-out。它观测 Construction，不
+    表示 Backend ``start`` 或 Tool Registration 已完成。
+    """
 
     def _extract(span, bound: dict[str, Any], result: Any, exc: BaseException | None) -> None:
         span.set(
@@ -405,7 +419,11 @@ def _skill_inject_fill(span, *, via: str, names: list, ids: list, sources: dict,
 
 
 def skill_inject_active(span, bound: dict[str, Any], result: Any, exc: BaseException | None) -> None:
-    """``# Active Skills`` — emit only when always-on skills were force-injected."""
+    """记录 ``# Active Skills``；只有 Always-on Skills 真正 Force-injected 时 Emit。
+
+    Extractor 重读 Catalog 的 Always Skills、应用 ``always_max``，再记录 Names/IDs/Sources/Body Length。
+    Result 无 Text 或无 Metas 时 Cancel Span，避免把“检查过”误报成“已注入”。
+    """
     if result is not None and getattr(result, "text", ""):
         self = bound.get("self")
         metas = list(self._skills.get_always_skills() or [])
@@ -427,7 +445,11 @@ def skill_inject_active(span, bound: dict[str, Any], result: Any, exc: BaseExcep
 
 
 def skill_inject_skills(span, bound: dict[str, Any], result: Any, exc: BaseException | None) -> None:
-    """``# Skills`` — emit only when gate-selected skills' bodies were rendered."""
+    """记录 ``# Skills``；只有 Gate-selected Skill Bodies 已 Render 时 Emit。
+
+    `injected_skill_ids` 非空才写入 Skills Segment Evidence，并从 Segment Meta 记录 Source Breakdown；否则
+    Cancel Span。该证据证明 Body 进入 Segment，不证明模型遵循或成功执行 Skill。
+    """
     seg_meta = (getattr(result, "meta", None) or {}) if result is not None else {}
     ids = list(seg_meta.get("injected_skill_ids") or [])
     if ids:
@@ -444,7 +466,10 @@ def skill_inject_skills(span, bound: dict[str, Any], result: Any, exc: BaseExcep
 
 
 def _hit_ref(hit: Any) -> dict[str, Any]:
-    """Light, serializable view of a RouterHit candidate (avoid dumping bodies)."""
+    """返回 `RouterHit` Candidate 的 Lightweight Serializable View，避免 Dump Bodies。
+
+    只保留 ID/Name/Source/Score，供 Gate Input/Output Artifact；缺字段按 Duck Typing 返回 `None`。
+    """
     return {
         "id": getattr(hit, "id", None) or getattr(hit, "skill_id", None),
         "name": getattr(hit, "name", None),
@@ -454,8 +479,11 @@ def _hit_ref(hit: Any) -> dict[str, Any]:
 
 
 def skill_rewrite(span, bound: dict[str, Any], result: Any, exc: BaseException | None) -> None:
-    """``QueryRewriter.analyze`` — the need_retrieval judgment + query rewrite that
-    precedes skill retrieval. Its inner model call nests here (invocation source)."""
+    """记录 Skill Retrieval 前的 ``QueryRewriter.analyze`` Judgment + Query Rewrite。
+
+    Inner Model Call Nest 在此 Span 下，并把它作为 Invocation Source。Extractor 写 Query Preview、
+    ``need_retrieval``、Rewritten Query 与完整 Input/Output Artifact；判断为 False 只表示 Skip Retrieval。
+    """
     need = getattr(result, "need_retrieval", None)
     rewritten = getattr(result, "rewritten_query", None)
     span.set(
@@ -470,7 +498,11 @@ def skill_rewrite(span, bound: dict[str, Any], result: Any, exc: BaseException |
 
 
 def skill_gate(span, bound: dict[str, Any], result: Any, exc: BaseException | None) -> None:
-    """``LLMGateFilter.filter`` — narrows the skill candidates to the selected few."""
+    """记录 ``LLMGateFilter.filter`` 如何把 Skill Candidates 收窄到 Selected Few。
+
+    Span 保存 Task Preview、Candidate/Selected Count，并以轻量 Hit Refs 记录 Input、Available Tools 与
+    Output。它反映 Gate Result，不等于后续 Body Hydration/Injection。
+    """
     candidates = bound.get("candidates") or []
     selected = result if isinstance(result, list) else []
     span.set(
@@ -492,8 +524,11 @@ def skill_gate(span, bound: dict[str, Any], result: Any, exc: BaseException | No
 
 
 def context_curate(span, bound: dict[str, Any], result: Any, exc: BaseException | None) -> None:
-    """``CuratorSegmentBuilder._slow_path`` — the bounded internal curator LLM loop
-    (its per-step model + tool calls nest under this one node)."""
+    """记录 ``CuratorSegmentBuilder._slow_path`` 的 Bounded Internal Curator LLM Loop。
+
+    Per-step Model + Tool Calls Nest 在此 Node。Extractor 记录 Turn/Session、是否 Produced、History Length 与
+    Working State；Produced=False 表示没有 Curated Segment，不一定是 Error。
+    """
     seg = result
     state = bound.get("state")
     history = getattr(seg, "history", None) or [] if seg is not None else []
@@ -514,10 +549,12 @@ def context_curate(span, bound: dict[str, Any], result: Any, exc: BaseException 
 
 
 def personalize(span, bound: dict[str, Any], result: Any, exc: BaseException | None) -> None:
-    """Personalizer steps (classify / question / extract / post_learn). These call
-    ``provider.chat`` directly (not the instrumented ``chat_with_retry``), so the
-    step itself is the traced node: input = the call arguments, output = the step
-    result. The raw model round-trip is summarized here rather than a child span."""
+    """记录 Personalizer Steps：Classify / Question / Extract / ``post_learn``。
+
+    这些步骤直接调用 ``provider.chat``，而非 Instrumented ``chat_with_retry``，所以 Step 本身就是 Traced
+    Node：Input 是 Call Arguments，Output 是 Step Result。Raw Model Round-trip 在此 Summarized，而不是
+    Child Span。``personalize.ok`` 只反映 Exception 是否发生。
+    """
     args = {k: v for k, v in bound.items() if k != "self"}
     span.set({"personalize.step": span.name.split(".", 1)[-1], "personalize.ok": exc is None})
     span.artifact("personalize.input", args)
@@ -600,7 +637,11 @@ def memory_consolidate(span, bound: dict[str, Any], result: Any, exc: BaseExcept
 
 
 def _turn_request(bound: dict[str, Any]) -> Any:
-    """The turn payload (``TurnRequest``) — first arg after ``self``, by name or position."""
+    """取得 Turn Payload ``TurnRequest``，优先按 Name，再按 ``self`` 后 Position。
+
+    兼容参数名 ``req`` / ``msg``；都缺失时取 Bound Values 第二项。仅供 Duck-typed Extractor，找不到返回
+    `None` 而不影响 Host。
+    """
     for key in ("req", "msg"):
         if key in bound:
             return bound[key]
@@ -627,13 +668,20 @@ def _turn_input(bound: dict[str, Any]) -> Any:
 
 
 def turn_seed(bound: dict[str, Any]) -> dict[str, Any]:
-    """Seed the root turn span's session identity so every child span inherits it."""
+    """为 Root Turn Span Seed Session Identity，使每个 Child Span Inherit。
+
+    返回 Session Key、Channel、Chat ID；缺显式 Channel/Chat 时从 ``channel:chat_id`` Session Key 拆分。
+    """
     sk, channel, chat_id = _turn_ids(bound)
     return {"session_key": sk, "channel": channel, "chat_id": chat_id}
 
 
 def turn_open(span, bound: dict[str, Any]) -> None:
-    """Record turn input + emit an in-progress root so mid-turn children have a root."""
+    """记录 Turn Input，并 Emit In-progress Root，使 Mid-turn Children 有 Parent。
+
+    设置 Input Preview/``turn.in_progress=True``，写完整 Content/Channel/Chat/Media Artifact，再执行
+    Checkpoint。此时尚无 Final Output 或 Terminal Outcome。
+    """
     _, channel, chat_id = _turn_ids(bound)
     user_input = _turn_input(bound)
     req = _turn_request(bound)
@@ -646,7 +694,11 @@ def turn_open(span, bound: dict[str, Any]) -> None:
 
 
 def turn(span, bound: dict[str, Any], result: Any, exc: BaseException | None) -> None:
-    """Finalize the turn span: output + capabilities snapshot."""
+    """Finalize Turn Span，记录 Output 与 Capabilities Snapshot。
+
+    将 ``turn.in_progress`` 置 False，写 Input/Output Preview、当前 Tools/Plugins/Skills 与 Full Output
+    Artifact。Span Finalization 表示 Runtime Call 返回，不自动证明 Channel Delivered。
+    """
     user_input = _turn_input(bound)
     out_content = getattr(result, "content", None) if result is not None else None
     span.set(
@@ -661,13 +713,22 @@ def turn(span, bound: dict[str, Any], result: Any, exc: BaseException | None) ->
 
 
 def _finish_error(span, result) -> None:
-    """Mark the span ERROR when the model returned a soft error response."""
+    """Model 返回 Soft Error Response 时把 Span 标为 ERROR。
+
+    判断 ``finish_reason == "error"``，使用最多 200 Characters Content 作为 Error；即使 Provider 没抛
+    Exception，也不会把软失败记成成功。
+    """
     if getattr(result, "finish_reason", None) == "error":
         span.error((getattr(result, "content", "") or "")[:200])
 
 
 def llm_call(span, bound: dict[str, Any], result: Any, exc: BaseException | None) -> None:
-    """Extractor for a non-streaming provider call (``self`` is the provider)."""
+    """Non-streaming Provider Call Extractor，其中 ``self`` 是 Provider。
+
+    记录 Ground-truth Input Artifact、Logical Provider/Model、Finish Reason、Output Preview、Tool Calls、
+    Normalized Usage/Cost、Reasoning 与 Output Artifact。``llm.call_id`` 使用 Span ID，并继承 Invocation
+    Source。Usage/Cost 是 Provider/Estimator Evidence，不是任务完成结论。
+    """
     provider = bound.get("self")
     messages = bound.get("messages")
     tools = bound.get("tools")
@@ -686,7 +747,11 @@ def llm_call(span, bound: dict[str, Any], result: Any, exc: BaseException | None
 
 
 def llm_call_stream(span, bound: dict[str, Any], result: Any, exc: BaseException | None) -> None:
-    """Extractor for the streaming call (``self`` is the AgentLoop; provider = ``self.provider``)."""
+    """Streaming Call Extractor，其中 ``self`` 是 AgentLoop，Provider 来自 ``self.provider``。
+
+    字段与 Non-streaming Path 对齐，并额外设置 ``llm.stream=True``。Extractor 处理 Aggregated Result，而
+    不是每个 Delta；Stream Incomplete/Failure 的终态仍由 Result/Exception Lifecycle 决定。
+    """
     loop = bound.get("self")
     provider = getattr(loop, "provider", None)
     messages = bound.get("messages")
@@ -707,11 +772,14 @@ def llm_call_stream(span, bound: dict[str, Any], result: Any, exc: BaseException
 
 
 def tool_call(span, bound: dict[str, Any], result: Any, exc: BaseException | None) -> None:
-    """Extractor for ``ToolRegistry.execute``.
+    """``ToolRegistry.execute`` 的 Extractor。
 
-    Retypes explicit ``skill_read`` calls and ``read_file`` calls targeting a SKILL.md;
-    otherwise stays ``tool.call``. The originating tool is preserved in
-    ``skill.read.via_tool``.
+    Explicit ``skill_read`` 与 Target ``SKILL.md`` 的 ``read_file`` Calls 会 Re-type 为 ``skill.read``；其他
+    保持 ``tool.call``，Originating Tool 保存在 ``skill.read.via_tool``。普通 Tool 记录 Name、Args/Result
+    Preview、Duration、Input/Output Artifacts 与 Exception/Explicit Failed Signal。
+
+    Tool 返回 ``Error...`` 或 Result ``failed=True`` 时，即使没有 Exception 也标 Error。Tool Result 是执行
+    收据，不代表用户目标已完成。
     """
     name = bound.get("name")
     params = bound.get("params")

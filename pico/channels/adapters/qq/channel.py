@@ -1,14 +1,16 @@
-"""QQ channel — botpy SDK (WebSocket) for C2C, group, and direct messages.
+"""使用 botpy SDK 的 WebSocket 接入 QQ C2C、group 与 direct messages。
 
-Orchestration only: the botpy Client subclass routes events to this channel,
-which applies the pure routing in :mod:`.parsing` and replies via the SDK API.
+本模块解决的是 QQ 平台事件如何进入 Pico Runtime、Runtime 文本回复又如何回到原会话。
+``_make_bot_class()`` 创建的 botpy ``Client`` 子类只负责把 SDK 回调转交给
+``QQChannel``；纯粹的寻址和内容归一化位于 :mod:`.parsing`，发送则调用 botpy SDK API。
+实例会缓存入站消息 ID 以去重，并保存 ``chat_id`` 对应的 ``chat_type``，使出站回复能
+选择 ``post_group_message``、``post_dms`` 或 ``post_c2c_message``。
 
-Media boundary, both directions: inbound attachments become deterministic text
-labels from the metadata botpy exposes; their bytes are never fetched, because
-botpy publishes no download helper for the ephemeral attachment URL. Outbound
-attachments are not uploaded either — the reply endpoints used here carry
-markdown text only, so each dropped file is surfaced to the user as an explicit
-notice line.
+媒体在两个方向都有明确边界：入站附件只根据 botpy 暴露的 metadata 转成确定性文本
+label，不下载字节，因为 botpy 没有为短期 attachment URL 提供 download helper；出站
+reply endpoint 只承载 markdown text，也不会上传附件，而是为每个被舍弃的文件加入明确
+notice line。SDK 接受发送请求只表示平台调用成功，不证明用户已读、Agent 任务完成或
+交付结果可用于正向结论。本模块不负责 Agent 推理、Session 持久化或媒体存储。
 """
 
 from __future__ import annotations
@@ -32,7 +34,14 @@ _DEDUP_CAP = 1000
 
 
 def _make_bot_class(channel: "QQChannel") -> "type[botpy.Client]":
-    """Build a botpy Client subclass that forwards events to *channel*."""
+    """构造把 botpy 事件转发给 ``channel`` 的 ``Client`` 子类。
+
+    返回的类型在 ``QQChannel.start()`` 中实例化，并订阅 public messages、direct
+    message、C2C 与 group at-message 回调。每个回调只把原始 message 和
+    ``is_group`` 交给 ``QQChannel._on_message()``，不自行做 allowlist、去重或发布。
+    ``ext_handlers=False`` 还会关闭 botpy 默认文件日志，避免只读文件系统写入失败；
+    Pico 的运行日志统一交给 loguru。
+    """
     intents = botpy.Intents(public_messages=True, direct_message=True)
 
     class _Bot(botpy.Client):
@@ -57,7 +66,17 @@ def _make_bot_class(channel: "QQChannel") -> "type[botpy.Client]":
 
 
 class QQChannel(ChannelBase):
-    """QQ channel using the botpy SDK over WebSocket."""
+    """使用 botpy SDK over WebSocket 的 QQ Channel 适配器。
+
+    实例由 ``ChannelManager`` 启停，生命周期内拥有 botpy client、最近 1000 个消息 ID
+    的去重队列、递增 ``msg_seq``，以及 ``chat_id -> chat_type`` 路由缓存。入站事件经
+    :mod:`.parsing` 归一化后发布到 ``ChannelIntake``；出站 ``send()`` 根据缓存选择
+    group、guild DM 或 C2C endpoint。
+
+    这些缓存都只存在于当前进程，重启后不会恢复；缺失路由缓存时出站默认按 ``c2c``
+    处理。实例不拥有 Turn、Agent 或 Delivery 的最终状态。入站发布成功不代表任务完成，
+    平台 API 调用成功也不代表用户已经收到或阅读回复。
+    """
 
     config: QQConfig
     name = "qq"

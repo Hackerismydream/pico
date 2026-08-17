@@ -1,30 +1,18 @@
-"""Per-turn shadow-git checkpoint of the workspace (Bug2 safety net).
+"""为每个 Turn 创建 Workspace 的 out-of-band shadow-git checkpoint（Bug2 safety net）。
 
-Commits the workspace to an out-of-band git repo (separate ``--git-dir``,
-work-tree pointed at the real workspace) at the end of each turn. The user's
-own ``.git`` is never touched. A truncated multi-file edit therefore leaves a
-recoverable snapshot, and the interrupted turn's changed files can be listed
-for the next turn's recovery prompt.
+Turn 结束时，Service 用独立 ``--git-dir``、真实 Workspace 作为 work-tree 提交一份 Snapshot，
+never 触碰 User 自有 ``.git``。因此多文件编辑在迭代上限处被截断时仍有可恢复现场，Changed
+Files 与 Commit id 可进入 Next Turn recovery prompt。Granularity 是 per-turn one commit，与
+Claude Code/Cursor 类似。
 
-Scope (documented limits):
-- Only filesystem state is snapshotted — not conversation state.
-- Changes made via shell tools (``rm``/``mv``/``sed -i``) are captured by the
-  next ``add -A`` but are not attributable to a specific tool call. This is an
-  *undo stack for the working tree*, not full crash recovery.
-- Granularity is per-turn (one commit per turn), matching Claude Code/Cursor.
+Scope 有明确上限：只 Snapshot Filesystem state，不保存 Conversation state；Shell Tool 的
+``rm``/``mv``/``sed -i`` 会被下一次 ``add -A`` 捕获，却无法归因到具体 Tool call。这是 Working
+Tree 的 *undo stack*，not full crash recovery。
 
-Safety layers (defense in depth against snapshotting things the user doesn't
-want stored):
-1. ``info/exclude`` ships an expanded default blacklist covering common build
-   artifacts, virtualenvs, IDE state, OS junk, and likely-credential paths.
-2. The work-tree's own ``.gitignore`` files are honored automatically by git
-   (standard ``add -A`` semantics) — so anything the user marked private in
-   their own repo stays out of the shadow as well.
-3. ``gc.auto`` is configured so a periodic ``git gc --auto`` keeps long-lived
-   sessions from accumulating loose objects forever.
-
-Every git invocation is best-effort: failures are logged and degrade to a
-no-op (return ``None``) so the checkpoint layer can never break a turn.
+Safety 采用 Defense in Depth：Shadow Repo ``info/exclude`` 默认排除 Build、Virtualenv、IDE、OS
+Junk 与 likely-credential path；Work-tree 自身 ``.gitignore`` 继续按 Git standard semantics 生效；
+``gc.auto`` 与周期 ``git gc --auto`` 控制 loose objects。Every Git invocation 都是 best-effort，
+失败记录后退化为 ``None``/空结果，Checkpoint 绝不能打断 Turn。
 """
 
 from __future__ import annotations
@@ -121,7 +109,15 @@ _GIT_TIMEOUT_SECONDS = 30.0
 
 
 class CheckpointService:
-    """Shadow-git working-tree snapshots, one commit per turn."""
+    """管理每 Turn 一个 Commit 的 Shadow-git Working-tree Snapshot。
+
+    Workspace 与可选 State Root 在构造时解析；Shadow dir 必须严格位于对应 Root 下，``..``、
+    Absolute、空或 ``.`` 等 Escape 立即 `ValueError`，避免不同 Workspace 共享 Shadow Repo 并污染
+    ``edited_files``。Repo Lazy Initialize，Commit/GC 计数按 Service instance 维护。
+
+    所有 Git 子进程使用独立 Identity、禁用 GPG、设置 ``core.quotePath=false`` 以保留 CJK Path，
+    并受 30 秒 Timeout。Service 只提供恢复证据，不修改 User Git 配置或分支。
+    """
 
     def __init__(
         self,
@@ -151,12 +147,14 @@ class CheckpointService:
         self._commit_count = 0
 
     async def _git(self, *args: str) -> tuple[int, str, str]:
-        """Run a git command against the shadow repo. Returns (rc, out, err).
+        """针对 Shadow Repo 运行 Git Command，并返回 ``(rc, out, err)``。
 
-        ``core.quotePath=false`` keeps non-ASCII paths (CJK/Japanese/emoji) as
-        real UTF-8 in output instead of git's default octal-escaped form —
-        without this, ``edited_files`` would land in the recovery prompt as
-        ``"\\346\\265\\213"`` gibberish.
+        Command 固定带独立 git-dir/work-tree 与 ``core.quotePath=false``，使 CJK/Japanese/Emoji
+        等 non-ASCII Path 保持真实 UTF-8，而不是 Git 默认 Octal Escape；否则 ``edited_files`` 会以
+        ``"\\346\\265\\213"`` gibberish 进入 Recovery Prompt。Subprocess cwd 是真实 Workspace。
+
+        communicate 超过 `_GIT_TIMEOUT_SECONDS` 会 Kill/Wait Process，并合成 ``(-1, "", "timeout")``；
+        正常输出用 replacement decoding，调用方据 rc 决定 best-effort degradation。
         """
         cmd = (
             "git",
@@ -194,7 +192,15 @@ class CheckpointService:
         return proc.returncode or 0, out.decode(errors="replace"), err.decode(errors="replace")
 
     async def _ensure_init(self) -> bool:
-        """Lazily initialize the shadow repo. Idempotent; returns readiness."""
+        """Lazy Initialize Shadow Repo，幂等返回是否 Ready。
+
+        HEAD 不存在时创建 Parent 并 ``git init``，同时 best-effort 写 NOTICE.txt 解释目录用途、删除
+        与禁用方式。每次 Ready 前都会刷新 ``info/exclude``，并配置 gc.auto=256、
+        gc.autoDetach=false；前台 GC 避免与 Test/Shutdown rmtree 竞争，且受统一 Git timeout。
+
+        成功设置 `_ready=True`；Init/Git/OSError 记录 Debug 并返回 ``False``，不让 Checkpoint
+        Configuration 或 Disk Failure 破坏主 Turn。
+        """
         if self._ready:
             return True
         try:
@@ -241,10 +247,14 @@ class CheckpointService:
             return False
 
     async def commit_turn(self, label: str) -> tuple[str | None, list[str]]:
-        """Snapshot the current worktree as one commit.
+        """把当前 Worktree Snapshot 为一个带 ``label`` 的 Shadow Commit。
 
-        Returns ``(checkpoint_id, changed_files)``. When nothing changed
-        since the last turn, or on any git failure, returns ``(None, [])``.
+        Ready 后依次执行 ``add -A``、cached name-only diff、Commit、short HEAD。Changed Files 必须
+        在 Commit 前捕获，才能精确表示本 Turn staged state；无变化不创建空 Commit。成功返回
+        ``(checkpoint_id, changed_files)``，增加实例 Commit count 并触发 `_maybe_gc`。
+
+        Init、Add、Commit、Rev-parse 或 OS 任一步失败均 best-effort 返回 ``(None, [])``。这意味着
+        “没有 Checkpoint”可能是无变化也可能是 Git Failure，Caller 不能把它当作 Workspace 未改。
         """
         if not await self._ensure_init():
             return None, []
@@ -272,16 +282,14 @@ class CheckpointService:
             return None, []
 
     async def _maybe_gc(self) -> None:
-        """Periodic ``git gc --auto`` so long-lived sessions don't accumulate
-        loose objects forever. ``--auto`` is a no-op below ``gc.auto`` (256
-        loose objects by default), so the cost in steady state is one cheap
-        rev-list count, not a real repack.
+        """周期运行 ``git gc --auto``，避免 Long-lived Session 无限累积 Loose Objects。
 
-        ``_commit_count`` is per-instance and resets when CheckpointService
-        is re-constructed (e.g. fresh AgentLoop start). The 50-commit
-        heartbeat is therefore a hint, not a guarantee — git's own
-        ``gc.auto=256`` threshold (set at init) is the load-bearing safety
-        net that catches accumulated loose objects across process restarts.
+        ``--auto`` 在低于 ``gc.auto``（默认 256 Loose Objects）时是 no-op，steady state 成本只是
+        Cheap rev-list count，不会每 50 次都 Repack。``_commit_count`` 是 per-instance，重建
+        CheckpointService（例如 Fresh AgentLoop Start）会重置，所以 50-commit heartbeat 只是 Hint。
+
+        Load-bearing safety net 是 Init 时设置且跨 Process Restart 仍由 Repo 保存的 ``gc.auto=256``。
+        Heartbeat 禁用或 GC failure 都不影响 Turn，失败只记录 Debug。
         """
         if _GC_EVERY_N_COMMITS <= 0:
             return

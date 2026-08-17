@@ -1,9 +1,12 @@
-"""Local Skill retrieval and rendering machinery.
+"""Local Skill Retrieval、Fusion、Gate 与 Rendering Machinery。
 
-The :class:`SkillSource` protocol is host-internal rather than a plugin
-contribution point. The active Runtime builds a router over
-:class:`LocalSkillSource`; the generic router and fusion helpers remain useful
-for deterministic evaluation.
+初级读者可把 Skill 理解为可按当前请求检索并注入 Prompt 的局部操作说明。Active Runtime 先由
+`LocalSkillCatalog` 读取文件，再通过 `LocalSkillSource` Search，`SkillForgeRouter` 可重写 Query、融合
+多路排名、运行 LLM Gate，最后由 Resolver 展开引用并形成可注入内容。
+
+:class:`SkillSource` Protocol 是 Host-internal，而不是 Plugin Contribution Point。当前 Runtime 只在
+:class:`LocalSkillSource` 上构建 Router；Generic Router 与 Fusion Helpers 仍用于 Deterministic
+Evaluation。检索 Hit、Gate 通过、Skill 注入和任务成功是四个不同阶段。
 """
 
 from __future__ import annotations

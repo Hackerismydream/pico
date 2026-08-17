@@ -1,4 +1,10 @@
-"""Shell execution tool."""
+"""实现带 Sandbox、Workspace 与危险命令防护的 Shell Execution Tool。
+
+`ExecTool` 把模型 command 交给注入的 SandboxExecutor；默认 DirectExecutor 走 Host-side deny/
+allow list 与 Workspace 检查，真实 Sandbox 已有 VM 隔离时跳过 pattern deny，但仍尊重 Operator
+配置的 Workspace boundary。Timeout、PATH 注入和输出长度统一受限，非零 exit code 通过
+`ToolResult.failed` 明确表达。
+"""
 
 import os
 import re
@@ -11,7 +17,17 @@ from pico.sandbox import DirectExecutor, SandboxExecutor
 
 
 class ExecTool(Tool):
-    """Tool to execute shell commands."""
+    """在受控 Working Directory 中执行一条 Shell command 并返回有限输出。
+
+    构造参数可设置默认 timeout、cwd、deny/allow regex、Workspace restriction、PATH append 与
+    Executor。单调用 timeout 最大 600 秒，Registry 外层上限 660 秒只捕获 Executor 本身卡死；
+    输出经 Executor result 截到 10,000 字符。Direct 模式使用环境白名单，绝不把完整
+    ``os.environ`` 交给执行器；Sandbox 模式在 VM 内包装 PATH，避免 Host credential 泄漏。
+
+    Safety guard 是 best-effort，不替代 OS/VM 权限。危险 pattern、path traversal、Workspace 外
+    cwd 或命令中的绝对外部路径会返回 Error；执行异常也转成文本。返回成功文本只证明 command
+    结束，``exit_code != 0`` 会显式标为 failed。
+    """
 
     # 高于 exec 内部 600 秒上限（``_MAX_TIMEOUT``）的兜底值；执行器自身超时会先触发，
     # 此值只用于捕获完全卡死的执行器。
@@ -128,7 +144,12 @@ class ExecTool(Tool):
         )
 
     def _guard_command(self, command: str, cwd: str) -> str | None:
-        """Best-effort safety guard for potentially destructive commands."""
+        """对 Direct execution 执行危险 pattern、allowlist 与 Workspace 的 best-effort guard。
+
+        Command 先 strip/lower，再依次匹配 deny_patterns；命中即拒绝。配置 allow_patterns 时至少
+        命中一项，否则拒绝。最后委托 `_check_workspace_restriction` 验证路径。返回 ``None`` 表示
+        这些静态检查通过，不证明命令无副作用，也不解析 Shell 的完整动态语义。
+        """
         cmd = command.strip()
         lower = cmd.lower()
 
@@ -146,7 +167,13 @@ class ExecTool(Tool):
         return None
 
     def _check_workspace_restriction(self, command: str, cwd: str) -> str | None:
-        """Check only the workspace boundary constraints (no deny/allow-list)."""
+        """只检查 Workspace 路径边界，不应用 deny/allow-list。
+
+        未启用 ``restrict_to_workspace`` 时立即允许。启用后拒绝 ``../``、``..\\`` traversal，要求
+        resolved cwd 位于配置 Workspace 内，并从 command 提取 Windows、POSIX 与 Home absolute
+        paths；环境变量和 ``~`` 展开后落在 Workspace 外的路径也拒绝。无法解析单个路径时跳过，
+        因此这是防护层而非完整 Shell parser。
+        """
         if not self.restrict_to_workspace:
             return None
 

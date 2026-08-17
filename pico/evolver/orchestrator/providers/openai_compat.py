@@ -1,4 +1,4 @@
-"""Synchronous OpenAI-compatible ``call_fn`` for the semantic-node layer.
+"""为 semantic-node layer 提供同步 OpenAI-compatible ``call_fn``。
 
 The driver models are served behind OpenAI-compatible ``/v1`` endpoints
 (self-hosted Qwen / Kimi via vLLM). :func:`make_call_fn` returns the sync
@@ -15,8 +15,8 @@ Two behaviours matter for these specific models:
 - **No key required.** vLLM accepts any bearer token; ``api_key`` defaults to
   ``"EMPTY"`` and can be overridden from the environment.
 
-This is a plain sync transport (httpx) so it composes with the synchronous
-orchestrator FSM without threading an event loop through it.
+这是 plain sync httpx transport，可与 synchronous Orchestrator FSM 组合，无需贯穿 event loop。
+成功只表示得到 non-empty assistant content，不代表 semantic parse 或 evidence gate 通过。
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from pico.evolver.orchestrator.nodes.semantic import CallFn, Messages
 
 
 class EndpointError(RuntimeError):
-    """Raised when the endpoint fails to return usable content after retries."""
+    """endpoint 在全部 retry 后仍未返回 usable content 时抛出的异常。"""
 
 
 def _extract_content(data: dict) -> Optional[str]:
@@ -50,12 +50,13 @@ def make_call_fn(
     timeout: float = 180.0,
     retry_delays: tuple[float, ...] = (1.0, 2.0, 4.0),
 ) -> CallFn:
-    """Build a sync ``call_fn`` bound to one OpenAI-compatible chat endpoint.
+    """构造绑定到一个 OpenAI-compatible chat endpoint 的同步 ``call_fn``。
 
     ``base_url`` is the ``/v1`` root; ``/chat/completions`` is appended. Empty or
     missing content is retried with backoff (reasoning models occasionally emit
     no answer); after the final attempt an :class:`EndpointError` is raised so a
-    node failure is loud rather than a silent empty string.
+    node failure 会 loud fail，而不是返回 silent empty string。API key 顺序为 explicit、env、
+    ``EMPTY``；函数构造阶段不访问 network。
     """
     key = api_key or os.environ.get(api_key_env) or "EMPTY"
     url = base_url.rstrip("/") + "/chat/completions"

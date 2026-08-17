@@ -1,21 +1,15 @@
-"""SkillForgeRouter — fans :meth:`select` out to every registered source and
-fuses the per-source rankings via :func:`rrf_merge_weighted`.
+"""`SkillForgeRouter` 并发 Fan-out 所有 Sources，再用 :func:`rrf_merge_weighted` 融合排名。
 
-Two policies the router enforces (not its sources):
+Router 而非各 Source 统一执行 Two Policies：
 
-- **Per-source over-fetch.** :meth:`select(k)` asks every source for
-  ``k * over_fetch_factor`` hits. RRF then narrows to ``k`` overall.
-  Over-fetching matters because a source's #3 hit might be a great
-  cross-source merge candidate even if it would never be a top-3 by
-  itself. Default factor is 2 — twice the requested ``k``.
+- **Per-source Over-fetch**：:meth:`select(k)` 向每个 Source 请求 ``k * over_fetch_factor`` Hits，RRF 再
+  收窄到 Overall K。某 Source 的 #3 可能是优秀 Cross-source Merge Candidate，即使单独看进不了 Top-3；
+  Default Factor=2。
+- **Single-source Failure Isolation**：Source Raise 会在 :meth:`_safe_search` 内转成该轮 Empty List，并
+  记录 Failure Type；其他 Sources 继续 Feed RRF，避免一个 Transient 变成 Whole-pipeline Failure。
 
-- **Single-source failure isolation.** A source that raises is caught inside
-  :meth:`_safe_search` and turns into an empty list for that round.
-  The other sources still feed RRF so the router never produces a
-  whole-pipeline failure because of one transient.
-
-The router's source list is fixed at construction. The active Runtime wires a
-single Local source; deterministic evaluators may exercise multiple sources.
+Source List 在 Construction 时固定引用。Active Runtime 连接 Single Local Source；Deterministic
+Evaluators 可使用 Multiple Sources。Router Ranking 不包含 LLM Gate 或最终 Skill Hydration。
 """
 
 from __future__ import annotations
@@ -31,7 +25,12 @@ logger = logging.getLogger(__name__)
 
 
 class SkillForgeRouter:
-    """Compose N :class:`SkillSource` outputs into one top-K ranking."""
+    """把 N 个 :class:`SkillSource` Outputs 组合为一个 Top-K Ranking。
+
+    实例保存 Source Order、Over-fetch Factor 与 Dedup Field。Source List 按引用捕获，Host 启动后约定不再
+    修改；`select` 并发调用并填充 Diagnostics，最后用 Weighted RRF 合并。Router 不验证 Skill
+    Requirements，也不执行 Provider Gate。
+    """
 
     def __init__(
         self,
@@ -54,7 +53,12 @@ class SkillForgeRouter:
         *,
         diagnostics: dict[str, Any] | None = None,
     ) -> list[RouterHit]:
-        """Fan out to every source concurrently, fuse to top-K."""
+        """并发 Fan Out 每个 Source，并 Fuse 成 Top-K。
+
+        每个 Source 获得同一 `query`、`history` 与 Over-fetched K。`diagnostics` 提供时写入
+        ``failed_sources`` / ``failure_types``；Source Failure 仍可返回其他结果。`k` 传给最终 RRF 限制输出，
+        空 Sources 或全失败得到空列表，而不是异常。
+        """
         per_source_k = k * self._over_fetch_factor
         per_source = await asyncio.gather(*[self._safe_search(s, query, history, per_source_k) for s in self._sources])
         if diagnostics is not None:

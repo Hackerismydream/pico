@@ -1,4 +1,9 @@
-"""Boxlite microVM-based SandboxExecutor implementation."""
+"""基于 BoxLite MicroVM 的 `SandboxExecutor` Implementation。
+
+该 Backend 为 Agent Command 创建独立 VM，把 Host Workspace 以 Read-write `/workspace` Volume 挂载，
+并可限制 CPU、Memory、Disk、Network 与额外 Volumes。它同时支持 One-shot Exec 和 Long-running MCP
+Stdio Process；真正隔离边界来自 BoxLite VM，而不是 Shell Wrapper。
+"""
 
 from __future__ import annotations
 
@@ -15,23 +20,20 @@ logger = logging.getLogger(__name__)
 
 
 class BoxliteExecutor(SandboxExecutor):
-    """
-    A single boxlite Box whose lifecycle is tied to AgentLoop (per-loop instance).
+    """管理一个生命周期绑定到 `AgentLoop` 的 BoxLite Box，即 Per-loop Instance。
 
-    Uses the raw boxlite.Box API (via Pico's BoxLite runtime) rather than
-    SimpleBox so that both one-shot exec() and streaming start_process() can share
-    the same running VM. SimpleBox.exec() returns ExecResult directly and does not
-    expose the Execution object needed for stdin/stdout streaming.
+    Executor 通过 Pico BoxLite Runtime 使用 Raw ``boxlite.Box`` API，而不是 `SimpleBox`，使 One-shot
+    ``exec()`` 与 Streaming ``start_process()`` 共享同一 Running VM。`SimpleBox.exec()` 直接返回
+    `ExecResult`，不暴露 Stdin/Stdout Streaming 所需的 `Execution` Object。
 
-    The workspace directory is mounted at /workspace (rw); all commands default to
-    /workspace. The Box is eagerly created inside start() so VM startup errors
-    surface before the agent loop begins.
+    Workspace 以 RW 挂载到 ``/workspace``，所有 Command 默认在那里运行。Box 在 `start()` 内 Eagerly
+    Created，使 VM Startup Error 在 Agent Loop 开始前暴露。Executor 还跟踪 MCP Executions、Bridge
+    Tasks 与 Async Cleanup Stack，Stop 时按顺序回收。
 
-    BoxOptions.volumes expects List[Tuple[str, str, str]]; lists are coerced to
-    tuples at construction time. BoxOptions.env expects List[Tuple[str, str]];
-    exec-level env dicts are converted to tuples before being passed to Box.exec().
-    Box.exec() does not accept cwd or timeout parameters (SimpleBox-only kwargs);
-    cwd is injected via the shell command and timeout via asyncio.wait_for().
+    历史 ``BoxOptions.volumes`` / ``BoxOptions.env`` Contract 要求 Volumes/Env 使用 Tuple Lists；当前 BoxLite 0.8.2 接受 Volume Dicts，
+    Exec-level Env Dict 会转为 Tuples。CWD 通过当前 SDK 的 ``cwd`` 参数传入，Timeout 仍由
+    ``asyncio.wait_for`` 在 Host 侧强制。理解版本差异很重要，不能把 SimpleBox-only Kwargs 直接传给
+    Raw Box API。
     """
 
     WORKSPACE_MOUNT = "/workspace"
@@ -73,17 +75,16 @@ class BoxliteExecutor(SandboxExecutor):
     # ------------------------------------------------------------------
 
     async def start(self) -> None:
-        """Create the working Box and verify it is responsive.
+        """创建 Working Box，并验证它可以响应命令。
 
-        For allow_net=True (the common case) the working Box is created directly.
-        A separate throwaway SimpleBox is used only when allow_net is restricted
-        so the image can be pulled via the host's unrestricted network before the
-        working Box is created with its restricted sandbox network policy.
+        Common Case ``allow_net=True`` 时直接创建 Working Box。Network Restricted 时先用 Throwaway
+        `SimpleBox` 通过 Host Unrestricted Network 拉取 Image，再按受限 Sandbox Network Policy 创建
+        真正 Box。
 
-        On any failure after the box has been created (box.start(), _verify), we
-        run stop() before re-raising so a partially-initialised VM is never left
-        behind. The caller's AsyncExitStack will not call __aexit__ when
-        __aenter__/start() raises, so cleanup must happen here.
+        Box 创建后的任意 Failure，包括 ``box.start()`` 或 `_verify`，都会先执行 Partial-start Cleanup
+        再重新抛出。Caller 的 `AsyncExitStack` 在 ``__aenter__`` / `start()` 抛错时不会调用
+        ``__aexit__``，所以清理必须在这里完成。成功返回表示 VM 通过 ``echo ok`` Probe，不代表目标
+        Command 或 Network Policy 已被业务验证。
         """
         try:
             await self._start_inner()
@@ -110,10 +111,10 @@ class BoxliteExecutor(SandboxExecutor):
         await self._verify(box)
 
     async def _cleanup_after_failed_start(self) -> None:
-        """Run any cleanup callbacks queued during a partial start.
+        """运行 Partial Start 期间已经 Queue 的所有 Cleanup Callbacks。
 
-        Mirrors stop() but only for the lifecycle pieces that may have been set
-        up before the failure (no MCP bridges, no process_executions).
+        逻辑 Mirrors `stop()`，但只处理 Failure 前可能建立的 Lifecycle Pieces；此时尚无 MCP Bridges 或
+        ``process_executions``。Cleanup Error 记录 Warning 而不覆盖原 Startup Exception。
         """
         try:
             await self._stack.aclose()
@@ -121,7 +122,12 @@ class BoxliteExecutor(SandboxExecutor):
             logger.warning("Error during failed-start cleanup: %s", exc)
 
     async def _pull_image(self) -> None:
-        """Pre-pull the OCI image via a throwaway SimpleBox with unrestricted networking."""
+        """通过 Unrestricted Networking 的 Throwaway `SimpleBox` Pre-pull OCI Image。
+
+        SimpleBox 使用与 Working Box 相同的 Pico Runtime Home，确保 Image 进入同一 Cache；启动后执行
+        ``echo ok`` 验证拉取和最小运行能力。整个步骤受 `create_timeout` 限制，Timeout、依赖或 Platform
+        Error 会转换成含操作建议的 `SandboxInitError`。Throwaway Box 离开 Context 后自动销毁。
+        """
         import boxlite
 
         from pico.sandbox._runtime import get_boxlite_runtime
@@ -163,7 +169,12 @@ class BoxliteExecutor(SandboxExecutor):
             ) from exc
 
     async def _verify(self, box: Any) -> None:
-        """Run `echo ok` inside the working Box to confirm it is live."""
+        """在 Working Box 内运行 ``echo ok``，确认 VM 已 Live。
+
+        方法并发收集 Stdout/Stderr 并等待 Exit，要求 Exit Code 为零且 Stdout Strip 后等于 ``ok``。
+        `verify_timeout` 到期会 Kill Execution 并抛出带资源建议的 `SandboxInitError`；其他 SDK Error 也
+        统一转换。Probe 只验证最小命令通路，不验证用户 Workspace、额外 Volumes 或 External Network。
+        """
         execution: Any = None
 
         async def _check() -> tuple[str, int]:
@@ -205,7 +216,12 @@ class BoxliteExecutor(SandboxExecutor):
             )
 
     async def stop(self) -> None:
-        """Kill MCP server processes, cancel bridge tasks, then clean up the Box."""
+        """Kill MCP Server Processes、Cancel Bridge Tasks，再清理 Box。
+
+        顺序先终止 VM 内 Long-running Executions，再取消并 Gather Host Bridge Tasks，最后关闭 Async
+        Cleanup Stack、清空 Box Reference。单项 Kill Error 被吞掉以继续释放其余资源；返回后 Owned ID
+        应已由 `_cleanup_box` 移除。方法不保留 VM 内非挂载文件的数据。
+        """
         for exec_ in self._process_executions:
             try:
                 await exec_.kill()
@@ -288,11 +304,11 @@ class BoxliteExecutor(SandboxExecutor):
 
     @staticmethod
     async def _collect(stream: AsyncIterator[str]) -> str:
-        """Consume an Execution.stdout() or .stderr() async iterator into a single string.
+        """把 ``Execution.stdout()`` 或 ``stderr()`` Async Iterator 收集成 Single String。
 
-        Assumes boxlite yields decoded str lines, not bytes. Guards against both SDK
-        conventions: if lines already include a trailing '\n' they are kept as-is;
-        if they don't, '\n' is appended.
+        假设 BoxLite Yield 已解码 `str` Lines，而不是 Bytes。函数兼容两种 SDK Convention：已有 Trailing
+        ``\n`` 的 Line 原样保留，缺少时补一个换行。空 Stream 返回空字符串；它会把全部输出放进内存，
+        不适合无界 Long-running Process。
         """
         lines = [line async for line in stream]
         if not lines:
@@ -364,14 +380,15 @@ class BoxliteExecutor(SandboxExecutor):
         args: list[str],
         env: dict[str, str] | None = None,
     ) -> tuple[Any, Any]:
-        """Start a long-running process inside the VM and return MCP-compatible streams.
+        """在 VM 内启动 Long-running Process，并返回 MCP-compatible Streams。
 
-        Returns (read_stream, write_stream):
-          read_stream  — anyio MemoryObjectReceiveStream[JSONRPCMessage | Exception]
-          write_stream — anyio MemoryObjectSendStream[JSONRPCMessage]
+        Returns ``(read_stream, write_stream)``：Read Stream 是
+        ``anyio MemoryObjectReceiveStream[JSONRPCMessage | Exception]``，Write Stream 是
+        ``anyio MemoryObjectSendStream[JSONRPCMessage]``。两者都兼容 MCP SDK `ClientSession`
+        Constructor；Caller Owns ``write_send.aclose()``，通常由 ``MCP ClientSession.__aexit__`` 处理。
 
-        Both streams are compatible with the MCP SDK's ClientSession constructor.
-        The caller owns write_send.aclose() — typically handled by MCP ClientSession.__aexit__.
+        方法为 Stdout JSON Lines、Stderr Logging 与 Stdin JSONRPC 建立三个 Bridge Tasks，并跟踪底层
+        Execution 供 `stop` 回收。返回 Streams 只表示 Process 已启动，不表示 MCP Handshake 已成功。
         """
         import anyio
         from mcp.shared.message import SessionMessage
@@ -433,7 +450,11 @@ class BoxliteExecutor(SandboxExecutor):
                 await read_send.aclose()
 
         async def _stderr_bridge() -> None:
-            """VM stderr → logger (WARNING)."""
+            """把 VM Stderr 转发到 Logger 的 WARNING Level。
+
+            每个非空 Line 带 Command Context 记录；Stream 正常关闭静默结束，其他异常记录 Error。该
+            Bridge 只提供诊断，不把 Stderr 发送到 MCP JSONRPC Read Stream。
+            """
             try:
                 async for raw_line in stderr_iter:
                     line = raw_line.strip()
@@ -471,7 +492,12 @@ class BoxliteExecutor(SandboxExecutor):
         return read_recv, write_send
 
     def _translate_cwd(self, cwd: str | None) -> str:
-        """Map host workspace path → VM /workspace/... path."""
+        """把 Host Workspace Path 映射为 VM ``/workspace/...`` Path。
+
+        `cwd=None` 或 Workspace Root 映射到 Mount Root；内部子路径保留 Relative Suffix。解析后位于
+        Workspace 外的 Path 不会映射任意 Host Directory，而是记录 Warning 并回退到 ``/workspace``，
+        防止 CWD 绕过已挂载工作区边界。
+        """
         if cwd is None:
             return self.WORKSPACE_MOUNT
         host_path = Path(cwd).resolve()

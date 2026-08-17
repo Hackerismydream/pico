@@ -1,8 +1,9 @@
-"""Post-confirm gates (SOP §2 ⑥): infra health, activation, and paired lift.
+"""实现 post-confirm gates（SOP §2 ⑥）：infra health、activation 与 paired lift。
 
 Also home to the pluggable decision policy (``policy``/``strategies``) and the
 focused-Fisher statistics (``fisher``) that let the two benchmark lines share
-one round loop.
+one round loop。Package 只汇总 gate/policy public surface；任一单 gate 成功都不等于 candidate
+已 promote 或 sealed generalisation 成立。
 """
 
 from __future__ import annotations

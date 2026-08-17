@@ -1,7 +1,6 @@
-"""QQ channel adapter (migrated to the capability contract).
+"""迁移到 Capability Contract 的 QQ Channel Adapter。
 
-Intentionally does NOT re-export ``QQChannel`` — that would import botpy at
-package import and defeat cheap spec discovery (``registry.discover_specs``
-imports ``qq.spec`` only). Construct via ``spec.SPEC.factory`` or import from
-``.channel`` directly.
+Package 刻意 **不** Re-export ``QQChannel``，否则 Import 会加载 ``botpy`` 并破坏 Cheap Spec Discovery；
+``registry.discover_specs`` 只 Import ``qq.spec``。Runtime 通过 ``spec.SPEC.factory`` 构造，或按需直接
+Import ``.channel``。
 """

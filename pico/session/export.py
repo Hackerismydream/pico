@@ -1,8 +1,9 @@
-"""Render and export a stored Session.
+"""把 Stored Session 渲染为 Transcript，或导出为可自验证 Portable Envelope。
 
-Pure rendering (``render_transcript``) is separated from the file write
-(``write_transcript``). Public export surfaces write a canonical JSON envelope
-that preserves the complete Session payload and carries a SHA-256 digest.
+Pure ``render_transcript`` 与 I/O ``write_transcript`` 分离。Public Portable Export 写 Canonical JSON，
+保留 Complete Session Payload、Human-readable Markdown 与 SHA-256 Digest；`verify_export` 只能证明
+结构与 Payload 未被改动，不证明其中 Message、Tool Result 或外部事实真实，也不能恢复 Runtime
+Side Effect。
 """
 
 from __future__ import annotations
@@ -25,12 +26,12 @@ _EXPORT_SCHEMA = "pico.session.export.v1"
 
 
 def render_transcript(session: Session) -> str:
-    """Render ``session`` to a full-fidelity Markdown transcript.
+    """把 ``session`` 渲染为 Full-fidelity Markdown Transcript。
 
-    Includes a header (key, timestamps, message count, title when set) and each
-    message in order: user/assistant/system/tool under distinct headings, the
-    assistant reasoning block when present, and tool calls/results as fenced
-    blocks. Pure — performs no I/O.
+    Header 包含 Key、Timestamps、Message Count 与可选 Title；随后按原顺序为 User/Assistant/System/
+    Tool 使用不同 Heading，保留 Assistant Reasoning、Thinking Block、Tool Calls 与 Fenced Results。
+    Multimodal Image 渲染为 ``[image]``，其他 Structured Content 转 JSON。函数 Pure，无 I/O，也不
+    修改 Session。
     """
     parts: list[str] = [_render_header(session)]
     for msg in session.messages:
@@ -39,16 +40,21 @@ def render_transcript(session: Session) -> str:
 
 
 def default_export_path(workspace: Path, key: str) -> Path:
-    """Default destination for a portable Session export."""
+    """返回 Portable Session Export 的 Default Destination。
+
+    Path 是 ``<workspace>/exports/<safe key>.pico-session.json``；Key 经 safe_filename，函数不创建
+    Directory、不检查冲突，也不写 File。Caller 可传 Custom Dest 覆盖。
+    """
 
     return Path(workspace) / "exports" / f"{safe_filename(key)}.pico-session.json"
 
 
 def write_transcript(session: Session, dest: Path) -> Path:
-    """Render ``session`` and write it to ``dest``, returning the absolute path.
+    """渲染 ``session`` 并以 UTF-8 写入 ``dest``，返回 Absolute Path。
 
-    Creates the parent directory if absent and overwrites any existing file so
-    a re-export reflects the session's current state.
+    Parent 缺失时创建，Existing File 直接覆盖，使 Re-export 反映 Current Session State。它写的是
+    Markdown Transcript，不包含 Portable Schema/Digest；需要完整可验证 Payload 应用
+    `write_portable_export`。
     """
     dest = Path(dest)
     ensure_dir(dest.parent)
@@ -57,7 +63,12 @@ def write_transcript(session: Session, dest: Path) -> Path:
 
 
 def build_portable_export(session: Session) -> dict[str, Any]:
-    """Build a complete, self-verifying Session export envelope."""
+    """构建包含 Complete Payload 与 Digest 的 Self-verifying Session Export Envelope。
+
+    Payload 保存 Key、Time、Metadata、last_consolidated、pending_clarification、全部 Messages、Count
+    与 Rendered Transcript；外层写固定 Schema 与 Canonical Payload SHA-256。返回 Dict 尚未写盘，
+    Digest 只覆盖 Payload，不覆盖外层格式空白。
+    """
     payload = {
         "key": session.key,
         "created_at": session.created_at.isoformat(),
@@ -77,7 +88,11 @@ def build_portable_export(session: Session) -> dict[str, Any]:
 
 
 def write_portable_export(session: Session, dest: Path) -> Path:
-    """Write a canonical portable export and return its absolute path."""
+    """写入 Canonical Portable Export，并返回 Destination Absolute Path。
+
+    Parent 自动创建，Envelope 使用 UTF-8、ensure_ascii=False、Sorted Keys、2-space Indent 与末尾换行。
+    Existing File 覆盖。写入成功才返回 Path；函数不在写后自动 Verify，Caller 可调用 verify_export。
+    """
     dest = Path(dest)
     ensure_dir(dest.parent)
     envelope = build_portable_export(session)
@@ -89,7 +104,12 @@ def write_portable_export(session: Session, dest: Path) -> Path:
 
 
 def verify_export(path: Path) -> bool:
-    """Return whether ``path`` is a structurally valid, untampered export."""
+    """验证 ``path`` 是否是结构有效且 Payload Untampered 的 Portable Export。
+
+    检查 UTF-8 JSON、Envelope Dict、Schema Version、Payload/Digest Type、Messages List 与 Message Count，
+    并要求全部 Required Fields 存在；最后重新计算 Canonical SHA-256。任何 I/O/Decode/Structure/
+    Digest Failure 返回 False。成功不验证 Timestamp Semantic 或 Message Trustworthiness。
+    """
     try:
         envelope = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
@@ -186,7 +206,12 @@ def _reasoning_text(msg: dict[str, Any]) -> str:
 
 
 def _as_text(content: Any) -> str:
-    """Flatten a message content value (str, multimodal list, or dict) to text."""
+    """把 Message Content 的 String、Multimodal List 或 Dict Flatten 为 Transcript Text。
+
+    None 变空 String，String 原样；List 中 Text Block 提取 text，Image URL 变 ``[image]``，其他 Dict
+    JSON 编码，非 Dict 转 str；Top-level Structured Value 也 JSON 编码。函数只服务显示，不保证可
+    Round-trip 恢复原 Multimodal Shape。
+    """
     if content is None:
         return ""
     if isinstance(content, str):

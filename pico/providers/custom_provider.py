@@ -1,4 +1,9 @@
-"""Direct OpenAI-compatible provider — bypasses LiteLLM."""
+"""实现直接调用 OpenAI-compatible Endpoint、完全 Bypass LiteLLM 的 Provider。
+
+`CustomProvider` 用 AsyncOpenAI Client 发送 Chat Completion，Instance 固定随机 Session Affinity
+Header 改善 Backend Cache Locality。它支持 Tool Call、Reasoning Field 与 Usage 归一化，错误转
+finish_reason=error；缺少真实 Streaming Override 时使用 Base Single-delta Fallback。
+"""
 
 from __future__ import annotations
 

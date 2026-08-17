@@ -1,10 +1,10 @@
-"""Inbound content extraction for Feishu messages.
+"""Feishu Inbound Message 的 Rich-content Extraction。
 
-Feishu delivers rich payloads (post / interactive card / share card) whose
-text has to be flattened into a plain string for the agent. These helpers
-walk each payload shape and pull out human-readable text (and, for posts,
-embedded image keys). Feishu-specific by nature — they understand Feishu's
-card/post JSON schema, so they live with the adapter, not in a shared layer.
+Feishu 会发送 Post、Interactive Card、Share Card 等 Payload，需要 Flatten 成 Agent 可消费的 Plain String。
+Helpers 遍历各 Shape，提取 Human-readable Text；Post 还返回 Embedded Image Keys。它们理解 Feishu
+Card/Post JSON Schema，因此属于 Adapter，不放 Shared Layer。
+
+Extraction Best-effort：Unknown Shape 生成 Type Label 或 Empty，而不是把解析成功误当成附件已下载。
 """
 
 from __future__ import annotations
@@ -21,7 +21,10 @@ _SHARE_LABELS = {
 
 
 def extract_share_card(content: dict, msg_type: str) -> str:
-    """Flatten a share-card / interactive / system payload to text."""
+    """把 Share-card / Interactive / System Payload Flatten 为 Text。
+
+    Interactive 递归提取 Elements；Known Share Types 生成带 ID Label，Unknown 返回 ``[msg_type]``。
+    """
     if msg_type == "interactive":
         parts = extract_interactive(content)
         return "\n".join(parts) if parts else f"[{msg_type}]"
@@ -30,7 +33,11 @@ def extract_share_card(content: dict, msg_type: str) -> str:
 
 
 def extract_interactive(content) -> list[str]:
-    """Recursively pull title + element text out of an interactive card."""
+    """递归提取 Interactive Card 的 Title + Element Text。
+
+    String 先 JSON Decode，Invalid String 作为 Plain Text 保留；Dict 遍历 Elements、Nested Card 与 Header。
+    Non-dict 返回 Empty List。输出按遍历顺序，不保留完整视觉布局。
+    """
     if isinstance(content, str):
         try:
             content = json.loads(content)
@@ -63,7 +70,11 @@ def _title_text(title) -> list[str]:
 
 
 def extract_element(element: dict) -> list[str]:
-    """Extract text/links from one card element, recursing into containers."""
+    """从单个 Card Element 提取 Text/Links，并递归 Containers。
+
+    支持 Markdown/Plain、Div Fields、Anchor、Button URL、Image Alt 以及 Unknown Note/Column Containers。
+    不支持的字段被忽略；Image 只保留 Alt，不下载 Bytes。
+    """
     if not isinstance(element, dict):
         return []
     tag = element.get("tag", "")
@@ -109,10 +120,10 @@ def _text_field(text) -> list[str]:
 
 
 def extract_post(content: dict) -> tuple[str, list[str]]:
-    """Extract ``(text, image_keys)`` from a Feishu post (rich text) payload.
+    """从 Feishu Rich-text Post 提取 ``(text, image_keys)``。
 
-    Accepts the direct ``{title, content}`` shape, a localized
-    ``{zh_cn: {...}}`` shape, and the ``{post: {...}}`` envelope.
+    接受 Direct ``{title, content}``、Localized ``{zh_cn: {...}}`` 与 ``{post: {...}}`` Envelope，也尝试其他
+    Dict Locale。没有可解析 Block 返回 ``("", [])``。Image Keys 只是后续 SDK Download Handles。
     """
     root = content
     if isinstance(root, dict) and isinstance(root.get("post"), dict):

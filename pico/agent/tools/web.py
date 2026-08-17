@@ -1,4 +1,9 @@
-"""Web tools: web_search and web_fetch."""
+"""提供外部 ``web_search`` 与受 URL 安全门禁保护的 ``web_fetch`` Tool。
+
+`WebSearchTool` 调用 Serper 返回标题、URL 与 snippet；`WebFetchTool` 调用 Jina Reader 抽取可读
+正文，并在请求前验证目标 URL、返回后再次验证 final URL，防止 redirect 绕过 SSRF 边界。
+两者都是 EXTERNAL effect，支持显式 Proxy，API key 在调用时解析以接纳运行中配置变化。
+"""
 
 import json
 import os
@@ -13,7 +18,12 @@ from pico.security.network import validate_resolved_url, validate_url_target
 
 
 class WebSearchTool(Tool):
-    """Search the web using Serper."""
+    """通过 Serper 搜索公开 Web，并返回有限数量的结构化文本结果。
+
+    ``query`` 必填，``count`` 在 1–10 内并受实例 max_results 默认值约束。Tool 读取 Serper answer
+    box、knowledge graph 与 organic results，保持标题、link、snippet 供模型判断；无命中返回
+    正常文本。缺 API key、HTTP 或 Proxy failure 返回 Error/failed ToolResult，不缓存搜索结果。
+    """
 
     capability = ToolCapability(effect=ToolEffect.EXTERNAL)
     name = "web_search"
@@ -34,7 +44,11 @@ class WebSearchTool(Tool):
 
     @property
     def api_key(self) -> str:
-        """Resolve API key at call time so env/config changes are picked up."""
+        """在每次调用时解析 Serper API key，使 Environment/Config 变化立即生效。
+
+        Constructor 显式 key 优先，否则读取 ``SERPER_API_KEY``；两者都没有时返回空字符串，
+        execute 再给出配置指引。属性不记录或展示 key，也不把它写入 Tool Result。
+        """
         return self._init_api_key or os.environ.get("SERPER_API_KEY", "")
 
     async def execute(self, query: str, count: int | None = None, **kwargs: Any) -> str:
@@ -92,7 +106,16 @@ class WebSearchTool(Tool):
 
 
 class WebFetchTool(Tool):
-    """Fetch and extract content from a URL using Jina Reader."""
+    """通过 Jina Reader 抓取 URL，并返回经过双重目标验证的可读内容。
+
+    输入先由 `validate_url_target` 拒绝内网、危险 scheme 等目标；Reader 返回 JSON 后，必须存在
+    data object、final URL 与 content，final URL 再经 `validate_resolved_url`，防止安全地址重定向
+    到禁止网络。正文按 ``maxChars`` 截断，并连同 original/final URL、status、extractMode、长度
+    和 truncated flag 编码为 JSON。
+
+    API key 可选，Authorization 使用 Bearer；Proxy/HTTP/响应形状错误都返回 failed ToolResult。
+    Tool 不执行页面内指令，获取内容仍应在 Context 中作为外部不可信数据处理。
+    """
 
     capability = ToolCapability(effect=ToolEffect.EXTERNAL)
     name = "web_fetch"
@@ -114,7 +137,11 @@ class WebFetchTool(Tool):
 
     @property
     def api_key(self) -> str:
-        """Resolve API key at call time so env/config changes are picked up."""
+        """在每次 Fetch 时解析 Jina API key，以接纳运行中 Environment/Config 更新。
+
+        Constructor key 优先，否则读取 ``JINA_API_KEY``；空值表示使用 Reader 未鉴权路径，而不是
+        配置错误。属性不发请求、不验证 key，也不把敏感值写入日志或返回 JSON。
+        """
         return self._init_api_key or os.environ.get("JINA_API_KEY", "")
 
     async def execute(self, url: str, extractMode: str = "markdown", maxChars: int | None = None, **kwargs: Any) -> str:  # noqa: N803  （LLM 工具模式使用驼峰命名）

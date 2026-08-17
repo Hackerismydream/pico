@@ -1,20 +1,17 @@
-"""After-iteration task-completion judge hook.
+"""After-iteration Task-completion Judge Hook。
 
-Fires once per AgentLoop turn (not once per LLM iteration). Calls the
-LLM judge to classify the turn as completed / failed / unknown, then
-forwards the verdict to ``EvalAdapter.record_task_completion`` which
-writes it to HISTORY.md through the MemoryEngine.
+Hook 从 Context 提取第一条 User Message 与最后一条 Assistant Content，调用 LLM Judge 把结果分成
+Completed / Failed / Unknown，再把非 Unknown Verdict 转给 ``EvalAdapter.record_task_completion``，由
+MemoryEngine 写入 ``HISTORY.md``。
 
-The hook stays pass-through (never short-circuits): an evaluator
-should never interrupt the user's reply chain, only annotate it.
+它始终保持 Pass-through，Never Short-circuits：Evaluator 只能 Annotate，不能中断 User Reply Chain。
+Judge 或 Adapter 出错也会降级为 Quiet No-op。
 
-A note on phase mapping: AgentLoop currently fires ``after_iteration``
-inside the ReAct inner loop, which would invoke this hook on every
-iteration. To stay on the "once per turn" semantic the hook tracks
-the last-seen ``ctx.iteration``; if a turn's iteration count resets
-(new turn) it judges; otherwise it stays quiet. This is a stopgap
-until AgentLoop grows a dedicated ``after_turn`` phase distinct from
-``after_iteration``.
+Phase Mapping 需要特别注意：`AgentLoop` 当前在 ReAct Inner Loop 内触发 ``after_iteration``，所以本
+Hook 会在每个满足提取条件的 LLM Iteration 后运行；虽然 Context 提供 ``ctx.iteration``，当前实现
+**没有** 单独的 Last-seen Iteration
+去重状态。真正的 Once-per-turn 语义要等 `AgentLoop` 提供与 ``after_iteration`` 分离的 Dedicated
+``after_turn`` Phase，调用方不能仅凭旧命名假设每 Turn 只 Judge 一次。
 """
 
 from __future__ import annotations
@@ -30,7 +27,12 @@ logger = logging.getLogger(__name__)
 
 
 class AfterIterationHook(AgentHook):
-    """LLM judge over the turn's final response."""
+    """对当前 Context 中最新 Assistant Response 运行 LLM Judge。
+
+     Hook 依赖 `EvalEngineConfig` 决定是否启用，用 `EvalJudge` 生成 Verdict，再由 `EvalAdapter` 写回长期
+    记录。生命周期由 Agent Loop 的 After-iteration Phase 驱动；它本身不缓存已判断 Turn，也不会修改
+     Messages 或 Final Response。
+    """
 
     def __init__(
         self,
@@ -89,12 +91,12 @@ class AfterIterationHook(AgentHook):
 
     @staticmethod
     def _extract(ctx: AgentHookContext) -> tuple[str, str]:
-        """Pull ``user_goal`` (first user message in ctx.messages) and
-        ``final_response`` (last assistant content) from the context.
+        """从 Context 提取 ``user_goal`` 与 ``final_response``。
 
-        Returns empty strings on structural mismatch so the hook quietly
-        no-ops rather than blowing up — the chain isn't a place for
-        loud error reporting.
+        ``user_goal`` 取 ``ctx.messages`` 中 First User Message，``final_response`` 取 Last Assistant
+        Content，并从尾部反向扫描以跳过更早回复。Structural Mismatch 时返回 Empty Strings，让 Hook
+        Quietly No-op 而不是 Blowing Up；Hook Chain 不适合 Loud Error Reporting。函数只接受字符串
+        Content，不把 Tool-only 或结构化 Blocks 猜测成最终文本。
         """
         messages = ctx.messages or []
         user_goal = ""

@@ -1,9 +1,11 @@
-"""``pico evolve`` — the opt-in Beta self-evolution entry point.
+"""``pico evolve``：opt-in Beta self-evolution 命令入口。
 
-run      cold start -> rounds -> unseal, resumable at any interruption
-check    validate config / models / bench setup without running anything
-status   inspect progress (never reveals sealed test numbers)
-finalize end the run now and unseal (one-way)
+``run`` 执行 cold start -> rounds -> unseal，并可从任意 interruption resume；``check`` 只验证
+config/model/benchmark setup，不运行 experiment；``status`` 查看 progress，绝不暴露 sealed test
+number；``finalize`` 立即结束 run 并执行 one-way unseal。
+
+CLI 只解析参数并委托 :mod:`pico.evolver.launch.runner`。命令返回 0 只表示对应 command 完成；
+特别是 check/status 不代表 candidate 有正向 evidence，finalize 也不保证 sealed result 为正。
 """
 
 from __future__ import annotations
@@ -15,6 +17,11 @@ from pico.product import CLI_NAME
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """构造 ``pico evolve`` 的 argparse command tree。
+
+    四个 subcommand 都要求 ``--config``，并支持 ``--smoke``；run 额外提供 ``--force``，
+    finalize 额外要求 ``--yes`` 才执行 one-way 操作。函数只创建 parser，不读取配置。
+    """
     p = argparse.ArgumentParser(
         prog=f"{CLI_NAME} evolve",
         description=(
@@ -45,6 +52,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """解析 ``argv`` 并分派 run/check/status/finalize。
+
+    ``argv=None`` 时使用 process args。runner command 的 integer exit code 原样返回；理论上的
+    unknown command 返回 2，但 argparse 已要求 subcommand。
+    """
     args = build_parser().parse_args(argv)
     from pico.evolver.launch import runner
 

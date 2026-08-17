@@ -1,22 +1,16 @@
-"""Plugin manifest schema.
+"""Plugin Manifest Schema。
 
-A manifest is a TOML file (``pico-plugin.toml``) shipped alongside
-a plugin's Python package. It declares the plugin's identity,
-contribution points, and config schema — everything the registry needs
-to know without importing the plugin's code.
+Manifest 是与 Plugin Python Package 一起发布的 TOML File ``pico-plugin.toml``。它声明 Plugin Identity、
+Contribution Points 与 Config Schema，也就是 Registry 在 **不 Import Plugin Code** 的情况下需要知道的
+全部数据。
 
-The single root table is ``[plugin]``. Contribution arrays are
-``[[plugin.contributes.<kind>]]``. Per design, the only contribution
-kind that lands in PG-1 is ``memory_backends``; the model accepts
-unknown extras silently so future kinds don't break old hosts.
+唯一 Root Table 是 ``[plugin]``，Contribution Arrays 使用 ``[[plugin.contributes.<kind>]]``。PG-1 最初
+只有 ``memory_backends``，当前也支持 Tools；Model 会 Silently 接受 Unknown Extras，使 Future Kinds
+不会破坏 Older Hosts。
 
-Validation rules worth flagging:
-
-- ``id`` and ``version`` are required (``min_length=1``).
-- ``factory`` must look like ``module.path:callable_name`` — checked
-  here so a typo fails at startup rather than at first activation.
-- Contribution name uniqueness *within a manifest* is enforced; the
-  registry separately enforces uniqueness *across* manifests.
+Important Validation Rules：``id`` 与 ``version`` Required 且 ``min_length=1``；``factory`` 必须符合
+``module.path:callable_name``，让 Typo 在 Startup 而非 First Activation 才失败；Contribution Name 在
+*单个 Manifest 内*必须唯一，Registry 另行约束 *跨 Manifests* 冲突。
 """
 
 from __future__ import annotations
@@ -44,7 +38,11 @@ class _ManifestBase(BaseModel):
 
 
 class MemoryBackendContribution(_ManifestBase):
-    """One ``[[plugin.contributes.memory_backends]]`` entry."""
+    """一条 ``[[plugin.contributes.memory_backends]]`` Entry。
+
+    `name` 是 Registry Slot，`factory` 是符合 ``module.path:callable`` 的 Lazy Reference。Model 只验证
+    引用格式，不 Import Factory，也不证明返回对象满足 Memory Backend Protocol。
+    """
 
     name: str = Field(min_length=1)
     factory: str = Field(min_length=1)
@@ -60,13 +58,11 @@ class MemoryBackendContribution(_ManifestBase):
 
 
 class ToolContribution(_ManifestBase):
-    """One ``[[plugin.contributes.tools]]`` entry.
+    """一条 ``[[plugin.contributes.tools]]`` Entry。
 
-    ``factory`` is a ``module.path:callable`` resolving to a
-    ``Callable[[PluginContext], Tool]`` — it returns a single
-    :class:`~pico.agent.tools.base.Tool` the host registers into the
-    agent's tool set at boot. One tool per entry; a plugin exposing
-    several tools lists several entries.
+    ``factory`` 是解析为 ``Callable[[PluginContext], Tool]`` 的 ``module.path:callable``，返回一个 Host
+    在 Boot 时注册进 Agent Tool Set 的 :class:`~pico.agent.tools.base.Tool`。每条 Entry 对应 One Tool；
+    Plugin 暴露多个 Tools 时必须列出多个 Entries。Manifest Parse 不执行该 Callable。
     """
 
     name: str = Field(min_length=1)
@@ -83,11 +79,11 @@ class ToolContribution(_ManifestBase):
 
 
 class Contributes(_ManifestBase):
-    """All contribution arrays for a single manifest.
+    """单个 Manifest 的全部 Contribution Arrays。
 
-    ``memory_backends`` and ``tools`` are consumed today; the model keeps
-    extra fields silently so future contribution types don't break
-    older hosts reading newer manifests.
+    当前消费 ``memory_backends`` 与 ``tools``；Model Silently 保留兼容策略、忽略 Extra Fields，使 Older
+    Hosts 读取带 Future Contribution Types 的 Newer Manifests 时不会直接失败。忽略也意味着旧 Host 不会
+    激活它不理解的新贡献。
     """
 
     memory_backends: list[MemoryBackendContribution] = Field(default_factory=list)
@@ -95,10 +91,11 @@ class Contributes(_ManifestBase):
 
 
 class PluginManifest(_ManifestBase):
-    """Parsed ``pico-plugin.toml``.
+    """解析后的 ``pico-plugin.toml`` Pure-data Model。
 
-    Constructed via :meth:`from_toml_path` / :meth:`from_toml_str`; the
-    raw ``__init__`` works too for programmatic tests.
+    通常通过 :meth:`from_toml_path` / :meth:`from_toml_str` 构造，Programmatic Tests 也可直接使用 Raw
+    ``__init__``。Frozen Pydantic Model 保存 Identity、Pico Compatibility、Default Enablement、
+    Contributions 与 Descriptive Config Schema；构造成功不触发 Plugin Import。
     """
 
     id: str = Field(min_length=1)
@@ -130,17 +127,21 @@ class PluginManifest(_ManifestBase):
 
     @classmethod
     def from_toml_str(cls, data: str) -> "PluginManifest":
-        """Parse from a raw TOML string."""
+        """从 Raw TOML String 解析 `PluginManifest`。
+
+        先由 `tomllib.loads` 解码，再要求 Top-level ``[plugin]`` Table 并执行 Pydantic Validation。Malformed
+        TOML 或 Schema Error 原样向上传播；方法不访问 Filesystem 或 Import Factory。
+        """
         raw = tomllib.loads(data)
         return cls._from_raw(raw)
 
     @classmethod
     def from_toml_path(cls, path: Path) -> "PluginManifest":
-        """Parse from a file on disk.
+        """从 Disk File 解析 `PluginManifest`。
 
-        Raises ``FileNotFoundError`` if missing, ``tomllib.TOMLDecodeError``
-        on malformed TOML, and ``pydantic.ValidationError`` on schema
-        mismatch.
+        Missing File 抛出 ``FileNotFoundError``，Malformed TOML 抛出 ``tomllib.TOMLDecodeError``，Schema
+        Mismatch 抛出 ``pydantic.ValidationError``。文件以 Binary 打开交给 `tomllib`；成功只表示声明
+        合法，不执行或验证 Factory Code。
         """
         with path.open("rb") as f:
             raw = tomllib.load(f)

@@ -1,4 +1,15 @@
-"""Executable fixture and evaluator bindings for supported Candidate Labels."""
+"""为 supported Candidate Label 绑定可执行 fixture 与 evaluator。
+
+Candidate manifest 只声明 label/fixture/evaluator 名称，本模块把这些声明连接到实际验证代码。
+Runtime label 的 fixture 检查 mutable surface、before/after content change 与 manifest digest；
+evaluator 从 candidate/control per-task measurement 重算 three-shield gate、eligible attribution、
+full-train lift 与 score。accepted 决策不能由 caller 布尔值直接声明，必须由 canonical
+``AcceptedRuntimeEvidence`` 重现。
+
+fixture 通过只证明 patch snapshot 合规；gate 重算 accepted 才能证明当前 train evidence 满足
+promotion policy；两者都不等于 candidate 已 activated、sealed generalisation 为正或业务任务
+已交付。
+"""
 
 from __future__ import annotations
 
@@ -26,7 +37,10 @@ if TYPE_CHECKING:
 
 
 class CandidateEvidenceError(ValueError):
-    """Raised when declared evidence cannot be reproduced by its bound evaluator."""
+    """declared evidence 无法由 bound evaluator 重现时抛出的异常。
+
+    该异常表示 evidence contract 失败，不应降级为普通 candidate rejection 后仍允许 accepted。
+    """
 
 
 Snapshot = Mapping[str, bytes | None]
@@ -57,19 +71,28 @@ _TASK_EVAL_KEYS = frozenset(
 
 @dataclass(frozen=True)
 class FixtureBinding:
+    """fixture 名称与 snapshot validator 的不可变绑定。"""
+
     name: str
     validate: FixtureValidator
 
 
 @dataclass(frozen=True)
 class EvaluatorBinding:
+    """evaluator 名称与 outcome recomputation callable 的不可变绑定。"""
+
     name: str
     evaluate: OutcomeEvaluator
 
 
 @dataclass(frozen=True)
 class AcceptedRuntimeEvidence:
-    """Canonical measurements from which accepted Runtime evidence is rebuilt."""
+    """可重建 accepted Runtime verdict 的 canonical measurements。
+
+    对象保存 schema/evaluator、canonical train task order、expected attempts、Gate-b eligible
+    subset，以及 candidate/control 的完整 ``TaskEval`` sequence。它是 measurement payload，
+    不直接存 ``accepted=True``；decision 必须通过 ``recompute_accepted_runtime_evidence`` 重算。
+    """
 
     schema_version: int
     evaluator: str
@@ -92,6 +115,12 @@ class AcceptedRuntimeEvidence:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "AcceptedRuntimeEvidence":
+        """从 exact-field mapping 解析 accepted Runtime evidence。
+
+        字段集合必须精确匹配 schema；schema_version/expected_attempts 必须是 int，task/eligible
+        必须为 string list，candidate/control 必须为 TaskEval list。shape 失败抛出
+        ``CandidateEvidenceError``；更深的 gate 语义由 recomputation 验证。
+        """
         raw = dict(value)
         if set(raw) != _ACCEPTED_RUNTIME_KEYS:
             raise CandidateEvidenceError(
@@ -240,7 +269,14 @@ def recompute_accepted_runtime_evidence(
     manifest: CandidateManifest,
     evidence: AcceptedRuntimeEvidence,
 ) -> EvidenceDecision:
-    """Recompute the accepted verdict solely from canonical task measurements."""
+    """只根据 canonical task measurements 重算 accepted verdict。
+
+    验证 Runtime label、evaluator identity、unique/canonical task order、exact attempt count、
+    eligible subset、candidate/control coverage，并重新运行 three-shield gate。gate 必须 promoted
+    且两臂 measurement valid，full-train lift 必须 finite positive。成功返回
+    ``EvidenceDecision(accepted, gate_passed=True)``；任一条件失败抛出
+    ``CandidateEvidenceError``。
+    """
 
     _validated_runtime_measurements(manifest, evidence)
     return EvidenceDecision(
@@ -391,7 +427,17 @@ def evaluate_candidate_evidence(
     task_ids: list[str] | tuple[str, ...] | None = None,
     expected_attempts: int | None = None,
 ) -> EvidenceDecision | AcceptedRuntimeEvidence:
-    """Run the fixture and evaluator declared by a supported manifest."""
+    """执行 supported manifest 声明的 fixture 与 evaluator。
+
+    首先确认 label policy supported，manifest fixture/evaluator 与 canonical policy 完全一致，且
+    两者都有 executable binding；随后验证 before/after snapshot，再评估 ``CandidateOutcome``。
+    non-accepted outcome 返回 ``EvidenceDecision``；accepted outcome 必须提供 complete
+    candidate/control train measurements、task_ids 与 expected_attempts，返回可重算的
+    ``AcceptedRuntimeEvidence``。
+
+    missing binding、policy drift、fixture mismatch 或 accepted measurement 不完整都会抛出
+    ``CandidateEvidenceError``，不能把无法测量误报为正向结论。
+    """
 
     policy = LABEL_POLICIES[manifest.label]
     if not policy.supported:

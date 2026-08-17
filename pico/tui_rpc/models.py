@@ -1,13 +1,14 @@
-"""Pydantic v2 models for the tui-ipc-bridge JSON-RPC contract.
+"""定义 tui-ipc-bridge JSON-RPC contract 的 Pydantic v2 models。
 
-These models are the Python-side mirror of ``ui-tui/rpc-schema/openrpc.json``.
-Each public type defined in ``specs/tui-ipc.md`` §3.12 has a corresponding
-:class:`pydantic.BaseModel`, and each RPC method has a ``<Method>Params`` and
-``<Method>Result`` model.
+这些类型是 ``ui-tui/rpc-schema/openrpc.json`` 的 Python-side mirror。
+``specs/tui-ipc.md`` §3.12 中每个 public type 都有对应
+:class:`pydantic.BaseModel`，每个 RPC method 都有 ``<Method>Params`` 与
+``<Method>Result`` model。``TurnEvent`` 使用 ``type`` discriminator 把 streaming event
+建模为可辨别 union；``METHOD_MODELS`` 则把 method name 连接到参数和结果 schema。
 
-Drift between this module and the OpenRPC schema is caught in CI by
-``tests/test_rpc_schema_match.py``.  Any change here MUST be mirrored in the
-schema (or vice versa) within the same commit.
+``tests/test_rpc_schema_match.py`` 在 CI 中检测本模块与 OpenRPC schema 的 drift。任何一侧
+变更都 MUST 在同一 commit 同步另一侧。model validation 成功只证明 wire shape 与类型约束
+成立，不证明 method 已执行、副作用已持久化或 Agent 任务完成。
 """
 
 from __future__ import annotations
@@ -23,7 +24,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class _Strict(BaseModel):
-    """Base class for all RPC models — forbids extra fields by default."""
+    """所有 RPC model 的严格基类，默认禁止 extra field。
+
+    ``extra="forbid"`` 让未知字段在 validation 时失败，并使生成的 JSON Schema 包含
+    ``additionalProperties: false``，与 OpenRPC 对每个 object 的显式定义一致。该类只提供
+    schema policy，不承载具体协议字段。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -40,7 +46,12 @@ JsonValue = Any
 
 
 class SessionInfo(_Strict):
-    """The init bundle rendered by the retained TUI Session panel."""
+    """retained TUI Session panel 渲染所需的 init bundle。
+
+    ``model``、``skills``、``tools`` 是前端必需字段；provider、memory、context window、
+    lazy 状态、usage、version、cwd 与 MCP server 信息用于展示和诊断。它是 Session 打开
+    时的 snapshot，不保证后续 Runtime 状态持续不变。
+    """
 
     model: str
     skills: dict[str, list[str]]
@@ -56,7 +67,11 @@ class SessionInfo(_Strict):
 
 
 class SessionMessage(_Strict):
-    """A transcript message returned by ``session.resume``."""
+    """``session.resume`` 返回的一条 transcript message。
+
+    ``role`` 只能是 ``user``、``assistant``、``system`` 或 ``tool``；``text``、``context``
+    与 ``name`` 可选。该 wire model 面向 TUI 渲染，不保留原始 multimodal non-text block。
+    """
 
     role: Literal["user", "assistant", "system", "tool"]
     text: str | None = None
@@ -65,7 +80,11 @@ class SessionMessage(_Strict):
 
 
 class UsageSnapshot(_Strict):
-    """Token / cost usage reported at the end of a turn."""
+    """Turn 结束时报告的 token 与 cost usage snapshot。
+
+    三类 token counter 必填；``cost_usd`` 和 context 使用量/上限/百分比可选。snapshot 反映
+    已报告 usage，不单独证明 provider 已结算、任务完成质量或正向结论可用。
+    """
 
     prompt_tokens: int
     completion_tokens: int
@@ -211,7 +230,12 @@ TurnEvent = Annotated[
 
 
 class SessionListItem(_Strict):
-    """One row in the session picker (gatewayTypes.ts:130 SessionListItem)."""
+    """Session picker 中的一行，对应 ``gatewayTypes.ts:130 SessionListItem``。
+
+    ``id`` 是完整 ``<channel>:<chat_id>``，``started_at`` 是由 ``created_at`` 转换的 Unix
+    timestamp；``message_count``、``preview``、``source`` 与 ``title`` 供列表展示。它只是
+    metadata row，不包含 transcript。
+    """
 
     id: str = Field(..., description="Full session_key: <channel>:<chat_id>.")
     message_count: int
@@ -278,7 +302,11 @@ class SessionMostRecentParams(_Strict):
 
 
 class SessionMostRecentResult(_Strict):
-    """Response shape per gatewayTypes.ts:147 SessionMostRecentResponse."""
+    """``gatewayTypes.ts:147 SessionMostRecentResponse`` 对应的 response shape。
+
+    ``session_id`` 是完整 ``tui:<chat_id>``，无 Session 时为 null；source、started_at 与
+    title 为兼容 frontend 的可选字段。返回 ID 不表示 Session file 已加载。
+    """
 
     session_id: str | None = Field(
         default=None,
@@ -290,17 +318,20 @@ class SessionMostRecentResult(_Strict):
 
 
 class SessionTitleParams(_Strict):
-    """Params per slash/commands/core.ts:201,218 — session_id + optional title."""
+    """``slash/commands/core.ts:201,218`` 使用的 title 参数。
+
+    ``session_id`` 是完整 Session key；``title`` 提供时为 set path，省略时为 get path。
+    """
 
     session_id: str = Field(..., description="Full session_key.")
     title: str | None = None
 
 
 class SessionTitleResult(_Strict):
-    """Response per gatewayTypes.ts:154 SessionTitleResponse.
+    """``gatewayTypes.ts:154 SessionTitleResponse`` 对应的 response。
 
-    pending=True means the title is held in memory for a lazy (never-saved)
-    session and lands with the session's first save.
+    ``pending=True`` 表示 title 仍保存在 lazy、never-saved Session 的 memory 中，会在该
+    Session 第一次 save 时落盘；``False`` 表示本次调用无需等待后续首次 save。
     """
 
     title: str | None = None
@@ -309,7 +340,10 @@ class SessionTitleResult(_Strict):
 
 
 class SessionClearParams(_Strict):
-    """Params for session.clear — wipe messages in place, keep the sid."""
+    """``session.clear`` 参数：原地清空 messages，同时保留 sid。
+
+    ``session_id`` 必须是要改写的完整 Session key；model 只验证 shape，不检查 active Turn。
+    """
 
     session_id: str = Field(..., description="Full session_key to clear.")
 
@@ -320,7 +354,10 @@ class SessionClearResult(_Strict):
 
 
 class SessionUndoParams(_Strict):
-    """Params for session.undo — drop the last n turns (default 1)."""
+    """``session.undo`` 参数：删除最后 ``n`` 个 Turn，默认 1。
+
+    Turn boundary 由 handler 使用 ``role==user`` 规则解释；本 model 只承载 session key 与 n。
+    """
 
     session_id: str = Field(..., description="Full session_key to undo.")
     n: int = Field(1, description="Trailing turns to drop (role==user boundary).")
@@ -331,7 +368,11 @@ class SessionUndoResult(_Strict):
 
 
 class SessionExportParams(_Strict):
-    """Params for session.export — write a portable Session artifact."""
+    """``session.export`` 参数：写出 portable Session artifact。
+
+    ``session_id`` 可为完整 key、prefix，或省略以表示 current Session；歧义与 not-found 由
+    handler 的 shared resolver 区分。
+    """
 
     session_id: str | None = Field(
         default=None,
@@ -422,7 +463,11 @@ class ImageAttachResult(_Strict):
 
 
 class ModelOptionProvider(_Strict):
-    """One provider row in the ``/model`` picker."""
+    """``/model`` picker 中的一条 provider row。
+
+    字段描述本地 provider identity、认证配置、是否 current、auth type、env key、可选模型、
+    ``api_base`` 要求与 warning。``authenticated`` 表示本地配置状态，不是远端连通性证明。
+    """
 
     slug: str
     name: str

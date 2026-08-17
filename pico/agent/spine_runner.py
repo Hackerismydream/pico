@@ -1,10 +1,9 @@
-"""Spine ``TurnRunner`` that wraps an ``AgentLoop``: each turn delegates to
-``AgentLoop.run_turn``. It lives on the agent side because it holds the loop;
-spine never imports the agent.
+"""在 Agent Side 把 AgentLoop 适配为 Spine ``TurnRunner``。
 
-``stream`` is the canon Q2-D assembly switch: a streaming outlet (TUI) passes
-True so the reply streams as StreamDelta and dissolves; a non-streaming outlet
-(REPL) passes False so the reply is one Text.
+每个 Turn 直接委托 ``AgentLoop.run_turn``。Adapter 持有具体 Loop，所以必须位于 Agent Package；
+Spine never imports Agent，依赖反转保持成立。Constructor 的 ``stream`` 是 Canon Q2-D Assembly
+Switch：TUI 等 Streaming Outlet 传 True，回复以 StreamDelta 发送并 dissolves；REPL 传 False，
+回复只形成一个 Text。Adapter 不改变 Request、Emit、Drain 或 TurnOutcome。
 """
 
 from __future__ import annotations

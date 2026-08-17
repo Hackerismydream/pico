@@ -1,15 +1,14 @@
-"""Segment 6 + history slot — the Curator, as a SegmentBuilder.
+"""把 Curator 实现为同时产出 Segment 6 与 History slot 的 SegmentBuilder。
 
-The Curator is just another :class:`SegmentBuilder` (``order=6``,
-``needs_prefix=True``). Unlike seg1–5 it produces two things from one
-computation: the ``# Curator Working State`` text (system slot, segment
-6) and the budget-trimmed ``*history`` (history slot). Both ride out on
-a single :class:`Segment` (``text`` + ``history``).
+Curator 与其他贡献者共享 :class:`SegmentBuilder` 协议，但声明 ``order=6``、
+``needs_prefix=True``。一次计算同时返回 ``# Curator Working State``（System slot 的 segment 6）
+和 budget-trimmed ``*history``（History slot），两者装在同一 :class:`Segment` 的 ``text`` 与
+``history`` 中，避免工作状态与所选历史来自不同计划。
 
-Because it ``needs_prefix``, :class:`ContextAssembler` runs it in phase
-B with ``ctx.prefix`` populated (the already-assembled seg1–5 + user +
-tools), so its internal budget tools size ``*history`` against the exact
-fixed overhead.
+由于需要 prefix，:class:`ContextAssembler` 只在 Phase B 运行它，此时 ``ctx.prefix`` 已含
+seg1–5、User 与 Tools。内部 budget Tool 因而按 exact fixed overhead 选择 History。Fast path
+直接使用结构清理后的 History；Slow path 运行有界内部 LLM；timeout、Provider failure、非法
+plan 或 step exhaustion 都回到 deterministic fallback，而不会阻断主 Agent 获得 Context。
 """
 
 from __future__ import annotations
@@ -50,7 +49,16 @@ from pico.utils.helpers import build_assistant_message
 
 
 class CuratorSegmentBuilder:
-    """Selects ``*history`` and renders ``# Curator Working State``."""
+    """选择 ``*history``，并从同一计划渲染 ``# Curator Working State``。
+
+    每轮先建立 Manifest 和独立 trace id。History Token 低于阈值时走 fast path；否则在 timeout
+    与 ``max_steps`` 内运行只具备 Curator Tool 的 slow path，接受通过预算与结构验证的
+    ContextPlan；任何受控失败再使用 protected、relevant、recent 的 deterministic fallback。
+
+    Builder 长期持有 ArchiveStore 与 CuratorAssembler，但每轮 State、plan 与 trace 隔离。
+    `after_turn` 只把主 Agent outcome 追加到对应 trace。它不回答用户、不执行外部 Tool，也不
+    越过 ContextAssembler 直接修改最终消息。
+    """
 
     name = "curator"
     order = 6

@@ -1,32 +1,21 @@
-"""SkillRegistry — data layer for skills.
+"""`SkillRegistry`：Skills 的 Internal Data Layer。
 
-Pure IO + frontmatter parsing + dependency checking. No rendering, no
-retrieval logic. Ported from the pre-refactor ``agent/skills.py``, with
-three-layer pool semantics (workspace > external > builtin) and the same
-three-namespace metadata lookup (``pico > nanobot > openclaw``).
+职责仅是 Pure IO + Frontmatter Parsing + Dependency Checking，**不**做 Rendering/Retrieval。代码从
+Pre-refactor ``agent/skills.py`` Ported，保留 Layer Priority 与 Three-namespace Metadata Lookup
+``pico > nanobot > openclaw``。当前优先级实际为 Workspace > 按配置顺序的 External/Extra Dirs > Builtin，
+其中后挂载 Extra 可覆盖先挂载项，但 Workspace 始终最高。
 
-Layers (highest priority first):
+具体 Layers 是 ``workspace`` 的 ``<workspace>/skills/``、``external`` 的 ``<skills_dir>/``（历史由
+``config.skill_forge.skills_dir`` 挂载 ``skill_library`` Output）、以及 ``builtin`` 的 Packaged
+``pico/memory_engine/skills/``；Builtin Markdown 与 Code 同在 ``memory_engine`` Package。
 
-  workspace : ``<workspace>/skills/``     — user's session/project pool
-  external  : ``<skills_dir>/``           — user's curated library
-                                            (e.g. mirror of skill_library
-                                             output, mounted via
-                                             ``config.skill_forge.skills_dir``)
-  builtin   : packaged ``pico/memory_engine/skills/`` — ships with the install
+每层自动识别两种 Disk Layout：Legacy Flat ``<root>/<skill>/SKILL.md`` 使用 Layer Label Source；Mirror
+Nested ``<root>/<source>/<skill>/SKILL.md`` 使用首级目录为 Source，例如 ``anthropics``、``antigravity``、
+``awesome:foo/bar``。Registry 缓存所有 Physical Skills，并同时提供 Compound ``(source, name)`` 与
+Priority Winner 两种索引。
 
-Disk layout supported per layer (auto-detected per top-level dir):
-
-  Flat (legacy):
-    <root>/<skill>/SKILL.md
-        → source = layer label (``workspace`` / ``external`` / ``builtin``)
-
-  Nested (mirror from skill_library):
-    <root>/<source>/<skill>/SKILL.md
-        → source = ``<source>`` (e.g. ``anthropics``, ``antigravity``,
-          ``awesome:foo/bar``)
-
-External callers should go through :class:`SkillService`; this module
-is an internal data layer.
+External Runtime Caller 历史上通过 :class:`SkillService`，当前应通过 :class:`LocalSkillCatalog`，而不是把 Registry 当完整 Skill Service。文件
+被扫描到不代表 Requirements 满足或本轮被检索。
 """
 
 from __future__ import annotations
@@ -50,10 +39,14 @@ _DEFAULT_BUILTIN_SKILLS_DIR = Path(__file__).parent.parent / "skills"
 
 
 class SkillRegistry:
-    """Read-only view of the on-disk skill pool.
+    """On-disk Skill Pool 的 Cached Read-only View。
 
-    Two-layer discovery: ``workspace/skills/`` takes precedence over the
-    packaged ``builtin`` directory when names collide.
+    Discovery 覆盖 ``workspace/skills/``、Configured Extra/External 与 Packaged ``builtin``。跨 Source 同名 Physical Skills
+    在 Full List 中保留；Older Name-only Lookup 依据 Priority 选 Winner。Background Watcher 可标记单个
+    Source Dirty，下一次 `list_all` 只 Re-scan 该 Slice。
+
+    Read-only 指 Registry 不编辑 ``SKILL.md``；它仍维护 Mutable Cache/Indices，并以 `RLock` 协调 Watcher
+    Thread 与读取方。
     """
 
     def __init__(
@@ -64,13 +57,15 @@ class SkillRegistry:
         extra_dirs: "list[tuple[Path, str, bool]] | None" = None,
         scan_max_depth: int = 5,
     ):
-        """
+        """构造 Registry，并配置扫描 Layers。
+
         Args:
-            extra_dirs: R1 multi-directory support. Each tuple is
-                ``(path, name, always_enabled)``. Later entries override
-                earlier on name collision. ``external_skills_dir`` is a
-                legacy parameter — prepended to ``extra_dirs``.
-            scan_max_depth: R2 max recursion depth for SKILL.md scanning.
+            extra_dirs: R1 Multi-directory Support。每项为 ``(path, name, always_enabled)``；Name Collision
+                时 Later Entry 覆盖 Earlier。``external_skills_dir`` 是 Legacy Parameter，会 Prepend 到
+                ``extra_dirs``。
+            scan_max_depth: R2 扫描 ``SKILL.md`` 的 Maximum Recursion Depth，防止 Huge Mirror 无界遍历。
+
+        构造时尽力创建 Workspace Skills Dir，但不立即扫描；First `list_all` 才构建 Cache。
         """
         self.workspace = workspace
         self.workspace_skills = workspace / "skills"
@@ -104,11 +99,11 @@ class SkillRegistry:
     # ------------------------------------------------------------------
 
     def invalidate_cache(self) -> None:
-        """Drop the entire cache so the next ``list_all`` re-scans disk.
+        """Drop Entire Cache，使下一次 ``list_all`` Re-scan Disk。
 
-        Hard reset: all sources rebuild. Prefer :meth:`invalidate_source`
-        when only one logical source changed - it skips re-tokenizing the larger
-        builtin / workspace / external sets.
+        这是 Hard Reset，所有 Sources 重建。只有一个 Logical Source 变化时优先
+        :meth:`invalidate_source`，可跳过 Larger Builtin/Workspace/External Sets 的重复扫描。方法在 Lock 内
+        同时清空两个 Indices 与 Dirty Flags。
         """
         with self._lock:
             self._metas_cache = None
@@ -117,15 +112,11 @@ class SkillRegistry:
             self._dirty_sources.clear()
 
     def invalidate_source(self, source: str) -> None:
-        """Mark a single source dirty; next ``list_all`` rebuilds only
-        that source's slice and merges it back into the existing cache.
+        """标记 Single Source Dirty；下次 ``list_all`` 只重建该 Slice 并 Merge 回 Cache。
 
-        Triggered by :meth:`SkillService.invalidate_skill_cache(source)` so
-        newly materialized SKILL.md files surface without restart while the
-        other source scans are spared.
-
-        No-op when there is no cache yet — the first ``list_all`` will
-        do a full scan anyway.
+        历史触发点是 :meth:`SkillService.invalidate_skill_cache(source)`，当前 Catalog/Watcher 用等价路径让 Newly Materialized ``SKILL.md`` 无需 Restart 即 Surface，同时避免扫描其他
+        Sources。尚无 Cache 时 No-op，因为 First `list_all` 本来会 Full Scan。Source Label 必须与 Discovery
+        规则一致，否则不会替换任何 Existing Slice。
         """
         with self._lock:
             if self._metas_cache is None:
@@ -133,31 +124,17 @@ class SkillRegistry:
             self._dirty_sources.add(source)
 
     def resolve_source_for_path(self, path: Path) -> str | None:
-        """Map a SKILL.md path back to its source label.
+        """把 ``SKILL.md`` Path 映射回 Source Label。
 
-        Mirrors :meth:`_iter_skill_dirs` rules so a filesystem-watcher
-        event can be routed to the right :meth:`invalidate_source`
-        without re-walking the tree:
+        规则 Mirrors :meth:`_iter_skill_dirs`，输入 ``path`` 让 Filesystem Watcher Event 无需 Re-walk Tree 就能路由到
+        :meth:`invalidate_source`。Flat ``<workspace_skills>/<skill>/SKILL.md`` 映射 ``workspace``；Nested
+        ``<workspace_skills>/<src>/.../SKILL.md`` 映射 ``<src>``；Default Literal 是 ``"workspace"``，
+        Extra/Builtin 使用各自 Label。
 
-          - ``<workspace_skills>/<skill>/SKILL.md`` → ``"workspace"``
-          - ``<workspace_skills>/<src>/.../SKILL.md`` → ``<src>``
-          - same for ``external_skills`` / ``builtin_skills`` with the
-            corresponding layer-label default
-
-        Returns ``None`` when the path lives outside every known layer
-        root, or directly at a layer root (the iterator skips those).
-
-        Both ``path`` and the layer roots are passed through
-        ``Path.resolve(strict=False)`` before comparison. This matters
-        on macOS where ``/var/...`` and ``/tmp/...`` are symlinks to
-        ``/private/var/...`` and ``/private/tmp/...`` — watchfiles
-        reports the realpath form, while a caller's root may still be
-        the symlinked form (or vice versa). Without normalisation
-        ``relative_to`` would silently miss every event.
-
-        ``strict=False`` makes resolve a no-op for the missing tail of
-        a path, so this also works for delete events whose target file
-        is already gone.
+        规则字段名也对应 ``external_skills`` / ``builtin_skills``。Path 在所有 Known Layer 外或直接位于
+        Root 时返回 `None`。双方先 ``Path.resolve(strict=False)``，再用 ``relative_to`` 比较，处理 macOS
+        ``/var/...``、``/tmp/...`` 与 ``/private/var/...``、``/private/tmp/...`` Symlink 差异；
+        `strict=False` 也支持 Target 已消失的 Delete Event。
         """
         try:
             resolved_path = path.resolve(strict=False)
@@ -187,26 +164,15 @@ class SkillRegistry:
         return None
 
     def list_all(self) -> list[SkillMeta]:
-        """All visible skills (compound (source, name) identity). Cached.
+        """返回所有 Visible Skills，以 Compound ``(source, name)`` Identity 保留并 Cached。
 
-        Cross-source name collisions are preserved — both metas appear in
-        the list. Within a single (source, name), the first physical path
-        wins (later disk-redundant copies are skipped).
+        Cross-source Name Collision 两个 Metas 都出现在 List；同一 ``(source, name)`` 内 First Physical Path
+        Wins，后续 Disk-redundant Copy 跳过。Layer Priority 只影响 Caller 省略 Source 时的 Secondary
+        ``_by_name`` Lookup，Full List 始终保留每项。
 
-        Layer priority (workspace > builtin) only affects the secondary
-        ``_by_name`` lookup when callers omit ``source``; the full list
-        always contains every entry.
-
-        When ``_dirty_sources`` is non-empty (typically a single source
-        flagged by ``invalidate_source``), only those sources are
-        rescanned and merged into the existing cache — saves the cost
-        of re-tokenizing the unchanged builtin / workspace / external
-        slices.
-
-        Holds :attr:`_lock` for the full rebuild so a concurrent
-        watcher-thread :meth:`invalidate_source` cannot race the cache
-        tail-clear and lose the flag. Lock contention is negligible —
-        invalidations are infrequent and rebuilds short.
+        ``_dirty_sources`` 非空时只 Re-scan 那些 Sources；Flag 由 ``invalidate_source`` 设置，并 Merge Existing Cache，节省 Unchanged Slices
+        成本。Full Rebuild 全程持 :attr:`_lock`，防止 Watcher-thread Invalidation 与 Tail-clear Race 丢 Flag。
+        返回的是 Cache List Reference，Caller 应只读。
         """
         with self._lock:
             return self._list_all_locked()
@@ -305,11 +271,11 @@ class SkillRegistry:
         return metas
 
     def get(self, name: str, source: str | None = None) -> SkillMeta | None:
-        """Single skill's metadata (O(1) after first list_all).
+        """返回 Single Skill Metadata；First ``list_all`` 后为 O(1)。
 
-        ``source=None`` returns the priority winner (workspace > builtin >
-        first mirror source alphabetical). Pass ``source=`` for an exact
-        compound-key lookup.
+        ``source=None`` 返回 Priority Winner，当前为 Workspace > Later Extra > Earlier Extra > Builtin；传
+        ``source=`` 执行 Exact Compound-key Lookup。无命中返回 `None`。方法会在需要时 Lazy Build 两个
+        Indices。
         """
         if self._by_name is None:
             self.list_all()  # 同时填充两个索引
@@ -318,8 +284,11 @@ class SkillRegistry:
         return self._by_name.get(name) if self._by_name else None
 
     def get_body(self, name: str, source: str | None = None) -> str | None:
-        """Full SKILL.md content. Resolves through ``list_all`` to handle
-        nested layouts; layer priority used when ``source`` is omitted."""
+        """返回 Full ``SKILL.md`` Content。
+
+        先通过 ``list_all`` Index Resolve Nested Layout；省略 ``source`` 时使用 Layer Priority。File Read OS
+        Error 或 Skill Missing 返回 `None`。与 `SkillMeta.content` 不同，这里包含原始 Frontmatter。
+        """
         meta = self.get(name, source=source)
         if meta is None:
             return None
@@ -333,7 +302,11 @@ class SkillRegistry:
         name: str,
         source: str | None = None,
     ) -> dict | None:
-        """Top-level frontmatter dict (YAML-lite parsed)."""
+        """返回 YAML-lite Parsed Top-level Frontmatter Dict。
+
+        Skill/Body Missing 或无合法 Frontmatter 时返回 `None`。Parser 只支持 Flat ``key: value``，不应把
+        结果当完整 YAML Semantics。
+        """
         body = self.get_body(name, source=source)
         if not body:
             return None
@@ -344,7 +317,11 @@ class SkillRegistry:
         name: str,
         source: str | None = None,
     ) -> bool:
-        """True if all declared ``requires`` (bins, env) are satisfied."""
+        """所有 Declared ``requires`` 中 Binaries 与 Environment Variables 满足时返回 `True`。
+
+        Skill Missing 返回 `False`。检查只探测 ``shutil.which`` 与 Non-empty Env，不执行外部 API Login、
+        Version Constraint 或 Workflow Smoke。
+        """
         meta = self.get(name, source=source)
         if meta is None:
             return False
@@ -355,7 +332,11 @@ class SkillRegistry:
         name: str,
         source: str | None = None,
     ) -> str:
-        """Human-readable list of unmet requirements; empty when satisfied."""
+        """返回 Human-readable Unmet Requirements；Satisfied 或 Skill Missing 时为空。
+
+        Binary 格式为 ``CLI: name``，环境变量为 ``ENV: name``，多项用 Comma Join。空字符串不能区分
+        “Skill 不存在”与“全部满足”，需要时应先调用 `get`。
+        """
         meta = self.get(name, source=source)
         if meta is None:
             return ""
@@ -371,11 +352,11 @@ class SkillRegistry:
         default_source: str = "workspace",
         max_depth: int = 5,
     ):
-        """Yield ``(skill_dir, source)`` pairs by recursive ``SKILL.md`` glob.
+        """通过 Recursive ``SKILL.md`` Glob Yield ``(skill_dir, source)`` Pairs。
 
-        ``max_depth`` (R2) caps how many directory levels below ``root``
-        are searched. SKILL.md deeper than ``max_depth`` are silently
-        skipped, preventing unbounded filesystem walks on huge mirrors.
+        R2 ``max_depth`` 限制 ``root`` 下搜索层级，更深文件 Silently Skip，防止 Huge Mirrors 无界 Walk。
+        ``/workspaces/`` Path 排除；若父 Skill Dir 已保留，Nested Skill 被跳过，避免同一 Tree 重复解释。
+        Flat Layout 用 Default Source，Nested 用 First Path Part。
         """
         if not root.exists():
             return
@@ -458,9 +439,9 @@ class SkillRegistry:
 
 
 def _parse_frontmatter(content: str) -> dict | None:
-    """Minimal YAML-lite parser — matches legacy SkillsLoader behavior.
+    """Minimal YAML-lite Parser，与 Legacy `SkillsLoader` Behavior 一致。
 
-    Expected format::
+    Expected Format：
 
         ---
         name: foo
@@ -468,8 +449,8 @@ def _parse_frontmatter(content: str) -> dict | None:
         metadata: '{"pico": {...}}'
         ---
 
-    Values are stripped of surrounding quotes; nested keys are not supported.
-    Returns ``None`` when no frontmatter is present.
+    Values 会移除 Surrounding Quotes；Nested Keys 不支持。无 Frontmatter 或 Closing Fence 不匹配时返回
+    `None`。这不是通用 YAML Parser，复杂值应放在 JSON ``metadata`` String。
     """
     if not content.startswith("---"):
         return None
@@ -485,7 +466,11 @@ def _parse_frontmatter(content: str) -> dict | None:
 
 
 def _strip_frontmatter(content: str) -> str:
-    """Return the markdown body with the leading ``---...---`` frontmatter removed."""
+    """返回移除 Leading ``---...---`` Frontmatter 的 Markdown Body。
+
+    Content 不以 Fence 开头或 Pattern 不闭合时原样返回，避免误删正文。成功时从 Closing Fence 后第一
+    字符开始，不额外 Strip Body Whitespace。
+    """
     if not content.startswith("---"):
         return content
     m = re.match(r"^---\n.*?\n---\n?", content, re.DOTALL)
@@ -495,10 +480,10 @@ def _strip_frontmatter(content: str) -> str:
 
 
 def _parse_nested_metadata(raw: str) -> dict:
-    """Extract Pico-namespaced metadata from the ``metadata`` JSON blob.
+    """从 ``metadata`` JSON Blob 提取 Pico-compatible Namespaced Metadata。
 
-    Lookup order (first match wins): ``pico`` > ``nanobot`` > ``openclaw``.
-    Returns ``{}`` on any failure.
+    Lookup Order First Match Wins：``pico`` > ``nanobot`` > ``openclaw``。Empty、Invalid JSON、Non-dict 或
+    Namespace Value 非 Dict 时返回 ``{}``。函数不合并多个 Namespace，最高优先项完整胜出。
     """
     if not raw:
         return {}
@@ -519,7 +504,11 @@ _ALWAYS_KNOWN = _ALWAYS_TRUTHY | {"false", "0", "no", ""}
 
 
 def _parse_always_value(raw: object) -> bool:
-    """Strict always parser (R3). Only explicit truthy values count."""
+    """R3 Strict ``always`` Parser，只有 Explicit Truthy Values 计为 True。
+
+    支持 Bool、Numeric 与 ``true/1/yes`` Strings；Unknown String Warning 后按 False，避免任意非空文本被
+    Python Truthiness 误判为 Always-enabled。
+    """
     if raw is None:
         return False
     if isinstance(raw, bool):
@@ -538,10 +527,10 @@ def _parse_always_value(raw: object) -> bool:
 
 
 def _resolve_always(frontmatter: dict, nested: dict) -> bool:
-    """Resolve always flag from nested metadata (priority) or frontmatter.
+    """从 Nested Metadata（Priority）或 Frontmatter Resolve ``always`` Flag。
 
-    R3 fix: ``"false"`` is now correctly treated as ``False`` instead of
-    the old behavior where ``bool("false") == True``.
+    Nested 明确提供时优先。R3 Fix 让 ``"false"`` 正确成为 `False`，不再沿用
+    ``bool("false") == True`` 的旧错误。两处都缺失时返回 False。
     """
     nested_val = nested.get("always")
     if nested_val is not None:

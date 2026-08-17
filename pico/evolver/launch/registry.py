@@ -1,4 +1,8 @@
-"""Bench registry: name -> ``module:function`` building a BenchBundle."""
+"""维护 bench name -> ``module:function`` 的 BenchBundle builder registry。
+
+registered plugin 通常位于 subject repo，而非 installed Pico package。loader 会把 subject root
+放在 ``sys.path`` 前部，并清理来自其他 root 的冲突 package cache，防止导入错误 checkout。
+"""
 
 from __future__ import annotations
 
@@ -43,12 +47,12 @@ def _evict_conflicting_package(package: str, root: Path) -> None:
 
 
 def load_bench(name: str, repo_root: Optional[Union[str, Path]] = None) -> Callable:
-    """Import the bench plugin registered under ``name``.
+    """导入 ``name`` 注册的 bench plugin builder。
 
-    Bench plugins live in the subject repo (repo-root ``benchmarks/``), not in
-    the installed Pico package, so ``repo_root`` — the subject checkout — is
-    put first on ``sys.path`` before importing. Omitting it only works when
-    the checkout root is already importable (e.g. cwd is the checkout).
+    plugin 位于 subject repo 的 ``benchmarks/``，不是 installed Pico package，因此提供
+    ``repo_root`` 时将 subject checkout 放到 ``sys.path`` 首位；省略只在 checkout 已可 import
+    时有效，例如 cwd 正好是 root。若 target module file 在 subject root，却实际解析到外部
+    package，抛出 ``ImportError``。unknown name 抛出列出 registry 的 ``ValueError``。
     """
     target = BENCHES.get(name)
     if target is None:

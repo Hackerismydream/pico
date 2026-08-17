@@ -1,4 +1,13 @@
-"""Segment 5 — local-only Skill resolution and rendering."""
+"""构建 Segment 5：只在 Local Skill 范围内完成检索、引用解析与渲染。
+
+`SkillsSegmentBuilder` 用 `SkillForgeRouter` 和 `LocalSkillResolver` 根据当前消息与 Session
+History 选择 activated Skill 和 reference。Activated 正文进入 ``# Skills``，Reference 作为
+可继续读取的线索；本地命中的相对引用由 `resolve_refs` 展开，其他 Source 不做本地路径解释。
+
+Router 缺失时返回空 Segment 与完整零值 metadata，而不是让证据字段消失。最终 metadata
+分别记录 injected/referenced ids、各 Source 命中数与 Source failure，供 Turn Outcome 核对；
+检索失败边界不改变 Segment 4 always-on Skill。
+"""
 
 from __future__ import annotations
 

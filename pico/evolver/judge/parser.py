@@ -1,26 +1,14 @@
-"""Parse LLM-judge raw text output into a validated ``JudgeResult``.
+"""把 LLM-judge raw text 解析为 validated ``JudgeResult``。
 
-The judge is instructed to emit a single JSON object (spec §3.2 schema +
-spec §12.4-§12.5 enums), but real LLMs occasionally wrap it in markdown
-code fences, add leading "Here is the analysis:" prose, or append a
-short summary after the JSON. The parser tolerates these defects:
+prompt 要求单个 JSON object（spec §3.2 schema + spec §12.4-§12.5 Enum），但真实 LLM 可能
+包 markdown code fence、添加 ``Here is the analysis:`` 前缀，或在 JSON 后追加 summary。parser
+容忍这些包装：移除 `````json``/````` fence（任意 language tag），定位 first ``{`` 并找到
+string-aware balanced ``}``，校验 ``IssueType``/``PatchWhere``/``PatchWhy``，再由
+``JudgeResult.__post_init__`` 强制 L1/L2/L3 与 action kind invariant。
 
-- Strips ```json / ``` code fences (any language tag).
-- Locates the first ``{`` and matches to the final balanced ``}``.
-- Validates enum values against ``IssueType`` / ``PatchWhere`` / ``PatchWhy``.
-- Enforces the L1/L2/L3 ↔ action-kind cross-field invariants by handing
-  off to ``JudgeResult.__post_init__``.
-
-What it does NOT tolerate:
-
-- Truncated JSON (no closing brace).
-- Multiple top-level JSON objects.
-- Missing required fields.
-- Invalid enum strings (raises with the offender's name).
-
-Errors are raised as ``JudgeParseError`` with a short reason; callers
-typically log + skip the offending trajectory, or feed it back to the
-judge as a "retry, fix this" prompt.
+它不容忍 truncated JSON、multiple top-level JSON object、missing required field 或 invalid
+Enum string。所有缺陷抛出带短 reason 的 ``JudgeParseError``；caller 通常 log + skip，或把
+reason 反馈给 Judge 做 ``retry, fix this``。parse 成功只证明输出 shape 合规，不证明分类正确。
 """
 
 from __future__ import annotations
@@ -42,7 +30,7 @@ from .schema import (
 
 
 class JudgeParseError(ValueError):
-    """Raised when LLM judge output cannot be parsed into a JudgeResult."""
+    """LLM judge output 无法解析为 typed result 时抛出的异常。"""
 
 
 # ---------------------------------------------------------------------------
@@ -54,21 +42,15 @@ _CODE_FENCE_RE = re.compile(r"^\s*```(?:json|JSON|jsonc)?\s*\n?|\n?\s*```\s*$", 
 
 
 def _extract_json_object(raw: str) -> str:
-    """Locate the first balanced ``{...}`` block in ``raw``.
+    """从 ``raw`` 提取 first balanced ``{...}`` block。
 
-    Strategy:
-    1. Strip Markdown code fences.
-    2. Find the first ``{``.
-    3. Walk forward tracking brace depth (string-aware: ignores braces
-       inside double-quoted strings, respecting backslash escapes).
-    4. Return the substring [first_brace, matching_close_brace+1].
+    先移除 Markdown fence，再找 first ``{``，向后逐字符维护 brace depth；scanner 对
+    double-quoted string 与 backslash escape aware，所以忽略 string 内 brace。找到 matching
+    close 后返回 inclusive substring。无 open brace 或始终不 balance 时抛出
+    ``JudgeParseError``。
 
-    Raises ``JudgeParseError`` if no ``{`` is found or braces never
-    balance.
-
-    This is more robust than a naive ``raw[raw.find('{'):raw.rfind('}')+1]``
-    which fails when the LLM appends another ``{...}`` snippet after its
-    main JSON (e.g. "Note: see {related_file} for context.").
+    这比 ``raw[raw.find('{'):raw.rfind('}')+1]`` 更健壮，因为 LLM 可能在 main JSON 后追加
+    ``Note: see {related_file} for context.`` 之类第二段 brace text。
     """
     stripped = _CODE_FENCE_RE.sub("", raw).strip()
     start = stripped.find("{")
@@ -106,10 +88,10 @@ def _require(d: dict[str, Any], key: str, what: str) -> Any:
 
 
 def _coerce_enum(value: Any, enum_cls: type, field_name: str) -> Any:
-    """Coerce a string into an Enum, raising helpfully on miss.
+    """把 string value 转为 Enum，并在失败时列出合法值。
 
-    Accepts the enum value's ``value`` (string form). Rejects ints,
-    enum member ``.name``, or any other shape.
+    只接受 Enum member 的 string ``value``；int、member ``.name`` 或其他 shape 都拒绝，并在
+    ``JudgeParseError`` 中包含 ``field_name``。
     """
     if not isinstance(value, str):
         raise JudgeParseError(f"field '{field_name}' must be a string, got {type(value).__name__}")
@@ -121,12 +103,12 @@ def _coerce_enum(value: Any, enum_cls: type, field_name: str) -> Any:
 
 
 def _parse_components(action_obj: dict[str, Any]) -> list[ProposedComponent]:
-    """Parse the ``components`` array from a patch_proposal action.
+    """解析 patch_proposal action 的 ``components`` array。
 
-    Backwards-compat: if the LLM emits a flat ``target_file`` +
-    ``patch_summary`` pair instead of (or in addition to) ``components``,
-    synthesize a single component. This keeps already-trained judge
-    prompts working while we roll out the multi-component schema.
+    新 schema 要求 non-empty object list，逐项验证 component_id、target_file、summary 与
+    string-list depends_on；缺少 component_id 时生成 ``comp_<n>``。backwards-compat 路径允许
+    flat ``target_file`` + ``patch_summary``，合成 single component，使已训练 Judge prompt 在
+    multi-component rollout 期间继续工作。
     """
     raw_components = action_obj.get("components")
 
@@ -185,7 +167,11 @@ def _parse_components(action_obj: dict[str, Any]) -> list[ProposedComponent]:
 
 
 def _parse_evidence_range(raw: Any) -> Optional[tuple[int, int]]:
-    """Validate the [start, end] turn-range list."""
+    """验证 inclusive ``[start, end]`` Turn range。
+
+    ``None`` 原样返回；其他值必须是恰好两个 int 的 list/tuple，且 start <= end，否则抛出
+    ``JudgeParseError``。
+    """
     if raw is None:
         return None
     if not isinstance(raw, (list, tuple)):
@@ -210,16 +196,15 @@ def parse_judge_output(
     *,
     expected_trajectory_id: Optional[str] = None,
 ) -> JudgeResult:
-    """Parse one judge response into a validated ``JudgeResult``.
+    """把一次 Judge response 解析为 validated ``JudgeResult``。
 
-    ``expected_trajectory_id`` (optional): if provided, the parsed
-    ``trajectory_id`` field must match — protects against the judge
-    silently mis-binding output to the wrong trajectory in a batch
-    pipeline.
+    ``expected_trajectory_id`` 非空时要求 parsed ID exact match，或只多出从 task WRAPPER_PATH
+    复制的 suffix，即 parsed ID 以 expected 开头；完全不同 task 抛错，避免 batch pipeline
+    silent mis-binding。随后校验 confidence、signal、evidence range、action kind、WHERE/WHY 与
+    component，并构造 schema dataclass。
 
-    The original ``raw_text`` is stored on ``JudgeResult.raw_response``
-    for audit (so post-hoc inspection of misclassified trajectories
-    can see exactly what the LLM said).
+    原始 ``raw_text`` 保存到 ``JudgeResult.raw_response``，供 post-hoc audit 查看 LLM 原话。
+    function 不修改或自动修复 Judge output。
     """
     json_text = _extract_json_object(raw_text)
     try:
@@ -315,10 +300,12 @@ def parse_judge_output(
 
 
 def parse_pass_fail(raw: str, *, expected_trajectory_id: str = "") -> PassFailResult:
-    """Parse a no-benchmark pass/fail verdict; raise on any defect (for retry).
+    """解析无 benchmark verifier 的 pass/fail verdict，缺陷全部抛错以触发 retry。
 
-    Reuses the judge's tolerant JSON extractor so the same ``SemanticNode``
-    repair loop applies. Requires a boolean-ish ``passed`` field.
+    复用 tolerant JSON extractor，使同一 ``SemanticNode`` repair loop 可用。必须包含
+    boolean-ish ``passed``；string 的 true/pass/passed/yes/1 视为真，其他值按 bool 转换。
+    缺失 trajectory_id 时使用 expected ID。返回是 LLM scorer verdict，不是 deterministic
+    verifier evidence。
     """
     obj = json.loads(_extract_json_object(raw))
     if "passed" not in obj:

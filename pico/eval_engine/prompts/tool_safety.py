@@ -1,9 +1,11 @@
-"""Tool-safety audit prompt.
+"""Tool-safety Audit Prompt。
 
-Stub scaffold for an LLM-driven tool audit. The default tool-audit
-behavior is a deterministic deny-list check inside
-``ToolAuditHook.before_execute_tools``; a future expansion can call
-this prompt when the deny-list is inconclusive.
+这是 LLM-driven Tool Audit 的 Stub Scaffold。当前 Default Tool-audit Behavior 仍是
+``ToolAuditHook.before_execute_tools`` 内的 Deterministic Deny-list Check；未来只有在 Deny-list
+Inconclusive 时，才可能调用此 Prompt。
+
+下面的英文常量是尚未接线的 Machine-facing Template，不属于 Docstring，因此保持 ``allow`` / ``deny``
+/ ``unknown`` Protocol 不变。模板存在不代表运行时已经执行 LLM Safety Review。
 """
 
 TOOL_SAFETY_PROMPT = """You are auditing whether an AI assistant should be allowed to invoke a tool.

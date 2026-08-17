@@ -1,21 +1,14 @@
-"""SkillForge primitives — local-pool storage, retrieval, and feedback types.
+"""SkillForge 的 Local-pool Storage、Retrieval 与 Shared Types Primitives。
 
-Phase B deletions: ``Retrieval`` (local PyTorch matmul) + ``Reranker`` +
-``SqliteStore`` + ``SqliteSkillRegistry`` + sync + ``skill_library/``
-offline tooling were removed. Mass-library retrieval is now the remote
-:class:`MassSkillSource` HTTP client under
-:mod:`pico.memory_engine.skill_forge`. The ``SkillService``
-aggregate + its ``select`` / LLM-gate / query-rewriter retrieval path
-were retired into :class:`LocalSkillCatalog` (under ``skill_forge``)
-once :class:`SkillForgeRouter` became the live retrieval path. The no-op
-``SkillEvolver`` seam was removed once skill feedback moved to the
-:class:`MemoryBackend` plugin (``backend.feedback`` / ``backend.store``).
+Phase B 已删除 ``Retrieval``（Local PyTorch Matmul）、``Reranker``、``SqliteStore``、
+``SqliteSkillRegistry``、Sync 与 ``skill_library/`` Offline Tooling。Mass-library Retrieval 曾设计为
+:mod:`pico.memory_engine.skill_forge` 下的 :class:`MassSkillSource` HTTP Client；``SkillService`` Aggregate 及其 ``select`` /
+LLM-gate / Query-rewriter Path 在 :class:`SkillForgeRouter` 成为 Live Path 后退役进
+:class:`LocalSkillCatalog`。No-op ``SkillEvolver`` Seam 也在 Feedback 移到 :class:`MemoryBackend` Plugin
+的 ``backend.feedback`` / ``backend.store`` 后删除。
 
-What remains here is the LOCAL-pool primitive layer:
-
-- :class:`SkillRegistry` — workspace + builtin SKILL.md scanner
-- :class:`LocalPool` — BM25 over the registry
-- shared dataclasses (:class:`SkillMeta`, :class:`ScoredSkill`)
+现在只保留 LOCAL Primitive Layer：:class:`SkillRegistry` 扫描 Workspace + Builtin ``SKILL.md``，
+:class:`LocalPool` 在 Registry 上做 BM25，:class:`SkillMeta` / :class:`ScoredSkill` 传递本地元数据与分数。
 """
 
 from pico.memory_engine.skill_local.local_pool import LocalPool

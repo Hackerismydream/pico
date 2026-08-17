@@ -1,26 +1,13 @@
-"""CompositeHook — combine multiple ``AgentHook`` instances into one.
+"""把多个 ``AgentHook`` 聚合成一个有顺序、短路与异常隔离的 CompositeHook。
 
-Semantics:
+每个 Phase 严格按 Registration Order 运行：``CompositeHook([A, B, C])`` 是 A→B→C，Late append
+放末尾。第一个返回 ``HookDecision(short_circuit_result=…)`` 的 Hook 赢得当前 Phase，Subsequent
+Hook NOT called。
 
-- **Order is registration order.** ``CompositeHook([A, B, C])`` runs
-  A → B → C for every phase. Late registrations via ``append`` go to
-  the end.
-
-- **Short-circuit halts the chain.** The first hook in a phase that
-  returns ``HookDecision(short_circuit_result=…)`` wins; subsequent
-  hooks in that phase are NOT called.
-
-- **Content modifications chain.** For phases that produce a
-  ``modified_content`` (currently only ``after_send``), each hook's
-  output becomes the next hook's input via
-  ``ctx.outbound_content``. The final return value carries the
-  fully-chained ``modified_content``.
-
-- **Exceptions are isolated.** A hook that raises is logged and
-  treated as a pass-through no-op; the chain continues with the next
-  hook. This mirrors the EventBus contract and is what lets a single
-  flaky hook (e.g. Personalizer's classifier hitting an LLM timeout)
-  not take down the whole turn.
+只有声明支持的 Phase（当前 after_send）Chain ``modified_content``：每个 Output 写入
+``ctx.outbound_content`` 成为 Next Input，最终 Decision 携带 Fully-chained Text。Hook Exception
+记录后按 Pass-through No-op 继续，镜像 EventBus Contract；单个 Flaky Personalizer/Eval LLM
+Timeout 不应打断 Whole Turn。
 """
 
 from __future__ import annotations
@@ -37,7 +24,12 @@ _CHAIN_MODIFIED_PHASES = frozenset({"after_send"})
 
 
 class CompositeHook(AgentHook):
-    """Aggregate hook that dispatches each phase to a list of children."""
+    """把每个 AgentHook Phase Dispatch 给有序 Child List 的 Aggregate Hook。
+
+    实例支持 append/extend、len 与 iteration，Name 也显示 Child Order。所有公开 Phase 都委托
+    `_run_phase`，因此 Short Circuit、Content Chain 与 Exception Isolation 只有一个实现，不会因
+    Phase 新增产生语义漂移。空 Composite 等价 Pass-through Hook。
+    """
 
     def __init__(self, hooks: Iterable[AgentHook] | None = None) -> None:
         self._hooks: list[AgentHook] = list(hooks or [])
@@ -55,11 +47,19 @@ class CompositeHook(AgentHook):
         return iter(self._hooks)
 
     def append(self, hook: AgentHook) -> None:
-        """Add a hook to the end of the chain."""
+        """把一个 Hook 追加到 Chain 末尾。
+
+        新 Hook 从之后的 Phase Invocation 起按 Registration Order 运行；方法不回放已经发生的
+        Phase，也不去重同一 Instance。调用方应在 Turn 运行前完成常规接线。
+        """
         self._hooks.append(hook)
 
     def extend(self, hooks: Iterable[AgentHook]) -> None:
-        """Add multiple hooks (in order) to the end of the chain."""
+        """按 Iterable Order 把多个 Hook 追加到 Chain 末尾。
+
+        等价连续 append，并保留输入顺序。方法不复制 Hook 实例或验证名称唯一性；同一 Hook
+        重复出现会被重复调用，这是 Caller 明确注册的结果。
+        """
         self._hooks.extend(hooks)
 
     # ─────────────────────────────────────────────────────────────────
@@ -84,12 +84,12 @@ class CompositeHook(AgentHook):
     # ─────────────────────────────────────────────────────────────────
 
     async def _run_phase(self, phase: str, ctx: AgentHookContext) -> HookDecision:
-        """Invoke ``phase`` on every child hook, honoring short-circuit
-        and content-chaining semantics.
+        """依次调用每个 Child 的 ``phase``，执行 Short-circuit 与 Content-chaining Semantics。
 
-        Returns the final ``HookDecision`` — short-circuited or
-        pass-through (with ``modified_content`` populated if this phase
-        supports content chaining and any hook produced a modification).
+        Child Exception 会 Log 并继续；Short Circuit 立即原样返回该 Decision。对
+        `_CHAIN_MODIFIED_PHASES`，非空 modified_content 同步写入 Context 并记为最后修改；其他
+        Phase 忽略修改字段。全部完成后返回 Pass-through HookDecision，并在适用时携带最终
+        Chained Content。未知 Phase 的 getattr Error 不在 Hook try 内，表示 Composite 调用缺陷。
         """
         chain_content = phase in _CHAIN_MODIFIED_PHASES
         last_modified: str | None = None

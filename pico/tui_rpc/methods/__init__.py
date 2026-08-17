@@ -1,4 +1,14 @@
-"""Registration for the retained conversational TUI-RPC surface."""
+"""集中注册当前保留的 conversational TUI-RPC method surface。
+
+``RpcServer`` 用这里的组合函数把 system、setup、config、session、terminal、image、
+model、turn、confirm 与 question handler 装入同一个 ``Dispatcher``。可选依赖决定某些
+method group 是否可用：例如没有 ``SubscriptionEmitter`` 就不注册 ``turn.*``，没有
+对应 Broker 就不注册 confirm 或 question 往返。
+
+本模块只完成装配，不执行 handler，也不验证 Scheduler、AgentLoopFactory 或 Session
+backend 已经可用。method 出现在 Dispatcher 中只证明注册成功，不证明 Runtime 能完成
+相应操作。
+"""
 
 from __future__ import annotations
 
@@ -39,13 +49,17 @@ def register_aligned_methods(
     submission_ids: "dict[int, str] | None" = None,
     build_error: "RpcError | None" = None,
 ) -> None:
-    """Register every aligned RPC handler on a dispatcher.
+    """在 ``dispatcher`` 上注册全部 aligned RPC handler。
 
-    ``emitter`` and the build_tui bundle (``scheduler`` / ``turn_ids`` /
-    ``build_error``) are forwarded to :func:`register_turn_methods` — when
-    ``emitter`` is ``None`` the ``turn.*`` group is skipped.
-    ``agent_loop_factory`` is forwarded to the session methods.
-    ``confirm_broker`` is forwarded to :func:`register_confirm_methods`.
+    方法先注册 ``system.*``，再调用 ``register_aligned_methods_except_system()`` 完成其余
+    retained surface。``emitter`` 与 build_tui bundle（``scheduler``、``turn_ids``、
+    ``submission_ids``、``build_error`` 和 ``scheduler_factory``）转交给
+    :func:`register_turn_methods`；``emitter`` 为 ``None`` 时跳过整个 ``turn.*`` group。
+    ``agent_loop_factory`` 转交 config/session methods，``confirm_broker`` 通过
+    ``register_confirm_methods`` 转交确认交互，``question_broker`` 转交提问交互。
+
+    重复对同一 Dispatcher 注册同名 method 会由 ``Dispatcher.register()`` 抛出
+    ``ValueError``。函数无返回值；完成只表示 handler 映射已经建立。
     """
     register_system_methods(dispatcher)
     register_aligned_methods_except_system(
@@ -75,7 +89,13 @@ def register_aligned_methods_except_system(
     submission_ids: "dict[int, str] | None" = None,
     build_error: "RpcError | None" = None,
 ) -> None:
-    """Register the retained RPC handlers except ``system.*``."""
+    """注册除 ``system.*`` 之外的 retained RPC handler。
+
+    该入口用于 server 需要单独控制 handshake method 注册顺序的场景。基础的 setup、
+    config、session、terminal、image 和 model groups 总会注册；turn、confirm、question
+    则仅在相应 ``emitter`` 或 Broker 存在时注册。各参数与
+    ``register_aligned_methods()`` 含义一致，且同样不会启动 Runtime 或执行任何 Turn。
+    """
     register_setup_methods(dispatcher)
     register_config_methods(dispatcher, agent_loop_factory=agent_loop_factory)
     register_session_methods(

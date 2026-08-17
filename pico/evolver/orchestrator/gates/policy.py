@@ -1,4 +1,4 @@
-"""Pluggable decision policy — the seam the two benchmark lines diverge on.
+"""定义两个 benchmark line 分化位置的 pluggable decision policy seam。
 
 The seven-step funnel's outer loop is identical across benchmarks; only the
 per-candidate *decision* (screen -> confirm -> promote) and the *control arm* it
@@ -15,10 +15,9 @@ so ``loop._run_round`` stays a thin driver:
   frozen, and same-session paired are the three implementations; the gate never
   knows which produced its control, which is why the two seams are orthogonal.
 
-The empirical regime-shift finding (a frozen baseline compared across time is
-unreliable when a whole run can shift ~12pp) is why
-:class:`SameSessionPairedBaseline` exists and is the methodology-correct choice;
-the frozen variants are kept as cost-bound fallbacks and labelled as such.
+empirical regime-shift 表明 whole run 可移动约 12pp，跨时间 frozen baseline 不可靠，因此
+:class:`SameSessionPairedBaseline` 是 methodology-correct choice；frozen variant 只作为明确标注的
+cost-bound fallback。policy decision 只基于 train evidence，不读取 sealed test。
 """
 
 from __future__ import annotations
@@ -46,12 +45,11 @@ FocusedSourceFn = Callable[[HarnessNode], list[str]]
 
 @dataclass
 class CandidateOutcome:
-    """What happened to one candidate as it moved through the funnel.
+    """一个 candidate 经过 funnel 后的 policy-agnostic outcome。
 
-    ``score``/``confirm_evals``/``stats`` are policy-agnostic so parent
-    selection and the baseline ratchet stay in the loop, not in the policies.
-    The optional ``screen``/``paired``/``gate`` are the paired-line detail;
-    ``stats`` carries the Fisher-line detail (fisher_p, foc_c, full_lift, ...).
+    ``score``/``confirm_evals``/``stats`` 让 parent selection 与 baseline ratchet 留在 Loop；
+    optional screen/paired/gate 保存 paired-line detail，stats 保存 Fisher p、focused rate、lift 等。
+    ``promoted`` 只有 status 与 verdict 同时 accepted 才为真。
     """
 
     node_id: str
@@ -83,7 +81,7 @@ class CandidateOutcome:
 
 @dataclass(frozen=True)
 class Baseline:
-    """The control arm for a round: per-task evals + their train mean + a label."""
+    """一个 round 的 control arm：per-task eval、fixed-denominator train mean 与 label。"""
 
     evals: dict[str, TaskEval]
     mean: float
@@ -92,7 +90,11 @@ class Baseline:
 
 @dataclass
 class DecisionContext:
-    """Everything the loop hands a :class:`GatePolicy` to decide one candidate."""
+    """Loop 交给 :class:`GatePolicy` 判断单个 candidate 的完整 context。
+
+    包含 node/parent/round、EvalFn、baseline、train/anchor/focused/sentinel task 与 optional fired
+    source。context 不包含 sealed test result。
+    """
 
     node: HarnessNode
     parent_id: str
@@ -127,10 +129,10 @@ class BaselineProvider(Protocol):
 
 
 class FrozenColdStartBaseline:
-    """One vanilla cold-start control, reused every round (SWE default).
+    """每轮复用同一 vanilla cold-start control 的 baseline provider。
 
-    Cross-time-invalid (compares later rounds against a run that may be in a
-    different regime); a cost-bound fallback, not the methodology-correct choice.
+    它 cross-time-invalid，因为 later round 可能处于不同 regime；这是 SWE default 的 cost-bound
+    fallback，不是 methodology-correct choice。promotion 不移动 baseline。
     """
 
     def __init__(self, control_evals: dict[str, TaskEval], *, label: str = "vanilla"):
@@ -145,14 +147,11 @@ class FrozenColdStartBaseline:
 
 
 class PerParentFrozenBaseline:
-    """Per-parent frozen control; a promoted node's confirm evals become its
-    children's baseline (the AppWorld ratchet). Also cross-time-invalid.
+    """per-parent frozen control，promoted node confirm eval 成为 child baseline。
 
-    ``fallback(parent, train_task_ids)`` rebuilds a missing parent's baseline
-    from durable artifacts (e.g. its confirm out-dir on disk) — the resume path:
-    after a process restart only the seed survives in memory, but a promoted
-    parent's confirm evals are still on disk. Return None when the artifacts are
-    gone; ``for_round`` then raises rather than silently comparing to nothing.
+    这是 AppWorld ratchet，也 cross-time-invalid。``fallback`` 可在 resume 时从 durable confirm
+    artifact 重建 missing parent；artifact 缺失返回 None，``for_round`` 随后抛错，绝不静默用空
+    baseline。promotion 用 fixed train denominator 存入新 Baseline。
     """
 
     def __init__(
@@ -186,11 +185,10 @@ class PerParentFrozenBaseline:
 
 
 class SameSessionPairedBaseline:
-    """Re-run the parent's own harness this round as the control (vanilla at C0).
+    """每轮重跑 parent Harness 作为 same-session control，C0 使用 vanilla。
 
-    Methodology-correct under regime shift — candidate and control are always
-    measured in the same session/window — at ~2x eval cost. Requires ``eval`` to
-    reproduce the parent node's harness (the backend's job).
+    candidate/control 总在同一 session/window 测量，因此 regime shift 下 methodology-correct，
+    代价约 2x eval。backend 的 EvalFn 必须能重现 parent harness。baseline 每轮重测、不 ratchet cache。
     """
 
     def __init__(self, k: int, *, label: str = "control"):
@@ -214,15 +212,11 @@ def make_frozen_baseline(
     train_task_ids: list[str],
     seed_label: str,
 ) -> PerParentFrozenBaseline:
-    """Assemble a :class:`PerParentFrozenBaseline` seeded from a vanilla ledger.
+    """从 vanilla ledger 装配 :class:`PerParentFrozenBaseline`。
 
-    The bench-neutral shape both benches share: the seed baseline is the vanilla
-    ledger read through ``kept_reader`` (the infra-rerun KEPT overlay, so the
-    control arm sees the same salvage rule candidate evals get — SOP §0); the
-    resume fallback re-reads a promoted parent's confirm dir (``confirm_dir_of``)
-    the same way. The only bench-specific inputs are the reader (out-dir vs
-    job-dir format) and the confirm-dir locator; everything else is identical.
-    Must be called after the vanilla cold start has materialised the ledger.
+    seed 经 ``kept_reader`` 读取 infra-rerun KEPT overlay，使 control 与 candidate 使用同一 SOP §0
+    salvage rule；resume fallback 同样回读 promoted parent confirm dir。bench-specific 只有 reader
+    format 与 confirm locator。必须在 vanilla cold start 已 materialize ledger 后调用。
     """
     van_evals = kept_reader(vanilla_dir)
 

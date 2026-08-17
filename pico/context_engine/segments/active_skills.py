@@ -1,4 +1,10 @@
-"""Segment 4 — ``# Active Skills`` (always-on skills). Host-owned."""
+"""构建 Host-owned Segment 4：始终启用的 ``# Active Skills``。
+
+`ActiveSkillsSegmentBuilder` 从 `LocalSkillCatalog.get_always_skills()` 读取无需检索即可注入的
+Skill，并按配置 ``always_max``（缺失时 5）限制正文数量。目录为空或内容加载失败为空时返回
+``None``；有内容才建立标题。它与 Segment 5 的 query-conditioned Skill resolution 分开，
+避免检索结果决定 always-on Skill 是否存在。
+"""
 
 from __future__ import annotations
 

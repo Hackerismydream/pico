@@ -1,14 +1,15 @@
-"""
-Pico is a compact, composable, benchmark-gated Agent Harness with an opt-in
-evolution path.
+"""Pico 是紧凑、可组合、受 Benchmark Gate 约束的 Agent Harness，并提供 Opt-in Evolution Path。
 
-Three feature pillars:
-    1. Context Management   — context_engine/          (Curator engine)
-    2. Call Efficiency      — call_efficiency/
-    3. Skill Self-Evolution — memory_engine/skill_forge/
+Agent Harness 负责把一次模型调用扩展成可持续工作的 Agent Runtime：组织 Context、执行 Provider 与
+Tools、记录调用证据，并在明确门禁下复用或演化能力。Pico 的 Three Feature Pillars 是：
 
-The public and internal Python namespace is ``pico``. See ``NOTICES.md`` and
-``LICENSES/`` for license and third-party attribution details.
+1. Context Management：``context_engine/``，核心是 Curator Engine；
+2. Call Efficiency：``call_efficiency/``；
+3. Skill Self-Evolution：``memory_engine/skill_forge/``。
+
+Public 与 Internal Python Namespace 都是 ``pico``。License 与 Third-party Attribution Details 见
+``NOTICES.md`` 和 ``LICENSES/``。这里的 “Benchmark-gated” 表示能力主张要通过评测门禁，不代表每次
+真实任务都会自动获得相同结果。
 """
 
 import logging as _logging
@@ -19,13 +20,15 @@ from pico.product import PRODUCT_LOGO
 
 
 class _LiteLLMBotocorePreloadFilter(_logging.Filter):
-    """Drop LiteLLM's bedrock/sagemaker `botocore`-missing pre-load warnings.
+    """过滤 LiteLLM 因缺少 ``botocore`` 产生的 Bedrock/SageMaker Pre-load Warnings。
 
-    LiteLLM emits these at import-time when ``botocore`` is not installed
-    (``boto3`` is an optional extra in Pico; not in the default deps).
-    The warnings are noise for users who don't target AWS Bedrock / SageMaker.
-    If those providers are actually used, the downstream call will surface
-    a clearer error than this pre-load chatter.
+    未安装 ``botocore`` 时，LiteLLM 会在 Import-time 输出这些日志；而 ``boto3`` 在 Pico 中只是
+    Optional Extra，不属于 Default Dependencies。对于不使用 AWS Bedrock / SageMaker 的用户，这些
+    Warning 只是 Noise。
+
+    Filter 只屏蔽两条已知 Pre-load Pattern，不隐藏其他 LiteLLM 日志。如果用户真的调用上述
+    Providers，Downstream Call 仍会暴露比 Pre-load Chatter 更清晰的依赖错误，因此这里不会把实际
+    Provider Failure 伪装成成功。
     """
 
     _patterns = (

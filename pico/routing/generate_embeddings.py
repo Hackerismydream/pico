@@ -1,9 +1,16 @@
-"""One-time script to pre-compute task category embeddings.
+"""一次性预计算 Task Category Embeddings 的维护脚本。
 
-Run once before enabling routing:
+模型路由运行时会把用户 Prompt 与 23 个任务参考向量比较。为了避免每次启动都重复请求 Embedding
+API，本脚本提前为 `TASK_DESCRIPTIONS` 中的描述生成向量，并将模型名、维度、任务说明和向量写入
+本文件同目录的 `embedding_data.json`。
+
+启用 Routing 前运行一次：
+
     python -m pico.routing.generate_embeddings --api-key sk-or-...
 
-Writes embedding_data.json alongside this file.
+命令会真实调用 OpenRouter，并覆盖现有输出文件；它不是普通运行时入口。成功写盘只证明所有描述
+都取得了向量，不证明这些参考描述足以覆盖任意用户意图，分类质量仍取决于描述内容与所用
+Embedding Model。
 """
 
 from __future__ import annotations

@@ -1,4 +1,14 @@
-"""Memory system for persistent agent memory."""
+"""Pico 的 Persistent Agent Memory System。
+
+本模块管理 Two-layer User Memory：``episodes.md`` 保存可 Grep 的时间化事件，``user.md`` 保存按主题整理
+的当前 Profile Snapshot。轻量 `annotate` Path 把 Conversation Chunk 变成带 Tags 的 Episode/Foresight；
+重量 `refresh_section` Path 只在 Tag 足够活跃时重写一个 H2 Profile Section。`MemoryConsolidator` 再以
+Prompt Token Pressure 决定何时归档 Session Tail。
+
+核心数据流是 Session Messages → LLM Tool Call → Boundary Validation → Locked Markdown Write → Future
+Context Selection。LLM 调用成功不等于结果通过边界；文件写入成功不等于内容已进入后续 Prompt；Profile
+或 Foresight 也只是记忆证据，不能直接证明用户任务完成或预测成真。
+"""
 
 from __future__ import annotations
 
@@ -22,7 +32,12 @@ if TYPE_CHECKING:
 
 
 def _ensure_text(value: Any) -> str:
-    """Normalize tool-call payload values to text for file storage."""
+    """把 Tool-call Payload Value 规范为适合 File Storage 的 Text。
+
+    已是字符串时原样返回，其他 JSON-compatible Value 使用 ``json.dumps(..., ensure_ascii=False)``，保留
+    中文可读性。无法 JSON Serialize 的对象会抛错，由上层 Annotate Failure Path 捕获；函数不对内容做
+    可信度验证或脱敏。
+    """
     return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
 
 
@@ -34,9 +49,12 @@ _HISTORY_TS_FORMATS = (
 
 
 def _parse_history_paragraph_ts_ms(paragraph: str) -> int | None:
-    """Pull the leading ``[YYYY-MM-DD HH:MM]`` timestamp from a HISTORY.md
-    paragraph and return it as epoch ms (local-time interpretation).
-    Returns None if the paragraph has no parseable stamp."""
+    """提取 HISTORY.md Paragraph 开头的 ``[YYYY-MM-DD HH:MM]`` Timestamp。
+
+    同时接受日期与时间之间的 Space 或 ``T``，按 Local-time Interpretation 转成 Epoch Milliseconds。
+    Paragraph 没有 Leading Stamp 或格式无法 Parse 时返回 `None`，不猜测文件 Mtime；调用方会丢弃无法
+    可靠锚定时间的段落。
+    """
     m = _HISTORY_TS_RE.match(paragraph)
     if not m:
         return None
@@ -51,7 +69,11 @@ def _parse_history_paragraph_ts_ms(paragraph: str) -> int | None:
 
 
 def _normalize_save_memory_args(args: Any) -> dict[str, Any] | None:
-    """Normalize provider tool-call arguments to the expected dict shape."""
+    """把 Provider Tool-call Arguments 规范为预期 Dict Shape。
+
+    String 先按 JSON 解析；List 只接受首项为 Dict 的形式；Dict 原样返回，其他结构返回 `None`。该兼容层
+    覆盖不同 Provider 对 Function Arguments 的包装差异，不验证 Dict 内业务字段，后续调用点负责检查。
+    """
     if isinstance(args, str):
         args = json.loads(args)
     if isinstance(args, list):
@@ -64,11 +86,13 @@ def _normalize_save_memory_args(args: Any) -> dict[str, Any] | None:
 
 
 def _build_annotate_tool(*, enable_foresight: bool) -> list[dict]:
-    """Construct the ``annotate_conversation`` tool.
+    """构造 LLM-facing ``annotate_conversation`` Tool Definition。
 
-    The ``foresight_hint`` slot is included only when ``enable_foresight``
-    is True. With the flag off, the LLM isn't asked for predictions at
-    all — saves tokens and simplifies the prompt.
+    Tool 始终要求 ``episode_summary``，并详细约束单行 Timestamp、Concrete Identifiers、Content/Process
+    Tags。只有 ``enable_foresight=True`` 时才加入 ``foresight_hint`` Slot 及其 Prediction/Window/
+    Confidence/Source Schema；关闭时 **根本不要求模型预测**，既节省 Tokens，也缩小 Prompt 与输出面。
+
+    返回值是 Provider Tool Schema List，不执行 Tool，也不保证 LLM 遵守规则；写回前仍有代码层 Validation。
     """
     properties: dict[str, dict] = {
         "episode_summary": {
@@ -232,11 +256,11 @@ _TAG_RE = re.compile(r"#([a-z][a-z0-9-]*)")
 
 
 def _parse_episode_line(line: str) -> tuple[str, str, list[str]] | None:
-    """Split an episodes.md line into (timestamp, summary, tags).
+    """把 ``episodes.md`` Line 拆成 ``(timestamp, summary, tags)``。
 
-    Returns None for lines that don't match the
-    ``[YYYY-MM-DD HH:MM] <summary> #tag #tag`` shape. Tag tokens are
-    stripped from the returned summary.
+    只接受 ``[YYYY-MM-DD HH:MM] <summary> #tag #tag`` Shape，Timestamp 也兼容 ``T`` Separator。返回的
+    Summary 会移除所有 Tag Tokens，Tags 不含前导 ``#``。不匹配返回 `None`，让统计与 Refresh 跳过
+    Freeform/Corrupt Line，而不是误归类。
     """
     m = _EPISODE_LINE_RE.match(line)
     if not m:
@@ -291,16 +315,12 @@ _FORESIGHT_SEMANTIC_DUP_JACCARD: float = 0.6
 
 
 def _stem_trailing_s(token: str) -> str:
-    """Cheap plural→singular: trim trailing single 's' from tokens ≥5 chars
-    that don't end in 'ss'.
+    """执行 Cheap Plural→Singular：移除长度至少 5 且不以 ``ss`` 结尾 Token 的单个 Trailing ``s``。
 
-    Handles ``reminders → reminder``, ``meetings → meeting``,
-    ``mondays → monday`` so Jaccard catches sibling-form duplicates
-    without pulling in a real stemmer (nltk PorterStemmer is overkill
-    for the volume we process). Does NOT touch ``boss``, ``class``,
-    ``-ing`` / ``-ed`` forms — those misses are acceptable given the
-    failure mode (occasional missed dedup) vs. the cost (heavyweight
-    morphology + extra dep).
+    可把 ``reminders → reminder``、``meetings → meeting``、``mondays → monday`` 归一化，使 Jaccard
+    捕获 Sibling-form Duplicates，而无需引入 Real Stemmer；对当前处理量，`nltk PorterStemmer` 过重。
+    函数 **不** 修改 ``boss``、``class``、``-ing`` / ``-ed`` Forms。Occasional Missed Dedup 是相对
+    Heavyweight Morphology + Extra Dependency 可接受的 Failure Mode。
     """
     if len(token) >= 5 and token.endswith("s") and not token.endswith("ss"):
         return token[:-1]
@@ -308,15 +328,14 @@ def _stem_trailing_s(token: str) -> str:
 
 
 def _is_process_only_episode(line: str) -> bool:
-    """True iff the episode's only tags are #question/#habit/#answer.
+    """Episode 只有 ``#question`` / ``#habit`` / ``#answer`` Tags 时返回 `True`。
 
-    Prompt declares these episodes INVALID (process tags must accompany
-    a content tag). At 30-day scale the LLM still emits them ~5% of the
-    time; this filter drops them at the annotate-writeback boundary so
-    they never reach episodes.md or trigger refresh_section.
+    Prompt 已声明这类 Episode **INVALID**，因为 Process Tags 必须搭配 Content Tag；但 30-day Scale 下 LLM
+    仍约 5% 违规。本 Filter 在 Annotate-writeback Boundary 丢弃它们，使其不进入 ``episodes.md``，也不
+    错误触发 `refresh_section`。
 
-    Unparseable / untagged lines fall through (return False) so we don't
-    accidentally suppress unrelated freeform notes.
+    Unparseable 或 Untagged Lines 返回 `False`，避免意外 Suppress 无关 Freeform Notes。该函数只判断 Tag
+    Class，不评价 Summary 事实是否正确。
     """
     parsed = _parse_episode_line(line)
     if not parsed:
@@ -328,24 +347,22 @@ def _is_process_only_episode(line: str) -> bool:
 
 
 def _normalize_confidence(value: str) -> str:
-    """Return value if in {low, medium, high}, else '?'.
+    """值属于 ``{low, medium, high}`` 时原样返回，否则返回 ``?``。
 
-    LLM occasionally emits 'strong' / 'likely' / 'definite' instead of
-    the prompt-specified enum; rendering '?' makes the deviation visible
-    in user.md rather than silently persisting bad values.
+    LLM 偶尔输出 ``strong`` / ``likely`` / ``definite``，违背 Prompt-specified Enum。渲染成 ``?`` 让
+    Deviation 在 ``user.md`` 中可见，而不是 Silently Persist Bad Value；函数不会猜测这些词对应哪个等级。
     """
     v = (value or "").strip().lower()
     return v if v in _VALID_CONFIDENCE else "?"
 
 
 def _foresight_token_set(prediction: str) -> frozenset[str]:
-    """Tokenize a foresight prediction for semantic-dedup comparison.
+    """把 Foresight Prediction Tokenize，供 Semantic-dedup Comparison。
 
-    English words ≥4 chars + CJK runs ≥2 chars, lowercased, minus
-    high-frequency framing words ('user will ...', 'recurring habit',
-    etc.) that carry no topical content. Each surviving token is then
-    s-stemmed (``_stem_trailing_s``) so plural/singular siblings collapse
-    to one form (``reminders``/``reminder``, ``meetings``/``meeting``).
+    提取长度至少 4 的 English Words 与长度至少 2 的 CJK Runs，Lowercase 后移除 ``user will``、
+    ``recurring habit`` 等不承载 Topic Content 的 High-frequency Framing Words。剩余 Token 再经
+    `_stem_trailing_s`，使 ``reminders``/``reminder``、``meetings``/``meeting`` 等 Plural/Singular
+    Siblings Collapse 到同一形式。返回 Frozen Set 只用于近似比较，不是语言学分词结果。
     """
     raw = _FORESIGHT_TOKEN_RE.findall(prediction.lower())
     return frozenset(_stem_trailing_s(t) for t in raw if t not in _FORESIGHT_DEDUP_STOPWORDS)
@@ -355,13 +372,12 @@ def _is_semantic_duplicate_foresight(
     new_pred: str,
     existing_preds: list[str],
 ) -> bool:
-    """True iff ``new_pred`` overlaps any existing prediction by Jaccard
-    >= threshold over content tokens.
+    """``new_pred`` 与任一 Existing Prediction 的 Content-token Jaccard 达到 Threshold 时返回 `True`。
 
-    The (prediction, src_ts) dedupe in append_foresight is exact-string;
-    it lets through reworded re-emissions of the same semantic claim
-    ('User runs every Saturday morning' vs '...morning (recurring
-    habit)'). This Jaccard check catches those.
+    `append_foresight` 中 ``(prediction, src_ts)`` Dedup 只比较 Exact String，会放过同一 Semantic Claim 的
+    Reworded Re-emissions，例如 ``User runs every Saturday morning`` 与追加 ``recurring habit`` 的版本。
+    本 Jaccard Check 捕获这些改写。Empty Token Set 不判重复；阈值是近似 Trade-off，可能存在少量 False
+    Positive/Negative。
     """
     new_tokens = _foresight_token_set(new_pred)
     if not new_tokens:
@@ -378,13 +394,13 @@ def _is_semantic_duplicate_foresight(
 
 
 def _drop_bullets_without_src(body: str) -> tuple[str, int]:
-    """Strip profile bullets that lack a ``[src: episodes.md @ ts]`` link.
+    """移除缺少 ``[src: episodes.md @ ts]`` Link 的 Profile Bullets。
 
-    Non-bullet lines (blank, headings, prose) are preserved verbatim.
-    Bullets without the evidence link are dropped — the prompt mandates
-    every profile bullet cite its source episode timestamp.
+    Non-bullet Lines，包括 Blank、Headings、Prose，Verbatim 保留。Prompt 要求每条 Profile Bullet 引用
+    Source Episode Timestamp，因此没有 Evidence Link 的 Bullet 会在写回边界丢弃。
 
-    Returns (cleaned_body, n_dropped).
+    Returns ``(cleaned_body, n_dropped)``。该检查验证 Citation Shape，不验证被引用 Episode 是否真的支持
+    Claim；后者仍需人工或更强 Evidence Review。
     """
     kept: list[str] = []
     dropped = 0
@@ -417,10 +433,11 @@ _FORESIGHT_BULLET_RE = re.compile(
 
 
 def _format_foresight_bullet(entry: dict[str, Any], generation_ts: str) -> str:
-    """Render a foresight dict as a single user.md bullet line.
+    """把 Foresight Dict 渲染成一条 ``user.md`` Bullet Line。
 
-    Tolerates missing/blank fields (substitutes ``?``) so partial LLM
-    output still writes a usable record we can review later.
+    Prediction、Window、Confidence、Source Timestamp 与 `generation_ts` 都进入固定单行格式。Missing/Blank
+    Fields 用 ``?`` 替代，使 Partial LLM Output 仍能写成可人工 Review 的 Record；非法 Confidence 也经
+    `_normalize_confidence` 显式标记，而不是伪造有效值。
     """
     pred = (entry.get("prediction") or "").strip() or "?"
     window = (entry.get("window") or "").strip() or "?"
@@ -434,19 +451,21 @@ _RELEVANCE_TOKEN_RE = re.compile(r"\w{2,}", re.UNICODE)
 
 
 def _tokenize_for_relevance(text: str) -> set[str]:
-    """Lowercased set of 2+ char alphanumeric/CJK runs. Lightweight stand-in
-    for proper tokenization — Chinese runs become single multi-char tokens
-    (e.g. a 3-character phrase is one token), English splits on whitespace + punctuation."""
+    """返回 Lowercased、长度至少 2 的 Alphanumeric/CJK Runs Set。
+
+    这是 Proper Tokenization 的 Lightweight Stand-in：Chinese Run 会成为一个 Multi-char Token，例如三字
+    Phrase 是 One Token；English 按 Whitespace + Punctuation 分割。它服务 Profile Section Lexical
+    Relevance，不理解同义词、词形或语义。
+    """
     return {t.lower() for t in _RELEVANCE_TOKEN_RE.findall(text)}
 
 
 def _parse_user_md_sections(content: str) -> dict[str, str]:
-    """Return ``{H2_heading_line: body}`` for every H2 section in ``content``.
+    """把 ``content`` 中每个 H2 Section 解析为 ``{H2_heading_line: body}``。
 
-    The H1 preamble (text before the first H2) is dropped. Body is the
-    text between the heading and the next H2 (or EOF) with leading and
-    trailing blank lines stripped. Order of insertion matches order in
-    the source file.
+    First H2 之前的 H1 Preamble 被 Drop；Body 是 Heading 后到 Next H2 或 EOF 之间的文本，移除首尾 Blank
+    Lines。Dict Insertion Order 与 Source File 一致，供后续自然渲染。重复 H2 Heading 会由后出现者覆盖，
+    当前格式约定要求 Heading 唯一。
     """
     lines = content.splitlines()
     sections: dict[str, str] = {}
@@ -466,10 +485,12 @@ def _parse_user_md_sections(content: str) -> dict[str, str]:
 
 
 def _score_section_relevance(query: str, heading: str, body: str) -> float:
-    """Lexical-overlap relevance: how much query vocabulary appears in
-    heading or body. Heading hits weighted 3x because section titles are
-    short and intentional, e.g. asking about "Projects" should reliably
-    pull '## Projects'."""
+    """计算 Lexical-overlap Relevance，即 Query Vocabulary 在 Heading/Body 中的重合量。
+
+    Heading Hit 权重为 Body 的 3x，因为 Section Titles 短且 Intentional；例如询问 ``Projects`` 应可靠拉取
+    ``## Projects``。空 Query Tokens 返回 0。分数只用于 Profile Section Selection，不是 Memory Fact 的
+    真实性或任务相关性概率。
+    """
     q_tokens = _tokenize_for_relevance(query)
     if not q_tokens:
         return 0.0
@@ -479,18 +500,13 @@ def _score_section_relevance(query: str, heading: str, body: str) -> float:
 
 
 def _splice_h2_section_at_end(content: str, heading: str, new_body: str) -> str:
-    """Like ``_splice_h2_section`` but guarantees the named section is at
-    the **end** of the file, regardless of its current position.
+    """类似 ``_splice_h2_section``，但保证 Named Section 位于 File **End**。
 
-    Behavior:
-    - If the section doesn't exist: appended at end (same as
-      ``_splice_h2_section``'s fallback path).
-    - If the section already exists anywhere: first removed from that
-      position, then appended at end with the new body.
+    Section 不存在时像 Fallback Path 一样 Append；已在任意位置存在时，先移除原 Section Range，再用
+    `new_body` 追加到末尾。H1 Preamble 与其他 H2 顺序保持不变。
 
-    Used by ``append_foresight`` so the auto-managed ## Foresight pillar
-    stays visually at the bottom of user.md no matter what order
-    refresh_section appended ## Projects / ## Habits / etc.
+    `append_foresight` 用它让 Auto-managed ``## Foresight`` Pillar 始终位于 ``user.md`` 底部，不受
+    `refresh_section` 后续追加 ``## Projects`` / ``## Habits`` 等影响。
     """
     lines = content.splitlines()
     target = heading.strip()
@@ -521,13 +537,11 @@ def _splice_h2_section_at_end(content: str, heading: str, new_body: str) -> str:
 
 
 def _ensure_foresight_at_end(content: str) -> str:
-    """If ``## Foresight`` exists in ``content`` but isn't the last H2
-    section, move it to the end. Idempotent — returns ``content``
-    unchanged when Foresight is absent or already last.
+    """``## Foresight`` 存在但不是 Last H2 时，把它移动到末尾。
 
-    Called by ``refresh_section``'s writer after any non-Foresight H2
-    splice so the auto-managed Foresight pillar can't get visually
-    buried by a freshly-appended ``## Projects`` / ``## Habits`` etc.
+    操作 Idempotent：Foresight Absent 或 Already Last 时原样返回 `content`。`refresh_section` Writer 在任何
+    Non-Foresight H2 Splice 后调用，使 Auto-managed Pillar 不会被新 Append 的 ``## Projects`` /
+    ``## Habits`` 视觉掩埋。移动只改变 Section Position，不改写其 Body。
     """
     sections = _parse_user_md_sections(content)
     if _FORESIGHT_HEADING not in sections:
@@ -540,15 +554,11 @@ def _ensure_foresight_at_end(content: str) -> str:
 
 
 def _splice_h2_section(content: str, heading: str, new_body: str) -> str:
-    """Return a copy of ``content`` with the body of the H2 section
-    identified by ``heading`` replaced by ``new_body``.
+    """复制 ``content``，并把 ``heading`` 标识的 H2 Body 替换成 ``new_body``。
 
-    The body is everything from the line after the heading up to (but
-    not including) the next H2 — or EOF if heading is the last H2.
-    H1 preamble and other H2 sections are preserved byte-for-byte.
-
-    If the heading isn't found, ``heading`` + ``new_body`` is appended
-    as a fresh section at end of file.
+    Body 范围从 Heading 下一行到 Next H2 之前；若它是 Last H2 则到 EOF。H1 Preamble 与其他 H2 Sections
+    Byte-for-byte 保留。Heading 不存在时，把 ``heading`` + ``new_body`` 作为 Fresh Section Append 到文件
+    末尾。函数只处理 Exact H2 Line，不把 ``###`` 等更深 Heading 当边界。
     """
     lines = content.splitlines()
     target = heading.strip()
@@ -581,7 +591,15 @@ def _splice_h2_section(content: str, heading: str, new_body: str) -> str:
 
 
 class MemoryStore:
-    """Two-layer memory: MEMORY.md (long-term facts) + HISTORY.md (grep-searchable log)."""
+    """拥有 Two-layer Memory 的 Store：``user.md`` Profile + ``episodes.md`` Grep-searchable Event Log。
+
+    旧名称 ``MEMORY.md`` / ``HISTORY.md`` 的职责分别迁移到 Workspace ``user_memory/profile/user.md`` 与
+    ``user_memory/episodic/episodes.md``。Store 负责 Locked Profile Writes、Episode Append、Foresight、Tag
+    Offsets、Section Selection 与 LLM Annotation/Refresh；文件路径和写入锁由实例持有。
+
+    生命周期与 Workspace 一致，没有显式 Start/Stop。多进程修改 `user.md` 必须使用 `locked`；Episode
+    Append 当前是直接追加。Store 写入成功不代表下次 Context 一定选择该 Section。
+    """
 
     def __init__(
         self,
@@ -602,13 +620,16 @@ class MemoryStore:
 
     @contextmanager
     def locked(self) -> Iterator[None]:
-        """Hold an exclusive fcntl lock on MEMORY.md so concurrent writers
-        across REPL + gateway processes don't clobber each other.
+        """持有 Profile File 的 Exclusive Lock，防止 REPL + Gateway Concurrent Writers 互相覆盖。
 
-        Usage:
+        历史说明称为 ``fcntl`` / ``MEMORY.md`` Lock；当前通过 Cross-platform `portalocker` 保护 ``user.md``，
+        Windows 也真实串行化。Usage：
+
             with memory.locked():
                 cur = memory.read_long_term()
                 memory.write_long_term(cur + "...")
+
+        Context 只提供互斥，不自动 Read-modify-write；Caller 必须把整个组合操作放在 Block 内。
         """
         yield from self._fcntl_locked(self.memory_lock_path)
 
@@ -640,20 +661,16 @@ class MemoryStore:
         *,
         max_keep: int | None = None,
     ) -> int:
-        """Persist LLM-emitted foresight predictions to ``## Foresight`` in
-        user.md.
+        """把 LLM-emitted Foresight Predictions 持久化到 ``user.md`` 的 ``## Foresight``。
 
-        - Creates the section if it doesn't exist (appended at end of file
-          via ``_splice_h2_section`` fallback).
-        - **Dedupes** by ``(prediction text, src_ts)`` — same prediction
-          from same source episode is skipped.
-        - **FIFO caps** total bullet count at ``max_keep`` (default 20).
-          Older entries drop off the front so the section stays scannable.
-        - Atomic under the memory lock; safe vs. concurrent
-          consolidator and Personalizer.
+        Section 不存在时通过 ``_splice_h2_section`` Fallback 语义创建并置于文件末尾。先按
+        ``(prediction text, src_ts)`` 做 Exact Dedup，再以
+        Content-token Jaccard 拦截 Reworded Semantic Duplicates。总 Bullet Count 使用 FIFO Cap，默认
+        ``max_keep=20``，超出时从前端丢弃 Oldest Entries，使 Section 可扫描。整个 Read-modify-write 在
+        Memory Lock 下完成，和 Concurrent Consolidator/Personalizer 安全协调。
 
-        Returns the number of new entries actually written (post-dedupe).
-        Empty input or all-dupes returns 0 without touching the file.
+        返回 Post-dedupe 实际写入的新 Entry 数；Empty Input 或 All Dupes 返回 0 且不触碰文件。写入的是
+        Prediction Evidence，不代表预测已发生；非法/缺失字段会以 ``?`` 可见保留供 Review。
         """
         if not foresights:
             return 0
@@ -730,17 +747,14 @@ class MemoryStore:
             return written
 
     def read_history_since(self, since_ms: int) -> str:
-        """Return HISTORY.md entries whose leading ``[YYYY-MM-DD HH:MM]``
-        timestamp is ``>= since_ms``.
+        """返回 Leading Timestamp ``>= since_ms`` 的 HISTORY.md Entries。
 
-        Entries are blank-line separated paragraphs (per ``append_history``)
-        and the consolidator prompt instructs the LLM to start each one with
-        a ``[YYYY-MM-DD HH:MM]`` stamp. We split on ``\\n\\n``, parse the
-        leading stamp, and keep paragraphs newer than ``since_ms``.
+        当前文件是 ``episodes.md``，历史接口仍称 HISTORY.md。Entries 按 `append_history` 以 Blank Line
+        分段，Consolidator LLM Prompt 要求每段以 ``[YYYY-MM-DD HH:MM]`` 开头。方法按 ``\\n\\n`` Split、解析 Stamp，只
+        保留不早于给定 Epoch Milliseconds 的 Paragraph。
 
-        Paragraphs with a malformed or missing stamp are dropped — they
-        can't be reliably anchored in time. Returns "" if the file is
-        missing.
+        Malformed/Missing Stamp 无法可靠 Anchored in Time，因此 Drop；文件 Missing 或 Read Error 返回
+        ``""``。返回内容只经过时间过滤，不保证每条 Episode 的事实质量。
         """
         if not self.history_file.exists():
             return ""
@@ -763,12 +777,11 @@ class MemoryStore:
     # 共享辅助函数将用户资料和事件记录的修改限制在 MemoryStore 内。
 
     def read_history_tail(self, lines: int) -> str:
-        """Return the last ``lines`` non-blank lines of HISTORY.md.
+        """返回 HISTORY.md 最后 ``lines`` 条 Non-blank Lines。
 
-        ``lines <= 0`` returns every non-blank line. Missing file
-        returns ``""``. Originally lived on the (since-deleted)
-        ``DefaultMemoryEngine`` facade; now part of MemoryStore's
-        public surface.
+        当前文件是 ``episodes.md``。``lines <= 0`` 返回全部 Non-blank Lines，Missing File 或 Read Error
+        返回 ``""``。方法原属于已删除的 ``DefaultMemoryEngine`` Facade，现在是 `MemoryStore` Public
+        Surface。它按行裁剪，不理解 Paragraph 或 Timestamp Boundaries。
         """
         if not self.history_file.exists():
             return ""
@@ -788,20 +801,17 @@ class MemoryStore:
         *,
         at_end: bool = True,
     ) -> None:
-        """Replace (or insert) one H2 section in MEMORY.md.
+        """Replace 或 Insert MEMORY.md 中一个 H2 Section。
 
-        Must be called inside :meth:`locked` — this method does not
-        acquire the lock itself so callers can group multiple section
-        updates under one lock when needed::
+        当前文件是 ``user.md``。必须在 :meth:`locked` 内调用；方法不自行 Acquire Lock，使 Caller 可以把
+        Multiple Updates Group 在同一 Lock：
 
             with store.locked():
                 store.update_section("## Preferences", body)
 
-        ``at_end=True`` (default) routes through the existing
-        :func:`_splice_h2_section_at_end` helper which guarantees the
-        named section ends at file-end after the write. ``at_end=False``
-        preserves the existing position
-        via :func:`_splice_h2_section`.
+        ``at_end=True`` 默认使用 :func:`_splice_h2_section_at_end`，保证 Named Section 写后位于 File End；
+        ``at_end=False`` 使用 :func:`_splice_h2_section` 保留 Existing Position。方法直接写盘、无返回值，
+        不执行 CAS。
         """
         current = self.read_long_term()
         if at_end:
@@ -819,18 +829,14 @@ class MemoryStore:
         self,
         current_message: str | None = None,
     ) -> str:
-        """Return the memory block to embed in the agent's system prompt.
+        """返回要嵌入 Agent System Prompt 的 Memory Block。
 
-        ``current_message=None`` (or empty) → full user.md dump. Useful
-        for cold-start sessions or when the agent is being pinged without
-        a user query.
+        ``current_message=None`` 或 Empty 时返回 Full ``user.md`` Dump，适合 Cold-start Session 或无 User
+        Query Ping。提供 Message 时，解析 H2 Sections、按 Lexical Overlap 评分，选择默认 Top-K=2，并加入
+        ``## Notes`` Catchall；保留的 Sections 按 Original File Order 呈现。
 
-        ``current_message`` provided → parse user.md into H2 sections,
-        score each by lexical overlap with the query, return top-K (2 by
-        default) plus '## Notes' as catchall. Sections kept appear in
-        their original file order so the prompt reads naturally.
-
-        Falls back to full dump when section parsing yields nothing.
+        Section Parsing/Selection 无结果时 Fall Back 到 Full Dump；文件空则返回空字符串。返回 Block 只
+        表示选中候选，仍需 Context Assembler 真正放进 Provider Request。
         """
         long_term = self.read_long_term()
         if not long_term:
@@ -857,11 +863,11 @@ class MemoryStore:
         sections: dict[str, str],
         top_k: int = 2,
     ) -> dict[str, str]:
-        """Score each section, keep top-K of those with score > 0 plus
-        '## Notes' as a catchall. Sections scoring 0 are NOT included as
-        filler — otherwise tied-0 sections leak into the prompt.
-        Returned dict preserves source file order for predictable
-        rendering.
+        """为每个 Section 打分，保留 Score > 0 的 Top-K，并加入 ``## Notes`` Catchall。
+
+        Score 为 0 的 Sections **NOT Included** as Filler，否则 Tied-zero Content 会 Leak 进 Prompt。Notes
+        Heading Prefix 始终保留。Returned Dict 按 Source File Order 重建，确保 Predictable Rendering，而
+        不是按 Score 排列。
         """
         scored = [(heading, body, _score_section_relevance(query, heading, body)) for heading, body in sections.items()]
         scored.sort(key=lambda x: x[2], reverse=True)
@@ -892,20 +898,16 @@ class MemoryStore:
         *,
         enable_foresight: bool = False,
     ) -> bool:
-        """Light path: annotate the conversation chunk only.
+        """Light Path：只 Annotate 当前 Conversation Chunk。
 
-        Produces:
-        - episodes.md entries (single line, with #tags)
-        - foresight_hint persisted to user.md ## Foresight when
-          ``enable_foresight`` is True
+        Produces 两类可选结果：带 ``#tags`` 的 Single-line ``episodes.md`` Entries；以及仅在
+        ``enable_foresight=True`` 时写入 ``user.md ## Foresight`` 的 ``foresight_hint``。方法 **不**修改
+        User Profile Sections；Tag 积累足够 New Events 后，Heavy Path ``maybe_refresh_hot_tags`` 才调用
+        ``refresh_section``。
 
-        Does NOT touch user.md profile sections. Those are refreshed
-        separately via ``refresh_section`` when a tag accumulates enough
-        new events — the heavy path triggered by
-        ``maybe_refresh_hot_tags``.
-
-        ``enable_foresight=False`` (default) keeps the tool schema small:
-        the LLM isn't asked for predictions at all.
+        默认 ``enable_foresight=False`` 会从 Tool Schema 完全移除 Prediction Slot。空 Messages 直接成功；
+        LLM 未调用 Tool、Arguments 结构错误或 Provider Exception 返回 `False`。Process-only Episodes 在
+        写回边界丢弃。返回 `True` 表示 Annotation Pipeline 完成，不保证写入了非空 Episode。
         """
         if not messages:
             return True
@@ -1077,14 +1079,19 @@ episode_summary:
 
     @property
     def _tag_offsets_path(self) -> Path:
-        """``.consolidation_offsets.json`` next to episodes.md. Records the
-        episode count at the last refresh for each tag — next time we
-        only act on the delta."""
+        """返回 ``episodes.md`` 旁的 ``.consolidation_offsets.json`` Path。
+
+        文件记录每个 Tag 在 Last Refresh 时的 Episode Count，使下次只根据 Delta 判断是否需要 Profile
+        Refresh。Property 只计算路径，不创建或读取文件。
+        """
         return self.history_file.parent / ".consolidation_offsets.json"
 
     def read_tag_offsets(self) -> dict[str, int]:
-        """Per-tag episode count at last section refresh. Missing file or
-        bad JSON → empty dict (treated as 'never refreshed')."""
+        """读取 Last Section Refresh 时的 Per-tag Episode Count。
+
+        Missing File 或 Bad JSON 返回 Empty Dict，按 ``never refreshed`` 处理并记录 Parse Warning。有效
+        Payload 只保留可转成 Integer 的数值项；返回值是当前 Snapshot，不持有文件锁。
+        """
         p = self._tag_offsets_path
         if not p.exists():
             return {}
@@ -1096,7 +1103,11 @@ episode_summary:
         return {k: int(v) for k, v in data.items() if isinstance(v, (int, float))}
 
     def write_tag_offsets(self, offsets: dict[str, int]) -> None:
-        """Atomic write of the offsets file (tmp + rename)."""
+        """以 Temp + Rename 原子写入 Tag Offsets File。
+
+        创建父目录，使用 Sorted/Indented JSON 保持可审计，然后替换目标。方法无返回值；OS/Serialization
+        Error 向上传播，防止 Refresh 成功后 Offset 悄悄未保存。
+        """
         p = self._tag_offsets_path
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp = p.with_suffix(".json.tmp")
@@ -1107,7 +1118,12 @@ episode_summary:
         tmp.replace(p)
 
     def count_tags(self) -> dict[str, int]:
-        """Total occurrence count for each tag across all of episodes.md."""
+        """统计整个 ``episodes.md`` 中每个 Tag 的 Total Occurrence Count。
+
+        只处理可由 `_parse_episode_line` 解析的 Event Lines，Freeform/Invalid Lines 跳过；同一 Episode 中
+        出现的每个 Tag 各加一。Missing File 返回空 Dict。Count 是 Refresh Trigger Evidence，不代表 Tag
+        对应事实仍为当前状态。
+        """
         if not self.history_file.exists():
             return {}
         counts: dict[str, int] = {}
@@ -1126,13 +1142,11 @@ episode_summary:
         days: int = 14,
         limit: int = 12,
     ) -> list[tuple[str, int]]:
-        """Return up-to-``limit`` ``(project-tag, count)`` pairs seen in
-        episodes.md within the last ``days``, sorted by frequency.
+        """返回最近 ``days`` 内最多 ``limit`` 个 ``(project-tag, count)`` Pairs，按 Frequency 排序。
 
-        Used by ``annotate()`` to seed the prompt with "slugs you've
-        already used" so the LLM reuses them instead of inventing new
-        variants for the same project — prevents one project being
-        split across multiple #project-*-cli / -docs / -release slugs.
+        只统计 ``episodes.md`` 中 Parseable、Timestamp 不早于 Cutoff、且以 ``project-`` 开头的 Tags。
+        `annotate()` 用结果 Seed Prompt 的 ``slugs you've already used``，促使 LLM 复用旧值，防止同一项目
+        被拆成多个 ``#project-*-cli`` / ``-docs`` / ``-release`` Variants。Missing File 返回空列表。
         """
         from datetime import timedelta
 
@@ -1158,10 +1172,10 @@ episode_summary:
         return sorted(counts.items(), key=lambda kv: -kv[1])[:limit]
 
     def hot_tags(self, threshold: int) -> list[tuple[str, int, int]]:
-        """Tags where ``current_count - last_offset >= threshold``.
+        """返回满足 ``current_count - last_offset >= threshold`` 的 Hot Tags。
 
-        Returns ``[(tag, current_count, previous_offset), ...]`` sorted
-        by delta descending so the hottest tag refreshes first.
+        结果 Shape 是 ``[(tag, current_count, previous_offset), ...]``，按 Delta Descending 排序，使 Hottest
+        Tag First Refresh。Threshold 非正时可能让所有已有 Tag 变 Hot，上层负责提供合理配置。
         """
         counts = self.count_tags()
         offsets = self.read_tag_offsets()
@@ -1178,8 +1192,11 @@ episode_summary:
         tag: str,
         max_episodes: int = 50,
     ) -> list[str]:
-        """Most recent up-to-N episode lines carrying the given tag, in
-        chronological order. Pulls from the tail of episodes.md."""
+        """返回携带给定 Tag 的最近最多 N 条 Episode Lines，并按 Chronological Order 排列。
+
+        方法从 ``episodes.md`` Tail 反向扫描，只接受 Parseable Lines，达到 `max_episodes` 后停止，再反转为
+        正序。Missing File 返回空列表。结果是 `refresh_section` 的 Evidence Window，不包含更早事件。
+        """
         if not self.history_file.exists():
             return []
         matches: list[str] = []
@@ -1205,12 +1222,17 @@ episode_summary:
         model: str,
         max_episodes: int = 50,
     ) -> bool:
-        """Heavy path: rewrite ONE H2 section of user.md scoped to
-        ``tag``'s recent episodes.
+        """Heavy Path：依据 ``tag`` 的 Recent Episodes 重写 ``user.md`` 中 **ONE H2 Section**。
 
-        The LLM picks the target H2 (or invents one if none fit) and
-        emits ``{section_heading, section_body}``. The splicer replaces
-        that section's body and leaves all other sections byte-identical.
+        LLM 根据 Current Profile 与最多 `max_episodes` 条相关事件，选择 Existing Target H2，确无匹配时才
+        Create One，并输出 ``{section_heading, section_body}``。Prompt 强制把 Profile 当 Current Snapshot
+        而非 Diary，要求 UPDATE/CONSOLIDATE/REMOVE 优先于 APPEND，且每条 Bullet 带
+        ``[src: episodes.md @ ts]`` Evidence Link。Splicer 只替换该 Section Body，其他 Sections 保持
+        Byte-identical。
+
+        无 Relevant Episodes 返回 `True` 且不调用模型；Tool Call/Args/Heading 无效或异常返回 `False`。
+        缺 Citation Bullets 在边界丢弃，Concurrent Profile Modification 会由 CAS Skip。返回成功表示刷新
+        流程接受，不等于 LLM 生成的 Profile Claim 已人工验证。
         """
         relevant = self._episodes_for_tag(tag, max_episodes)
         if not relevant:
@@ -1442,9 +1464,12 @@ section_body: full new content for that H2, every bullet ending with
         new_body: str,
         expected_prev: str,
     ) -> bool:
-        """CAS write: splice ``new_body`` under ``heading`` in user.md only
-        if file still matches ``expected_prev`` (no concurrent writer).
-        Returns True on write."""
+        """执行 CAS Write：仅当 ``user.md`` 仍等于 ``expected_prev`` 时 Splice ``new_body``。
+
+        在 Memory Lock 内重新读取文件；发现 Concurrent Writer 已修改时记录日志、返回 `False`，留待 Next
+        Round Retry。匹配时替换 ``heading`` Body，并确保 Auto-managed ``## Foresight`` 仍在文件末尾；
+        Content 有变化才写盘。返回 `True` 表示 CAS 条件成立并完成该路径，即使新内容与旧内容相同。
+        """
         with self.locked():
             current = self.read_long_term()
             if current != expected_prev:
@@ -1465,11 +1490,11 @@ section_body: full new content for that H2, every bullet ending with
         model: str,
         threshold: int = 5,
     ) -> int:
-        """Scan episodes.md, refresh any tag whose new-episode count since
-        last refresh meets ``threshold``. Refreshes are serial (hottest
-        first) so we don't race on user.md.
+        """扫描 ``episodes.md``，刷新 New-episode Delta 达到 ``threshold`` 的 Tags。
 
-        Returns the number of sections actually refreshed.
+        Refreshes 按 Hottest First Serial 执行，避免同一 ``user.md`` 上内部 Race。每个 Tag 只有
+        `refresh_section` 成功后才推进 Offset；失败不推进，使下轮可 Retry。返回实际成功处理的 Section
+        Count；Count 不表示生成了多少新事实，也不保证各 Tag 映射到不同 H2。
         """
         hot = self.hot_tags(threshold)
         if not hot:
@@ -1492,7 +1517,17 @@ section_body: full new content for that H2, every bullet ending with
 
 
 class MemoryConsolidator:
-    """Owns consolidation policy, locking, and session offset updates."""
+    """拥有 Consolidation Policy、Per-session Locking 与 Session Offset Updates。
+
+    Consolidator 连接 `MemoryStore`、LLM Provider、Session Manager、Context Builder 与 Tool Definitions。
+    当 Normal Prompt 达到 Context Window 时，它在 User-turn Boundary 选择 Old Chunk，先 Annotate 到
+    Episodes，再推进 `session.last_consolidated` 并持久化 Session；至少一个 Chunk 成功后才触发 Hot-tag
+    Profile Refresh。
+
+    每个 Session Key 使用共享 Async Lock，避免同进程重复归并。它拥有“何时归并、归并到哪里”的状态，
+    Store 拥有文件内容，Session Manager 拥有 Offset Durability。Annotation 成功与 Prompt 已缩到目标值
+    分属不同证据。
+    """
 
     _MAX_CONSOLIDATION_ROUNDS = 5
 
@@ -1526,7 +1561,11 @@ class MemoryConsolidator:
         self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
 
     def get_lock(self, session_key: str) -> asyncio.Lock:
-        """Return the shared consolidation lock for one session."""
+        """返回一个 Session 共用的 Consolidation `asyncio.Lock`。
+
+        Locks 存在 WeakValueDictionary 中；有活跃持有者/引用时同 Key 复用，完全不用后可被 GC，避免长期
+        Session ID 无界积累。该锁只协调当前 Process，不替代 `MemoryStore` 的 Cross-process File Lock。
+        """
         lock = self._locks.get(session_key)
         if lock is None:
             lock = asyncio.Lock()
@@ -1534,11 +1573,11 @@ class MemoryConsolidator:
         return lock
 
     async def consolidate_messages(self, messages: list[dict[str, object]]) -> bool:
-        """Light path: annotate a selected message chunk into episodes.md.
+        """Light Path：把 Selected Message Chunk Annotate 进 ``episodes.md``。
 
-        Profile rewrites are NOT done here — they happen via
-        :meth:`maybe_refresh_hot_tags` after annotation rounds finish, so
-        the LLM only sees one tag's worth of relevant context at a time.
+        这里 **不** Rewrite Profile；所有 Annotation Rounds 结束后再由 :meth:`maybe_refresh_hot_tags` 处理，
+        让 LLM 每次只看到一个 Tag 的 Relevant Context。返回值直接反映 `MemoryStore.annotate` Pipeline 是否
+        成功，不表示一定写入了 Episode。
         """
         return await self.store.annotate(
             messages,
@@ -1548,8 +1587,11 @@ class MemoryConsolidator:
         )
 
     async def maybe_refresh_hot_tags(self) -> int:
-        """Refresh any profile sections whose backing tag has heated up
-        since the last refresh. Returns the number of sections rewritten."""
+        """刷新自 Last Refresh 后 Backing Tag 已 Heated Up 的 Profile Sections。
+
+        使用 Class 固定 Threshold 调用 Store Heavy Path，返回成功处理的 Section 数。它应在 Annotation
+        Batch 后调用，而非每条 Message 都触发昂贵 LLM Rewrite。
+        """
         return await self.store.maybe_refresh_hot_tags(
             self.provider,
             self.model,
@@ -1561,7 +1603,12 @@ class MemoryConsolidator:
         session: Session,
         tokens_to_remove: int,
     ) -> tuple[int, int] | None:
-        """Pick a user-turn boundary that removes enough old prompt tokens."""
+        """选择能移除足够 Old Prompt Tokens 的 User-turn Boundary。
+
+        从 ``session.last_consolidated`` 开始累加 `estimate_message_tokens`，只在下一条 User Message 之前
+        形成 Safe Boundary，避免把一个 User/Assistant/Tool Interaction 从中间切开。返回
+        ``(end_index, removed_tokens)``；没有可用 Boundary、起点在尾部或请求移除量非正时返回 `None`。
+        """
         start = session.last_consolidated
         if start >= len(session.messages) or tokens_to_remove <= 0:
             return None
@@ -1579,7 +1626,12 @@ class MemoryConsolidator:
         return last_boundary
 
     def estimate_session_prompt_tokens(self, session: Session) -> tuple[int, str]:
-        """Estimate current prompt size for the normal session history view."""
+        """估算 Normal Session History View 的 Current Prompt Size。
+
+        方法使用真实 `session.get_history`、Context Message Builder、Channel/Chat ID 与 Tool Definitions
+        组装 ``[token-probe]`` Request，再通过 Provider Counter → Tiktoken Chain 返回 ``(tokens, source)``。
+        该估算比单条求和更接近实际 Prompt，但仍不是 Provider Usage Receipt。
+        """
         history = session.get_history(max_messages=0)
         channel, chat_id = session.key.split(":", 1) if ":" in session.key else (None, None)
         probe_messages = self._build_messages(
@@ -1596,10 +1648,11 @@ class MemoryConsolidator:
         )
 
     async def archive_unconsolidated(self, session: Session) -> bool:
-        """Archive the full unconsolidated tail for /new-style session rollover.
+        """为 ``/new``-style Session Rollover 归档完整 Unconsolidated Tail。
 
-        Annotates the tail into episodes.md, then runs one round of hot-tag
-        section refresh so the profile reflects the just-closed session.
+         在 Per-session Lock 内 Snapshot ``last_consolidated:`` Tail，Annotate 到 ``episodes.md``，成功后运行
+        一轮 Hot-tag Section Refresh，使 Profile 有机会反映刚关闭 Session。空 Tail 返回 `True`；失败时不
+         伪装归档完成。方法本身不推进 Session Offset，因为 Rollover 管理后续 Session Lifecycle。
         """
         lock = self.get_lock(session.key)
         async with lock:
@@ -1613,7 +1666,16 @@ class MemoryConsolidator:
 
     @trace.instrument("memory.consolidate", extract=semconv.memory_consolidate)
     async def maybe_consolidate_by_tokens(self, session: Session) -> None:
-        """Loop: archive old messages until prompt fits within half the context window."""
+        """循环 Archive Old Messages，直到 Prompt Fits Within Half Context Window 或无法继续。
+
+        空 Session/无效 Window 直接返回。只有 Initial Estimate 达到或超过完整 Context Window 才启动，目标
+        是 Window 的一半；每轮最多 `_MAX_CONSOLIDATION_ROUNDS`，选择 Safe User Boundary、Annotate Chunk、
+        推进并保存 `last_consolidated`，再重新估算。任一步失败、无 Boundary 或 Estimate 无效都会停止，
+        不删除原 Messages。
+
+        至少成功 Annotate 一个 Chunk 后，整次调用最多执行一次 Hot-tag Refresh。方法无返回值，Caller
+        需要通过 Session Offset、Episodes/Profile 文件与日志区分“触发过”“持久化过”和“已达到目标”。
+        """
         if not session.messages or self.context_window_tokens <= 0:
             return
 

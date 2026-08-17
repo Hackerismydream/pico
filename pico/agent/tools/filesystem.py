@@ -1,4 +1,9 @@
-"""File system tools: read, write, edit, list."""
+"""实现受 Workspace 边界约束的文件读取、写入、编辑和目录列举 Tool。
+
+所有 Tool 共享 `_resolve_path`，相对路径先基于 Workspace 解析，再用 resolved path 验证
+allowed_dir，避免 ``..``、symlink 或 user home 展开绕过目录限制。Read/List 声明并发安全的
+READ effect，Write/Edit 声明 WRITE；返回值统一为模型可读文本，权限与 I/O 异常不泄漏堆栈。
+"""
 
 import difflib
 from pathlib import Path
@@ -9,7 +14,12 @@ from pico.agent.tools.execution import ToolCapability, ToolEffect
 
 
 def _resolve_path(path: str, workspace: Path | None = None, allowed_dir: Path | None = None) -> Path:
-    """Resolve path against workspace (if relative) and enforce directory restriction."""
+    """解析 User path，并在真实路径上执行可选目录限制。
+
+    输入先 expanduser；相对路径且提供 Workspace 时以 Workspace 为根，再调用 `resolve()` 消除
+    ``..`` 与 symlink。设置 ``allowed_dir`` 后，最终路径必须能 `relative_to` 同样解析后的允许
+    根，否则抛 `PermissionError`。返回 Path 不保证存在，具体 Tool 再判断 file/dir 类型。
+    """
     p = Path(path).expanduser()
     if not p.is_absolute() and workspace:
         p = workspace / p
@@ -23,7 +33,11 @@ def _resolve_path(path: str, workspace: Path | None = None, allowed_dir: Path | 
 
 
 class _FsTool(Tool):
-    """Shared base for filesystem tools — common init and path resolution."""
+    """为 Filesystem Tool 共享 Workspace 配置与安全路径解析。
+
+    构造时保存可选 Workspace 和 allowed_dir，`_resolve` 委托 `_resolve_path`，让 read、write、
+    edit、list 与 search 使用同一 trust boundary。该基类不执行 I/O，也不替子类声明 effect。
+    """
 
     def __init__(self, workspace: Path | None = None, allowed_dir: Path | None = None):
         self._workspace = workspace
@@ -38,7 +52,13 @@ class _FsTool(Tool):
 
 
 class ReadFileTool(_FsTool):
-    """Read file contents with optional line-based pagination."""
+    """按行读取 UTF-8 文件，并提供可继续调用的分页结果。
+
+    ``offset`` 使用 1-based 行号，``limit`` 默认 2000；输出每行带真实行号，便于 Edit 或人工
+    定位。单次正文最多 `_MAX_CHARS=128_000`，超出会按完整行再次裁剪，并明确给出下一
+    offset；空文件和越界 offset 使用不同结果。Tool 只读且 concurrency_safe，不读取目录、
+    不自动猜编码，路径仍受 `_FsTool` 允许根约束。
+    """
 
     capability = ToolCapability(effect=ToolEffect.READ, concurrency_safe=True)
     _MAX_CHARS = 128_000
@@ -123,7 +143,12 @@ class ReadFileTool(_FsTool):
 
 
 class WriteFileTool(_FsTool):
-    """Write content to a file."""
+    """以 UTF-8 把完整 content 写入目标文件，必要时创建 Parent 目录。
+
+    这是覆盖式 WRITE Tool，不做 append、merge 或旧内容校验；调用方应在修改前先读取并理解
+    文件。路径通过 `_resolve` 检查 allowed_dir，写入成功返回字符长度与 resolved path，权限或
+    I/O 失败返回 Error。该方法可能替换既有文件，不能视为可逆操作。
+    """
 
     capability = ToolCapability(effect=ToolEffect.WRITE)
 
@@ -163,10 +188,12 @@ class WriteFileTool(_FsTool):
 
 
 def _find_match(content: str, old_text: str) -> tuple[str | None, int]:
-    """Locate old_text in content: exact first, then line-trimmed sliding window.
+    """在 ``content`` 中定位 old_text，先精确匹配，再做逐行 trim 的滑动匹配。
 
-    Both inputs should use LF line endings (caller normalises CRLF).
-    Returns (matched_fragment, count) or (None, 0).
+    调用方应先把 CRLF 规范成 LF。精确命中时返回原 old_text 与出现次数；否则按相同行数滑动，
+    比较每行 strip 后内容，使轻微缩进或尾随空白差异仍可编辑。返回
+    ``(matched_fragment, count)``；没有匹配时返回 ``(None, 0)``。该函数不自行决定多匹配是否
+    安全替换。
     """
     if old_text in content:
         return old_text, content.count(old_text)
@@ -189,7 +216,15 @@ def _find_match(content: str, old_text: str) -> tuple[str | None, int]:
 
 
 class EditFileTool(_FsTool):
-    """Edit a file by replacing text with fallback matching."""
+    """通过 old_text → new_text 替换编辑文件，并提供受限 whitespace fallback。
+
+    Tool 先保存原文件是否使用 CRLF，再在 LF 视图上调用 `_find_match`。零命中时返回最相似窗口
+    unified diff；多命中且未设置 ``replace_all`` 时拒绝含糊修改，要求更多 Context。成功后按
+    原 line ending 写回 UTF-8 bytes。它不会用模糊相似度自动替换，fallback 只容忍逐行空白。
+
+    这是 WRITE effect。``replace_all=True`` 会替换每个匹配 fragment，调用方必须确认范围；
+    路径限制和错误处理与其他 `_FsTool` 一致。
+    """
 
     capability = ToolCapability(effect=ToolEffect.WRITE)
 
@@ -290,7 +325,13 @@ class EditFileTool(_FsTool):
 
 
 class ListDirTool(_FsTool):
-    """List directory contents with optional recursion."""
+    """列举目录内容，并可选择递归探索与结果上限。
+
+    非递归结果用文件/目录图标区分；``recursive=True`` 时返回相对路径，并跳过 .git、
+    node_modules、缓存、构建和 coverage 等 `_IGNORE_DIRS`。``max_entries`` 默认 200，只限制实际
+    展示数量，Tool 仍统计总条目并在截断时报告完整 total。Read effect 可并发；目标不存在、
+    不是目录或越过 allowed_dir 时返回明确 Error。
+    """
 
     capability = ToolCapability(effect=ToolEffect.READ, concurrency_safe=True)
     _DEFAULT_MAX = 200

@@ -1,15 +1,12 @@
-"""Write Eval Engine verdicts back into MemoryEngine.
+"""把 Eval Engine Verdicts 写回 MemoryEngine 长期记录。
 
-Writes a one-line HISTORY.md entry per judged turn through the
-MemoryEngine facade. When ``MemoryEngine`` gains a dedicated
-``write_observations`` method, the adapter will switch to it; for now
-``append_history`` keeps the audit trail visible without inventing new file
-types.
+每个被 Judge 的 Turn 通过 MemoryEngine Facade 写成一行 ``HISTORY.md`` Entry。等 ``MemoryEngine``
+未来提供专用 ``write_observations`` Method 时，Adapter 可切换过去；当前使用 ``append_history``，在不
+发明新 File Types 的前提下保持 Audit Trail 可见。
 
-The adapter is intentionally a thin shim — it doesn't perform any I/O
-of its own beyond the MemoryEngine call. All semantic decisions
-(verdict mapping, formatting) live here so the hook stays focused on
-when-to-fire logic.
+Adapter 刻意保持 Thin Shim：除调用 MemoryEngine 外不自行执行 IO。Verdict Mapping 与 Formatting 等
+Semantic Decisions 集中在这里，让 Hook 只关心何时触发。当前代码已把依赖诚实地收窄到实际提供
+`append_history` 的 `MemoryStore`，但保留上述 Write-back Contract。
 """
 
 from __future__ import annotations
@@ -25,12 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 class EvalAdapter:
-    """Writes judge verdicts to the long-term ``HISTORY.md`` via :class:`MemoryStore`.
+    """通过 :class:`MemoryStore` 把 Judge Verdicts 写入长期 ``HISTORY.md``。
 
-    Phase B-3: re-targeted from the deleted ``MemoryEngine`` facade
-    to ``MemoryStore`` directly. The only method this adapter needed
-    was ``append_history``, which is on ``MemoryStore`` anyway —
-    removing the facade indirection just makes the dependency honest.
+    Phase B-3 将依赖从已删除的 ``MemoryEngine`` Facade 直接改向 `MemoryStore`。Adapter 唯一需要的
+    Method 是 ``append_history``，本来就属于 `MemoryStore`；移除 Facade Indirection 只是让真实依赖
+    更诚实。实例保存 Memory Store 与可注入 Clock，便于测试稳定时间格式。
     """
 
     def __init__(
@@ -48,11 +44,14 @@ class EvalAdapter:
         user_goal: str,
         session_key: str,
     ) -> None:
-        """Append a one-line ``[YYYY-MM-DD HH:MM] eval verdict=...`` entry
-        to HISTORY.md.
+        """向 `HISTORY.md` 追加一行 ``[YYYY-MM-DD HH:MM] eval verdict=...`` Entry。
 
-        ``unknown`` verdicts are intentionally NOT recorded because they are
-        signal noise. ``completed`` and ``failed`` preserve recent outcomes.
+        ``unknown`` Verdicts 刻意 **不记录**，因为它们只是 Signal Noise；``completed`` 与 ``failed``
+        用于保留 Recent Outcomes。User Goal 只取第一行并截到 160 Characters，便于从文件尾部 Grep，
+        同时写入 Session Key 便于关联。
+
+        `append_history` 失败会记录 Debug 并吞掉，Adapter 不能让 AgentLoop 崩溃。因而方法正常返回不
+        保证 Verdict 已持久化，Audit Trail 的完整性需另行检查。
         """
         if verdict is JudgeVerdict.unknown:
             return

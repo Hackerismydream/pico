@@ -1,4 +1,4 @@
-"""Semantic-node contract — the one place the driver model is trusted, bounded.
+"""定义唯一受限信任 driver model 的 SemanticNode contract。
 
 A weak driver (Qwen / Kimi) follows instructions loosely and gives up early, so
 every semantic step is reduced to a single call whose output must parse into a
@@ -15,7 +15,7 @@ any defect; ``SemanticNode`` catches that, appends a repair turn, and retries.
 
 The node is synchronous to match the orchestrator FSM. An async backend is
 adapted by the caller (``asyncio.run`` in the production ``call_fn``); keeping the
-retry logic sync avoids threading an event loop through the whole loop.
+retry logic sync，避免把 event loop 穿透整个 FSM。parse success 只表示 schema object 合法。
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ ParseFn = Callable[[str], T]
 
 
 class SemanticNodeError(RuntimeError):
-    """Raised when a semantic node fails to produce a valid object in budget."""
+    """SemanticNode 在 retry budget 内仍无法生成 valid object 时抛出的异常。"""
 
     def __init__(self, name: str, attempts: int, last_error: Exception) -> None:
         super().__init__(
@@ -43,7 +43,7 @@ class SemanticNodeError(RuntimeError):
 
 
 def default_repair_prompt(error: Exception) -> str:
-    """The user turn appended after a parse failure to steer a retry."""
+    """parse failure 后追加的 user repair turn，要求只输出 valid object。"""
     return (
         "Your previous response could not be parsed into the required format. "
         f"Error: {error}. Respond again with ONLY the valid object, no prose, "
@@ -53,7 +53,7 @@ def default_repair_prompt(error: Exception) -> str:
 
 @dataclass
 class SemanticNode(Generic[T]):
-    """One schema-validated driver-model call with bounded repair-retry."""
+    """一次 schema-validated driver call 及其 bounded repair-retry 生命周期。"""
 
     name: str
     call_fn: CallFn
@@ -63,12 +63,12 @@ class SemanticNode(Generic[T]):
     repair_prompt: Callable[[Exception], str] = default_repair_prompt
 
     def run(self, messages: Sequence[dict[str, str]]) -> T:
-        """Call the driver, parse to schema, repairing up to ``max_retries`` times.
+        """调用 driver 并 parse schema，最多 repair ``max_retries`` 次。
 
         Returns the parsed object on the first success. Raises
         :class:`SemanticNodeError` if every attempt (initial + retries) fails to
         parse. The raw text of each attempt is preserved in the conversation so
-        the model sees its own bad output alongside the error.
+        model 看到自己的 bad output 与 error。耗尽后抛 ``SemanticNodeError``。
         """
         convo: Messages = [dict(m) for m in messages]
         last_error: Exception | None = None

@@ -1,8 +1,12 @@
-"""audit.span.v1 span construction + emission.
+"""``audit.span.v1`` Span Construction 与 Best-effort Emission。
 
-One viewer renders any framework's traces because every collector writes this
-same schema. Pico adds ``span.type`` values beyond the original five
-(``memory``, ``plugin``, ``skill`` for skill.read/inject) — see the design doc.
+所有 Collector 写同一 Schema，因此 One Viewer 可以渲染 Any Framework Traces。Pico 在 Original Five
+``span.type`` 之外增加 ``memory``、``plugin``、``skill``，后者覆盖 ``skill.read`` / Inject 等事件。
+`build_span` 统一共享字段，`emit` 追加 Span，`persist_artifact` 保存 Full Payload 并返回可挂到 Span 的
+Reference。
+
+Store 采用 Lazy Singleton。所有写入异常都吞掉，因为 Tracing 不能影响 Host；代价是调用方不能只凭函数
+返回判断 Evidence Durable，需检查 Trace Store/Health。
 """
 
 from __future__ import annotations

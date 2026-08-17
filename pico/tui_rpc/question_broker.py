@@ -1,18 +1,16 @@
-"""QuestionBroker — sync↔async ask-user round-trip keyed by conversation_id.
+"""管理以 ``conversation_id`` 为键的 sync-to-async ask-user 往返。
 
-Generalizes :class:`ConfirmBroker` for the ``ask_user`` tool. The difference is
-the key: a confirm mints its own ``request_id`` and that is the only handle the
-caller has, whereas an ask_user round-trip is answered by an inbound channel
-message whose only handle is the conversation_id. So the pending registry is
-keyed by conversation_id; an internal request_id is still minted and carried in
-the notification so a frontend that prefers to answer by request_id can.
+``QuestionBroker`` 把 :class:`ConfirmBroker` 的等待模式扩展到 ``ask_user`` Tool。二者的 key
+不同：confirm 自己生成 ``request_id``，调用者也只持有它；ask_user 的回答还可能来自入站
+Channel message，唯一稳定 handle 是 ``conversation_id``。因此 pending registry 以
+``conversation_id`` 为键，同时仍生成 internal ``request_id`` 放入 notification，允许偏好
+request_id 的 frontend 回答。
 
-Like ConfirmBroker it is transport-agnostic: constructed with a notification
-emit callable (bound to ``RpcServer.send_frame`` in production). Transport
-fail-safe paths (timeout, internal error, connection EOF via
-:meth:`cancel_all`) resolve to the prompt's ``default``. Task cancellation
-propagates so cancelling a Turn cannot resume the Agent with a fabricated
-answer.
+与 ConfirmBroker 一样，本对象 transport-agnostic：构造参数是 notification emit callable，
+production 绑定到 ``RpcServer.send_frame``。timeout、internal error、connection EOF（通过
+:meth:`cancel_all`）都 fail-safe 为 prompt ``default``；Task cancellation 继续传播，避免
+取消 Turn 后用 fabricated answer 恢复 Agent。得到 answer 只恢复暂停的 Tool call，不表示
+整个任务完成。
 """
 
 from __future__ import annotations
@@ -36,11 +34,15 @@ class _PendingQuestion:
 
 
 class QuestionBroker:
-    """Emits ``clarify.request`` notifications and awaits the answer.
+    """发送 ``clarify.request`` notification，并等待对应 answer。
 
-    Keyed by conversation_id: at most one question may be pending per
-    conversation, because a single turn is serial and cannot ask twice
-    concurrently.
+    实例由 ``RpcServer`` 拥有，维护 ``conversation_id -> pending`` 与反向
+    ``request_id -> conversation_id`` 两张表。每个 conversation 最多一个 pending question，
+    因为单个 Turn 是 serial，不能并发 ask 两次；若出现 overlap，旧问题先用自身 default
+    收敛，再由新问题替换。
+
+    Broker 不持久化问题或答案。Server 关闭时应调用 ``cancel_all()``，否则 Tool coroutine
+    可能永久等待。
     """
 
     def __init__(self, send_frame: SendFrame) -> None:
@@ -58,14 +60,17 @@ class QuestionBroker:
         default: str = "",
         timeout_s: float = 600.0,
     ) -> str:
-        """Emit a ``clarify.request`` and await the matching answer.
+        """发出 ``clarify.request``，等待匹配的 answer string。
 
-        Returns ``default`` on timeout, EOF (:meth:`cancel_all`), or any
-        internal error. External task cancellation propagates.
+        ``conversation_id`` 标识 Turn 对话，``prompt`` 是问题，``choices`` 可为空，
+        ``default`` 是失败降级答案，``timeout_s`` 默认 600 秒。同一 conversation 已有问题时
+        视为 programming error：记录 overlap，让 stale Future 以自己的 default 完成，再
+        替换为新问题。
 
-        A turn is serial, so a second pending question for the same
-        conversation is a programming error: we drop the stale one (fail-safe
-        to its default) and replace it, logging the overlap.
+        notification 同时携带 ``conversation_id``、新生成的 ``request_id``、``question`` 和
+        ``choices``。timeout、EOF（:meth:`cancel_all`）或 internal error 返回 ``default``；
+        external task cancellation 传播。``finally`` 只清理当前 request 自己的记录，避免
+        overlap 中旧 coroutine 删除新 pending state。
         """
         existing = self._pending.get(conversation_id)
         if existing is not None:
@@ -112,14 +117,18 @@ class QuestionBroker:
             self._by_request.pop(request_id, None)
 
     def pending_req(self, conversation_id: str) -> str | None:
-        """Return the pending request_id for a conversation, else ``None``."""
+        """返回 conversation 当前 pending ``request_id``，不存在时返回 ``None``。
+
+        该值用于 Channel ingress 或测试定位等待项；读取不会延长 timeout，也不会消费问题。
+        """
         pending = self._pending.get(conversation_id)
         return pending.request_id if pending is not None else None
 
     def reply(self, key: str, answer: str) -> bool:
-        """Resolve a pending question by conversation_id OR request_id.
+        """使用 ``conversation_id`` OR ``request_id`` 完成 pending question。
 
-        Idempotent: unknown key / already-resolved → ``False``.
+        找到未完成 Future 时写入 ``answer`` 并返回 ``True``。unknown key、已超时或已经回答
+        返回 ``False``，所以重复 reply 幂等。返回值只表示 Broker 接纳答案。
         """
         conversation_id = key if key in self._pending else self._by_request.get(key)
         if conversation_id is None:
@@ -131,7 +140,11 @@ class QuestionBroker:
         return True
 
     def cancel_all(self) -> None:
-        """Fail-safe every pending question to its default (connection EOF)."""
+        """让所有 pending question 以各自 default 安全完成。
+
+        connection EOF 或 server shutdown 时调用。已完成 Future 保持不变；registry 由各自
+        ``await_question()`` 的 ``finally`` 清理。此处不会抛出 ``CancelledError``。
+        """
         for pending in self._pending.values():
             if not pending.future.done():
                 pending.future.set_result(pending.default)

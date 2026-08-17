@@ -1,22 +1,14 @@
-"""Aggregate judge results into a ``failure_map.json``.
+"""把 Judge result 聚合为 ``failure_map.json``。
 
-Consumes a list of :class:`JudgeResult` objects (the output of the
-cold-start coverage bandit's ``claude_judge(trial)`` calls) and produces
-a single structured aggregation file. This file is the bridge between
-spec §14 step ③ (cold-start coverage) and step ④ (first evolution round):
+输入是 :class:`JudgeResult` list，通常来自 cold-start coverage bandit 的
+``claude_judge(trial)``；输出是一份结构化 aggregation，是 spec §14 step ③ cold-start
+coverage 与 step ④ first evolution round 之间的桥。它承担四项职责：检查 judge 是否覆盖至少
+``min_why_classes=7`` 个 WHY pathology axis；把 L1 alert 暴露为
+``human_review_needed``，让 Evolver 暂停、engineer 修 infrastructure；把 L2/L3 proposal 按
+``(PatchWhere, PatchWhy)`` cell 聚合；计算 WHERE/WHY marginal，供 paper §15 Must-nail #1
+diversity plot 使用。
 
-- **Coverage check** — does the judge output cover at least
-  ``min_why_classes=7`` of the WHY pathology axes (spec §14 step ③
-  acceptance gate)?
-- **L1 routing** — surface L1 alerts as ``human_review_needed`` items
-  (evolver pauses, engineer fixes infrastructure).
-- **L2 / L3 cell aggregation** — group patch proposals by
-  ``(PatchWhere, PatchWhy)`` cell so the evolver can scan a single
-  dict to find candidate patches for a chosen pathology.
-- **WHERE / WHY marginals** — counts per axis, useful for paper
-  §15 Must-nail #1 diversity plots.
-
-JSON layout (``schema_version = "1.0"``)::
+JSON layout（``schema_version = "1.0"``）::
 
     {
       "schema_version": "1.0",
@@ -59,8 +51,9 @@ JSON layout (``schema_version = "1.0"``)::
       "why_distribution": {"budget_awareness": 4, ...}
     }
 
-Cell keys use ``"<WHERE>::<WHY>"`` (double-colon separator, no nesting)
-so the file remains valid JSON and grep-able from shell.
+Cell key 使用 ``"<WHERE>::<WHY>"``，用 double-colon 而非 nesting，使文件保持 valid JSON
+且可从 shell grep。coverage gate 只证明 judge taxonomy 覆盖范围，不证明 proposal 正确、patch
+已应用或 benchmark 效果为正。
 """
 
 from __future__ import annotations
@@ -87,22 +80,15 @@ def build_failure_map(
     *,
     min_why_classes: int = DEFAULT_MIN_WHY_CLASSES,
 ) -> dict[str, Any]:
-    """Aggregate a list of ``JudgeResult`` into the failure_map dict.
+    """把 ``JudgeResult`` iterable 聚合为 failure_map dict。
 
-    Parameters
-    ----------
-    judge_results
-        Iterable of JudgeResult — usually from claude judge call on
-        cold-start bandit's sampled trials.
-    min_why_classes
-        Target WHY class coverage. Default 7 (spec §14 ③). The
-        resulting ``coverage_satisfied`` reflects whether the judge
-        output reached this bar.
+    ``judge_results`` 通常来自 cold-start bandit sampled trial 的 claude judge call；
+    ``min_why_classes`` 是 WHY coverage target，默认 7（spec §14 ③）。L1 只进入 alert；L2/L3
+    必须按 schema 携带 proposal，并按 WHERE/WHY 计数与分 cell。``PatchWhy.other`` 使用完整
+    ``patch_why_extra`` 子名称，缺失时为 ``other:unknown``。
 
-    Returns
-    -------
-    dict
-        Structured ``failure_map`` ready for ``json.dump``.
+    返回可直接 ``json.dump`` 的 structured map。``coverage_satisfied`` 仅比较 distinct WHY
+    count 与 target，不衡量 confidence、候选质量或真实效果。
     """
     results = list(judge_results)
 
@@ -184,10 +170,10 @@ def write_failure_map(
     *,
     indent: int = 2,
 ) -> None:
-    """Atomically write the failure_map dict to ``out_path``.
+    """把 failure_map atomic write 到 ``out_path``。
 
-    Uses temp file + rename for crash safety (same pattern as
-    ``evolver/tree/store.py``).
+    使用 temp file + rename 提供 crash safety，与 ``evolver/tree/store.py`` 模式相同。
+    ``indent`` 默认 2，并按 key 排序。函数不验证 map schema；返回只表示 rename 完成。
     """
     out_path = Path(out_path)
     tmp = out_path.with_suffix(out_path.suffix + ".tmp")
@@ -196,18 +182,11 @@ def write_failure_map(
 
 
 def coverage_gap(failure_map: dict[str, Any]) -> list[str]:
-    """Return WHY enum values not yet covered by the judge output.
+    """返回 judge output 尚未覆盖的 canonical WHY Enum value。
 
-    Useful for diagnostic / decision logic in the loop: if returns
-    non-empty, the cold-start bandit hasn't satisfied spec §14 step
-    ③ — either rerun bandit with bigger budget or accept partial
-    coverage and proceed.
-
-    Note: this checks against the **first-class** ``PatchWhy`` enum
-    values (excluding ``other``). ``other:*`` sub-names in the judge
-    output do contribute to coverage_count but don't fill in the
-    canonical WHY axis — the gap result names which canonical
-    classes are still missing.
+    非空表示 cold-start bandit 尚未满足 spec §14 step ③，可用于决定增加 budget 重跑，或明确
+    接受 partial coverage 后继续。比较对象只含 first-class ``PatchWhy``，排除 ``other``；
+    ``other:*`` 会增加 coverage_count，但不会填补 canonical WHY axis。返回按字典序排序。
     """
     covered = set(failure_map.get("covered_why_classes", []))
     canonical = {w.value for w in PatchWhy if w != PatchWhy.other}
@@ -219,10 +198,10 @@ def candidates_for_cell(
     where: PatchWhere | str,
     why: PatchWhy | str,
 ) -> list[dict[str, Any]]:
-    """Return the ``candidates`` list for a given ``(WHERE, WHY)`` cell.
+    """返回指定 ``(WHERE, WHY)`` cell 的 candidate list。
 
-    Returns ``[]`` if the cell is empty or absent. Accepts either enum
-    instances or the underlying string values.
+    ``where``/``why`` 可传 Enum 或 underlying string。cell absent/empty 时返回 ``[]``；返回
+    新 list，但其中 dict 仍引用原 map 内容。函数不按 confidence 排序或筛选。
     """
     where_key = where.value if isinstance(where, PatchWhere) else where
     why_key = why.value if isinstance(why, PatchWhy) else why

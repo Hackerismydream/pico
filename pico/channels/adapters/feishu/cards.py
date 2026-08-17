@@ -1,10 +1,10 @@
-"""Outbound rendering of agent markdown into Feishu message payloads.
+"""把 Agent Markdown Render 成 Feishu Outbound Message Payloads。
 
-Feishu accepts three flavours — plain ``text``, rich-text ``post``, and an
-interactive ``card``. ``detect_format`` picks the smallest one that can
-carry the content; the builders below emit the matching JSON. This is the
-render half of the formatting layer and is Feishu-schema-specific, so it
-stays with the adapter (the shared half is markdown *parsing*, not this).
+Feishu 接受 Three Flavours：Plain ``text``、Rich-text ``post``、Interactive ``card``。``detect_format`` 选择
+能承载内容的 Smallest Format，Builders 生成匹配 JSON。本模块是 Formatting Layer 的 Render Half，理解
+Feishu Schema，因此留在 Adapter；Shared Layer 只负责 Markdown *Parsing*。
+
+Payload Build Success 只证明 JSON Shape 已生成，Platform API 仍可能因 Size/Schema/Permission 拒绝。
 """
 
 from __future__ import annotations
@@ -29,11 +29,10 @@ _POST_MAX_LEN = 2000
 
 
 def detect_format(content: str) -> str:
-    """Return ``"text"`` / ``"post"`` / ``"interactive"`` for *content*.
+    """为 *content* 返回 ``"text"`` / ``"post"`` / ``"interactive"``。
 
-    Card wins for anything Feishu's simpler flavours can't render (code,
-    tables, headings, emphasis, lists) or anything long; links alone go to
-    post; short unformatted text stays text.
+    Code/Table/Heading/Emphasis/List 或超长内容选择 Card；仅 Links 选择 Post；短且无格式文本使用 Text。该
+    Heuristic 选择承载格式，不验证最终 API Limit。
     """
     text = content.strip()
     if _COMPLEX_RE.search(text):
@@ -54,8 +53,11 @@ def text_payload(content: str) -> str:
 
 
 def post_payload(content: str) -> str:
-    """Render markdown to a Feishu post: each line is a paragraph, links
-    become ``a`` tags and everything else ``text`` tags."""
+    """把 Markdown Render 成 Feishu Post JSON。
+
+    每行成为 Paragraph，Markdown Links 转 ``a`` Tags，其余转 ``text`` Tags；Empty Line 仍保留 Empty Text。
+    不解析 Emphasis/Table 等复杂语法，Format Detector 应把它们送到 Card。
+    """
     paragraphs: list[list[dict]] = []
     for line in content.strip().split("\n"):
         elements: list[dict] = []
@@ -72,10 +74,10 @@ def post_payload(content: str) -> str:
 
 
 def card_payloads(content: str) -> list[str]:
-    """Render markdown into one or more interactive-card payloads.
+    """把 Markdown Render 成一个或多个 Interactive-card Payloads。
 
-    Feishu rejects more than one table per card (API 11310), so the
-    element stream is split into table-bounded groups, one card each.
+    Feishu API 11310 拒绝 One Card 中超过一张 Table，因此 Element Stream 按 Table Boundary Split，每 Group
+    生成 One Card。返回顺序保持原内容顺序，Caller 负责逐张 Send。
     """
     elements = _build_elements(content)
     payloads = []
@@ -100,7 +102,11 @@ def _build_elements(content: str) -> list[dict]:
 
 
 def parse_table(table_text: str) -> dict | None:
-    """Parse a markdown pipe-table into a Feishu ``table`` element."""
+    """把 Markdown Pipe-table Parse 成 Feishu ``table`` Element。
+
+    少于 Header/Separator/Data 三行返回 `None`；缺失 Cell 补 Empty，Column Width 为 Auto。函数不解析
+    Alignment Semantics 或 Escaped Pipes。
+    """
     lines = [ln.strip() for ln in table_text.strip().split("\n") if ln.strip()]
     if len(lines) < 3:
         return None
@@ -120,8 +126,11 @@ def parse_table(table_text: str) -> dict | None:
 
 
 def _split_headings(content: str) -> list[dict]:
-    """Turn headings into bold ``div`` elements, leaving other text as
-    markdown blocks. Code fences are shielded from heading detection."""
+    """把 Headings 转为 Bold ``div``，其他 Text 保持 Markdown Blocks。
+
+    Code Fences 先用 Placeholder Shield，避免 Fence 内 ``#`` 被误判 Heading，再原样恢复。无 Heading 时
+    返回单 Markdown Element。
+    """
     blocks: list[str] = []
     shielded = content
     for m in _CODE_BLOCK_RE.finditer(content):

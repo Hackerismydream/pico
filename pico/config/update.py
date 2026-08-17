@@ -1,11 +1,11 @@
-"""Minimal in-place updates for ~/.pico/config.json.
+"""对 ``~/.pico/config.json`` 执行 Minimal In-place Updates。
 
-Unlike ``save_config`` which re-serializes the entire Pydantic model (and
-would bake every runtime default back into the file), these helpers read
-the raw JSON, patch a small set of fields, and atomically rewrite via
-temp-file + rename. Used by ``pico cron config set`` and the
-onboarding wizard so the change persists across restarts without
-touching unrelated fields.
+``save_config`` 会 Re-serialize Entire Pydantic Model，把所有 Runtime Defaults Bake 回文件；这里改为读取
+Raw JSON，只 Patch 少量 Fields，再用 Temp-file + Rename Atomic Rewrite。``pico cron config set`` 与
+Onboarding Wizard 用它持久化修改，同时不触碰 Unrelated Fields。
+
+所有 Public Update 必须通过 `read_raw_or_raise`，损坏 Config Fail Closed，避免 Data Loss。Atomic Write
+成功表示新 JSON Published，不验证下次 Runtime External Dependency。
 """
 
 from __future__ import annotations
@@ -166,12 +166,11 @@ def update_cron_config(
     *,
     config_path: Path | None = None,
 ) -> Any:
-    """Patch a single CronConfig field on-disk.
+    """Patch On-disk `CronConfig` 的 Single Field。
 
-    Returns the previous raw value (None if absent). Raises ``KeyError`` if
-    ``key`` is not a CronConfig field — defensive only; CLI ``_KEY_HANDLERS``
-    already validates before reaching here. Type validation of ``value`` is
-    the caller's responsibility (CLI parsers handle it).
+    返回 Previous Raw Value，Absent 时 `None`。``key`` 不属于 `CronConfig` 时抛 ``KeyError``；这是 Defensive
+    Check，CLI ``_KEY_HANDLERS`` 已预验证。`value` Type Validation 由 Caller/CLI Parser 负责。Field 使用
+    Camel Alias 写入，完成后 Atomic Replace。
     """
     if key not in CronConfig.model_fields:
         raise KeyError(f"Unknown cron config key: {key!r}. Supported: {sorted(CronConfig.model_fields)}")
@@ -187,11 +186,10 @@ def update_cron_config(
 
 
 def reset_cron_config(*, config_path: Path | None = None) -> None:
-    """Remove the entire ``cron`` section from on-disk config.
+    """从 On-disk Config 移除 Entire ``cron`` Section。
 
-    Schema defaults (``forward_channels=["*"]`` / ``default_timezone="Asia/Shanghai"``)
-    take effect on next load. Stays consistent with the file's "never bake
-    defaults to disk" principle.
+    下次 Load 使用 Schema Defaults ``forward_channels=["*"]`` / ``default_timezone="Asia/Shanghai"``，保持
+    ``never bake defaults to disk`` Principle。Section Absent 也会重写相同数据，方法无返回值。
     """
     path = config_path or get_config_path()
     data = read_raw_or_raise(path)
@@ -205,11 +203,10 @@ def set_language(
     *,
     config_path: Path | None = None,
 ) -> str | None:
-    """Patch the top-level ``language`` on the on-disk config. Returns previous value.
+    """Patch On-disk Top-level ``language``，返回 Previous Value。
 
-    Set by the onboarding wizard's language screen. Read by the CLI/wizard copy
-    (via ``_t``) and injected into the agent's system prompt so replies use the
-    chosen language.
+    Onboarding Language Screen 设置；CLI/Wizard Copy 通过 ``_t`` 读取，并注入 Agent System Prompt，指导
+    Reply Language。函数不限制 Literal，Schema 在 Next Load 验证。
     """
     path = config_path or get_config_path()
     data = read_raw_or_raise(path)
@@ -225,12 +222,10 @@ def set_default_model(
     *,
     config_path: Path | None = None,
 ) -> str | None:
-    """Patch ``agents.defaults.model`` on the on-disk config. Returns previous value.
+    """Patch On-disk ``agents.defaults.model``，返回 Previous Value。
 
-    Used by the onboarding wizard after the user picks a provider: the wizard
-    needs to swap the default model to one that matches the chosen provider
-    (otherwise ``pico run`` would still route to whatever the freshly
-    created ``Config()`` baked in, which is typically a different vendor).
+    Onboarding 在 User 选 Provider 后，把 Default Model 换成 Matching Vendor；否则 ``pico run`` 仍使用 Fresh
+    ``Config()`` Baked 的其他 Vendor Model。函数只写 Name，不验证 Provider Config/Credentials。
     """
     path = config_path or get_config_path()
     data = read_raw_or_raise(path)
@@ -247,11 +242,10 @@ def set_sandbox_backend(
     *,
     config_path: Path | None = None,
 ) -> str | None:
-    """Patch ``sandbox.backend`` on the on-disk config. Returns previous value.
+    """Patch On-disk ``tools.sandbox.backend``，返回 Previous Value。
 
-    Used by the onboarding wizard's run-location step. ``backend`` must be one
-    of ``SandboxConfig``'s literal values (``none`` / ``auto`` / ``boxlite``);
-    the loader validates on next read.
+    Onboarding Run-location Step 使用。``backend`` 必须是 `SandboxConfig` Literal ``none`` / ``auto`` /
+    ``boxlite``，由 Next Load Validation；函数不尝试启动 VM。注意 Sandbox Nested under Tools，不是 Root。
     """
     path = config_path or get_config_path()
     data = read_raw_or_raise(path)
@@ -266,30 +260,18 @@ def set_sandbox_backend(
 
 
 def init_extension_block_defaults(*, config_path: Path | None = None) -> None:
-    """Seed the user-facing subset of the memory / plugins / skillForge
-    extension blocks into a fresh ``~/.pico/config.json``.
+    """把 Memory / Plugins / SkillForge 的 User-facing Defaults Seed 到 Fresh Config。
 
-    Called once by the onboarding bootstrap so a new config shows these knobs
-    at their schema defaults — discoverable and editable without reading the
-    source. Each field is only written when absent (``setdefault``), so this is
-    idempotent and never clobbers a value the user (or an earlier wizard step)
-    already set. ``memory.backend`` is seeded to its schema default
-    (``"myna"``). The onboarding flow keeps that selection and directs
-    operators to initialize Myna in the configured Workspace.
+    Onboarding Bootstrap 调用一次，使新 ``~/.pico/config.json`` 展示可编辑 Knobs。每 Field 只在 Absent 时
+    ``setdefault``，因此 Idempotent 且不 Clobber User/Earlier Wizard Value。Defaults 从 Pydantic Models 获取，
+    避免 Schema Drift；``memory.backend`` Seed 为 Schema Default ``"myna"``。这里的 ``myna`` 仅是
+    Backend Contribution Name，不包含外部仓库链接。Plugin Config 保持 Empty。
 
-    Defaults are pulled from the Pydantic models so this seed can't drift from
-    the schema. Plugin configuration stays empty because Myna owns
-    repository, profile, runtime-root, and credential selection.
-
-    The optional service fields on ``SkillForgeConfig`` (``embedding_url`` /
-    ``embedding_api_key`` / ``reranker_url`` / ``reranker_api_key`` /
-    ``mass_library_db``) are deliberately NOT written. They stay at public
-    schema defaults and deployments that need hosted services add explicit
-    values by hand.
-
-    Key casing follows each block's convention: ``memory`` / ``skillForge`` use
-    camelCase (the file-level alias); ``plugins.config`` is a verbatim
-    pass-through dict whose keys stay snake_case (each plugin owns its schema).
+    `SkillForgeConfig` Optional Service Fields ``embedding_url`` / ``embedding_api_key`` / ``reranker_url`` /
+    ``reranker_api_key`` / ``mass_library_db`` **NOT Written**，Hosted Deployment 手工显式添加。Key Casing
+    遵循 Block Convention：``memory`` / ``skillForge`` 使用 CamelCase Alias，``plugins.config`` Verbatim
+    ``snake_case`` Pass-through。
+    写入 Defaults 不代表对应 Backend 已初始化。
     """
     from pico.config.pico import (
         MemoryConfig,
@@ -325,10 +307,10 @@ def set_memory_backend(
     *,
     config_path: Path | None = None,
 ) -> str | None:
-    """Patch ``memory.backend`` on the on-disk config. Returns previous value.
+    """Patch On-disk ``memory.backend``，返回 Previous Value。
 
-    ``"myna"`` selects repository Memory; ``None`` disables implicit
-    Memory while preserving Sessions and Local Skills.
+    ``"myna"`` 选择 Repository Memory；`None` 禁用 Implicit Memory，同时保留 Sessions 与 Local Skills。
+    函数只保存 Selection，不 Resolve/Start Plugin。
     """
     path = config_path or get_config_path()
     data = read_raw_or_raise(path)

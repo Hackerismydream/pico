@@ -1,26 +1,20 @@
-"""``setup.status`` RPC handler — provider configuration probe.
+"""实现探测 provider 配置状态的 ``setup.status`` RPC handler。
 
-Contract: ``docs/openspec/changes/tui-ipc-bridge/specs/tui-ipc.md §3.9`` +
-``design.md §3a.1``.
+契约来自 ``docs/openspec/changes/tui-ipc-bridge/specs/tui-ipc.md §3.9`` 与
+``design.md §3a.1``。它存在的原因是 hermes fork-import 的
+``useSessionLifecycle.ts:127,206`` 和 ``setupHandoff.ts:43`` 会在 app boot 时硬调用
+``setup.status``；若返回 ``{provider_configured: false}``，UI 会把用户停在 *Setup
+required* panel，并拒绝创建 Session，因此 v0.1 也必须遵守该 contract。
 
-Why this exists
----------------
+Q9 的 partial answer 是把 ``agents.defaults.provider`` 视为 canonical provider field。
+具体名称（``"anthropic"``、``"openai"`` 等）算 configured；sentinel ``"auto"`` 算
+not-yet-configured，因为用户尚未选择，Pico 也未执行 auto-detection。实际 onboarding gate
+还要求 model 与 provider signal 同时存在。
 
-hermes's fork-imported ``useSessionLifecycle.ts:127,206`` + ``setupHandoff.ts:43``
-hard-call ``setup.status`` on app boot. If the response is
-``{provider_configured: false}`` the UI parks the user on a *Setup required*
-panel and refuses to start a new session. The contract therefore has to be
-honoured even in v0.1.
-
-Q9 (partial answer): we treat ``agents.defaults.provider`` as the canonical
-provider field. A concrete provider name (``"anthropic"`` / ``"openai"`` / …)
-counts as *configured*; the sentinel value ``"auto"`` counts as
-*not-yet-configured* (the user has not picked one and Pico has not run
-auto-detection). If the config read fails for any reason — file missing,
-unparseable JSON, unexpected shape — the v0.1 fallback returns
-``{"provider_configured": true}`` (design §3a.1) so the hermes UI never blocks
-on a transient I/O hiccup. The real signal can be tightened in v0.2 once we
-support proper provider auto-detection.
+若 config read 因 file missing、unparseable JSON 或 unexpected shape 等原因失败，v0.1 按
+design §3a.1 fail-open 返回 ``{"provider_configured": true}``，避免 hermes UI 因 transient
+I/O hiccup 永久阻塞。proper provider auto-detection 完成后，v0.2 可以收紧此 signal。
+该布尔值只是本地 setup gate，不验证 credentials，也不证明一次模型调用能成功。
 """
 
 from __future__ import annotations
@@ -45,13 +39,15 @@ def _config_path() -> Path:
 
 
 def _detect_provider_configured(payload: dict) -> bool:
-    """Return True iff the loaded config payload indicates a usable provider.
+    """判断 loaded config payload 是否具备 onboarding 所需 provider signal。
 
-    The onboarding gate's criterion ("required config complete"): at least one
-    provider has an ``apiKey`` AND ``agents.defaults.model`` is set. Either
-    alone can't drive a turn, so the UI must still park on the setup panel.
-    An explicit non-``auto`` ``agents.defaults.provider`` also counts as a
-    provider signal (legacy configs that pre-date per-provider sections).
+    gate 的 ``"required config complete"`` 标准是：``agents.defaults.model`` 已设置，AND
+    至少一个 provider 有 ``apiKey``。任一条件单独存在都不能驱动 Turn，UI 仍应停在 setup
+    panel。显式、非 ``auto`` 的 ``agents.defaults.provider`` 也算 provider signal，用于兼容
+    早于 per-provider section 的 legacy config。
+
+    ``payload`` 不是 dict、model 缺失或没有任何 provider signal 时返回 ``False``。返回
+    ``True`` 不会读取 secret 内容之外的信息，也不发起远端认证。
     """
     if not isinstance(payload, dict):
         return False
@@ -75,11 +71,15 @@ def _detect_provider_configured(payload: dict) -> bool:
 
 
 async def setup_status(params: dict) -> dict:
-    """``setup.status`` — return whether a provider has been configured.
+    """执行 ``setup.status``，返回 provider 是否已满足本地配置 gate。
 
-    v0.1 fallback: on any read / parse failure, return
-    ``{"provider_configured": true}`` so the hermes UI does not park on the
-    *Setup required* panel.
+    方法读取 ``get_config_path()`` 指向的 UTF-8 JSON，并调用
+    ``_detect_provider_configured()``。file missing、其他 ``OSError`` 或 JSON decode failure
+    都按 v0.1 fallback 返回 ``{"provider_configured": true}``，使 hermes UI 不因读取问题
+    停在 *Setup required* panel。``params`` 当前不参与判断。
+
+    正常 ``False`` 表示需要 setup；fallback ``True`` 只为 UI 可用性降级，不能作为 provider
+    已配置或凭证有效的证据。
     """
     path = _config_path()
     try:
@@ -101,7 +101,10 @@ async def setup_status(params: dict) -> dict:
 
 
 def register_setup_methods(dispatcher: "Dispatcher") -> None:
-    """Register ``setup.status`` on a dispatcher instance."""
+    """在 Dispatcher 上注册 ``setup.status``。
+
+    注册不读取 config；重复注册由 Dispatcher 抛出 ``ValueError``。
+    """
     dispatcher.register("setup.status", setup_status)
 
 

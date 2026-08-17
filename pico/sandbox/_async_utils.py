@@ -1,4 +1,8 @@
-"""Internal async helpers shared between the sandbox debug server and CLI."""
+"""Sandbox Debug Server 与 CLI 共享的 Internal Async Helpers。
+
+模块集中处理 Teardown/Race Path 中 Task Cancellation 的细微语义，避免各调用方只 ``cancel()`` 却忘记
+Await，最终产生未回收异常 Warning。它不拥有 Sandbox 生命周期，只提供可复用的单 Task 收尾动作。
+"""
 
 from __future__ import annotations
 
@@ -6,27 +10,21 @@ import asyncio
 
 
 async def cancel_and_collect(task: asyncio.Task) -> None:
-    """Cancel a single task and absorb its result.
+    """Cancel 单个 Task，并 Await 后吸收其 Result。
 
-    Convention: use this for a single task in a teardown / race path. For
-    multiple tasks at end-of-handler, prefer ``cancel()`` + ``asyncio.gather(
-    *tasks, return_exceptions=True)`` — functionally equivalent for one task,
-    just more convenient when you already have a list to fan out.
+    Convention：在 Teardown / Race Path 处理 Single Task 时使用。Handler 结束时若有 Multiple Tasks，
+    更适合先全部 ``cancel()``，再调用 ``asyncio.gather(
+    *tasks, return_exceptions=True)``；对单任务两者
+    Functionally Equivalent，只是 List Fan-out 时 Gather 更方便。
 
-    Without the await, a cancelled task that raises something other than
-    CancelledError surfaces a "Task exception was never retrieved" warning
-    when garbage-collected. Using this helper everywhere we cancel keeps
-    teardown paths quiet regardless of what the underlying coroutine does.
+    若只 Cancel 不 Await，Task 随后抛出非 `CancelledError` 时会在 Garbage Collection 阶段出现
+    ``Task exception was never retrieved`` Warning。此 Helper 通过统一回收，使底层 Coroutine 的结果
+    不污染 Teardown Logs。它覆盖 Pending、Completed、Failed、Cancelled 所有状态：Done Task 的
+    `cancel()` 是 No-op，``await task`` 会立即返回或抛出。
 
-    Works for tasks in any state — cancel() on a done task is a no-op and
-    ``await task`` on a done task returns/raises immediately, so the
-    absorption below covers all of {pending, completed, failed, cancelled}.
-
-    A CancelledError from ``await task`` could mean either (a) ``task``
-    finished due to our cancel — swallow it, or (b) the *parent* (the caller)
-    was itself cancelled and the await is propagating that — re-raise so
-    shutdown still flows. We distinguish via task.cancelled(): True only
-    when (a).
+    Await 得到 `CancelledError` 有两种含义：Task 因本次 Cancel 结束时应 Swallow；Parent Caller 自己被
+    Cancel、正在向下传播时必须 Re-raise，让 Shutdown 继续流动。两者通过 ``task.cancelled()`` 区分，
+    只有前者为 `True`。其他 Task Exception 会被吸收，因为此函数只负责清理而非重新解释业务失败。
     """
     task.cancel()
     try:

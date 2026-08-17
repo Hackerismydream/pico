@@ -1,4 +1,14 @@
-"""Append-only evidence ledger for normalized Provider calls."""
+"""为标准化 Provider Calls 提供 Append-only Evidence Ledger。
+
+`CallLedger` 先在内存接收 `CallRecord`，再由单独 Writer Thread 按批追加到每日 JSONL，避免模型调用
+主路径等待磁盘 IO。每个 Ledger Instance 还有独立 Health Entry，记录 Accepted、Persisted 与 Lost
+Records；进程关闭时汇总到带 Schema 的健康文件，让使用者能够区分“生成了调用证据”和“证据已经
+可靠落盘”。
+
+Append-only 保护调用记录不被日常更新覆盖，但不等于绝对不丢数据：Queue Full、Writer Failure 或
+Shutdown Timeout 会使 Ledger 进入 Degraded，并通过 `CallLedgerError` 与 Health File 暴露证据
+缺口。调用方必须把这个状态纳入验收，不能只看内存中的 Recent Records。
+"""
 
 from __future__ import annotations
 

@@ -1,23 +1,17 @@
-"""Shared contract test base class for :class:`MemoryBackend` adapters.
+"""为 :class:`MemoryBackend` Adapters 提供 Shared Contract Test Base Classes。
 
-Subclass :class:`MemoryBackendContractTests` in your adapter's test
-suite, override :meth:`make_backend` to return a fresh backend
-instance, and pytest will run every cross-adapter contract assertion
-against it. This is how the design's promise "extensible in theory ->
-actually runs" turns into something CI can enforce.
+Plugin Author 在 Adapter Test Suite 中继承 :class:`MemoryBackendContractTests`，Override
+:meth:`make_backend` 返回 Fresh Backend，Pytest 就会对它运行全部 Cross-adapter Assertions。这样“理论上
+可扩展 → 实际能运行”的 Design Promise 才成为 CI 可强制的 Evidence。
 
-Why a base class and not a fixture: subclassing keeps the test names
-visible to test runners (``test_recall_returns_memory_list``) and
-makes it obvious which backend a failure belongs to (e.g. the failure
-will report ``TestMem0Backend::test_recall_returns_memory_list``). A
-fixture-driven approach hides the same test under a parameter name.
+选择 Base Class 而非 Fixture，是因为 Subclassing 让 Test Names 对 Runner 可见，例如
+``test_recall_returns_memory_list``，Failure 也明确归属具体 Backend，如
+``TestMem0Backend::test_recall_returns_memory_list``；Fixture-driven Approach 会把同一测试藏在 Parameter
+Name 下。
 
-The base class lives **inside the package** (not in ``tests/``) for two
-reasons:
-
-1. Plugin authors install ``pico-harness`` and need to import ``pico``.
-2. Pytest doesn't auto-collect from non-test packages, so the abstract
-   base class never runs on its own — only concrete subclasses do.
+Base Class **位于 Package 内而非 ``tests/``**，原因有二：Plugin Authors 安装 ``pico-harness`` 后需要从
+``pico`` Import；Pytest 不会从 Non-test Package 自动 Collect，因此 Abstract Base 不会自行运行，只有
+Concrete Subclasses 执行。Contract Pass 证明协议下界，不证明检索质量或 Production Durability。
 """
 
 from __future__ import annotations
@@ -28,21 +22,19 @@ from pico.memory_engine.backend import Memory, MemoryBackend
 
 
 class MemoryBackendContractTests:
-    """Cross-adapter contract assertions.
+    """所有 Backend 共享的 Cross-adapter Contract Assertions。
 
-    Concrete subclasses override :meth:`make_backend` to construct a
-    fresh backend (with whatever test scaffolding the adapter needs —
-    tmp dirs, fake HTTP servers, in-memory stores). Each test gets its
-    own backend via the ``backend`` fixture below so cross-test state
-    leakage is impossible.
+    Concrete Subclass Override :meth:`make_backend` 构造 Fresh Backend，并可带 Temp Dirs、Fake HTTP
+    Servers、In-memory Stores 等 Scaffolding。每个 Test 都通过 ``backend`` Fixture 获得独立实例，并在
+    Start/Stop 生命周期内运行，避免 Cross-test State Leakage。
     """
 
     async def make_backend(self) -> MemoryBackend:
-        """Construct a fresh backend for one test.
+        """为一条 Test 构造 Fresh Backend。
 
-        Subclasses MUST override. The fixture awaits ``start()`` after
-        construction and ``stop()`` after the test, so the override
-        does *not* need to call them itself.
+        Subclasses **MUST Override**。Fixture 在构造后 Await ``start()``，Test 后 Await ``stop()``，所以
+        Override *不需要*自行调用 Lifecycle。Base Implementation 抛出 `NotImplementedError`，防止抽象
+        Contract 被误用。
         """
         raise NotImplementedError(
             "MemoryBackendContractTests subclass must override make_backend()",
@@ -58,11 +50,17 @@ class MemoryBackendContractTests:
             await b.stop()
 
     async def test_satisfies_protocol(self, backend) -> None:
-        """The returned object must be recognized as a MemoryBackend."""
+        """返回对象必须被 Runtime-checkable Protocol 识别为 `MemoryBackend`。
+
+        这只检查 Surface Shape，Duck-typed Object 也能通过，不替代后续行为 Assertions。
+        """
         assert isinstance(backend, MemoryBackend)
 
     async def test_recall_returns_memory_list(self, backend) -> None:
-        """``recall`` returns ``list[Memory]``. Empty is OK."""
+        """验证 ``recall`` 返回 ``list[Memory]``，Empty Result 是 OK。
+
+        非空时逐项检查 `text`、`score`、`metadata` Types；不要求具体命中内容或最低数量。
+        """
         hits = await backend.recall(
             "anything",
             user_id="contract-test",
@@ -76,12 +74,11 @@ class MemoryBackendContractTests:
             assert isinstance(h.metadata, dict)
 
     async def test_recall_after_store_does_not_raise(self, backend) -> None:
-        """``store`` followed by ``recall`` is the basic round-trip.
+        """验证 ``store`` 后执行 ``recall`` 的 Basic Round-trip 不抛错。
 
-        We **do not** assert that the just-stored content surfaces —
-        many backends asynchronously index, and some (e.g. mem0)
-        require multi-turn boundaries before extraction lands. The
-        contract is only that neither call raises.
+        **不**断言 Just-stored Content 立即 Surface：许多 Backends Asynchronously Index，部分如 Mem0 需要
+        Multi-turn Boundary 才完成 Extraction。Contract 下界只保证两次 Call Neither Raises，不能据此
+        声称写后读一致或记忆召回成功。
         """
         await backend.store(
             "contract-session",
@@ -98,13 +95,19 @@ class MemoryBackendContractTests:
         assert isinstance(hits, list)
 
     async def test_feedback_accepts_arbitrary_signals(self, backend) -> None:
-        """No-op feedback is valid; any dict must be tolerated."""
+        """验证 No-op Feedback 合法，任意 Dict 都应被 Tolerated。
+
+        测试 Unknown、Empty 与 Skill-usage Shape，只要求不 Crash，不要求 Backend 产生学习效果。
+        """
         await backend.feedback({"unknown_signal": "should not crash"})
         await backend.feedback({})
         await backend.feedback({"kind": "skill_usage", "ids": ["x", "y"]})
 
     async def test_top_k_respected_or_bounded(self, backend) -> None:
-        """``top_k`` upper-bounds the result; backends can return less."""
+        """验证 ``top_k`` 是 Result Upper Bound，Backend 可以返回更少。
+
+        Contract 防止 Adapter 忽略 Host Budget 返回无界 Hits，但不要求填满 Top-K。
+        """
         hits = await backend.recall(
             "q",
             user_id="contract-test",
@@ -116,7 +119,10 @@ class MemoryBackendContractTests:
         self,
         backend,
     ) -> None:
-        """Some hosts pass an unknown / never-stored-for owner."""
+        """验证 Unknown / Never-stored-for Owner 不会让 Recall Crash。
+
+        合法行为通常是 Empty List；测试只约束返回 List，不要求 Backend 预先存在该 User。
+        """
         hits = await backend.recall(
             "q",
             user_id="never-existed",
@@ -126,10 +132,11 @@ class MemoryBackendContractTests:
 
 
 class LifecycleContractTests:
-    """Lifecycle tests run **without** the ``backend`` fixture so they
-    can poke the raw ``start``/``stop`` pair directly. Separate base
-    class so subclasses pick up these tests only if they want to
-    assert idempotence."""
+    """直接验证 Raw ``start`` / ``stop`` Pair 的 Lifecycle Tests。
+
+    它们 **不使用** ``backend`` Fixture，才能自行控制调用顺序。单独 Base Class 使 Subclass 只有在希望
+    Assert Idempotence 时才继承这些 Tests，不把更强生命周期要求强加给所有 Contract Adapters。
+    """
 
     async def make_backend(self) -> MemoryBackend:
         raise NotImplementedError
@@ -143,8 +150,10 @@ class LifecycleContractTests:
         await b.stop()
 
     async def test_stop_without_start_does_not_raise(self) -> None:
-        """Defensive: a backend whose ``start`` failed (or never ran)
-        should still ``stop`` cleanly so the host can shut down."""
+        """防御性验证：``start`` Failed 或 Never Ran 的 Backend 仍能 Cleanly ``stop``。
+
+        这保证 Host 在 Partial-init Failure 后可统一 Shutdown；正常返回不代表有资源曾被创建。
+        """
         b = await self.make_backend()
         await b.stop()
 

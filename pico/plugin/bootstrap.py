@@ -1,11 +1,10 @@
-"""One-call plugin bootstrap helper.
+"""One-call Plugin Bootstrap Helper。
 
-Glues :class:`PluginDiscovery` and :class:`PluginRegistry` so callers
-(CLI / AgentLoop construction) don't repeat the two-step dance.
+它把 :class:`PluginDiscovery` 与 :class:`PluginRegistry` 串起来，使 CLI / AgentLoop Construction 不必
+重复 Two-step Dance。保持为 Free Function 而非 Class，让 Dataflow 明确呈线性：Discover → Activate →
+Return。需要逐项审查或控制 Admission 的 Caller 应直接构造两个组件。
 
-Kept as a free function rather than a class so the dataflow stays
-obviously linear: discover → activate → return. Callers wanting more
-control instantiate the two pieces directly.
+Bootstrap 只装配 Manifest 与 Lazy Factory References；不会在此 Import 或实例化所有 Plugin Code。
 """
 
 from __future__ import annotations
@@ -24,12 +23,14 @@ def assemble_plugin_registry(
     entry_points_group: str | None = "pico.plugins",
     disabled: frozenset[str] = frozenset(),
 ) -> PluginRegistry:
-    """Discover all manifests, admit the enabled ones, return the registry.
+    """Discover 所有 Manifests，Admit Enabled Items，并返回 Registry。
 
-    ``entry_points_group`` defaults to ``"pico.plugins"`` because
-    that is the public group third-party plugins target in their
-    ``pyproject.toml``. Pass ``None`` to suppress entry-point discovery
-    entirely (tests do this to stay hermetic).
+    ``entry_points_group`` 默认 ``"pico.plugins"``，这是 Third-party Plugins 在 ``pyproject.toml`` 中
+    使用的 Public Group。传 `None` 可完全 Suppress Entry-point Discovery，Tests 借此保持 Hermetic。
+    Bundled/User/Project Directories 与 Disabled IDs 原样传入相应组件。
+
+    发现或激活冲突会按底层异常向上传播；成功返回表示 Registry 已建立贡献索引，不表示每个 Factory
+    Import 或 Backend Construction 已成功。
     """
     discovery = PluginDiscovery(
         bundled_dir=bundled_dir,

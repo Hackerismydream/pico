@@ -1,5 +1,15 @@
-"""WeCom (Enterprise WeChat) channel — receives events over a wecom_aibot_sdk
-WebSocket long connection and replies via the bot's streaming API."""
+"""把 WeCom（Enterprise WeChat）AI bot 消息接入 Pico Runtime。
+
+``WecomChannel`` 通过 ``wecom_aibot_sdk`` WebSocket long connection 接收 text、
+image、voice、file 和 mixed 事件。入站流程先解析 frame body、去重并执行 allowlist，
+再下载 SDK 可获取的媒体，把内容发布给 ``ChannelIntake``；出站流程使用最近一次入站
+frame，通过 bot 的 streaming API ``reply_stream`` 回复原会话。
+
+这里的 frame 缓存是协议要求，不是 Session：WeCom 回复必须引用入站 frame，所以实例
+只为每个 chat 保留最新 frame，并以 LRU 上限避免长期泄漏。平台接受 streaming reply
+只证明调用成功，不证明用户已读、Agent 任务完成或交付成功。本模块不负责 Agent 推理、
+Session 持久化，也不把 voice 服务端转写结果当作语义正确性的证明。
+"""
 
 from __future__ import annotations
 
@@ -21,7 +31,17 @@ _FRAMES_CAP = 1000
 
 
 class WecomChannel(ChannelBase):
-    """WeCom AI bot over a WebSocket long connection — no public IP / webhook."""
+    """通过 WebSocket long connection 运行的 WeCom AI bot 适配器。
+
+    实例由 ``ChannelManager`` 管理生命周期，不需要 public IP 或 webhook。它拥有 SDK
+    client、最近 1000 个消息 ID 的去重表，以及最多 1000 个 ``chat_id`` 的最新 frame
+    LRU。入站内容经 ``_extract()`` 转换后发布到 ``ChannelIntake``；出站 ``send()``
+    依赖缓存 frame 调用 ``reply_stream(..., finish=True)``。
+
+    去重和 frame 都是进程内状态，重启后不会恢复。缺少 frame 时无法回复，只会记录警告；
+    ``reply_stream`` 当前只支持文本，因此附件会被明确标记为未发送。该类不拥有 Turn、
+    Agent 或最终 Delivery 状态，也不能从 API 成功推断用户已读。
+    """
 
     config: WecomConfig
     name = "wecom"
@@ -95,7 +115,13 @@ class WecomChannel(ChannelBase):
         return {}
 
     async def _on_enter_chat(self, frame: Any) -> None:
-        """Greet a user who just opened the bot chat, if a welcome is set."""
+        """当用户打开 bot chat 时，在配置了 welcome message 的情况下发送问候。
+
+        方法从 ``frame`` body 读取 ``chatid``；只有 ``chatid`` 非空且
+        ``config.welcome_message`` 已设置时才调用 ``reply_welcome``。SDK 异常会记录日志
+        并被吞掉，避免 enter_chat 辅助事件终止 Channel。问候调用成功不创建 Agent Turn，
+        也不表示用户回复或任务已经开始。
+        """
         body = self._body(frame)
         chat_id = body.get("chatid", "") if isinstance(body, dict) else ""
         if chat_id and self.config.welcome_message:
@@ -184,9 +210,17 @@ class WecomChannel(ChannelBase):
         return f"[{kind}: {display}]\n[{kind.capitalize()}: source: {path}]"
 
     async def _download(self, url: str, aes_key: str, name: str | None) -> tuple[str, str] | None:
-        """Return ``(saved_path, display_name)`` or ``None`` on failure. The
-        saved path is content-hash-prefixed (collision-safe); the display name
-        is the clean original filename for the human-readable label."""
+        """下载并保存 WeCom 媒体，返回 ``(saved_path, display_name)``。
+
+        ``url`` 和 ``aes_key`` 来自入站 frame，交给 SDK ``download_file`` 完成下载与解密；
+        ``name`` 是平台提供的可选原始文件名。保存路径由 ``save_media_bytes()`` 生成，带
+        content-hash 前缀以避免同名碰撞；``display_name`` 则通过 ``safe_name`` 清理，
+        仅用于人类可读 label，不能作为可信文件路径。
+
+        SDK 返回空数据或抛出异常时记录日志并返回 ``None``，调用方会生成明确的
+        ``download failed`` label。返回非空只证明字节已经写入本地，不证明媒体内容安全、
+        语义正确，也不表示 Agent 任务完成。
+        """
         try:
             data, fname = await self._client.download_file(url, aes_key)
             if not data:

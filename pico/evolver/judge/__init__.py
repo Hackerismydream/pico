@@ -1,19 +1,15 @@
-"""LLM-judge subsystem for the evolver.
+"""Evolver 使用的 LLM-judge 子系统。
 
-Reads compressed trajectories, classifies failures as L1/L2/L3
-(spec §3), and proposes structured (WHERE, WHY) patches for L2/L3 cases
-(spec §12.4-§12.5).
+Judge 读取 compressed trajectory，按 spec §3 把 failure 分为 L1/L2/L3，并为 L2/L3 生成
+structured ``(WHERE, WHY)`` patch proposal（spec §12.4-§12.5）。``IssueType``、
+``PatchWhere``、``PatchWhy``、``ActionKind`` 定义 taxonomy；``JudgeAction``/
+``JudgeResult`` 是 validated dataclass；``build_judge_messages`` 组装一次 LLM call 的 system/
+user message；``parse_judge_output`` 把 raw text 转为 typed result，malformed output 抛出
+``JudgeParseError``。LLM client 位于 ``pico.evolver.judge.llm_client``（B3）。
 
-Public surface:
-
-- ``IssueType`` / ``PatchWhere`` / ``PatchWhy`` / ``ActionKind`` — enums
-- ``JudgeAction`` / ``JudgeResult`` — parsed analysis dataclasses
-- ``build_judge_messages`` — assemble (system, user) for one LLM call
-- ``parse_judge_output`` — turn LLM raw text into a validated JudgeResult
-- ``JudgeParseError`` — raised on malformed output
-
-The LLM client itself is in ``pico.evolver.judge.llm_client`` (B3,
-written separately).
+Judge output 是 candidate design 输入，不是 ground truth。parse 成功只证明 schema 合规；L1
+仍需 human/infrastructure review，L2/L3 patch 仍必须经过 manifest、activation、benchmark gate
+与 sealed evidence，才能产生正向结论。
 """
 
 from .llm_client import (

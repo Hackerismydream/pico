@@ -1,4 +1,12 @@
-"""Unix domain socket debug server for sandbox VM inspection and interaction."""
+"""通过 Unix Domain Socket 检查并交互 Sandbox VM 的 Debug Server。
+
+Server 提供 List、Exec 与 Interactive Shell 三类本地调试命令，协议使用 Newline-delimited JSON，二进制
+Stream 放在 Base64 ``data`` 字段。它只允许同时一个 Client，并只允许 Attach 当前 Process 在
+`owned_ids` 中声明拥有的 Running VM，避免调试端跨进程误操作其他 Pico 实例。
+
+Socket 权限会设为 ``0600``，但 Debug Interface 仍可在 VM 内执行任意命令；启用者必须保护路径所在
+目录与本机账户。它是运维入口，不属于 Agent 自主 Tool Surface。
+"""
 
 from __future__ import annotations
 
@@ -15,21 +23,23 @@ logger = logging.getLogger(__name__)
 
 
 class SandboxDebugServerError(RuntimeError):
-    """Raised when the debug server cannot start (e.g. socket already in use)."""
+    """Debug Server 无法启动时抛出，例如 Socket 已被 Live Process 使用。
+
+    该异常区分可向 Operator 解释的启动冲突与普通 Client Protocol Error；调用方应停止启动此 Debug
+    Endpoint，而不是删除一个确认仍活跃的 Socket。
+    """
 
 
 class SandboxDebugServer:
-    """
-    Listens on a Unix domain socket and serves sandbox debug commands.
+    """监听 Unix Domain Socket，并服务 Sandbox Debug Commands。
 
-    Single-client server: at most one client connection is accepted at a time
-    (list / exec / shell). A second concurrent connection is rejected with a
-    clear error message. This avoids two debug clients racing on the same VM
-    and matches the semantics of an interactive debugger attached to a process.
+    这是 Single-client Server：同一时间最多接受一个 List / Exec / Shell Connection。第二个 Concurrent
+    Connection 会收到明确错误，避免两个 Debug Clients 在同一 VM 上 Race，也符合 Interactive Debugger
+    一次附着一个 Process 的语义。
 
-    Protocol: newline-delimited JSON. Binary payloads use base64 in the "data"
-    field. The line-length cap (max_message_bytes) is enforced via the
-    StreamReader buffer limit passed to asyncio.start_unix_server().
+    Protocol 是 Newline-delimited JSON，Binary Payloads 在 ``data`` Field 使用 Base64。
+    ``max_message_bytes`` 通过传给 ``asyncio.start_unix_server`` 的 `StreamReader` Buffer Limit 强制，
+    保护服务端免受超大单行消息。实例生命周期由 `start`/`stop` 控制，不拥有 VM 本身。
     """
 
     # start() 探测已有套接字文件的最长等待时间，用于判断它属于
@@ -50,10 +60,10 @@ class SandboxDebugServer:
 
     @staticmethod
     def resolve_socket_path(debug_socket: str, data_dir: Path) -> Path:
-        """Resolve debug_socket to an absolute Path, creating parent dirs.
+        """把 ``debug_socket`` 解析成 Absolute Path，并创建 Parent Directories。
 
-        Relative paths are joined with data_dir. Absolute paths are used as-is.
-        Parent directories are created automatically in both cases.
+        Relative Path 与 `data_dir` Join，Absolute Path 原样使用；两种情况都自动创建父目录。函数不创建
+        Socket File，也不验证目录权限，真正 Bind 与 ``0600`` Permission 在 `start` 中完成。
         """
         p = Path(debug_socket)
         if not p.is_absolute():
@@ -62,12 +72,11 @@ class SandboxDebugServer:
         return p
 
     async def start(self) -> None:
-        """Bind the Unix socket; refuse to clobber a live socket from another process.
+        """Bind Unix Socket，并拒绝 Clobber 其他 Process 的 Live Socket。
 
-        If the socket file already exists we probe it: if a server is listening,
-        raise SandboxDebugServerError so the caller can surface a clear message
-        ("another Pico process owns the socket"). If the connection fails
-        (ECONNREFUSED / no listener) we treat it as a stale file and unlink it.
+        Socket File 已存在时先 Probe：若 Server 正在 Listening，抛出 `SandboxDebugServerError`，让 Caller
+        告知 “another Pico process owns the socket”；若 Connection 因 ECONNREFUSED / No Listener 失败，
+        才把它视为 Stale File 并 Unlink。成功 Bind 后把权限设为 Owner-only ``0600``。
         """
         if self._socket_path.exists():
             if await self._probe_alive():
@@ -86,7 +95,12 @@ class SandboxDebugServer:
         logger.info("Sandbox debug server listening at %s", self._socket_path)
 
     async def _probe_alive(self) -> bool:
-        """Return True if a server is currently accepting on self._socket_path."""
+        """探测 ``self._socket_path`` 当前是否有 Server Accepting。
+
+        在 `_PROBE_TIMEOUT_SEC` 内成功建立 Unix Connection 即返回 `True`，随后立即关闭 Probe Writer。
+        Refused、Missing、Timeout 或 OS Error 返回 `False`。它只探测 Listener 存活，不验证对端一定是同
+        协议版本的 Pico Debug Server。
+        """
         try:
             reader, writer = await asyncio.wait_for(
                 asyncio.open_unix_connection(str(self._socket_path)),
@@ -105,7 +119,11 @@ class SandboxDebugServer:
         return True
 
     async def stop(self) -> None:
-        """Stop accepting connections and remove the socket file."""
+        """停止接受 Connections，并移除 Socket File。
+
+        已启动时先 Close Server 并 Await `wait_closed`，再 Unlink Path。方法不主动终止当前 Client 正在
+        操作的 VM Execution；Connection Handler 会在其自身生命周期完成清理。
+        """
         if self._server is not None:
             self._server.close()
             await self._server.wait_closed()
@@ -122,11 +140,11 @@ class SandboxDebugServer:
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
     ) -> None:
-        """Handle exactly one client connection: read one command, dispatch, close.
+        """处理 Exactly One Client Connection：读取一个 Command、Dispatch、然后 Close。
 
-        Single-client invariant: if another client is already attached, this
-        connection is rejected immediately with an explanatory error so two
-        debug CLIs can never race on the same VM.
+        Single-client Invariant 要求已有 Client Attached 时立即拒绝新连接，并返回解释性 Error，确保两个
+        Debug CLIs 不会在同一 VM 上 Race。首行超过限制、不是有效 JSON/Dict 或 Command Unknown 都转换
+        成协议错误；Connection Reset 静默结束。`finally` 始终释放 Active-client Slot 并关闭 Writer。
         """
         if self._active_client is not None:
             try:
@@ -240,9 +258,12 @@ class SandboxDebugServer:
         writer: asyncio.StreamWriter,
         boxes: list,
     ):
-        """Resolve vm_ref to a BoxInfo, sending an error and returning None on failure.
+        """把 ``vm_ref`` 解析成 `BoxInfo`；失败时发送 Error 并返回 `None`。
 
-        boxes is the result of runtime.list() — passed in so callers can reuse it.
+        `boxes` 是历史称为 ``runtime.list``、当前由 ``runtime.list_info`` 返回的 Runtime List Result，
+        由 Caller 传入以便复用同一 Snapshot。未指定 Ref 时只在当前
+        Process Owned 且 Running 的 VMs 中自动选择，并要求唯一；指定时先精确 Match ID，再在 Owned VMs
+        中 Match Name。Not Owned、Not Running、Ambiguous 或 Missing 都拒绝，防止跨进程 Attach。
         """
         if vm_ref is None:
             # 自动选择当前进程拥有且正在运行的虚拟机
@@ -288,11 +309,11 @@ class SandboxDebugServer:
         return None
 
     async def _attach_box(self, vm_ref: str | None, writer: asyncio.StreamWriter):
-        """Resolve vm_ref and return a live boxlite.Box, or None on failure.
+        """解析 ``vm_ref`` 并返回 Live ``boxlite.Box``，失败时返回 `None`。
 
-        On any failure (boxlite missing / list_info / resolution / get) an error
-        message is sent to the client; the caller must just return when None is
-        returned.
+        BoxLite Missing、``list_info`` Failure、Resolution Error 或 Runtime ``get`` Failure 都会先向 Client
+        发送 Error Message。Caller 收到 `None` 后只需 Return，不应再发第二个冲突错误。成功返回已检查
+        Ownership 与 Running State，但 VM 仍可能在随后操作前退出。
         """
         try:
             import boxlite  # noqa: F401 — 可用性探测（与 _handle_list 保持一致）

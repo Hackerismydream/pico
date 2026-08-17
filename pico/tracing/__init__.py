@@ -1,14 +1,13 @@
-"""Pico in-tree tracing: audit.span.v1 observability.
+"""Pico In-tree Tracing，提供 ``audit.span.v1`` Observability。
 
-Instrumentation is done by annotating Pico's own methods with the
-``@trace.instrument(...)`` decorator (see :mod:`pico.tracing.trace` and the
-standard in ``docs/TRACING_STANDARD_API.md``). Nothing is monkeypatched — the
-decorators live in Pico's source and are no-op when tracing is disabled, so a
-tracing failure can never alter the host's behavior.
+Instrumentation 通过在 Pico 自有 Methods 上标注 ``@trace.instrument(...)`` Decorator 完成，核心见
+:mod:`pico.tracing.trace`；历史 Standard Path 是 ``docs/TRACING_STANDARD_API.md``。没有 Monkeypatch：
+Decorators 直接位于 Pico Source，Tracing Disabled 时为 No-op，因此 Tracing Failure 不能改变 Host
+Behavior。
 
-Turn off with ``PICO_TRACING=0`` or ``[tracing] enabled = false`` in the Pico
-config. Spans land at ``~/.pico/traces/logs/audit-spans.log`` (override with
-``PICO_TRACING_DIR``). Open the dashboard with ``pico tracing`` or ``/tracing``.
+使用 ``PICO_TRACING=0`` 或 Pico Config ``[tracing] enabled = false`` 关闭。Spans 默认落到
+``~/.pico/traces/logs/audit-spans.log``，可用 ``PICO_TRACING_DIR`` Override；``pico tracing`` 或
+``/tracing`` 打开 Dashboard。Span Write 成功只证明观测记录落地，不表示被观测任务完成或 Viewer 健康。
 """
 
 from __future__ import annotations

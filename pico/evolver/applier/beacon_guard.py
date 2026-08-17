@@ -1,8 +1,8 @@
-"""Reject code-class patches that carry no activation beacon.
+"""拒绝没有 activation beacon 的 code-class patch。
 
-Design section 3 (code class): every evolved code path must call
-``activation_beacon(node_id)`` so Gate 1 can prove the path executed.
-A diff with no beacon is unmonitorable — rejected before eval.
+design section 3 规定，每条 evolved code path 必须调用 ``activation_beacon(node_id)``，让
+Gate 1 能证明 path 实际执行。diff 中没有 beacon 就无法监测，因此必须在 eval 前拒绝。
+guard 只检查 token presence，不证明 beacon 位于正确控制流、Runtime 已触发或 ledger 写入成功。
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ BEACON_TOKEN = "activation_beacon("
 
 
 class MissingBeaconError(ValueError):
-    """Raised when a code-class patch lacks an activation beacon."""
+    """code-class patch 缺少 activation beacon 时抛出的拒绝异常。"""
 
     pass
 
@@ -31,16 +31,13 @@ def assert_beacon_present(
     patch_where: str,
     diff_text: str,
 ) -> None:
-    """Validate that a code-class patch contains an activation beacon.
+    """验证 code-class patch 是否包含 activation beacon。
 
-    Args:
-        node_id: The node ID (used in error messages).
-        patch_where: The patch location (e.g. "loop_override", "skill").
-        diff_text: The unified diff or code text to check.
+    ``node_id`` 用于 error message，``patch_where`` 是 ``loop_override``、``skill`` 等行为位置，
+    ``diff_text`` 是 unified diff 或 code text。非 ``CODE_CLASS_WHERES`` 直接通过；code class
+    中找不到 ``activation_beacon(`` token 时抛出 ``MissingBeaconError``。
 
-    Raises:
-        MissingBeaconError: If patch_where is a code class and diff_text
-            contains no activation_beacon() call.
+    这是 lexical gate，不解析 AST，也不验证传入 node_id 是否正确。
     """
     if patch_where not in CODE_CLASS_WHERES:
         return

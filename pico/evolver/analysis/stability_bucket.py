@@ -1,25 +1,16 @@
-"""Per-task k-attempts stability bucketing for paired baseline trial dirs.
+"""为 paired baseline trial dir 计算 per-task k-attempt stability bucket。
 
-Reads a legacy-runner trial dir (e.g. ``data/v7_k3_baseline/<dated>/``) where each
-task has up to ``k`` independent attempts and emits a per-task stability
-classification used downstream by the cold-start bandit's task-cohort
-stratification.
+模块读取 legacy-runner 目录，例如 ``data/v7_k3_baseline/<dated>/``，其中每个 task 最多有
+``k`` 个 independent attempt；输出供 cold-start bandit task-cohort stratification 使用。
 
-Buckets (for k=3):
+``k=3`` 时：``STABLE_PASS`` 是 3/3，``BORDERLINE_2_3`` 是 2/3，
+``BORDERLINE_1_3`` 是 1/3，``STABLE_FAIL`` 是 0/3。pass criterion 仅为
+``verifier/reward.txt`` 存在且值 ``>= 1.0``；无 reward 的 ``RewardFileNotFoundError``、
+wall-clock ``AgentTimeoutError``、``VerifierTimeoutError`` 等都按 FAIL。
 
-- ``STABLE_PASS``      = passed in every attempt (e.g. 3/3)
-- ``BORDERLINE_2_3``   = passed in (k-1) of k attempts (e.g. 2/3)
-- ``BORDERLINE_1_3``   = passed in 1 attempt
-- ``STABLE_FAIL``      = 0 pass in any attempt
-
-Pass criterion: ``verifier/reward.txt`` exists and reads as ``>= 1.0``.
-Trials with no reward (e.g. ``RewardFileNotFoundError`` / wall-clock
-``AgentTimeoutError`` / ``VerifierTimeoutError``) count as FAIL.
-
-The k value is inferred from the data — a task may have < k attempts if
-some failed pre-trial; the bucket label reflects fractional pass count
-over the attempts actually observed (so a 1/2 task with k=3 nominal still
-gets bucketed as ``BORDERLINE_1_3`` in that grouping).
+k 从实际数据推断。pre-trial failure 可能使 task 少于 nominal k 个 attempt，bucket 按 observed
+attempt fraction 计算；例如 nominal k=3 但只有 1/2 pass，仍在该 grouping 中归为
+``BORDERLINE_1_3``。bucket 描述重复试验稳定性，不解释失败原因，也不是模型能力结论。
 """
 
 from __future__ import annotations
@@ -33,6 +24,11 @@ from pathlib import Path
 
 
 class StabilityBucket(str, Enum):
+    """按 observed pass fraction 划分的四类 task stability。
+
+    两个 borderline 名称沿用 k=3 语义；arbitrary k 时由 pass count 相对 midpoint 映射。
+    """
+
     STABLE_PASS = "stable_pass"
     BORDERLINE_2_3 = "borderline_2_3"
     BORDERLINE_1_3 = "borderline_1_3"
@@ -41,6 +37,8 @@ class StabilityBucket(str, Enum):
 
 @dataclass(frozen=True)
 class TaskStability:
+    """一个 task 的 observed attempt count、pass count 与 bucket snapshot。"""
+
     task_id: str
     attempts: int
     passes: int
@@ -48,7 +46,10 @@ class TaskStability:
 
 
 def _trial_passed(trial_dir: Path) -> bool:
-    """Return True iff ``verifier/reward.txt`` exists and reads ``>= 1.0``."""
+    """仅当 ``verifier/reward.txt`` 可读且值 ``>= 1.0`` 时返回 ``True``。
+
+    missing、invalid 或 I/O error 都保守返回 ``False``，不尝试从 result status 推断 pass。
+    """
     reward = trial_dir / "verifier" / "reward.txt"
     if not reward.exists():
         return False
@@ -59,12 +60,11 @@ def _trial_passed(trial_dir: Path) -> bool:
 
 
 def _bucket_for(passes: int, attempts: int) -> StabilityBucket:
-    """Classify a (passes, attempts) tuple into a StabilityBucket.
+    """把 ``(passes, attempts)`` 映射为 ``StabilityBucket``。
 
-    Designed for k in {2, 3}. For arbitrary k, ``passes == 0`` is always
-    ``STABLE_FAIL`` and ``passes == attempts`` is always ``STABLE_PASS``;
-    in-between gets the BORDERLINE_2_3 / BORDERLINE_1_3 split by which
-    side of the midpoint the pass count falls on.
+    规则主要为 k in ``{2, 3}`` 设计。arbitrary k 时，``passes == 0`` 永远
+    ``STABLE_FAIL``，``passes == attempts`` 永远 ``STABLE_PASS``；中间值按 pass count 位于
+    midpoint 哪一侧分成 ``BORDERLINE_2_3`` / ``BORDERLINE_1_3``，恰好一半归后者。
     """
     if passes == 0:
         return StabilityBucket.STABLE_FAIL
@@ -77,9 +77,10 @@ def _bucket_for(passes: int, attempts: int) -> StabilityBucket:
 
 
 def _task_id(trial_name: str) -> str:
-    """Extract canonical task id from a legacy trial dir name.
+    """从 legacy trial dir name 提取 canonical task id。
 
-    Layout: ``{task-id}__{8-char-suffix}``. We strip the suffix.
+    layout 为 ``{task-id}__{8-char-suffix}``，删除最后一个 ``__`` suffix；无 separator 时
+    原样返回。
     """
     sep = "__"
     if sep in trial_name:
@@ -88,21 +89,20 @@ def _task_id(trial_name: str) -> str:
 
 
 def _looks_like_trial_dir(p: Path) -> bool:
-    """A legacy trial dir always carries a top-level ``result.json`` AND
-    a ``verifier/`` subdir; the job-level dated dir has ``result.json``
-    too but no ``verifier/`` of its own, so the verifier check is what
-    discriminates a trial dir from the job dir.
+    """判断 path 是否符合 legacy trial dir shape。
+
+    trial dir 要求 name 含 ``__``、top-level ``result.json`` AND ``verifier/`` subdir。
+    job-level dated dir 也有 result.json，但自身没有 verifier，因此后者是关键 discriminator。
     """
     return p.is_dir() and "__" in p.name and (p / "result.json").exists() and (p / "verifier").is_dir()
 
 
 def _find_attempt_root(trial_dir: Path) -> Path:
-    """Locate the directory whose children are the per-trial dirs.
+    """定位 children 为 per-trial dirs 的 attempt root。
 
-    Accepts either the legacy jobs_dir (e.g. ``data/v7_k3_baseline/``
-    which contains a dated subdir) or the dated subdir itself.
-    Both dated dirs and trial dirs use ``__`` in their names, so we
-    discriminate by the presence of ``result.json``.
+    输入可为包含 dated subdir 的 legacy ``jobs_dir``，如 ``data/v7_k3_baseline/``，也可直接
+    是 dated subdir。两类 name 都可能含 ``__``，因此使用 ``_looks_like_trial_dir`` 的
+    result/verifier shape 判断。输入非目录抛出 ``NotADirectoryError``。
     """
     if not trial_dir.is_dir():
         raise NotADirectoryError(trial_dir)
@@ -115,9 +115,10 @@ def _find_attempt_root(trial_dir: Path) -> Path:
 
 
 def compute_stability(trial_dir: str | Path) -> dict[str, TaskStability]:
-    """Aggregate k-attempts pass counts per task and assign a bucket.
+    """聚合每个 task 的 k-attempt pass count，并分配 bucket。
 
-    Returns mapping ``{task_id: TaskStability}``.
+    返回 ``{task_id: TaskStability}``。遍历 attempt root 中 name 含 ``__`` 的 directory，按
+    ``_trial_passed`` 记录 bool；不验证 nominal k 是否一致。函数只读 trial data。
     """
     root = _find_attempt_root(Path(trial_dir))
     per_task_passes: dict[str, list[bool]] = defaultdict(list)
@@ -143,7 +144,10 @@ def compute_stability(trial_dir: str | Path) -> dict[str, TaskStability]:
 
 
 def bucket_counts(stability: Iterable[TaskStability]) -> dict[StabilityBucket, int]:
-    """Tally how many tasks fall into each bucket."""
+    """统计 iterable 中每个 ``StabilityBucket`` 的 task 数量。
+
+    返回包含所有 Enum key 的 dict，即使某类 count 为 0。
+    """
     counts = {b: 0 for b in StabilityBucket}
     for ts in stability:
         counts[ts.bucket] += 1
