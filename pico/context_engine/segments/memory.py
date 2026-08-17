@@ -1,8 +1,13 @@
-"""Segment 3 - host memory plus plugin recall.
+"""构建 Segment 3，把 Host Memory 与 Plugin recall 合并到一个 ``# Memory``。
 
-The one composite segment: a single ``# Memory`` heading whose body
-merges the host's slow-changing ``user.md`` dump with the backend's
-query-conditioned recall hits. Two contributing sources, one owner.
+这是唯一 composite Memory Segment：Host 的慢变化 ``user.md`` dump 提供长期背景，Backend
+根据当前 User query 返回 query-conditioned recall hits。两种来源由同一个
+`MemorySegmentBuilder` 排序和渲染，因此 System Prompt 只出现一个标题，也只有一个
+``memory_hits`` 证据所有者。
+
+Backend 未接线或 Segment disabled 时不执行召回；启用后的 recall 硬失败会向上传播，不能
+静默假装“没有记忆”。Host 内容与命中均为空时返回空文本和零/实际命中 metadata，不影响
+Local Skill availability 或 Curator History 选择。
 """
 
 from __future__ import annotations

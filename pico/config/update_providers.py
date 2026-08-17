@@ -1,17 +1,14 @@
-"""Atomic operations for LLM provider config sections.
+"""LLM Provider Config Sections 的 Atomic Operations 与 Credential Health Probe。
 
-This module is the ONLY write path for provider configuration. All entry
-points (CLI commands, future wizard, future REPL slash) must call
-functions defined here. Direct ``load_config`` / ``save_config`` on the
-providers section is forbidden -- see plan rule.
+本模块是 Provider Configuration **ONLY Write Path**；CLI/Wizard/Future REPL 必须调用这里，禁止对 Providers
+Section 直接 ``load_config`` / ``save_config``。共享逻辑完成 Schema Reflection、Secret Redaction、
+Validate-before-write 与 Atomic Replace。
 
-OAuth providers (``openai_codex`` / ``github_copilot``) have a separate
-auth path via ``provider_commands._LOGIN_HANDLERS`` and store tokens via
-``oauth_cli_kit``, not in ``config.json``. ``set_provider_fields`` refuses
-to write ``api_key`` for those providers; callers must invoke
-``provider login`` for that. ``reset_provider`` handles both cases:
-schema-default rewrite for config fields, plus unlinking the
-``oauth_cli_kit`` token file when the provider has ``is_oauth=True``.
+OAuth Providers ``openai_codex`` / ``github_copilot`` 通过
+``provider_commands._LOGIN_HANDLERS`` + ``oauth_cli_kit`` 单独鉴权，Token 不写 ``config.json``。
+`set_provider_fields` 拒绝写 OAuth ``api_key``，要求 ``provider login``；`reset_provider` 在
+``is_oauth=True`` 时同时 Reset Config 与 Unlink Token File。Registry 的 ``is_oauth`` 决定分支。配置写入、
+Credential Probe 与真实 LLM Call Success 是不同证据层。
 """
 
 from __future__ import annotations
@@ -42,7 +39,7 @@ from pico.providers.registry import ProviderSpec, find_by_name
 
 
 def _provider_names() -> list[str]:
-    """Return provider field names declared on ``ProvidersConfig``."""
+    """返回 ``ProvidersConfig`` 声明的 Provider Field Names，仅包含 Nested Model Fields。"""
     return [
         name
         for name, field in ProvidersConfig.model_fields.items()
@@ -51,7 +48,10 @@ def _provider_names() -> list[str]:
 
 
 def _provider_schema_cls(name: str) -> type[BaseModel]:
-    """Look up the Pydantic class for a provider, e.g. ``'gemini' -> GeminiProviderConfig``."""
+    """查找 Provider 的 Pydantic Class，例如 ``'gemini' -> GeminiProviderConfig``。
+
+    Unknown/Non-section Name 抛 `KeyError` 并列出 Available Providers。
+    """
     field = ProvidersConfig.model_fields.get(name)
     if field is None:
         raise KeyError(f"Unknown provider '{name}'. Available providers: {sorted(_provider_names())}")
@@ -62,7 +62,7 @@ def _provider_schema_cls(name: str) -> type[BaseModel]:
 
 
 def _provider_spec(name: str) -> ProviderSpec:
-    """Look up ``ProviderSpec`` from the registry (raises if absent)."""
+    """从 Registry 查找 ``ProviderSpec``；Absent 时抛 `KeyError` 并提示补 Registry Entry。"""
     spec = find_by_name(name)
     if spec is None:
         raise KeyError(f"No registry entry for provider '{name}'. Add a ProviderSpec to pico/providers/registry.py.")
@@ -80,13 +80,11 @@ _KNOWN_SECRET_FIELDS: set[str] = {"api_key_list"}
 
 
 def _is_secret_field(field_name: str, field_info: Any) -> bool:
-    """Detect secret fields, in priority order:
+    """按 Priority 检测 Secret Fields。
 
-    1. Explicit: ``field_info.json_schema_extra.get('secret') is True``
-    2. Patch set: ``_KNOWN_SECRET_FIELDS`` (workaround for fields the
-       suffix heuristic misses, e.g. Gemini's ``api_key_list``).
-    3. Exact match (``token`` / ``secret`` / ``password`` / ``api_key``).
-    4. Suffix match (``_token`` / ``_secret`` / ``_key`` / ``_password``).
+    依次检查 Explicit ``field_info.json_schema_extra.get('secret') is True``、``_KNOWN_SECRET_FIELDS`` Patch
+    （覆盖 Gemini ``api_key_list``）、Exact ``token`` / ``secret`` / ``password`` / ``api_key``，以及
+    ``_token`` / ``_secret`` / ``_key`` / ``_password`` Suffix。返回值用于 Show/Log Redaction，不加密 Disk Value。
     """
     extra = getattr(field_info, "json_schema_extra", None)
     if isinstance(extra, dict) and extra.get("secret") is True:
@@ -99,8 +97,11 @@ def _is_secret_field(field_name: str, field_info: Any) -> bool:
 
 
 def _flatten_fields(cls: type[BaseModel], prefix: str = "") -> dict[str, dict[str, Any]]:
-    """Flatten provider schema fields to ``path -> spec`` (no nesting today, but
-    kept consistent with ``update_channels`` so the same CLI parser works)."""
+    """把 Provider Schema Flatten 为 ``path -> spec``。
+
+    当前无 Nested Fields，但保持与 `update_channels` 一致，使同一 CLI Parser 可复用；Literal 无 Description
+    时自动列 Choices。
+    """
     out: dict[str, dict[str, Any]] = {}
     for fname, finfo in cls.model_fields.items():
         ann = _unwrap_optional(finfo.annotation)
@@ -123,7 +124,11 @@ def _flatten_fields(cls: type[BaseModel], prefix: str = "") -> dict[str, dict[st
 
 
 def _redact(value: Any) -> Any:
-    """Redact a single value or list of values."""
+    """Redact Single Value 或 Value List。
+
+    Empty 返回 ``(empty)``，List 每项分别显示 ``****set****``，其他 Non-empty 返回单一 Marker；不泄露长度
+    以外的 List 内容。
+    """
     if value in (None, "", [], {}):
         return "(empty)"
     if isinstance(value, list):
@@ -132,10 +137,11 @@ def _redact(value: Any) -> Any:
 
 
 def _oauth_token_path(provider_name: str) -> Path:
-    """Resolve the on-disk token file path written by ``oauth_cli_kit``.
+    """解析 ``oauth_cli_kit`` 写入的 On-disk Token File Path。
 
-    Honors the ``OAUTH_CLI_KIT_TOKEN_PATH`` override the kit itself respects,
-    so tests can point at ``tmp_path`` without touching real user data.
+    Honor Kit 自己的 ``OAUTH_CLI_KIT_TOKEN_PATH`` Override，使 Tests 可指向 ``tmp_path``。无 Override 时用
+    `platformdirs`，Dependency Missing 再回退 ``~/.local/share/oauth-cli-kit/auth/<provider>.json``。函数不
+    读取 Token。
     """
     override = os.environ.get("OAUTH_CLI_KIT_TOKEN_PATH")
     if override:
@@ -154,11 +160,10 @@ def _oauth_token_path(provider_name: str) -> Path:
 
 
 def provider_field_specs(name: str) -> dict[str, dict[str, Any]]:
-    """Reflect a provider schema into a flat ``path -> spec`` map.
+    """把 Provider Schema Reflect 成 Flat ``path -> spec`` Map。
 
-    Each entry has keys: ``type``, ``default``, ``is_secret``, ``description``.
-    Used by CLI parsers, the ``provider show`` command, and ``get_provider_config``
-    to know which fields exist and which to redact.
+    每项包含 ``type``、``default``、``is_secret``、``description``，供 CLI Parser、``provider show`` 与
+    `get_provider_config` 确定合法 Fields/Redaction。Unknown Provider 抛 KeyError。
     """
     cls = _provider_schema_cls(name)
     return _flatten_fields(cls)
@@ -170,17 +175,13 @@ def provider_field_specs(name: str) -> dict[str, dict[str, Any]]:
 
 
 def list_providers(*, config_path: Path | None = None) -> list[dict[str, Any]]:
-    """Reflect every provider declared on ``ProvidersConfig`` + current status.
+    """返回 ``ProvidersConfig`` 中每个 Provider 的 Schema + Current Configured Status。
 
-    Returns one dict per provider:
-
-    - ``name``               registry / config field name
-    - ``display_name``       human-readable label from the registry
-    - ``is_oauth`` / ``is_local`` / ``is_gateway``  registry flags
-    - ``configured``         True iff key set (or token file present for OAuth,
-                             or api_base set for local)
-    - ``api_key_redacted``   ``****set****`` / ``(empty)`` / ``(not needed for local)``
-    - ``api_base``           current value (or ``None`` if untouched)
+    每项含 ``name``、``display_name``、``is_oauth`` / ``is_local`` / ``is_gateway``、``configured``、
+    ``api_key_redacted`` 与 ``api_base``（Untouched 时 ``None``）。Redacted Value 为 ``****set****``、
+    ``(empty)`` 或 ``(not needed for local)``。OAuth 以
+    Token File Presence，Local 以 Base/Key，其他以 Key/List 判断 Configured。该状态只说明凭据材料存在，
+    不说明有效；真实健康需 `test_provider`。
     """
     path = config_path or get_config_path()
     data = read_raw_or_raise(path)
@@ -236,11 +237,11 @@ def get_provider_config(
     redact_secrets: bool = True,
     config_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Return one provider's configuration as a flat ``path -> value`` dict.
+    """以 Flat ``path -> value`` Dict 返回一个 Provider Configuration。
 
-    Secret fields render as ``'****set****'`` / ``'(empty)'`` by default. Pass
-    ``redact_secrets=False`` to get plaintext (used by ``test_provider`` to
-    actually call the provider's ``/v1/models`` endpoint).
+    Secret 默认渲染 ``'****set****'`` / ``'(empty)'``；`redact_secrets=False` 返回 Plaintext，仅供
+    `test_provider` 等受信路径调用 ``/v1/models``。Raw Section Validation 失败时显示 Schema Defaults，不
+    修改 Disk。
     """
     cls = _provider_schema_cls(name)
     path = config_path or get_config_path()
@@ -275,13 +276,11 @@ def set_provider_fields(
     *,
     config_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Patch specific fields on a provider. Returns ``{path: previous_value}``.
+    """Patch Provider Specific Fields，返回 ``{path: previous_value}``。
 
-    Raises:
-        KeyError: unknown provider name or unknown field path.
-        RuntimeError: attempting to set ``api_key`` / ``api_key_list`` on an
-            OAuth provider — callers should use ``provider login`` instead.
-        ValidationError: a field value violates the provider's Pydantic schema.
+    Unknown Provider/Field 抛 `KeyError`；OAuth Provider 写 ``api_key`` / ``api_key_list`` 等 Secret 抛
+    `RuntimeError`，Caller 必须用 ``provider login``；Pydantic Schema Violation 抛 `ValidationError`。所有
+    Values Coerce/Validate 后才 Atomic Write。Empty Fields No-op。
     """
     if not fields:
         return {}
@@ -336,23 +335,14 @@ def reset_provider(
     *,
     config_path: Path | None = None,
 ) -> None:
-    """Restore a provider to schema defaults. Key preserved; values reset.
+    """把 Provider 恢复为 Schema Defaults，保留 Section Key、Reset Values。
 
-    Two cleanup paths run automatically, dispatched on ``ProviderSpec.is_oauth``:
+    Two Cleanup Paths 按 ``ProviderSpec.is_oauth`` 自动运行；``is_oauth=True`` 时执行 Token Cleanup。Config Fields 始终写 Fresh Pydantic Defaults，如
+    ``api_key=""``、``api_base=None``、Gemini ``vertex=False`` / ``api_key_list=[]``；OAuth Provider 还
+    Unlink Token File，使 User Logged Out，Path 遵循 ``oauth_cli_kit`` 与 ``OAUTH_CLI_KIT_TOKEN_PATH``。
 
-    1. **Config fields** — always rewritten to whatever a fresh Pydantic
-       instance produces (``api_key=""``, ``api_base=None``, ``vertex=False``
-       for Gemini, ``api_key_list=[]`` etc.). For OAuth providers those are
-       already at defaults, so the write is a no-op for them but harmless.
-
-    2. **OAuth token file** (``is_oauth=True``) — unlinked from disk so the
-       user is effectively logged out. Path resolution follows
-       ``oauth_cli_kit``'s own convention (honoring the
-       ``OAUTH_CLI_KIT_TOKEN_PATH`` env override). Idempotent: ``missing_ok``
-       so reset can run multiple times without raising.
-
-    Callers don't need to know which case applies — one mental model covers
-    both API-key and OAuth providers.
+    Token Unlink 使用 ``missing_ok``，可重复；其他 OSError Warning 但不撤销已写 Config。Caller 无需区分
+    API-key/OAuth，但返回也不证明 Remote Session 已撤销。
     """
     cls = _provider_schema_cls(name)
     spec = _provider_spec(name)
@@ -393,9 +383,10 @@ def add_provider_model(
     *,
     config_path: Path | None = None,
 ) -> list[str]:
-    """Append ``model`` to a provider's curated ``models`` list (idempotent).
+    """Idempotently 把 ``model`` Append 到 Provider Curated ``models`` List。
 
-    Returns the new model list. Raises KeyError for an unknown provider.
+    已存在时不写盘；否则 Validate 完整 Section 后 Atomic Write。返回 New Model List，Unknown Provider 抛
+    KeyError。加入 List 不验证模型在 Provider 可用。
     """
     path = config_path or get_config_path()
     data = read_raw_or_raise(path)
@@ -417,9 +408,9 @@ def remove_provider_model(
     *,
     config_path: Path | None = None,
 ) -> list[str]:
-    """Remove ``model`` from a provider's curated ``models`` list (no-op if absent).
+    """从 Provider Curated ``models`` List 移除 ``model``，Absent 时 No-op。
 
-    Returns the new model list. Raises KeyError for an unknown provider.
+    返回 New List；真正变化时 Validate + Atomic Write。Unknown Provider 抛 KeyError。
     """
     path = config_path or get_config_path()
     data = read_raw_or_raise(path)
@@ -457,28 +448,19 @@ def test_provider(
     config_path: Path | None = None,
     transport: httpx.BaseTransport | None = None,
 ) -> dict[str, Any]:
-    """Verify a provider's credentials via a free GET request to ``/v1/models``.
+    """通过 Free ``GET /v1/models`` Request 验证 Provider Credentials。
 
-    Why ``/v1/models`` rather than a chat completion (same rationale as
-    hermes-agent's ``doctor._probe_apikey_provider``):
+    不用 Chat Completion 的原因与 Hermes Agent ``doctor._probe_apikey_provider`` 相同：Metadata Endpoint
+    Zero Token Cost、不消耗 Inference Quota、几乎所有 OpenAI-compatible Providers 支持，也无需维护 Which
+    Test Model。
 
-    - Zero token cost — metadata endpoint, not LLM-generated content.
-    - No charge to the user, doesn't burn inference quota.
-    - Supported by virtually every OpenAI-compatible provider (the 18 we
-      ship today).
-    - No "which test model?" maintenance burden.
+    流程先取得 Config ``api_key``，OAuth 则用 ``oauth_cli_kit.get_token()``，并回退
+    ``ProviderSpec.default_api_base``；随后用 ``Authorization: Bearer {key}`` 执行
+    ``GET {api_base}/v1/models``；Status 映射 `_HTTP_STATUS_MAP`，Unknown
+    为 ``http_{code}``，Network Error 为 ``network_error``。200 时 Best-effort 解析 Model IDs。
 
-    Behavior:
-
-    1. Look up the provider's ``api_key`` (or OAuth access token via
-       ``oauth_cli_kit.get_token()`` for OAuth providers) and ``api_base``
-       (falling back to ``ProviderSpec.default_api_base`` when unset).
-    2. ``GET {api_base}/v1/models`` with ``Authorization: Bearer {key}``.
-    3. Map status code → keyword (see ``_HTTP_STATUS_MAP``). Unknown codes
-       render as ``http_{code}``. Network errors → ``network_error``.
-
-    Returns a dict, never raises. ``transport`` is injectable so unit tests
-    can mount an ``httpx.MockTransport`` without touching real network.
+    返回 Dict、Never Raises；`transport` 可注入 `httpx.MockTransport`。``ok=True`` 证明免费 Metadata Probe
+    成功，不证明指定 Chat Model、配额或完整 LLM Call 可用。
     """
     import time
 

@@ -1,8 +1,8 @@
-"""Channel adapters.
+"""Builtin Channel Adapters 的 Auto-discovery Namespace。
 
-Each sub-package here ships a ``spec.py`` exporting a
-:class:`~pico.channels.contract.ChannelSpec` and is auto-discovered by
-:mod:`pico.channels.registry` — no manual registration. The spec's factory
-defers the heavy SDK import; internal helper modules are not enumerated by
-discovery (the scan is one level deep).
+每个 Subpackage 提供导出 :class:`~pico.channels.contract.ChannelSpec` 的 ``spec.py``，由
+:mod:`pico.channels.registry` 自动发现，无需 Manual Registration。Spec Factory 延迟 Heavy SDK Import；
+Discovery 只扫描 One Level，不枚举 Internal Helper Modules。
+
+发现 Spec 只证明 Metadata 可导入，Factory Construction/SDK Login/Channel Start 仍是后续阶段。
 """

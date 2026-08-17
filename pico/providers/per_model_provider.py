@@ -1,9 +1,9 @@
-"""Provider that dispatches each call to a per-model endpoint by model name.
+"""按 Model Name 把每次 Call Dispatch 到 Per-model Endpoint 的 Provider。
 
-Used by the ``knn`` routing backend, where routable models live on different
-OpenAI-compatible endpoints. Models listed in the routing config route to their
-configured endpoints; any other model name (e.g. the agent default used by
-background subsystems) is served by ``fallback``.
+``knn`` Routing Backend 的 Routable Models 可能位于不同 OpenAI-compatible Endpoint。Routing Config
+列出的 Model 进入对应 Provider；其他 Name（例如 Background Subsystem 使用的 Agent Default）由
+``fallback`` 服务。Retry/Fallback Model Chain 会逐 Model 重新 Pick Endpoint，而不是错误固定首个
+Provider。
 """
 
 from __future__ import annotations
@@ -21,7 +21,12 @@ if TYPE_CHECKING:
 
 
 class PerModelProvider(LLMProvider):
-    """Route provider calls to a per-model :class:`CustomProvider` by model name."""
+    """按 Model Name 将 Provider Call 路由到对应 :class:`CustomProvider`。
+
+    `_by_model` 保存精确映射，未知/空 Model 使用 Fallback；Default Model 单独记录。Chat/Stream 与
+    Cache Capability Delegate 给 Picked Endpoint。带 ``fallback_models`` 的 Retry 在本层展开，
+    每个 Endpoint 只执行自己的 Same-model Retry，Structured Classification 决定是否切下一项。
+    """
 
     def __init__(self, models: "Sequence[ModelEndpoint]", fallback: LLMProvider):
         super().__init__()

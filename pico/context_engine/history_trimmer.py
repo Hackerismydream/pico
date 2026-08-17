@@ -1,24 +1,15 @@
-"""History trimming — the Curator's contribution to ``*history``.
+"""负责 Curator 对 ``*history`` 的唯一选择、结构闭包和预算裁剪路径。
 
-Extracted from :class:`CuratorAssembler` so the Curator and the unified
-context engine share one implementation of the operations that decide
-which session messages reach the model:
+Session 消息不能按单条任意删除：Assistant 的 ``tool_calls`` 与对应 Tool result 构成协议原子组，
+缺一边都会让 Provider 看到 dangling call 或 orphan result。本模块从 :class:`CuratorAssembler`
+抽出，让 Curator 与统一 Context Engine 共享同一实现：:meth:`canonical_ids` 补全相邻调用组，
+:meth:`history_from_ids` 只保留 Provider-safe keys，:meth:`structural_errors` 验证双向配对，
+:meth:`trim` 再按整 Turn 组删除最低优先级且未保护的历史直到预算允许。
 
-- **adjacency closure** (:meth:`canonical_ids`) — if a tool call is
-  selected its result messages come along, and vice versa, so the
-  provider never sees a dangling tool call / orphan result;
-- **clean extraction** (:meth:`history_from_ids`) — project the selected
-  session messages down to the provider-safe key set;
-- **structural validation** (:meth:`structural_errors`) — verify every
-  tool result has a parent assistant ``tool_calls`` and every call has a
-  result;
-- **budget trimming** (:meth:`trim`) — build the prompt, estimate its
-  token cost, and drop the lowest-priority non-protected messages until
-  it fits.
-
-This is the *only* code path that selects ``*history``. Segment 6
-(``# Curator Working State``) is rendered by :class:`ContextBuilder`
-from the plan's working-state text — it is not this module's concern.
+这是选择 ``*history`` 的 *only* code path。Segment 6 ``# Curator Working State`` 由
+:class:`ContextBuilder` 根据 plan 的 working-state text 渲染，不属于本模块；Trimmer 只通过
+``build_messages`` 看到完整固定开销并决定 History，不拥有 System/User Prompt 组成。
+最终包含哪些索引、为何删除某组消息以及是否仍然超限，都会作为 Outcome 返回供上层复核。
 """
 
 from __future__ import annotations
@@ -47,7 +38,13 @@ _ALLOWED_KEYS = {
 
 @dataclass
 class TrimOutcome:
-    """Result of a :meth:`HistoryTrimmer.trim` call."""
+    """记录一次 :meth:`HistoryTrimmer.trim` 的选择结果与预算证据。
+
+    ``history`` 是清理后的 Provider-safe 消息，``included_ids`` 对应原 Session 索引；
+    ``estimated_tokens``、``max_prompt_tokens`` 与 ``source`` 说明估算值、允许上限和估算来源，
+    ``warnings`` 记录为适配预算而删除的 Turn 组。`ok` 只判断 Token 是否落在上限内，`over_by`
+    给出仍超出的非负数量；二者不证明语义选择正确。
+    """
 
     history: list[dict[str, Any]]
     included_ids: list[int]
@@ -66,7 +63,13 @@ class TrimOutcome:
 
 
 class HistoryTrimmer:
-    """Shapes and budget-trims the session history into ``*history``."""
+    """把 Session 候选消息整形成结构合法且尽量符合预算的 ``*history``。
+
+    实例持有 Provider、模型、延迟 Tool definitions 与 Context window，用统一 Token estimate
+    评估完整 Prompt。纯整形方法不执行 I/O；`trim` 才反复调用传入的 `build_messages`，以真实
+    System、User、Tools 固定开销为准删除历史。Protected Turn 不会被预算算法主动丢弃，因此
+    若固定开销和保护内容本身超限，Outcome 会明确 ``ok=False`` 而不是破坏保护边界。
+    """
 
     def __init__(
         self,
@@ -86,11 +89,12 @@ class HistoryTrimmer:
 
     @staticmethod
     def canonical_ids(messages: list[dict[str, Any]], ids: list[int]) -> list[int]:
-        """Close ``ids`` over tool-call / tool-result adjacency.
+        """对 ``ids`` 执行 Tool call/result adjacency closure，并规范起始边界。
 
-        Returns the selected indices in order, trimmed so the sequence
-        begins at a ``user`` message (so history never starts mid
-        tool-exchange). Returns ``[]`` if no user message survives.
+        输入中的非法、越界索引先丢弃；选择 Assistant ``tool_calls`` 会自动带上相同 call id 的
+        Tool results，选择任一 result 也会补回 Parent Assistant，直到集合稳定。结果按 Session
+        原顺序返回，并裁掉第一个 ``role="user"`` 之前的项，确保 History 不从 Tool exchange
+        中间开始。没有 User message 存活时返回 ``[]``，不伪造起点。
         """
         selected = {mid for mid in ids if isinstance(mid, int) and 0 <= mid < len(messages)}
         tool_parent_by_call: dict[str, int] = {}
@@ -125,7 +129,13 @@ class HistoryTrimmer:
 
     @staticmethod
     def history_from_ids(messages: list[dict[str, Any]], ids: list[int]) -> list[dict[str, Any]]:
-        """Project the selected messages down to provider-safe keys."""
+        """把选中 Session 消息投影到 Provider-safe key 集合。
+
+        对每个索引只保留 `_ALLOWED_KEYS` 中的 role、content、Tool 配对与受支持推理字段，移除
+        timestamp、内部 ID 和 Manifest 标注；没有 role 的结果不进入 History。返回新字典列表，
+        不修改 append-only Session。`thinking_blocks` 是否适合具体目标 Provider 由下游门禁再
+        判断，本层必须先保留多 Turn reasoning contract。
+        """
         history: list[dict[str, Any]] = []
         for mid in ids:
             clean = {k: v for k, v in messages[mid].items() if k in _ALLOWED_KEYS}
@@ -135,7 +145,13 @@ class HistoryTrimmer:
 
     @staticmethod
     def structural_errors(messages: list[dict[str, Any]]) -> list[str]:
-        """Tool-call closure validation over a built message list."""
+        """验证已组装消息中的 Tool-call closure，并返回全部结构错误。
+
+        Assistant 声明的每个 Tool call id 会进入 open set；Tool result 必须引用其中一个 id，
+        否则报告 no parent assistant tool_call，配对成功则关闭该 id。遍历结束仍开放的调用会
+        报 missing results。函数不修复顺序、不抛首个异常，调用方可据错误列表拒绝 Curator
+        candidate 并允许重试。
+        """
         errors: list[str] = []
         open_calls: set[str] = set()
         for msg in messages:
@@ -180,13 +196,17 @@ class HistoryTrimmer:
         build_messages: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
         priority_scores: dict[int, float] | None = None,
     ) -> tuple[list[dict[str, Any]], TrimOutcome]:
-        """Close ``ids``, build, and drop until under budget.
+        """闭包 ``ids``、构建完整 Prompt，并按整 Turn 组删除直至预算允许或无法再删。
 
-        ``build_messages`` maps a history list to the full message list
-        (system + history + user) — the caller owns prompt composition
-        (segments, working state, router skills), the trimmer only owns
-        history selection. Returns the final ``messages`` and a
-        :class:`TrimOutcome`.
+        ``build_messages`` 把 History 映射为 system + history + user 完整列表；Caller 仍拥有
+        segments、working state、router skills 等 Prompt composition，Trimmer 只拥有 History
+        selection。每轮用 Provider/模型/Tool definitions 估算 Token，允许上限是 Context window
+        减 ``reserved_output``，且至少为 1。
+
+        超限时先按 User 边界分 Turn group，排除包含 ``protected_ids`` 的组，再按组内最高
+        priority 和新旧顺序选择最低项删除；之后重新执行 canonical closure、构建和估算。
+        没有可删组时保留超限事实。返回最终 ``messages`` 与 :class:`TrimOutcome`，warnings
+        精确列出被删消息索引。
         """
         canon = self.canonical_ids(session_messages, ids)
         history = self.history_from_ids(session_messages, canon)

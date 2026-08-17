@@ -1,4 +1,13 @@
-"""Configuration loading utilities."""
+"""Pico Base Runtime Configuration 的 Read、Validate、Migrate 与 Write Utilities。
+
+本模块拥有当前 Config Path、Base `Config` Loader、Raw Read-modify-write 安全读取和旧格式迁移。
+`EXTENSION_KEYS` 是 Pico Feature Blocks 的 Single Source of Truth：Base Validation 前可移除，
+`load_pico_config` 则保留并单独解析。
+
+读取路径区分两种错误策略：普通 Startup `load_config` 对 JSON Syntax Error Warning + Defaults，Schema
+Mismatch Fail；Write Commands 必须用 `read_raw_or_raise` Fail Closed，绝不能用空 Dict 覆盖损坏文件。
+配置解析成功不验证外部 Credentials/Connectivity。
+"""
 
 import json
 import sys
@@ -41,28 +50,33 @@ _REMOVED_CHANNELS = frozenset(
 
 
 def set_config_path(path: Path) -> None:
-    """Set the current config path (used to derive data directory)."""
+    """设置 Current Config Path，供后续读取与 Data Directory Derivation 使用。
+
+    这是 Process-global Override，通常由 CLI ``--config`` 在 Startup Early 设置。函数不读取、创建或验证
+    文件；多实例调用后 Last Set Wins。
+    """
     global _current_config_path
     _current_config_path = path
 
 
 def get_config_path() -> Path:
-    """Get the configuration file path."""
+    """返回当前 Configuration File Path。
+
+    已调用 `set_config_path` 时返回 Override，否则使用 Product Home 下 ``config.json``。函数只解析路径。
+    """
     if _current_config_path:
         return _current_config_path
     return get_product_home() / "config.json"
 
 
 class ConfigReadError(Exception):
-    """An existing config file could not be parsed. Callers doing a
-    read-modify-write MUST NOT proceed: overwriting would replace the user's
-    whole config with just their section (data loss). Only a genuinely-absent
-    file is safe to create fresh.
+    """Existing Config File 无法 Parse 时抛出，Read-modify-write **MUST NOT** 继续。
 
-    Deliberately NOT a RuntimeError: the CLI write commands wrap their ops in a
-    broad ``except RuntimeError`` (for provider OAuth-refusal etc.), and we want
-    a parse error to bypass those and reach the single ``run()`` handler (or a
-    caller's explicit ``except ConfigReadError``), not be swept up implicitly."""
+    覆盖损坏文件会把 User Whole Config 替换成当前单个 Section，造成 Data Loss；只有 Genuinely Absent File
+    才可 Fresh Create。该异常刻意 **NOT** 继承 `RuntimeError`：CLI Write Commands 用 Broad
+    ``except RuntimeError`` 处理 Provider OAuth Refusal 等，而 Parse Error 必须越过那里，到统一 ``run()``
+    Handler 或 Caller 显式 ``except ConfigReadError``，不能被 Implicitly Swept Up。
+    """
 
 
 def _reject_unsupported_config(data: dict[str, Any]) -> None:
@@ -128,13 +142,13 @@ def _reject_unsupported_config(data: dict[str, Any]) -> None:
 
 
 def read_raw_or_raise(path: Path) -> dict[str, Any]:
-    """Read a config file as raw JSON for a read-modify-write cycle.
+    """为 Read-modify-write Cycle 把 Config File 读取成 Raw JSON Dict。
 
-    Returns ``{}`` ONLY when the file is absent. A present-but-unreadable file
-    raises :class:`ConfigReadError` rather than returning ``{}`` -- returning
-    ``{}`` and then writing was the bug that wiped a real config over a lone
-    JSON syntax error (e.g. a // comment). The single read path for every
-    ``update_*`` write module.
+    **ONLY** File Absent 或 Empty 时返回 ``{}``。Present-but-unreadable File 抛出 :class:`ConfigReadError`；
+    过去返回 Empty 后再 Write，会因一个 JSON Syntax Error，例如 ``//`` Comment，Wipe Real Config。所有
+    ``update_*`` Write Modules 必须共用这条 Single Read Path。
+
+    Top-level Non-dict 当前返回空 Dict；Valid Dict 还会 Fail Closed Reject 已移除的 Config Features。
     """
     if not path.exists():
         return {}
@@ -155,14 +169,17 @@ def read_raw_or_raise(path: Path) -> dict[str, Any]:
 
 
 def load_config(config_path: Path | None = None) -> Config:
-    """
-    Load configuration from file or create default.
+    """从 File 加载 Base Configuration，或创建 Default `Config`。
 
     Args:
-        config_path: Optional path to config file. Uses default if not provided.
+        config_path: Optional Config File Path；未提供时使用 `get_config_path()`。
 
     Returns:
-        Loaded configuration object.
+        已完成 Legacy Migration 与 Pydantic Validation 的 `Config` Object。
+
+    Existing JSON Syntax Error 会在 Stderr/Log 明确 Warning，然后 **IGNORING it and running on DEFAULTS**；
+    Schema Validation Error 则抛出 `ValueError`，避免 Feature Silently Disabled。该 Startup 容错不同于写命令
+    的 `read_raw_or_raise`，调用方不能混用两种证据边界。
     """
     path = config_path or get_config_path()
 
@@ -199,12 +216,13 @@ def load_config(config_path: Path | None = None) -> Config:
 
 
 def save_config(config: Config, config_path: Path | None = None) -> None:
-    """
-    Save configuration to file.
+    """把类型化 Configuration 保存为 JSON File。
 
     Args:
-        config: Configuration to save.
-        config_path: Optional path to save to. Uses default if not provided.
+        config: 要保存的 `Config`；使用 Alias Keys Dump。
+        config_path: Optional Destination；未提供时用 Current Default。
+
+    方法创建 Parent、Indent 2、保留 Unicode。当前直接写目标文件，不是 Atomic Replace；IO Error 向上传播。
     """
     path = config_path or get_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -216,12 +234,15 @@ def save_config(config: Config, config_path: Path | None = None) -> None:
 
 
 def _migrate_config(data: dict, *, pop_extension_keys: bool = True) -> dict:
-    """Migrate old config formats to current.
+    """把 Old Config Formats Migrate 到 Current Shape。
 
-    ``pop_extension_keys``: when True (default, used by ``load_config``),
-    strip extension block keys so the base ``Config(extra='forbid')``
-    doesn't reject them. Set to False when the caller needs to read
-    extension blocks from the migrated data (``load_pico_config``).
+    ``pop_extension_keys=True`` 是 `load_config` Default：移除 Extension Block Keys，避免 Base
+    ``Config(extra='forbid')`` 拒绝它们。Caller 需要从 Migrated Data 读取 Feature Blocks，例如
+    ``load_pico_config`` 时传 False。
+
+    Migration Reject Unsupported Removed Features，移动 ``restrictToWorkspace`` 与 Legacy Skill Router，删除
+    Retired Memory/Skill Fields，但刻意不自动改写 ``memory.backend``。函数 In-place 修改并返回同一 Dict；
+    Logs 暴露被迁移/丢弃字段。
     """
     import logging as _logging
 

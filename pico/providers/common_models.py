@@ -1,16 +1,11 @@
-"""Curated "common models" shortlist per provider slug.
+"""按 Provider Slug 维护人工 Curated ``common models`` Shortlist。
 
-Hand-maintained on purpose. Provider ``/v1/models`` endpoints return the full
-catalog (OpenRouter alone ships 300+ models) with no "popular"/"common" flag,
-so a small, recognizable default set has to be curated rather than derived.
+Provider ``/v1/models`` 只返回 Full Catalog，OpenRouter 单独就有 300+ Models，却没有
+``popular``/``common`` Flag，所以可识别 Default Set 必须 Hand-maintained，不能可靠推导。
 
-The TUI ``/model`` picker shows this shortlist *after* whatever the user has
-configured in ``config.providers.<slug>.models``; users can always type any
-model id by hand (``model.add_model``), so this list only needs to cover the
-common case, not every model.
-
-Model ids drift as providers ship releases — update this list as needed.
-Providers not listed here fall back to their configured list.
+TUI ``/model`` Picker 先展示 User 在 ``config.providers.<slug>.models`` 配置的项，再补本 Shortlist；
+User 也始终可用 ``model.add_model`` 手输任意 ID。因此这里覆盖 Common Case，不声称完整或实时
+可用。Model ID 会随 Release Drift，需要按当前 Provider 更新；未列 Provider 回退其 Config List。
 """
 
 from __future__ import annotations
@@ -103,5 +98,9 @@ COMMON_MODELS: dict[str, list[str]] = {
 
 
 def common_models_for(slug: str) -> list[str]:
-    """Return a copy of the curated common-model shortlist for ``slug``."""
+    """返回 ``slug`` 对应 Curated Common-model Shortlist 的新副本。
+
+    未知 Slug 返回空 List；Caller 修改结果不会改变 Module-level COMMON_MODELS。函数不请求
+    ``/v1/models``、不验证 Credential，也不合并 User Config，该顺序由 TUI Caller 所有。
+    """
     return list(COMMON_MODELS.get(slug, []))

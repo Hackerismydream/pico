@@ -1,18 +1,19 @@
-"""``model.*`` RPC handlers — backend for the TUI ``/model`` v1 picker.
+"""实现 TUI ``/model`` v1 picker 背后的 ``model.*`` RPC handlers。
 
-Five methods drive the picker:
+五个 method 共同驱动选择器：
 
-* ``model.options`` — current model/provider + one row per provider (no network).
-* ``model.save_key`` — store an api_key (+ optional api_base) for a provider.
-* ``model.disconnect`` — clear a provider's stored credentials.
-* ``model.add_model`` / ``model.remove_model`` — edit a provider's curated
-  model list.
+* ``model.options`` 返回 current model/provider 和每个 provider 的一行信息，不访问网络；
+* ``model.save_key`` 保存 provider 的 ``api_key`` 与可选 ``api_base``；
+* ``model.disconnect`` 清除 provider 已保存的 credentials；
+* ``model.add_model`` / ``model.remove_model`` 编辑 provider 的 curated model list。
 
-All write helpers live in ``pico.config.update_providers`` (the single
-write path for provider config); the handlers wrap the synchronous calls in
-``asyncio.to_thread`` so the event loop is not blocked on disk IO. OAuth
-providers cannot have keys written from the picker — that is gated to
-``pico provider login`` and surfaced as -32012.
+所有写 helper 都位于 ``pico.config.update_providers``，它是 provider config 的 single write
+path；handler 使用 ``asyncio.to_thread`` 包装同步 disk IO，避免阻塞 RPC event loop。
+OAuth provider 不允许从 picker 写 key，只能运行 ``pico provider login``，此限制暴露为
+``-32012``。
+
+picker 操作成功只说明本地配置已读取或写入；它不发起 provider 网络探测，也不证明 key
+有效、model routable、下一次调用成功或 Agent 任务完成。
 """
 
 from __future__ import annotations
@@ -125,6 +126,15 @@ def _current_selection() -> tuple[str, str | None]:
 
 
 async def model_options(params: dict) -> dict:
+    """返回当前选择和无需网络即可构建的 provider option 列表。
+
+    ``params`` 按 ``ModelOptionsParams`` 校验。当前 model/provider 来自 Runtime config；
+    provider 为 ``auto`` 或为空时尝试从 model 推导。每个 entry 包含认证状态、auth type、
+    env key、配置与 common model 合并后的列表、``needs_api_base`` 和可能的登录提示。
+
+    返回 snapshot 不验证远端 credentials 或 model availability；``authenticated=True`` 只
+    表示本地存在相应配置。
+    """
     _parse(ModelOptionsParams, params)
     current_model, current_provider = _current_selection()
     providers = list_providers()
@@ -144,6 +154,16 @@ async def model_options(params: dict) -> dict:
 
 
 async def model_save_key(params: dict) -> dict:
+    """为 API-key provider 保存凭证并返回更新后的 provider entry。
+
+    参数按 ``ModelSaveKeyParams`` 校验。unknown provider 抛出
+    ``ConfigValidationError``；OAuth provider 抛出 ``NotSupportedInV01Error`` 并提示使用
+    ``pico provider login``；``custom`` 与 ``azure_openai`` 还必须提供 ``api_base``。
+    实际写入通过 ``set_provider_fields`` 在线程中完成。
+
+    返回的 ``provider`` 反映写入后的本地配置。方法不会向 provider 发请求，因此无法证明
+    ``api_key`` 或 ``api_base`` 可用。
+    """
     parsed = _parse(ModelSaveKeyParams, params)
 
     spec = find_by_name(parsed.slug)
@@ -181,6 +201,12 @@ async def model_save_key(params: dict) -> dict:
 
 
 async def model_disconnect(params: dict) -> dict:
+    """清除指定 provider 的本地配置凭证。
+
+    ``params`` 按 ``ModelDisconnectParams`` 校验，``reset_provider`` 在线程中执行；unknown
+    slug 转成 ``ConfigValidationError``。成功返回 ``{"disconnected": True}``，只表示本地
+    reset 完成，不会撤销 provider 端 token，也不会终止已经在运行的远端请求。
+    """
     parsed = _parse(ModelDisconnectParams, params)
     try:
         await asyncio.to_thread(reset_provider, parsed.slug)
@@ -190,6 +216,12 @@ async def model_disconnect(params: dict) -> dict:
 
 
 async def model_add_model(params: dict) -> dict:
+    """把 model 名称加入 provider 的本地 curated list。
+
+    参数按 ``ModelAddModelParams`` 校验，写入委托给 ``add_provider_model``；unknown provider
+    抛出 ``ConfigValidationError``。返回合并 common models 后的 provider entry。添加名称
+    不会下载模型、验证路由或切换当前 AgentLoop。
+    """
     parsed = _parse(ModelAddModelParams, params)
     try:
         await asyncio.to_thread(add_provider_model, parsed.slug, parsed.model)
@@ -202,6 +234,12 @@ async def model_add_model(params: dict) -> dict:
 
 
 async def model_remove_model(params: dict) -> dict:
+    """从 provider 的本地 curated list 删除 model 名称。
+
+    参数按 ``ModelRemoveModelParams`` 校验，写入委托给 ``remove_provider_model``；unknown
+    provider 抛出 ``ConfigValidationError``。返回更新后的 provider entry。common model
+    仍可能由 ``common_models_for()`` 补回，因此返回列表才是 picker 的最终可见 snapshot。
+    """
     parsed = _parse(ModelRemoveModelParams, params)
     try:
         await asyncio.to_thread(remove_provider_model, parsed.slug, parsed.model)
@@ -214,7 +252,12 @@ async def model_remove_model(params: dict) -> dict:
 
 
 def register_model_methods(dispatcher: "Dispatcher") -> None:
-    """Register the five ``model.*`` handlers on a dispatcher instance."""
+    """在 Dispatcher 上注册五个 ``model.*`` handler。
+
+    注册项为 ``model.options``、``model.save_key``、``model.disconnect``、
+    ``model.add_model`` 和 ``model.remove_model``。函数不读取或修改 provider config；重复
+    注册由 Dispatcher 抛出 ``ValueError``。
+    """
     dispatcher.register("model.options", model_options)
     dispatcher.register("model.save_key", model_save_key)
     dispatcher.register("model.disconnect", model_disconnect)

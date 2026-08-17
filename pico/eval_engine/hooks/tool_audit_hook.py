@@ -1,15 +1,13 @@
-"""Tool-call audit hook.
+"""Tool-call Audit Hook。
 
-Default policy: a deterministic deny-list. When ``config.on_tool_audit``
-is on, any tool call whose name appears in ``config.tool_denylist``
-short-circuits the iteration with an explanatory message. A future
-expansion can fall through to an LLM safety check (see
-``prompts/tool_safety.py``); the scaffold for that lives but is
-unwired until there's a concrete need.
+Default Policy 是 Deterministic Deny-list。启用 ``config.on_tool_audit`` 后，任何 Name 出现在
+``config.tool_denylist`` 的 Tool Call 都会用解释信息 Short-circuit Iteration。未来可继续调用 LLM
+Safety Check，Prompt Scaffold 见 ``prompts/tool_safety.py``；但在出现 Concrete Need 前该路径仍然
+**Unwired**，当前不存在模型安全审查。
 
-The hook inspects ``ctx.response`` for ``tool_calls`` because
-``before_execute_tools`` fires AFTER the LLM has produced its turn's
-tool-call list, which ``AgentHookContext`` threads through.
+Hook 从 ``ctx.response`` 读取 ``tool_calls``，因为 ``before_execute_tools`` 在 LLM 已生成本 Turn 的
+Tool-call List **之后（AFTER）**触发，`AgentHookContext` 将 Response 传入此阶段。通过 Denylist 只证明名称未被
+明确禁止，不代表 Tool Parameters 或副作用安全。
 """
 
 from __future__ import annotations
@@ -24,7 +22,12 @@ logger = logging.getLogger(__name__)
 
 
 class ToolAuditHook(AgentHook):
-    """Deny-list-based tool audit (deterministic, no LLM)."""
+    """基于 Deny-list 的 Tool Audit，Deterministic 且 No LLM。
+
+    实例持有 `EvalEngineConfig`，每次 Tool Execution 前读取当前 Denylist 并提取违规名称。关闭总开关、
+    关闭阶段开关、名单为空或没有 Offenders 时均 Pass-through；命中时返回用户可见 Halt Message 与
+    诊断 Note，不执行任何被拦截 Tool。
+    """
 
     def __init__(self, config: EvalEngineConfig) -> None:
         self._config = config
@@ -60,12 +63,12 @@ class ToolAuditHook(AgentHook):
 
 
 def _extract_offending_tool_names(response: Any, denylist: set[str]) -> set[str]:
-    """Walk ``response.tool_calls`` (LLMResponse) or
-    ``response["tool_calls"]`` (dict) and return any names that
-    appear in ``denylist``.
+    """遍历 ``response.tool_calls`` 或 ``response["tool_calls"]``，返回 ``denylist`` 命中的 Names。
 
-    Returns an empty set on any structural mismatch so a malformed
-    response doesn't crash the hook.
+    前者覆盖 `LLMResponse`，后者覆盖 Dict；每个 Tool Call 还兼容对象 ``name``、顶层 Dict ``name`` 与
+    OpenAI-style ``function.name`` 三种结构。结果用 Set 去重。任何 Structural Mismatch 都返回 Empty
+    Set，使 Malformed Response 不会 Crash Hook；这是一种可用性降级，也意味着畸形结构不会被此
+    Denylist 拦截，Schema Validation 仍应由 Provider 层承担。
     """
     if response is None:
         return set()

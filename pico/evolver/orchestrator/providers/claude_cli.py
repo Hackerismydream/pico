@@ -1,4 +1,4 @@
-"""Claude-via-local-CLI ``call_fn``: drivers on the coding-plan subscription.
+"""通过 local Claude CLI 为 coding-plan subscription 构造 driver ``call_fn``。
 
 Every evolver driver role — diagnose / taxonomy induction / design (bash-editor)
 / verdict — consumes the same seam, the sync ``CallFn`` from
@@ -17,7 +17,9 @@ Operational notes baked in:
 - The prompt goes via stdin, not argv — rendered trajectories overflow argv.
 - Multi-turn conversations (the bash-editor accumulates action/observation
   turns) are serialized into one role-tagged transcript; print mode accepts a
-  single prompt and cannot replay assistant turns natively.
+  single prompt and cannot replay assistant turns natively。
+
+该 transport 只返回 raw assistant text；schema validation 与 candidate evidence 属于 downstream。
 """
 
 from __future__ import annotations
@@ -39,11 +41,11 @@ _CONTINUE_RULE = (
 
 
 def render_messages(messages: Messages) -> tuple[str, str]:
-    """Split a chat into ``(system_prompt, user_prompt)`` for ``claude -p``.
+    """把 chat messages 拆成 ``claude -p`` 使用的 ``(system_prompt, user_prompt)``。
 
     A single user message passes through verbatim. A multi-turn history is
     serialized with role tags plus a continue-instruction, since print mode
-    accepts one prompt, not a message array.
+    accepts one prompt, not a message array。函数不调用 CLI。
     """
     system = "\n\n".join(str(m.get("content", "")) for m in messages if m.get("role") == "system")
     turns = [m for m in messages if m.get("role") != "system"]
@@ -73,7 +75,7 @@ def make_claude_call_fn(
     cwd: Optional[str] = None,
     run: Optional[Callable[..., "subprocess.CompletedProcess"]] = None,
 ) -> CallFn:
-    """Build a sync ``call_fn`` running ``claude -p --model <model>`` per call.
+    """构造每次运行 ``claude -p --model <model>`` 的同步 ``call_fn``。
 
     ``run`` overrides ``subprocess.run`` for tests. The semaphore is
     per-CallFn: two roles (e.g. haiku diagnose + opus design) each get their
@@ -85,7 +87,8 @@ def make_claude_call_fn(
     cwd: Claude Code injects the cwd's project context (CLAUDE.md, env info)
     into the model even under ``--system-prompt``. Inheriting the orchestrator
     repo's cwd leaked the real repo path to the design driver, which then
-    ``cd``-ed out of its sandbox worktree to browse (verified live 2026-07-09).
+    ``cd`` 出 sandbox worktree 浏览（verified live 2026-07-09）。每个 CallFn 拥有自己的
+    semaphore 与 retry；耗尽后抛出 ``RuntimeError``，不返回空内容。
     """
     _run = run or subprocess.run
     workdir = cwd or tempfile.mkdtemp(prefix="claude-driver-")

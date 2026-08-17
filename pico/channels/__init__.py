@@ -1,7 +1,11 @@
-"""Chat channels module.
+"""Pico Chat Channels 的 Public Contract Surface。
 
-Public contract surface — import channel types from here, not from internal
-modules, so the file layout can change without breaking callers.
+Runtime 把 Inbound Platform Event 规范成 Message/Turn Request，并把 Delivery Outcome 交回 Channel Outlet。
+Caller 应从这里 Import `Channel`、`ChannelSpec`、Capabilities/Optional Protocols 与 `ChannelManager`，不要
+依赖 Internal File Layout，使 Adapter 组织可变化而不 Break Callers。
+
+Channel Start/Send Call Success、Turn Completion 与 User-visible Delivery 是不同阶段；Manager/Outlet 负责
+把它们明确关联。
 """
 
 from pico.channels.base import ChannelBase

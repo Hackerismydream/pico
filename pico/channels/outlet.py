@@ -1,8 +1,8 @@
-"""ChannelOutletAdapter: a channel's outbound send surface as a spine Outlet, so
-a turn's deliverables reach the channel through its uniform ``send`` interface.
-Outbound only — the inbound (intake -> submit) side stays on the channel.
+"""`ChannelOutletAdapter`：把 Channel Outbound Send Surface 适配为 Spine Outlet。
 
-spine never imports channels; channels import the spine vocabulary here.
+Turn Deliverables 通过统一 ``channel.send`` 到达 Platform。这里只处理 Outbound；Inbound ``intake -> submit``
+仍属于 Channel。Dependency Direction 是 Spine Never Imports Channels，Channels 在此 Import Spine Vocabulary，
+避免 Core Runtime 耦合 Adapter。
 """
 
 from __future__ import annotations
@@ -17,15 +17,15 @@ if TYPE_CHECKING:
 
 
 class ChannelOutletAdapter:
-    """Wraps a channel as an Outlet: renders Text / MediaOut by calling
-    ``channel.send(...)``, eats the streaming / in-turn events
-    (StreamDelta / Reasoning / ToolEvent / Notice) — a channel is non-streaming
-    and shows only the final reply (edit-in-place streaming is not yet supported).
-    A real send failure raises, which the hub retries; eating is not failure.
+    """把 Channel Wrap 成 Outlet，并渲染 Final Text/Media Deliverables。
 
-    The deliverable carries its target as ``source`` (the hub routes here by
-    source.channel, so it is always set); the reply goes back to that channel /
-    chat. reply_to threading belongs to the inbound side and is not handled here."""
+    `Text` / `MediaOut` 调用 ``channel.send(...)``；StreamDelta / Reasoning / ToolEvent / Notice 被 Consume，
+    因当前 Channel Capability Non-streaming，只展示 Final Reply，尚不支持 Edit-in-place Streaming。Real Send
+    Failure Raise 给 Hub Retry；不渲染中间事件不是 Failure。
+
+    Deliverable Target 放在 ``source``，Hub 已按 ``source.channel`` 路由，Reply 回同 Channel/Chat。
+    ``reply_to`` Threading 属于 Inbound，不在此处理。Deliver Return 由具体 Channel 定义，不自动确认用户已读。
+    """
 
     def __init__(self, channel: Channel) -> None:
         self._channel = channel

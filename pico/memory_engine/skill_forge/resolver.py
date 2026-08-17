@@ -1,4 +1,12 @@
-"""Local-only Skill resolution for the latency-critical context path."""
+"""Latency-critical Context Path 使用的 Local-only Skill Resolution。
+
+Resolver 不调用 Provider。它先从 Router 取得 Local Candidates，再把显式点名或无文件元数据的少量 Hits
+放进 ``activated``，把词法相关但未显式要求的文件 Skill 放进 ``references``。这样 Runtime 能在低延迟
+路径注入最必要内容，并把其余候选作为可按需读取的引用。
+
+Resolution 只是本轮 Context Planning；Activated 不代表 Skill Workflow 已执行，Reference 也不表示文件
+已读取。
+"""
 
 from __future__ import annotations
 
@@ -38,7 +46,13 @@ class SkillResolution:
 
 
 class LocalSkillResolver:
-    """Resolve Local Skill candidates without making Provider calls."""
+    """在不发起 Provider Calls 的情况下 Resolve Local Skill Candidates。
+
+    实例持有 `SkillForgeRouter`、Candidate Limit 与 Activation Limit。`resolve` 对空 Query 返回空结果；
+    其他 Query 保留 Router Diagnostics，并按 Explicit Name Overlap、Basic Lexical Relevance 与 On-disk
+    ``SKILL.md`` Presence 分类。无真实 Skill Path 的 Hit 可直接 Activated，以兼容 DB/Memory-derived
+    Content；文件型 Skill 默认更保守地作为 Reference，除非 Query 明确点名。
+    """
 
     def __init__(
         self,

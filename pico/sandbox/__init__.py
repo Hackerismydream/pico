@@ -1,13 +1,16 @@
-"""
-Sandbox package — self-contained isolated command execution for Python agents.
+"""Sandbox Package，为 Python Agents 提供 Self-contained Isolated Command Execution。
 
-Public API (import everything from here, not from sub-modules):
-    SandboxInitError   — raised when a sandbox backend fails to start
-    ExecResult         — result of a single exec() call
-    SandboxExecutor    — ABC for executor implementations
-    SandboxConfig      — Pydantic config model
-    DirectExecutor     — host-process fallback (no isolation)
-    build_executor()   — factory: SandboxConfig → SandboxExecutor
+Public API 应全部从这里导入，不直接依赖 Sub-modules：
+
+- `SandboxInitError`：Sandbox Backend 启动失败时抛出；
+- `ExecResult`：一次 ``exec()`` Call 的结果；
+- `SandboxExecutor`：Executor Implementations 的 ABC；
+- `SandboxConfig`：Pydantic Config Model；
+- `DirectExecutor`：在 Host Process 直接执行的 Fallback，**No Isolation**；
+- ``build_executor()``：把 `SandboxConfig` 构造成 `SandboxExecutor` 的 Factory。
+
+Sandbox 只隔离经 Executor 发出的命令。选择 `none` 会让 Prompt-injected Command 获得完整 Host
+Privileges，不能把统一接口误认为已经建立隔离边界。
 """
 
 from __future__ import annotations
@@ -39,15 +42,16 @@ def build_executor(
     workspace: Path,
     owned_ids: set[str] | None = None,
 ) -> SandboxExecutor:
-    """Synchronously construct the executor for the given config.
+    """根据 Config 同步构造 Executor，不在此启动 Backend。
 
-    Object creation is always sync and cheap. Probe / VM initialisation runs
-    later inside executor.start() / __aenter__(). Raises SandboxInitError
-    (propagated from start()) if the backend cannot be started.
+    Object Creation 始终 Sync and Cheap；Probe / VM Initialisation 延后到 ``executor.start()`` 或
+    ``__aenter__()``。Backend 无法启动时，后续 Start 会传播 `SandboxInitError`。`none` 返回
+    `DirectExecutor` 并在 Process 内只警告一次；`auto` / `boxlite` 要求可导入 BoxLite，否则给出明确
+    安装命令。Unknown Backend 立即抛错。
 
-    owned_ids: optional shared set that BoxliteExecutor populates with its VM
-    ID on start and removes on stop. Used by SandboxDebugServer to distinguish
-    VMs owned by this process from those of other processes.
+    `owned_ids` 是 Optional Shared Set，`BoxliteExecutor` 在 Start 时加入自己的 VM ID、Stop 时移除。
+    `SandboxDebugServer` 用它区分本 Process 拥有的 VMs 与其他 Process 的 VMs。Factory 返回只表示对象
+    已创建，不证明 VM 已就绪或命令已经隔离。
     """
     backend = sandbox_cfg.backend if sandbox_cfg else "none"
 

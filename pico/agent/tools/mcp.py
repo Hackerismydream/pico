@@ -1,4 +1,10 @@
-"""MCP client: connects to MCP servers and wraps their tools as native Pico tools."""
+"""连接 MCP Server，并把远端 Tool 适配成原生 Pico Tool。
+
+`connect_mcp_servers` 支持 stdio、SSE 与 streamableHttp transport，把连接生命周期压入调用方
+AsyncExitStack；每个远端定义由 `MCPToolWrapper` 加上 ``mcp_<server>_`` namespace 后注册，
+避免不同 Server 名称碰撞。Sandbox 不支持 process spawning 时 stdio 配置硬失败，不能静默
+启动一个不可用 Agent；单 Server 普通连接失败则记录并继续其他 Server。
+"""
 
 import asyncio
 from contextlib import AsyncExitStack
@@ -16,7 +22,14 @@ if TYPE_CHECKING:
 
 
 class MCPToolWrapper(Tool):
-    """Wraps a single MCP server tool as a Pico Tool."""
+    """把一个 MCP Server Tool 包装为符合 Pico Registry 契约的 Tool。
+
+     Wrapper 保留 Server 原始 name 用于 `call_tool`，对模型暴露带 Server prefix 的名称、远端
+     description 与 inputSchema。每次调用有独立 ``tool_timeout``；timeout、SDK/Server cancel 与
+    普通异常都返回 failed ToolResult，只有当前 asyncio Task 确实在 cancelling 时才重新传播
+     CancelledError。响应的 TextContent 提取正文，其他 block 转字符串，``result.isError`` 决定
+    显式失败状态。
+    """
 
     def __init__(self, session, server_name: str, tool_def, tool_timeout: int = 30):
         self._session = session
@@ -90,7 +103,17 @@ async def connect_mcp_servers(
     stack: AsyncExitStack,
     executor: "SandboxExecutor | None" = None,
 ) -> None:
-    """Connect to configured MCP servers and register their tools."""
+    """连接所有已配置 MCP Servers，并把列出的 Tool 注册到 ``registry``。
+
+    Transport 可显式声明，也可从 command/url 推断为 stdio、sse 或 streamableHttp。stdio 在支持
+    process spawning 的 Sandbox 内由 Executor 启动，否则使用 Host MCP client；HTTP transport
+    合并配置 headers 并跟随 redirect。Session initialize 后调用 list_tools，为每项建立
+    `MCPToolWrapper`。
+
+    ``stack`` 统一拥有 Client、HTTP 和 transport 生命周期。Sandbox capability mismatch 抛
+    `SandboxInitError` 给 Agent 启动边界；未知 transport 或单 Server 的 Exception/
+    BaseExceptionGroup 记录后跳过，已连接 Server 保持可用。
+    """
     for name, cfg in mcp_servers.items():
         # 在 try/except 之前解析传输类型，使下方的沙箱保护能抛错，
         # 而不被单服务器错误处理器吞掉。

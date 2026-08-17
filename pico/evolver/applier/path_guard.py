@@ -1,33 +1,20 @@
-"""Path guard for evolver-generated patches (spec §22 + §22.7).
+"""为 Evolver-generated patch 提供 path guard（spec §22 + §22.7）。
 
-The immutable set is **evolver-immutable**, not human-immutable.
-Human-driven development (PR review) can still touch these paths
-through normal workflow; only auto-evolver patches are blocked.
+immutable set 是 evolver-immutable，不是 human-immutable。Human-driven PR review 仍可按正常
+流程修改这些路径；只有 auto-evolver candidate 被阻止。``IMMUTABLE_PATTERNS`` 支持 exact
+file，例如 ``pico/agent/loop/main.py``，以及 trailing slash directory subtree，例如
+``pico/evolver/``，后者匹配目录自身及全部 descendant。``MUTABLE_OVERRIDES`` 优先，可从较宽
+immutable directory 中 carve out mutable subtree。
 
-Two pattern types are supported in ``IMMUTABLE_PATTERNS``:
+模块刻意使用 repo-relative string matching，不用 full glob：目标是 fast、predictable、
+easy-to-audit gate；``**``、``*.py`` 会引入 case sensitivity 与 slash behavior surprise，而
+exact path + directory subtree 已无歧义覆盖 §22.2。
 
-- **Exact file** — e.g. ``"pico/agent/loop/main.py"``. Matches
-  exactly this repo-relative path.
-- **Directory subtree** — trailing-slash, e.g. ``"pico/evolver/"``.
-  Matches the directory itself and any descendant path.
-
-``MUTABLE_OVERRIDES`` takes precedence: a path matching an override is
-mutable even if it also matches an immutable pattern. Use this to carve
-out mutable sub-trees from a broader immutable directory.
-
-Why repo-relative-string matching instead of full glob:
-This module's job is fast, predictable, easy-to-audit gating. Glob
-patterns (``**``, ``*.py``) invite surprises (case-sensitivity, slash
-behaviour). Exact paths + directory subtrees cover everything in
-§22.2 without ambiguity.
-
-Reference layers (spec §22.1, §22.2):
-    L1 — Self-reference (evolver/**)
-    L2 — Evaluation substrate (eval_engine + external grader)
-    L3 — Capability contract (agent loop, tools framework, providers,
-         skill loader, sandbox, config schema, ...)
-    L4 — Audit / data integrity (tool_audit_hook)
-    L5 — Tests, deps, CI
+spec §22.1/§22.2 的 reference layers 是：L1 self-reference ``evolver/**``；L2 evaluation
+substrate（eval_engine + external grader）；L3 capability contract（Agent loop、Tool framework、
+provider、Skill loader、sandbox、config schema 等）；L4 audit/data integrity
+``tool_audit_hook``；L5 tests、dependency、CI。guard 通过不表示 patch 内容正确，只表示目标
+不触碰 Evolver 的信任根。
 """
 
 from __future__ import annotations
@@ -103,22 +90,19 @@ MUTABLE_OVERRIDES: tuple[str, ...] = ()
 
 
 class ImmutablePathError(ValueError):
-    """Raised when an evolver patch targets an immutable kernel path.
+    """candidate target 命中 evolver-immutable kernel 时抛出的异常。
 
-    See spec §22 for the evolver-immutable kernel definition. If a
-    legitimate patch is being blocked, two options:
-
-    1. Reframe the patch — split off the mutable part, drop the
-       immutable part. This is what `path_guard` expects.
-    2. Walk the human-driven development path: open a PR that
-       updates ``MUTABLE_OVERRIDES`` (if the path was misclassified)
-       or that modifies the kernel directly (then bump ``core_version``
-       per spec §22.5).
+    kernel 定义见 spec §22。合法 patch 被挡时只能重构 candidate，拆出 mutable part 并丢弃
+    immutable part；或走 human-driven development，PR 修改 ``MUTABLE_OVERRIDES``（若分类错误）
+    或直接改 kernel，并按 spec §22.5 bump ``core_version``。auto-evolver 不得绕过。
     """
 
 
 class UnsafePathError(ImmutablePathError):
-    """Raised when a patch path is not a safe repository-relative path."""
+    """patch path 不是安全 repository-relative path 时抛出的异常。
+
+    包括 absolute/drive path、NUL、空组件、``.``/``..``、symlink traversal 或逃逸 repo root。
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +111,11 @@ class UnsafePathError(ImmutablePathError):
 
 
 def _normalise(path: str) -> str:
-    """Return one unambiguous repository-relative path."""
+    """把输入规范化为唯一、无歧义的 repository-relative path。
+
+    反斜杠转正斜杠并去除 leading ``./``；unsafe component 或非 string 抛出
+    ``UnsafePathError``。函数不访问 filesystem。
+    """
     if not isinstance(path, str):
         raise UnsafePathError(f"Patch path must be a string, got {type(path).__name__}")
     if "\x00" in path:
@@ -171,13 +159,10 @@ def _assert_no_tree_symlink(path: str, repo_root: Path, treeish: str) -> None:
 
 
 def _match(path: str, pattern: str) -> bool:
-    """Match a normalised path against one pattern.
+    """按单个 guard pattern 匹配 normalized path。
 
-    Two pattern shapes:
-
-    - Trailing slash → directory subtree match (the directory itself
-      and any descendant).
-    - Otherwise → exact-string match.
+    trailing slash 表示 directory subtree，匹配目录自身及 descendant；其他 pattern exact
+    string match。两侧使用 ``casefold``，使判定不依赖 host filesystem case behavior。
     """
     candidate = path.casefold()
     expected = pattern.casefold()
@@ -193,15 +178,11 @@ def _match(path: str, pattern: str) -> bool:
 
 
 def is_immutable(path: str) -> bool:
-    """Return True iff ``path`` is in the evolver-immutable kernel.
+    """判断 ``path`` 是否属于 evolver-immutable kernel。
 
-    Algorithm:
-
-    1. Normalise the path (handle Windows paths + leading ``./``).
-    2. If any pattern in ``MUTABLE_OVERRIDES`` matches → return False
-       (override wins).
-    3. If any pattern in ``IMMUTABLE_PATTERNS`` matches → return True.
-    4. Otherwise → return False (path is mutable by default).
+    先 normalize Windows path/leading ``./``；unsafe path 保守返回 ``True``。随后先检查
+    ``MUTABLE_OVERRIDES``，匹配即 mutable；再检查 ``IMMUTABLE_PATTERNS``，匹配即 immutable；
+    否则 default mutable。该函数不做 symlink filesystem 检查。
     """
     try:
         norm = _normalise(path)
@@ -222,14 +203,11 @@ def check_patch_paths(
     repo_root: str | Path | None = None,
     treeish: str | None = None,
 ) -> list[str]:
-    """Return the subset of ``target_files`` that hit immutable paths.
+    """返回 ``target_files`` 中 unsafe 或命中 immutable pattern 的 subset。
 
-    Useful for evolver code that wants to inspect violations without
-    raising — e.g., to route the patch to a TODO markdown
-    (spec §21.4.2) instead of attempting to apply it.
-
-    When ``treeish`` is provided, symlink components are inspected in that Git
-    tree rather than in the caller's current checkout.
+    供调用方在不抛错时检查 violation，例如按 spec §21.4.2 把 patch 路由到 TODO markdown。
+    提供 ``repo_root`` 时检查 current checkout symlink；同时提供 ``treeish`` 时改查对应 Git
+    tree。只有 ``treeish`` 没有 repo_root 会抛 ``ValueError``。offender 保留原输入 spelling。
     """
     offenders: list[str] = []
     root = Path(repo_root) if repo_root is not None else None
@@ -257,15 +235,18 @@ def assert_patch_allowed(
     repo_root: str | Path | None = None,
     treeish: str | None = None,
 ) -> None:
-    """Raise :class:`ImmutablePathError` if any target is immutable.
+    """任一 target unsafe/immutable 时抛出 :class:`ImmutablePathError`。
 
-    Use this as the first-line gate in the evolver applier:
+    在 Evolver applier 中作为 first-line gate：
 
     .. code-block:: python
 
         from pico.evolver.applier import assert_patch_allowed
         assert_patch_allowed([c.target_file for c in patch.components])
-        # ... proceed to apply patch only if no error
+        # ... 仅在没有错误时继续应用补丁
+
+    error 最多列出前 5 个 offender，并报告剩余数量。无 offender 时无返回值；通过只授权进入
+    后续验证，不授权实际 promote。
     """
     offenders = check_patch_paths(
         target_files,

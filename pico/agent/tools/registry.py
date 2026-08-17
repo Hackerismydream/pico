@@ -1,4 +1,10 @@
-"""Tool registry for dynamic tool management."""
+"""管理 Tool 的动态注册、参数门禁、执行观察与安全并发。
+
+`ToolRegistry` 是模型 function name 到具体 Tool 实现的唯一目录。它把定义暴露给 Provider，
+执行时统一完成类型转换、Schema 校验、超时、异常与 `ToolResult.failed` 归一化；批量调用只让
+``READ + concurrency_safe`` 的连续段并行，其余副作用调用保持原顺序。Registry 不判断 Tool
+业务权限，也不把 Tool Result 当成用户任务完成证据。
+"""
 
 import asyncio
 import time
@@ -20,10 +26,15 @@ ToolCompleteCallback = Callable[[ToolExecution], Awaitable[None]]
 
 
 class ToolRegistry:
-    """
-    Registry for agent tools.
+    """提供 Agent Tool 动态注册、查找、定义导出与受控执行的注册表。
 
-    Allows dynamic registration and execution of tools.
+    实例按 Tool ``name`` 保存实现，可在启动、Plugin 激活或 MCP 连接时增删。`execute` 形成单
+    调用安全边界，`execute_many` 根据 capability 将连续安全 Read 分批并行，同时通过
+    on_start/on_complete 保持 ToolEvent 观察。默认并发为 4，未自设超时的 Tool 最多运行 300
+    秒；Ask User 等 ``blocking_interaction`` 不套该上限。
+
+    注册表长期由 AgentLoop 持有，但 ToolExecutionContext 按调用携带 call_id、Session、迭代与
+    Origin，不能把一次 Turn 的观察状态放进 Registry 全局字段。
     """
 
     # 为未设置自身 ``timeout_seconds`` 的工具提供兜底上限。刻意设得宽裕：它用于打断
@@ -38,25 +49,47 @@ class ToolRegistry:
         self._max_parallel = max_parallel
 
     def register(self, tool: Tool, *, replace: bool = False) -> None:
-        """Register a tool."""
+        """按稳定名称注册一个 Tool，并显式控制同名覆盖。
+
+        名称已存在且 ``replace=False`` 时抛 `ValueError`，防止内置能力被意外替换；Plugin 等
+        有意覆盖路径必须传 ``replace=True``。成功后字典中的实现立即用于定义导出和 dispatch，
+        方法不复制 Tool，也不自动应用 disabled list。
+        """
         if tool.name in self._tools and not replace:
             raise ValueError(f"Tool '{tool.name}' is already registered")
         self._tools[tool.name] = tool
 
     def unregister(self, name: str) -> None:
-        """Unregister a tool by name."""
+        """按 ``name`` 移除 Tool，名称不存在时保持 no-op。
+
+        移除只影响之后的 definitions 与执行查找，不取消已经启动的 Tool task，也不销毁 Tool
+        自有资源。该幂等语义使宽泛 disabled list 可以安全覆盖不同构建的注册表。
+        """
         self._tools.pop(name, None)
 
     def get(self, name: str) -> Tool | None:
-        """Get a tool by name."""
+        """返回 ``name`` 对应的 Tool 实例，不存在时返回 ``None``。
+
+        调用方可据此做类型特定接线，例如设置 MessageTool Context；返回的是注册表持有的原
+        实例而非副本。查询不执行 Tool，也不改变注册顺序。
+        """
         return self._tools.get(name)
 
     def has(self, name: str) -> bool:
-        """Check if a tool is registered."""
+        """判断指定 Tool 名称当前是否已注册。
+
+        结果只反映目录存在性，不代表 Tool 对本轮可见、参数有效或外部依赖健康；Tool Search
+        与 disabled 策略可能在更高层继续缩小模型可见集合。
+        """
         return name in self._tools
 
     def get_definitions(self) -> list[dict[str, Any]]:
-        """Get all tool definitions in OpenAI format."""
+        """按注册顺序返回全部 Tool 的 OpenAI function definitions。
+
+        每项由 `Tool.to_schema()` 现时生成，因此反映当前 Registry 内容。返回值用于 Provider
+        请求与 Token 预算；它只描述能力，不包含 Tool 实例或执行 Context，也不应用额外搜索
+        策略过滤。
+        """
         return [tool.to_schema() for tool in self._tools.values()]
 
     @trace.instrument("tool.call", extract=semconv.tool_call)
@@ -67,11 +100,17 @@ class ToolRegistry:
         call_id: str | None = None,
         context: ToolExecutionContext | None = None,
     ) -> ToolResult:
-        """Execute a tool by name with given parameters.
+        """按名称和参数执行一次 Tool，并把所有可预期失败规范化为 `ToolResult`。
 
-        ``call_id`` is the model's own tool-call id when the caller has one; it
-        is not used for dispatch, only recorded as ``tool.call_id`` so the span
-        joins the ToolEvent the same call emits.
+        ``call_id`` 是模型自己的 tool-call id，不参与 dispatch；它只写入
+        ``tool.call_id``/ToolExecutionContext，使 tracing span 与同一调用发出的 ToolEvent 关联。
+        未找到名称时返回含 Available 列表的失败结果。找到后依次执行 schema cast、validation，
+        再调用 `execute_with_context`。
+
+        普通 Tool 由 `asyncio.wait_for` 应用自身 ``timeout_seconds`` 或 Registry 300 秒上限；
+        ``blocking_interaction`` 有意等待人类，不套统一超时。显式 ToolResult 原样返回，以
+        ``Error`` 开头的普通字符串和异常/timeout 会追加“分析错误并换方法”提示并标为失败。
+        方法永不因业务异常向模型暴露 Python stack，但 asyncio 取消仍遵循 Task 语义。
         """
         _hint = "\n\n[Analyze the error above and try a different approach.]"
 
@@ -208,7 +247,11 @@ class ToolRegistry:
 
     @property
     def tool_names(self) -> list[str]:
-        """Get list of registered tool names."""
+        """按当前注册顺序返回 Tool 名称列表。
+
+        返回新 list，调用方修改它不会影响 Registry；顺序与 `get_definitions` 一致，可用于未知
+        Tool 错误提示和 Curator trace。列表不表示模型经 Tool Search 后的实际可见子集。
+        """
         return list(self._tools.keys())
 
     def __len__(self) -> int:

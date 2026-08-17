@@ -1,23 +1,17 @@
-"""Trial pool construction — adapter between trial dir + analysis modules.
+"""构建 Trial pool，连接 trial directory 与 analysis modules。
 
-Wires together the per-task stability output from
-:func:`pico.evolver.analysis.stability_bucket.compute_stability` and
-the per-trial features from
-:func:`pico.evolver.analysis.proxy_features.extract_trial_dir`
-into the unified :class:`Trial` view consumed by
-:class:`pico.evolver.scheduler.cold_start_bandit.ColdStartCoverageBandit`.
+模块把 :func:`pico.evolver.analysis.stability_bucket.compute_stability` 的 per-task stability，
+和 :func:`pico.evolver.analysis.proxy_features.extract_trial_dir` 的 per-trial feature，组合为
+:class:`pico.evolver.scheduler.cold_start_bandit.ColdStartCoverageBandit` 消费的统一
+:class:`Trial` view。
 
-A trial dir layout (k=3 paired baseline) maps to **89 task × 3 attempts
-≈ 267 Trial objects**. All attempts of a single task share the same
-task-level ``stability`` bucket; each trial carries its own per-trial
-``proxy_features`` dict, projected to numeric-only entries so the
-bandit's K-means sub-strata clustering can compute Euclidean distance
-without categorical-encoding overhead.
+k=3 paired baseline 的目录通常映射为 89 task x 3 attempt，约 267 个 Trial。同一 task 的
+attempt 共享 task-level ``stability``，但各自携带 per-trial ``proxy_features``；feature 被投影
+为 numeric-only dict，使 K-means sub-strata 可直接计算 Euclidean distance。
 
-Categorical ``ExitStatus`` is mapped through a stable ordinal table
-(``_EXIT_STATUS_ORDINAL``) so K-means distance is deterministic across
-Python runs (Python's built-in ``hash()`` honours ``PYTHONHASHSEED``
-and isn't reliable for paper reproducibility).
+categorical ``ExitStatus`` 通过稳定 ordinal table ``_EXIT_STATUS_ORDINAL`` 映射，确保不同
+Python run 的 K-means distance deterministic；built-in ``hash()`` 受 ``PYTHONHASHSEED``
+影响，不适合 paper reproducibility。该 ordinal distance 本身没有因果或语义次序含义。
 """
 
 from __future__ import annotations
@@ -48,16 +42,12 @@ _EXIT_STATUS_ORDINAL: dict[ExitStatus, int] = {
 
 
 def proxy_features_to_kmeans_dict(pf: ProxyFeatures) -> dict[str, float]:
-    """Project a :class:`ProxyFeatures` into the numeric dict the bandit
-    feeds into K-means for stable_fail sub-strata clustering.
+    """把 :class:`ProxyFeatures` 投影为 bandit K-means 使用的 numeric dict。
 
-    All entries are floats so the K-means impl in
-    ``cold_start_bandit._kmeans_strata`` can min-max normalise them
-    uniformly. The ``exit_status_ordinal`` slot maps the categorical
-    :class:`ExitStatus` through :data:`_EXIT_STATUS_ORDINAL` — distance
-    isn't semantically meaningful across enum values, but it's stable
-    and surfaces "this trial behaves like that one" via co-occurrence
-    in cluster centroids.
+    所有值转为 float，使 ``cold_start_bandit._kmeans_strata`` 能统一 min-max normalize。
+    ``has_tool_calls_ever`` 映射为 0/1，``exit_status_ordinal`` 通过
+    :data:`_EXIT_STATUS_ORDINAL` 转换 categorical :class:`ExitStatus`。Enum 间 distance 不具
+    semantic meaning，但映射稳定，可通过 centroid co-occurrence 表达“行为相似”。
     """
     return {
         "turn_count": float(pf.turn_count),
@@ -69,17 +59,16 @@ def proxy_features_to_kmeans_dict(pf: ProxyFeatures) -> dict[str, float]:
 
 
 def build_trial_pool(trial_dir: str | Path) -> list[Trial]:
-    """Construct a list of :class:`Trial` from a legacy-runner trial dir.
+    """从 legacy-runner trial dir 构造 :class:`Trial` list。
 
-    Walks the trial dir once via the existing analysis modules,
-    groups trials by task to assign per-task stability + deterministic
-    attempt indices (1..k), then materialises each trial with both
-    its task-level stability bucket and its per-trial proxy-feature
-    K-means dict.
+    函数通过既有 analysis module 读取 stability/features，按 task 分组并用 trial_id 排序，分配
+    deterministic attempt index ``1..k``；随后为每个 Trial 组合 task-level bucket、是否 pass
+    与 per-trial K-means dict。两个 reader 理论上覆盖同一目录；缺少 stability 的 edge case
+    保守跳过。
 
-    Returns the list sorted by ``(task_id, attempt)`` for
-    repr-friendliness; ``ColdStartCoverageBandit`` shuffles the
-    borderline pool internally under its own RNG seed regardless.
+    返回按 ``(task_id, attempt)`` 排序，便于 repr；
+    ``ColdStartCoverageBandit`` 仍会在自己的 RNG seed 下 shuffle borderline pool。构建结果只
+    是抽样输入，不代表 cohort 已选择或 coverage gate 通过。
     """
     trial_dir = Path(trial_dir)
     stability_map = compute_stability(trial_dir)

@@ -1,4 +1,4 @@
-"""The two concrete gate policies (SWE paired-2sigma, AppWorld focused-Fisher).
+"""实现 SWE paired-2sigma 与 AppWorld focused-Fisher 两个 concrete GatePolicy。
 
 Both implement :class:`GatePolicy.decide` over a :class:`DecisionContext`,
 owning their own ``eval`` calls. Neither knows how its control arm was produced
@@ -15,9 +15,9 @@ Both stages follow the SOP's two disciplines:
   The paired-2σ significance is a separate *credited* label reported alongside
   (``CandidateOutcome.paired.credited_2sigma``), never the promotion bar.
 
-The confirm job name is defined once here (:func:`confirm_job_name`) because it
-doubles as the on-disk out-dir a bench's diagnosis later reads trajectories
-from — the naming is a cross-module contract, not a local detail.
+confirm job name 由 :func:`confirm_job_name` 统一定义，因为它同时是 diagnosis 回读 trajectory 的
+on-disk out-dir；该 naming 是 cross-module contract。screen 通过只允许进入 confirm，confirm
+accepted 也仍需与 parent selection/semantic verdict 分开。
 """
 
 from __future__ import annotations
@@ -41,10 +41,11 @@ CONFIRM_JOB_SUFFIX = "_confirm"
 
 
 def confirm_job_name(node_id: str) -> str:
-    """The job name (= out-dir name for dir-based scorers) of a node's full-train
-    confirm eval. Bench wiring that reads a promoted parent's confirm artifacts
-    (e.g. AppWorld diagnosis over the confirm out-dir) must use this, not a
-    hand-rolled f-string, so the gate and the reader cannot drift apart."""
+    """返回 node full-train confirm 的 job/out-dir name。
+
+    AppWorld 等回读 promoted parent confirm artifact 的 bench wiring 必须调用本函数，不能手写
+    f-string，防止 gate writer 与 diagnosis reader drift。
+    """
     return f"{node_id}{CONFIRM_JOB_SUFFIX}"
 
 
@@ -78,10 +79,11 @@ def _measurement_verdict(
 
 
 class PairedTwoSigmaGate:
-    """SWE line: K=1 anchor wide-pass screen -> K=3 full-train three-shield gate.
+    """SWE line：K=1 anchor wide-pass screen -> K=3 full-train three-shield gate。
 
-    Promotion is the navigator condition (candidate mean beats vanilla); the 2sigma
-    credited label is reported alongside (see ``gates/paired``), not the bar.
+    promotion bar 是 candidate mean beat vanilla 的 navigator condition；2sigma 仅是 alongside
+    credited label，不是门槛。full-train score 始终使用 fixed denominator，即使 Gate-b paired
+    attribution 缩到 fired subset。
     """
 
     def __init__(self, *, k_screen: int = 1, k_confirm: int = 3, z_threshold: float = 2.0):
@@ -163,8 +165,7 @@ class PairedTwoSigmaGate:
 
 
 class FocusedFisherGate:
-    """AppWorld line: focused-subset wide-pass probe (stage 1) -> full-train
-    three-shield gate (stage 2).
+    """AppWorld line：focused-subset wide-pass probe -> full-train three-shield gate。
 
     Stage 1 runs the candidate only on its WHY's focused subset (plus the
     sentinel controls) and culls it ONLY when the probe shows it clearly worse
@@ -178,8 +179,9 @@ class FocusedFisherGate:
     pipeline as the SWE line: Gate-f infra report, Gate-b attribution when the
     bench wires a ``fired_source``, then the paired gate — navigator promotion
     (mean beats the control) with the credited-2σ label reported alongside.
-    ``min_confirm_lift`` (default 0, the SOP navigator bar) optionally demands a
-    minimum full-train lift on top of the navigator condition.
+    ``min_confirm_lift`` default 0，可在 navigator 上额外要求 minimum full-train lift。stage 1
+    improvement Fisher p 只报告 evidence，不作为 advancement bar；sentinel regression 可直接
+    prune。最终 promotion 仍要求 Gate-f/Gate-b/paired 与 full lift 同时满足。
     """
 
     def __init__(

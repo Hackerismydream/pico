@@ -1,14 +1,12 @@
-"""The bench plugin contract: what a benchmark implements to become runnable.
+"""定义 benchmark 接入 Evolver 所需的 bench plugin contract。
 
-A bench module exposes ``build(ctx: LaunchContext) -> BenchBundle``. The
-bundle is pure wiring — nothing expensive happens until the runner calls the
-closures, so ``status`` can build a bundle just to count artifacts.
+bench module 暴露 ``build(ctx: LaunchContext) -> BenchBundle``。bundle 只做 pure wiring，runner
+真正调用 closure 前不执行 expensive work，因此 ``status`` 可以只 build bundle 统计 artifact。
 
-What a new bench must bring (see docs/specs/evolve-bench-contract.md):
-scorer subprocess + result files with an infra marker, a result->TaskEval
-reader, per-attempt trajectory files, a train/test split, and an editable-path
-whitelist for its subject repo. Everything else (funnel, gates, sealed test,
-resume) is the shared loop.
+按 ``docs/specs/evolve-bench-contract.md``，新 bench 必须提供 scorer subprocess、带 infra marker
+的 result file、result -> ``TaskEval`` reader、per-attempt trajectory、train/test split，以及
+subject repo editable-path whitelist。funnel、gates、sealed test 与 resume 都由 shared loop 提供。
+plugin build 成功只证明接口已装配，不证明环境 precheck 或 trial 可运行。
 """
 
 from __future__ import annotations
@@ -24,6 +22,11 @@ from pico.evolver.launch.models import CallFn
 
 @dataclass(frozen=True)
 class LaunchContext:
+    """构建 BenchBundle 所需的 effective RunSpec 与 role model callables。
+
+    ``smoke`` property 直接反映 spec，context 不拥有 run lifecycle。
+    """
+
     spec: RunSpec
     models: dict[str, Optional[CallFn]]
 
@@ -34,19 +37,15 @@ class LaunchContext:
 
 @dataclass
 class BenchBundle:
-    """Everything the runner's state machine needs, all lazily evaluated.
+    """runner state machine 所需的全部 lazy-evaluated benchmark wiring。
 
-    ``cold_start_done``/``run_cold_start`` must be idempotent at trial
-    granularity: re-invocation only fills missing trials. The runner invokes
-    ``run_cold_start`` on every run — including when all base trials exist —
-    so any infra-salvage rerun the bench owes (SOP §0 ladder) belongs inside
-    it, not behind the done-count. ``unseal`` receives
-    the journal records plus the built orchestrator and returns a plain-dict
-    report; None means the bench has no sealed test set configured.
-    ``precheck`` (optional) raises RuntimeError with an actionable message
-    when the environment cannot support a run (dead subject endpoint, bound
-    ports, missing install); ``check`` invokes it so environment problems
-    surface before any trial is paid for, not at cold start.
+    ``cold_start_done``/``run_cold_start`` 必须在 trial granularity 幂等，重复调用只填 missing
+    trial。runner 每次 run 都调用 ``run_cold_start``，即使 base trial 已齐；bench 欠下的 SOP §0
+    infra-salvage rerun 必须放在 closure 内，不能藏在 done-count 后。
+
+    ``unseal`` 接收 journal records + built orchestrator，返回 plain dict report；``None`` 表示
+    bench 未配置 sealed test。optional ``precheck`` 在 dead endpoint、bound port、missing install
+    等环境不支持时抛出 actionable ``RuntimeError``；check 在付费 trial 前调用它。
     """
 
     root_node_id: str
@@ -61,11 +60,12 @@ class BenchBundle:
 
 
 def validate_whitelist(repo_root: Path, base_sha: str, prefixes: tuple[str, ...]) -> None:
-    """Fail loudly on a whitelist entry matching nothing at ``base_sha``.
+    """whitelist 任一 entry 在 ``base_sha`` 匹配不到文件时 fail loudly。
 
-    A dead prefix does not error at run time — the designer's edits are
-    silently reverted as out-of-whitelist and every candidate arrives empty,
-    which once cost a full run. Refusing to start is the only honest behavior.
+    empty whitelist 直接拒绝。函数用 ``git ls-tree -r --name-only`` 列出 base paths；trailing
+    slash prefix 按 subtree，其他按 exact file。dead prefix 在 Runtime 不会自然报错，只会让
+    designer edit 被当作 out-of-whitelist 静默 revert、所有 candidate 为空；这曾浪费完整 run，
+    因此唯一 honest behavior 是启动前拒绝。
     """
     if not prefixes:
         raise ValueError("whitelist is empty: the designer would have no editable surface")

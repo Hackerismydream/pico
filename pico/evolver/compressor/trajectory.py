@@ -1,45 +1,22 @@
-"""Trajectory compressor — session.jsonl → ~10K-token diagnostic summary.
+"""把 ``session.jsonl`` trajectory 压缩为约 10K-token diagnostic summary。
 
-The judge LLM (especially the cheap L1-detection backend in mix mode)
-can't afford to ingest a full 80-200K-token SWE-bench trajectory per
-analysis. This module reduces the raw event stream to a structured
-"agent debugger" style overview that preserves the high-signal portions
-and elides the bulky tool outputs.
+judge LLM，尤其 mix mode 的 cheap L1-detection backend，无法为每次 analysis 都吞入完整
+80-200K-token SWE-bench trajectory。本模块把 raw event stream 转成 structured ``agent
+debugger`` overview，保留 high-signal，省略 bulky Tool output。
 
-What we **keep verbatim**:
+verbatim 保留 first user task description（external scorer 的 ``WRAPPER_PATH`` + STRICT RULES +
+issue text）、每条 assistant text（model reasoning chain），以及 Tool name + truncated arguments。
+Tool result 只保留前 ``head_chars`` 与后 ``tail_chars``，中间加 marker，主要影响 long file dump、
+stack trace 与 ``cat`` output。重复 ``(tool_name, args-prefix)`` run 用 ``x N times`` marker
+折叠，244-paired analysis 中 pager-stuck、tmux-poll、re-read pathology 会显著压缩。
 
-- Task description (first user message — `WRAPPER_PATH` + STRICT RULES +
-  issue text from the external scorer).
-- Every assistant text content (the model's reasoning chain).
-- Tool call names + truncated arguments (enough to identify what tool
-  was called and what it operated on).
+末尾 anomaly section 标记 empty-content Turn count、syntax error、Docker error、repetition
+density，正是 L1 detector 关注的 signal。compression 纯 rule-based，不调用 LLM；future v2
+可在 rule-compressed output 上再做 LLM summary，但 v1 default 已通常把 150K trajectory 压至
+约 5-15K token。token estimate 使用粗略 ``chars / 4``，只供 budget shaping，不引入 tokenizer。
 
-What we **truncate**:
-
-- Tool results — keep first ``head_chars`` + last ``tail_chars``, elide
-  the middle with a marker. Long file dumps, stack traces, and `cat`
-  output mostly fall into this bucket.
-
-What we **collapse**:
-
-- Runs of identical (tool_name, args-prefix) calls are emitted once
-  with a "× N times" marker. Highly repetitive trajectories (the
-  pager-stuck / tmux-poll / re-read pathologies from the 244-paired
-  analysis) compress dramatically here.
-
-What we **flag**:
-
-- Anomaly section appended at the end: empty-content turn count, syntax
-  errors, docker errors, repetition density. These are exactly the
-  signals the L1 detector watches for.
-
-The compression is **purely rule-based** — no LLM call. A v2 could add
-an LLM summarisation pass over the rule-compressed output, but the v1
-already typically lands a 150K trajectory at ~5-15K tokens with the
-defaults.
-
-Token counting uses a rough ``chars / 4`` heuristic; we don't need a
-tokenizer dependency for budget shaping at this granularity.
+压缩结果不是无损 transcript；它适合 diagnosis prompt，但不能替代原始 evidence、task verdict
+或 Tool side-effect receipt。
 """
 
 from __future__ import annotations
@@ -58,17 +35,15 @@ from typing import Any, Iterable, Optional, Union
 
 @dataclass
 class Event:
-    """One parsed line from an external scorer session.jsonl.
+    """external scorer ``session.jsonl`` 中一行解析后的 loose event。
 
-    Fields are kept loose because the scorer emits a few distinct event
-    shapes (metadata, chat messages, tool results). Callers branch on
-    ``role`` / ``event_type``.
+    scorer 会产生 metadata、chat message、Tool result 等多种 shape，因此字段保持宽松，调用方
+    按 ``role``/``event_type`` 分支。``raw`` 保存原 object，``tool_calls`` 与可选 Tool name
+    保留行为信息。
 
-    ``finish_reason`` is captured for assistant turns when the upstream
-    row carries it (LiteLLM / OpenAI-shape responses). It is the
-    primary discriminator between L1 and L2 calibration in the judge
-    prompt (spec §22.5 + r4 Fix A1): ``stop``/``content_filter`` on
-    empty content → L1, ``length`` → L2 (max_tokens config issue).
+    assistant row 若携带 LiteLLM/OpenAI-shape ``finish_reason`` 就保留。它是 judge prompt 中
+    L1/L2 calibration 的主要 discriminator（spec §22.5 + r4 Fix A1）：empty content 且
+    ``stop``/``content_filter`` -> L1；``length`` -> L2，通常是 max_tokens config issue。
     """
 
     event_type: str  # 取值："metadata" | "system" | "user" | "assistant" | "tool" | "other"
@@ -80,14 +55,12 @@ class Event:
 
 
 def _parse_event(obj: dict[str, Any]) -> Event:
-    """Classify one raw JSON object from session.jsonl into an Event.
+    """把 ``session.jsonl`` 的 raw JSON object 分类为 ``Event``。
 
-    The classification rules mirror what we observed in the 244-paired
-    SWE-bench session files:
-
-    - ``{"_type": "metadata", ...}`` → metadata
-    - ``{"role": "user" | "assistant" | "system" | "tool", ...}`` → chat
-    - anything else → "other" (will be ignored downstream)
+    规则来自 244-paired SWE-bench Session：含 ``_type`` -> metadata；role 为 ``user``、
+    ``assistant``、``system``、``tool`` -> chat；其他 -> ``other``，下游忽略。multimodal list
+    content 只展平 text block，不压入 image；assistant finish_reason 同时兼容 top-level 与
+    ``choices[0].finish_reason``。
     """
     if "_type" in obj:
         return Event(event_type="metadata", raw=obj)
@@ -134,11 +107,11 @@ def _parse_event(obj: dict[str, Any]) -> Event:
 
 
 def load_session_jsonl(path: Union[str, Path]) -> list[Event]:
-    """Read a session.jsonl file into a list of :class:`Event`.
+    """把 ``session.jsonl`` 读取为 :class:`Event` list。
 
-    Lines that are blank or fail to parse are silently skipped — scorer
-    has been seen to emit the occasional malformed line on crash, and we
-    don't want one bad line to abort a 200-turn trajectory.
+    blank、JSON parse failure 或 non-object line 静默跳过；scorer crash 偶尔会产生 malformed
+    line，不能让单行损坏中止 200-Turn trajectory。file open error 仍向上抛出。返回顺序与
+    成功解析的原始行一致。
     """
     p = Path(path)
     events: list[Event] = []
@@ -164,12 +137,12 @@ def load_session_jsonl(path: Union[str, Path]) -> list[Event]:
 
 @dataclass
 class CompressorConfig:
-    """Knobs for the rule-based compression pass.
+    """rule-based compression pass 的参数集合。
 
-    Defaults are tuned so a typical 80-200K-token SWE-bench trajectory
-    lands at 5-15K tokens — well within budget for the L1-detection
-    backend (Qwen-397B has 128K context, Claude Haiku has 200K, so
-    even the "compressed" output is still small relative to context).
+    default 调优目标是把 80-200K-token SWE-bench trajectory 压至 5-15K token，低于
+    L1-detection backend context；Qwen-397B 为 128K，Claude Haiku 为 200K。``target_tokens``
+    是 soft target，不是 hard truncation；其他字段控制 args/result/task 长度、repetition
+    threshold 与 anomaly detection。
     """
 
     target_tokens: int = 10000  # 软目标，而非硬上限
@@ -216,18 +189,24 @@ def _matches_any(text: str, patterns: list[re.Pattern]) -> bool:
 
 
 class TrajectoryCompressor:
-    """Rule-based compressor — turns Event list into a single text blob."""
+    """把 Event sequence 转为单一 structured text blob 的 rule-based compressor。
+
+    实例拥有 immutable-use config reference，不保存 trajectory state；每次 ``compress`` 独立
+    处理输入。输出面向 judge diagnosis，不是 JSON/Markdown contract。
+    """
 
     def __init__(self, config: Optional[CompressorConfig] = None) -> None:
         self._cfg = config or CompressorConfig()
 
     def compress(self, events: Iterable[Event]) -> str:
-        """Produce a single compressed text block for one trajectory.
+        """为一段 trajectory 生成单个 compressed text block。
 
-        The result is plain text with a structured layout the judge
-        prompt is designed to handle: header → task → turns → anomaly
-        summary. No JSON, no Markdown — just headings and indented
-        body. Keeps the trajectory format token-efficient.
+        输入先 materialize 为 list。输出是 judge prompt 预期的 plain text layout：header -> task
+        -> Turns -> anomaly summary；不是 JSON 或 Markdown，只使用 heading 与 indented body。
+        first user message 作为 task，assistant Turn 依次编号，Tool call/result 跟随其 owner。
+
+        完全无 content 且无 Tool call 才计 empty；tool-only Turn 是正常行为。finish_reason 用于
+        anomaly calibration。返回字符串不保证达到 ``target_tokens`` hard cap。
         """
         events_list = list(events)
         cfg = self._cfg
@@ -299,7 +278,10 @@ class TrajectoryCompressor:
     # -- 辅助方法 -----------------------------------------------------------
 
     def _find_task_description(self, events: list[Event]) -> Optional[str]:
-        """Pick the first non-empty user-message content as the task text."""
+        """选择 first non-empty user message content 作为 task text。
+
+        找不到时返回 ``None``，compressor 省略 TASK section。
+        """
         for ev in events:
             if ev.event_type == "user" and ev.content:
                 return ev.content
@@ -312,19 +294,15 @@ class TrajectoryCompressor:
         out: list[str],
         assistant: Event,
     ) -> int:
-        """Emit pending tool calls + results following an assistant turn.
+        """输出 assistant Turn 后的 pending Tool call 与 result section。
 
-        Walks ``events[start_idx:]`` while encountering ``role=tool`` events
-        (which carry the result of the prior assistant's tool_calls),
-        collapsing consecutive identical (name, args-prefix) calls.
+        从 ``events[start_idx:]`` 消费连续 ``role=tool`` event，它们是前一 assistant Tool call
+        的 result。每个 declared call 输出 name 与 truncated args，每个 result 使用 head/tail
+        summary。assistant 未声明 Tool call 时跳过紧随的 orphan Tool event。
 
-        Returns the index where the tool section ends (so the outer loop
-        can continue from there).
-
-        Collapse logic: we look at the assistant's ``tool_calls``
-        list and emit one summary per call. If the calls in this run match
-        a recent identical call within a small window, we annotate
-        "× N repetitions".
+        返回 Tool section 结束 index，供 outer loop 继续。设计目标包含对相同
+        ``(name, args-prefix)`` run 的 ``x N repetitions`` annotation；当前实现逐 call 输出，
+        repetition density 仍在 anomaly summary 汇总。
         """
         cfg = self._cfg
         i = start_idx
@@ -370,7 +348,7 @@ class TrajectoryCompressor:
 
     @staticmethod
     def _oneline(text: str) -> str:
-        """Collapse newlines + repeated whitespace so the result fits one line."""
+        """折叠 newline 与 repeated whitespace，使 Tool result 落在单行。"""
         return re.sub(r"\s+", " ", text).strip()
 
     @staticmethod
@@ -456,10 +434,10 @@ class TrajectoryCompressor:
 
 
 def estimate_tokens(text: str) -> int:
-    """Rough token count via ``len(text) / 4`` — good enough for budget
-    shaping at the 1K-100K scale; do NOT use for billing / SLA decisions.
+    """用 ``len(text) / 4`` 粗估 token count。
 
-    ``ceil`` semantics so a 5-char string reports 2 tokens not 1.
+    精度只适合 1K-100K scale 的 budget shaping，do NOT 用于 billing/SLA decision。使用
+    ``ceil`` semantics，所以 5-character string 报告 2 而非 1；empty string 返回 0。
     """
     if not text:
         return 0

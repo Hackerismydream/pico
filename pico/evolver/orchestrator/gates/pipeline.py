@@ -1,4 +1,4 @@
-"""The three-shield gate as a composable pipeline (SOP §2 ⑥).
+"""把 three-shield gate 实现为 composable pipeline（SOP §2 ⑥）。
 
 Order matters and each shield narrows the task set the next one judges:
 
@@ -15,8 +15,8 @@ Order matters and each shield narrows the task set the next one judges:
 3. **Gate2 (significance).** Paired lift on the surviving tasks: navigator
    promotion (mean > vanilla) plus a separate credited-2σ label.
 
-Keeping this a pure function over eval maps makes it bench-agnostic and unit
-testable; the loop calls it once per candidate after the confirm eval.
+pure eval-map function 使它 bench-agnostic 且 unit-testable；Loop 在 confirm 后每 candidate 调用
+一次。任何 shield 的通过都只是 promotion evidence 的一部分，不等于 activation 或 sealed success。
 """
 
 from __future__ import annotations
@@ -36,10 +36,10 @@ from pico.evolver.orchestrator.scoring import (
 
 @dataclass
 class GateResult:
-    """Combined verdict of the three-shield pipeline for one candidate.
+    """一个 candidate 通过 three-shield pipeline 后的 combined verdict。
 
-    ``infra_contaminated`` is retained for audit. Any failed or inconclusive
-    measurement prevents promotion before Gate-b attribution narrows the set.
+    ``infra_contaminated`` 保留供 audit；failed/inconclusive measurement 在 Gate-b 缩小 task set 前
+    就阻止 promotion。``eligible_tasks`` 是 attribution 后集合，``unfired_excluded`` 记录排除项。
     """
 
     promoted: bool
@@ -66,15 +66,12 @@ def run_gates(
     fired_tasks: set[str] | None = None,
     infra_threshold: int = 1,
 ) -> GateResult:
-    """Run Gate-f -> Gate-b -> Gate2 and return the combined verdict.
+    """依次运行 Gate-f -> Gate-b -> Gate2，返回 combined verdict。
 
-    ``expected_attempts`` is the K each requested task must reach.
-    ``fired_tasks`` (Gate-b) restricts attribution when provided; ``None`` skips
-    that shield. ``infra_threshold`` is the per-arm infra-trial count at or above
-    which a task is reported as infra-contaminated. Surviving contamination
-    fails the gate; it is never converted into an improvement score. Only Gate-b
-    can leave nothing to measure; then the candidate is rejected and ``paired``
-    is None.
+    ``expected_attempts`` 是每个 requested task 的 K。``fired_tasks`` 非 None 时限制 attribution，
+    None 跳过 Gate-b；``infra_threshold`` 决定 audit 中 contamination。surviving failure 永远不会
+    转成 low score。Gate-f failed/inconclusive 立即返回；Gate-b 若无 eligible task，则 rejected
+    且 paired=None；否则运行 paired lift。返回 promoted 只表示 train gate navigator condition。
     """
     infra_contaminated = [
         t

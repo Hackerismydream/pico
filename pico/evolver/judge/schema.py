@@ -1,22 +1,15 @@
-"""Schema definitions for LLM judge output.
+"""定义 LLM judge output 的 typed schema 与 cross-field invariant。
 
-The judge reads a trajectory and produces a structured analysis with two
-orthogonal axes:
+Judge 从 trajectory 生成两个 orthogonal axis：spec §3 的 Issue type L1/L2/L3 决定路由，L1
+进入 human review，L2/L3 进入 Evolver patch；spec §12.4-§12.5 的 ``(WHERE, WHY)`` 只在
+L2/L3 填充，说明改哪里、针对哪类 pathology。
 
-- **Issue type** (L1 / L2 / L3, per spec §3) — routes the output:
-  L1 → human review; L2/L3 → evolver patch.
-- **Patch location & purpose** ((WHERE, WHY), per spec §12.4-§12.5) — only
-  populated for L2 / L3, identifies what to edit and which pathology
-  is being addressed.
+所有 Enum 都继承 ``str``，无需 custom encoder 即可 JSON serialize，也能与 LLM output 解析的
+string 直接比较，例如 ``IssueType.L1 == "L1"``。``PatchWhy.other`` 接受
+``"other:<new_category>"`` free-form sub-name，支持 spec §12.5 的 evolving WHY taxonomy；
+新 pathology 必须先 human review，不能自动成为 first-class Enum。
 
-All enums are ``str`` subclasses so they JSON-serialize to their string
-values without custom encoders, and so they compare cleanly against
-strings parsed from LLM output (``IssueType.L1 == "L1"``).
-
-PatchWhy.other accepts a free-form sub-name (``"other:<new_category>"``)
-to support the evolving WHY taxonomy described in spec §12.5: judge may
-propose a new pathology class, which gets routed for human review before
-becoming a first-class enum.
+schema validation 只保证 Judge output 内部一致，不证明分类真实、patch 可行或 task 已完成。
 """
 
 from __future__ import annotations
@@ -27,7 +20,11 @@ from typing import Any, Optional
 
 
 class IssueType(str, Enum):
-    """Three-state classification per spec §3 — drives downstream routing."""
+    """spec §3 的三态 failure classification，决定 downstream routing。
+
+    L1 是 infrastructure defect、阻塞 Evolver；L2 是 evaluation framework config 问题；L3 是
+    Harness capability gap。Enum 不表示严重度排序。
+    """
 
     L1 = "L1"  # 基础设施缺陷——阻塞 evolver 并交由人工处理
     L2 = "L2"  # 评测框架配置错误——evolver 修补文档或配置
@@ -35,13 +32,11 @@ class IssueType(str, Enum):
 
 
 class PatchWhere(str, Enum):
-    """Structural location of a proposed patch (spec §12.4, 14 categories).
+    """proposal 的 structural patch location（spec §12.4，14 categories）。
 
-    Each value corresponds to a class of files in the mutable surface
-    (spec §2.2). The judge picks one based on the failure signature.
-
-    `control` (2026-06-10): added for evolution-restart round 1 to
-    represent control-arm nodes that carry no real patch surface.
+    每个 value 对应 mutable surface（spec §2.2）中的 file class，Judge 按 failure signature
+    选择。``control`` 于 2026-06-10 为 evolution-restart round 1 加入，表示没有真实 patch
+    surface 的 control-arm node。
     """
 
     system_prompt_template = "system_prompt_template"  # 路径：templates/*.md
@@ -61,22 +56,18 @@ class PatchWhere(str, Enum):
 
 
 class PatchWhy(str, Enum):
-    """Pathology category the patch addresses (spec §12.5, 11 named + other).
+    """patch 要处理的 pathology category（spec §12.5，11 named + other）。
 
-    Derived from the 244-paired SWE-bench failure analysis. Evolving: judge
-    may propose a new class via ``other`` plus a free-form sub-name, which
-    is reviewed before being promoted to a first-class enum value.
+    taxonomy 来自 244-paired SWE-bench failure analysis。Judge 可用 ``other`` + free-form
+    sub-name 提议新类，human review 后才 promote 为 first-class Enum。
 
-    `reasoning_visibility` (2026-06-01): promoted from B2 dry-run
-    `patch_why_extra` accumulation — the dominant uncategorized class
-    (5/10 ``other`` entries: reasoning_visibility_improvement,
-    communication_traceability, communication verbosity nudge,
-    explanatory_text_nudge, trajectory_logging_quality).
-
-    `empty_response_recovery`, `method_lock_in_remedy`,
-    `infra_neutrality_control` (2026-06-10): added for evolution-restart
-    round 1 — empty-response streak recovery, early method lock-in remedy,
-    and control-arm bookkeeping respectively.
+    ``reasoning_visibility`` 于 2026-06-01 从 B2 dry-run 的 ``patch_why_extra`` accumulation
+    promote，是 dominant uncategorized class：10 个 other 中 5 个来自
+    reasoning_visibility_improvement、communication_traceability、communication verbosity
+    nudge、explanatory_text_nudge、trajectory_logging_quality。``empty_response_recovery``、
+    ``method_lock_in_remedy``、``infra_neutrality_control`` 于 2026-06-10 为 restart round 1
+    加入，分别表示 empty-response streak recovery、early method lock-in remedy、control-arm
+    bookkeeping。
     """
 
     repetition_breaker = "repetition_breaker"  # 轨迹尾部重复率达 72%
@@ -94,7 +85,10 @@ class PatchWhy(str, Enum):
 
 
 class ActionKind(str, Enum):
-    """What downstream should do with this judge output."""
+    """downstream 对 Judge output 采取的动作类型。
+
+    ``human_review_needed`` 对应 L1 且禁止 auto patch；``patch_proposal`` 对应 L2/L3。
+    """
 
     human_review_needed = "human_review_needed"  # L1：evolver 暂停，由工程师修复
     patch_proposal = "patch_proposal"  # L2/L3：evolver 应用补丁
@@ -102,21 +96,15 @@ class ActionKind(str, Enum):
 
 @dataclass
 class ProposedComponent:
-    """One file the judge proposes to edit as part of a multi-file patch.
+    """multi-file patch 中 Judge 提议修改的一个 file component。
 
-    Counterpart in the tree layer is
-    :class:`pico.evolver.tree.node.PatchComponent` (with the actual
-    diff). At judge time we only have natural-language ``summary`` — the
-    mutation operator (GEPA library) later turns each ``ProposedComponent``
-    into a concrete ``PatchComponent`` with a unified diff.
+    tree layer counterpart 是带 actual diff 的
+    :class:`pico.evolver.tree.node.PatchComponent`。Judge 阶段只有 natural-language
+    ``summary``；mutation operator（GEPA library）随后把它变成 unified diff。
 
-    Multi-component design rationale (spec §12.2, §18.5.1.x): a single
-    "patch" may bundle several file edits that together implement one
-    semantic improvement (e.g., new hook file + register it in a config).
-    The ``depends_on`` graph lets component-level bisect drop subsets
-    safely when a regression appears.
-
-    For the simple 1-file fix, ``JudgeAction.components`` has length 1.
+    spec §12.2/§18.5.1.x 允许一个 semantic improvement 由多个 file edit 组成，例如新 hook +
+    config registration；``depends_on`` graph 使 regression 时 component-level bisect 能安全
+    删除 subset。简单 one-file fix 的 ``JudgeAction.components`` length 为 1。
     """
 
     component_id: str  # "comp_1" / "comp_2"，在单个 JudgeAction 内唯一
@@ -147,21 +135,15 @@ class ProposedComponent:
 
 @dataclass
 class JudgeAction:
-    """The judge's recommended next action.
+    """Judge 推荐的下一步动作及其结构化 proposal。
 
-    For ``kind=human_review_needed`` (L1), only ``reasoning`` is populated
-    — the evolver should NOT attempt to apply any patch, just surface the
-    issue to a human operator.
+    ``kind=human_review_needed``（L1）只填写 ``reasoning``，Evolver MUST NOT apply patch，只
+    向 human operator 暴露问题。``kind=patch_proposal``（L2/L3）必须包含 WHERE、WHY 与非空
+    components；mutation operator 后续生成 unified diff。
 
-    For ``kind=patch_proposal`` (L2/L3), patch fields are populated:
-    WHERE / WHY and a non-empty ``components`` list. Each component
-    names one file to edit plus a natural-language summary; mutation
-    operators later turn these into unified diffs.
-
-    ``patch_why_extra`` is non-empty only when ``patch_why == other``, and
-    carries the judge's proposed new pathology sub-name (e.g.
-    ``"other:plan_action_disconnect"``). Reviewing-and-promoting these
-    sub-names is the mechanism for evolving the WHY taxonomy (spec §12.5).
+    ``patch_why_extra`` 仅在 ``patch_why == other`` 时非空，携带 Judge 新 pathology sub-name，
+    例如 ``other:plan_action_disconnect``；review/promote sub-name 是 spec §12.5 演化 WHY
+    taxonomy 的机制。构造时还验证 component_id unique 与 depends_on sibling existence。
     """
 
     kind: ActionKind
@@ -196,16 +178,19 @@ class JudgeAction:
 
     @property
     def target_file(self) -> Optional[str]:
-        """Primary file = first component's target_file (backwards-compat shim)."""
+        """返回首个 component target_file，作为 backwards-compat primary file。
+
+        无 component 时返回 ``None``。multi-component caller 应直接遍历 components。
+        """
         return self.components[0].target_file if self.components else None
 
     @property
     def patch_summary(self) -> Optional[str]:
-        """For single-component patches, return that component's summary.
+        """返回兼容旧 caller 的 patch summary string。
 
-        Multi-component patches don't have a single summary — use
-        ``components[i].summary`` directly, or ``reasoning`` for the
-        overall narrative.
+        single-component 返回该 summary；无 component 返回 ``None``。multi-component 没有单一
+        summary，规范用法是 ``components[i].summary`` 或整体 ``reasoning``；compat path 用
+        `` | `` 拼接。
         """
         if not self.components:
             return None
@@ -217,15 +202,14 @@ class JudgeAction:
 
 @dataclass
 class JudgeResult:
-    """Complete judge analysis of one trajectory.
+    """一段 trajectory 的 complete Judge analysis。
 
-    Fields follow spec §3.2 schema. ``evidence_turn_range`` is the
-    interval (inclusive) of turn indices the judge cites as
-    supporting evidence — used by the evolver to anchor patches to
-    specific failure points in the trajectory.
+    字段遵循 spec §3.2。``evidence_turn_range`` 是 Judge 引用的 inclusive Turn index interval，
+    用于把 patch anchor 到具体 failure point。``confidence`` 必须在 ``[0.0, 1.0]``；downstream
+    可拒绝 low-confidence judgment，例如跳过 confidence < 0.5 proposal。
 
-    ``confidence`` ∈ [0.0, 1.0]. Downstream may reject low-confidence
-    judgments (e.g. evolver skips patch proposals with confidence < 0.5).
+    cross-field invariant 要求 L1 -> human_review_needed，L2/L3 -> patch_proposal + WHERE/WHY，
+    且 ``PatchWhy.other`` 必须有 extra sub-name。``raw_response`` 只用于 audit。
     """
 
     trajectory_id: str
@@ -258,11 +242,11 @@ class JudgeResult:
 
 @dataclass(frozen=True)
 class PassFailResult:
-    """A no-benchmark pass/fail verdict for one trajectory.
+    """无 benchmark verifier 时，一段 trajectory 的 pass/fail verdict。
 
-    Distinct from :class:`JudgeResult` (which diagnoses failure *mode* and never
-    carries a pass/fail): this is what an LLM scorer returns when there is no
-    verifier — the orchestrator maps ``passed`` onto ``TaskEval.passes``.
+    它不同于只诊断 failure mode、不承载 pass/fail 的 :class:`JudgeResult`。LLM scorer 在没有
+    verifier 时返回该对象，orchestrator 把 ``passed`` 映射到 ``TaskEval.passes``。这仍是 LLM
+    judgment，不等价于 deterministic verifier evidence。
     """
 
     trajectory_id: str

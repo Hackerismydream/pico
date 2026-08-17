@@ -1,9 +1,11 @@
-"""Task-completion judge prompt.
+"""Task-completion Judge Prompt。
 
-Asks the judge to classify a turn as ``completed`` / ``failed`` /
-``unknown`` based on the user's original goal and the agent's final
-response. Deliberately short so the haiku-class judge model can return
-a single-word answer quickly and cheaply.
+模板要求 Judge 根据 User Original Goal 与 Agent Final Response，把 Turn 分类为 ``completed``、
+``failed`` 或 ``unknown``。Prompt 刻意保持 Short，使 Haiku-class Judge Model 能快速、低成本地返回
+Single-word Answer。
+
+下面的英文常量是实际发送给模型的 Machine-facing Prompt，不属于 Docstring，因此保持协议文本与三种
+英文 Verdict 不变。它只检查回复文本是否看起来完成目标，不验证外部 Tool Side Effects。
 """
 
 TASK_COMPLETION_PROMPT = """You are evaluating whether an AI assistant completed the user's task.

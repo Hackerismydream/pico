@@ -1,12 +1,13 @@
-"""Search tools: grep (content search) and find (file lookup).
+"""实现 host-side 的 grep 内容搜索与 find 文件查找 Tool。
 
-Both run host-side and reuse ``_FsTool``'s workspace/allowed_dir resolution so
-they share the exact same path boundary as read_file/write_file/list_dir — never
-the SandboxExecutor (avoids shuttling large result sets across a VM edge).
+两者复用 ``_FsTool`` 的 Workspace/allowed_dir 解析，因此与 read_file/write_file/list_dir 具有
+完全相同的路径边界；它们 never 使用 SandboxExecutor，避免把大结果集跨 VM edge 搬运。
+系统根、伪文件系统和驱动器根会被拒绝，纯 Python walk 还有 wall-clock deadline，防止模型
+无意遍历整台宿主机。
 
-``grep`` prefers the ``rg`` (ripgrep) binary when present on PATH for speed and
-.gitignore awareness, and falls back to a pure-Python scan otherwise so Pico
-keeps working with zero hard binary dependency.
+``grep`` 优先使用 PATH 中的 ``rg``（ripgrep）获得速度与 .gitignore 感知，缺失时回退纯 Python，
+所以 Pico 没有 hard binary dependency。两条路径都限制结果数量与字符数，并在 partial result
+中明确警告，避免模型把被截断视图当成完整计数。
 """
 
 import asyncio
@@ -49,7 +50,12 @@ _WALK_DEADLINE_S = 20.0
 
 
 def _denied_traversal_root(base: Path) -> bool:
-    """True if ``base`` resolves to a system root that must not be tree-walked."""
+    """判断 ``base`` 是否解析为禁止 Tree walk 的系统或文件系统根。
+
+    resolve 失败时返回 ``False``，让后续存在性/I/O 路径给出正常错误。Resolved path 的 Parent
+    等于自身时视为任意 filesystem/drive root，可覆盖 POSIX ``/``、Windows drive 与 UNC root；
+    另外显式拒绝 /proc、/sys、/dev、/run、/boot。返回值只限制递归目录，普通文件不受影响。
+    """
     try:
         resolved = base.resolve()
     except OSError:
@@ -67,7 +73,15 @@ def _denied_traversal_root(base: Path) -> bool:
 
 
 class GrepTool(_FsTool):
-    """Search file contents by regex, ripgrep-backed with a pure-Python fallback."""
+    """按 Regular expression 搜索文件内容，优先 ripgrep 并带纯 Python fallback。
+
+    Tool 支持 content、files_with_matches、count 三种 output_mode、可选 glob、大小写忽略、上下文
+    行和 limit。Regex 会先编译验证；目录解析为系统根时拒绝。rg 路径设置 30 秒 timeout、统一
+    path separator 和 noise exclude；fallback 跳过 binary、受 20 秒 walk deadline 约束。
+
+    返回最多 30,000 字符，并在 limit/字符截断时标明 PARTIAL result，提示用 count 或更窄模式。
+    无命中是正常 ``No matches found.``，不是 failed ToolResult。该 Tool 是 concurrency-safe READ。
+    """
 
     capability = ToolCapability(effect=ToolEffect.READ, concurrency_safe=True)
     _MAX_CHARS = 30_000
@@ -344,7 +358,13 @@ class GrepTool(_FsTool):
 
 
 class FindTool(_FsTool):
-    """Find files by glob pattern, sorted by recency. Pure-Python (pathlib)."""
+    """使用 pathlib 按 Glob pattern 查找文件，并按最近修改时间排序。
+
+    Pattern 含路径分隔符时按字面 glob；只有 basename 时自动扩为 ``**/pattern``，形成 fd-style
+    任意深度查找。目标必须是允许范围内的真实目录，系统/drive root 被拒绝，noise directories
+    始终跳过。结果返回相对搜索根路径，默认最多 1000 条；无匹配返回
+    ``No files found matching pattern.``。它是 pure-Python、concurrency-safe READ，不调用 Shell。
+    """
 
     capability = ToolCapability(effect=ToolEffect.READ, concurrency_safe=True)
     _DEFAULT_LIMIT = 1000

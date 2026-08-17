@@ -1,4 +1,9 @@
-"""Cron types."""
+"""Cron Scheduler 使用的 Persistent Data Types。
+
+这些 Dataclasses 依次描述 Schedule、Trigger Payload、Mutable Runtime State、完整 Job 与 Versioned Store。
+它们是 Service 内存模型，也对应 ``jobs.json`` Schema；字段名称或语义变化必须考虑旧 Store 的兼容
+读取，不能只修改 Python 构造器。
+"""
 
 from dataclasses import dataclass, field
 from typing import Literal
@@ -6,7 +11,12 @@ from typing import Literal
 
 @dataclass
 class CronSchedule:
-    """Schedule definition for a cron job."""
+    """Cron Job 的 Schedule Definition。
+
+    `kind` 决定且只应启用一组字段：`at` 使用绝对 Millisecond Timestamp，`every` 使用 Millisecond
+    Interval，`cron` 使用 Expr 与可选 Timezone。Dataclass 不自行验证组合，`CronService` Add Path 负责
+    拒绝过去时间、非正间隔和非法表达式。
+    """
 
     kind: Literal["at", "every", "cron"]
     # "at"：毫秒时间戳
@@ -21,7 +31,12 @@ class CronSchedule:
 
 @dataclass
 class CronPayload:
-    """What to do when the job runs."""
+    """描述 Job Runs 时要执行与交付的内容。
+
+    `kind` 区分 `system_event` 与默认 `agent_turn`，`message` 是触发内容；`deliver`、`channel` 与 `to`
+    保存 Request-time Delivery Binding。`topic_tag` 是稳定 Logical Subject，Service 用它更新同一提醒而
+    不是创建近似重复 Schedule。Payload 是意图描述，不包含实际 Delivery Receipt。
+    """
 
     kind: Literal["system_event", "agent_turn"] = "agent_turn"
     message: str = ""
@@ -35,7 +50,12 @@ class CronPayload:
 
 @dataclass
 class CronJobState:
-    """Runtime state of a job."""
+    """一个 Job 的 Mutable Runtime State。
+
+    它记录 Next/Last Run、Last Status/Error 与 Cross-process Claim Ownership。Claim 由 `run_due` 取得任务
+    的 Process 写入，运行后清除，超过 TTL 才可由 Peer 接管。`silent_fire_count` 统计没有用户活动介入
+    的连续 Fires，供 Auto-disable Guard 阻止 LLM 创建的失控 Recurring Task。
+    """
 
     next_run_at_ms: int | None = None
     last_run_at_ms: int | None = None
@@ -53,7 +73,12 @@ class CronJobState:
 
 @dataclass
 class CronJob:
-    """A scheduled job."""
+    """一条完整 Scheduled Job Record。
+
+    Job 把稳定 ID/Name、Enable Flag、`CronSchedule`、`CronPayload`、`CronJobState` 与创建更新时间组合在
+    一起。`delete_after_run` 控制 One-shot 完成后是否从 Store 删除；`silent_fire_limit` 达到时自动停用，
+    `None` 表示无限制。对象可在 Service 内原地更新，持久化前不构成 Durable State。
+    """
 
     id: str
     name: str
@@ -72,7 +97,11 @@ class CronJob:
 
 @dataclass
 class CronStore:
-    """Persistent store for cron jobs."""
+    """保存 Cron Jobs 的 Versioned Persistent Store。
+
+    `version` 决定 JSON Schema，目前为 1；`jobs` 保持全部 Enabled、Disabled、Expired 与 Incompatible
+    Records。Service 负责原子写入与兼容解析，Dataclass 本身不提供并发控制。
+    """
 
     version: int = 1
     jobs: list[CronJob] = field(default_factory=list)

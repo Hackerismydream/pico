@@ -1,15 +1,11 @@
-"""LocalSkillCatalog — the single owner of the local skill pool.
+"""`LocalSkillCatalog`，Local Skill Pool 的 Single Owner。
 
-Absorbs what used to be ``SkillService``: it builds the
-:class:`SkillRegistry` + :class:`LocalPool`, runs the SKILL.md file
-watcher, and renders skills for the prompt (always-skills, injection,
-XML summary).
+它吸收旧 ``SkillService`` 的文件侧职责：构造 :class:`SkillRegistry` + :class:`LocalPool`，运行
+``SKILL.md`` File Watcher，并为 Prompt 渲染 Always-skills、Selected Injection 与 XML Summary。
 
-Retrieval is **not** here — that lives in :class:`LocalSkillSource`
-(which reuses this catalog's ``pool`` + ``registry``) and is fused
-with the remote sources by :class:`SkillForgeRouter`. The old
-``SkillService.select`` / LLM-gate / query-rewriter retrieval path
-was retired when the router replaced it.
+Retrieval **不在这里**；:class:`LocalSkillSource` 复用 Catalog 的 ``pool`` + ``registry`` 执行 Search，再
+由 :class:`SkillForgeRouter` 与其他 Sources 融合。旧 ``SkillService.select`` / LLM-gate / Query-rewriter
+Path 已在 Router 替代后 Retired。Catalog 读到 Skill 不等于 Router 选中或 Prompt 已注入。
 """
 
 from __future__ import annotations
@@ -32,7 +28,12 @@ if TYPE_CHECKING:
 
 
 class LocalSkillCatalog:
-    """File access + directory rendering over the local skill pool."""
+    """负责 Local Skill Pool 的 File Access、Watcher 与 Directory Rendering。
+
+    初始化时根据 Workspace、Builtin Dir 与 Configured `local_dirs` 建立分层 Registry 和 BM25 Pool，并可
+    启动 Background Watcher。Catalog 拥有这些对象的生命周期与缓存失效；Retriever 只借用它们 Search。
+    短生命周期 Caller 应禁用 Watcher，避免 Daemon Thread/Handle 泄漏。
+    """
 
     def __init__(
         self,
@@ -98,17 +99,13 @@ class LocalSkillCatalog:
         return self._local_pool
 
     def invalidate_skill_cache(self, source: str | None = None) -> None:
-        """Invalidate the file-registry cache and refresh the local BM25 index.
+        """Invalidate File-registry Cache，并 Refresh Local BM25 Index。
 
-        When ``source`` is provided, only that source's slice is
-        rebuilt and merged back inside the registry — saves the cost of
-        re-walking the unchanged builtin / workspace / external trees.
-        Pass ``None`` for a hard reset (rare, only when something off-band
-        has rewritten multiple sources at once).
+        提供 ``source`` 时只重建该 Source Slice，再 Merge 回 Registry，避免 Re-walk 未变化的 Builtin /
+        Workspace / External Trees。传 `None` 执行 Hard Reset，只适合 Off-band 同时改写多个 Sources。
 
-        After the registry update, the local BM25 index is rebuilt
-        eagerly so file-watcher events flow straight through to retrieval
-        — ``search`` callers never pay the index build on the hot path.
+        Registry 更新后 Eagerly Rebuild BM25，使 File-watcher Event 直接流入 Retrieval，``search`` Caller
+        不在 Hot Path 支付 Index Build。方法完成表示索引反映当前扫描结果，不保证 Skill Body 有效。
         """
         if source is None:
             self._registry.invalidate_cache()
@@ -117,35 +114,17 @@ class LocalSkillCatalog:
         self._local_pool.rebuild_index()
 
     def start_file_watcher(self) -> bool:
-        """Start the background SKILL.md filesystem watcher.
+        """启动 Background ``SKILL.md`` Filesystem Watcher。
 
-        Called once automatically from :meth:`__init__`, so consumers
-        normally never invoke it directly — it's still public for tests
-        and for the rare case of restarting the watcher after an
-        external ``stop_file_watcher`` call.
+        :meth:`__init__` 默认自动调用；Public Method 主要供 Tests 或 `stop_file_watcher` 后 Rare Restart。
+        第一次成功会建立 ``watchfiles``-backed Daemon Thread，Workspace Skills 下 Add/Edit/Remove 时把
+        Per-source Invalidation 送入 :meth:`invalidate_skill_cache`；监控根是 ``<workspace>/skills``。后续
+        调用 Idempotent No-op。
 
-        Idempotent: the first call wires up a daemon thread
-        (``watchfiles``-backed) that pipes per-source invalidations into
-        :meth:`invalidate_skill_cache` whenever a SKILL.md is added,
-        edited or removed under ``<workspace>/skills``. Subsequent calls
-        are no-ops and return ``False``.
-
-        Returns ``True`` only when a new watcher thread is now running.
-        Returns ``False`` — and the rest of the catalog still works in
-        manual-invalidation mode — when:
-
-          - ``watchfiles`` is missing from the install (it's a declared
-            dependency, so this only happens in stripped / partial
-            installs),
-          - the workspace skills directory does not exist,
-          - a watcher is already running.
-
-        Builtin / external layers are intentionally **not** watched:
-        they are read-only mirrors in this codebase, and the builtin
-        layer can carry ~80K files — recursive watching would blow past
-        Linux's default inotify watch limit.
-
-        Never raises.
+        只有新 Watcher Running 时返回 `True`。``watchfiles`` Missing、Workspace Skills Dir 不存在或已有
+        Watcher 时返回 `False`，Catalog 仍可 Manual-invalidation。Builtin/External Layers 刻意 **不 Watch**：
+        它们是 Read-only Mirrors，Builtin 可有约 80K Files，Recursive Watch 会超过 Linux Default Inotify
+        Limit。方法 Never Raises。
         """
         if self._file_watcher is not None:
             return False
@@ -164,9 +143,10 @@ class LocalSkillCatalog:
         return True
 
     def stop_file_watcher(self) -> None:
-        """Signal the watcher thread to exit and best-effort join.
+        """通知 Watcher Thread Exit，并 Best-effort Join。
 
-        Safe to call when no watcher was ever started.
+        从未启动时安全 No-op；有实例时调用其 `stop` 并清空引用，使后续 Start 可重试。返回不携带线程
+        退出证明，具体 Join 行为由 `SkillFileWatcher` 实现。
         """
         watcher = self._file_watcher
         if watcher is None:
@@ -179,22 +159,30 @@ class LocalSkillCatalog:
     # ------------------------------------------------------------------
 
     def list_skills(self, filter_unavailable: bool = True) -> list[dict[str, str]]:
-        """All skills as legacy-shape dicts ``{name, path, source}``."""
+        """以 Legacy-shape Dicts ``{name, path, source}`` 返回所有 Skills。
+
+        默认过滤 Requirement 不满足的 Unavailable Skills；关闭过滤时反映完整 Registry。返回仅含目录字段，
+        不读取完整 Body，也不按当前 Query 排名。
+        """
         metas = self._registry.list_all()
         if filter_unavailable:
             metas = [m for m in metas if self._registry.check_available(m.name, source=m.source)]
         return [{"name": m.name, "path": str(m.path), "source": m.source} for m in metas]
 
     def load_skill(self, name: str) -> str | None:
-        """Full SKILL.md content, or ``None`` if absent."""
+        """按 Name 返回完整 ``SKILL.md`` Content；Absent 时返回 `None`。
+
+        查找遵循 Registry 的 Source Priority。内容已由 Registry 加载，不表示 Requirement 可用或 Skill 被
+        Router 选中。
+        """
         return self._registry.get_body(name)
 
     def get_always_skills(self) -> list[SkillMeta]:
-        """Skills flagged ``always: true`` whose requirements are met.
+        """返回标记 ``always: true`` 且 Requirements Met 的 Skills。
 
-        R3: truncation order is by local_dirs list order (which maps to
-        source priority in the registry) + alphabetical within each
-        source. WARN lists dropped skill names.
+        R3 Truncation Order 按 `local_dirs` List Order（映射 Registry Source Priority）+ Source 内 Alphabetical。
+        `disable_always` 返回空；超过 `always_max` 时保留前项并以 WARN/Warning 列出 Dropped Names。返回 Skills 会
+        默认注入，但仍受后续 Context Budget 影响。
         """
         if getattr(self._config, "disable_always", False):
             return []
@@ -222,20 +210,15 @@ class LocalSkillCatalog:
         skills: "list[SkillMeta] | list[str]",
         max_inject: int | None = None,
     ) -> str:
-        """Render the given skills' bodies (frontmatter already stripped) into one blob.
+        """把给定 Skill Bodies 渲染成一个可注入 Blob，Frontmatter 已移除。
 
-        The body comes straight from ``meta.content`` after registry loading.
+        Body 直接来自 Registry-loaded ``meta.content``，其来源是 ``SKILL.md``。``max_inject`` 限制 Inline Skill 数量，每个通常
+        1-5K Tokens；`None` 回退到 ``config.inject_max``，0/None 表示不设数量 Cap。为 Backward
+        Compatibility 也接受 Name List，并通过 Registry Resolve。
 
-        ``max_inject`` caps the number of skills inlined (each body is
-        typically 1-5K tokens). When None, falls back to
-        ``config.inject_max``. 0 / None disables the cap.
-
-        ``{baseDir}`` placeholders in skill body are substituted with the
-        skill's *directory* (``meta.path.parent``, OpenSpace convention)
-        so relative references like ``{baseDir}/scripts/foo.py`` resolve
-        at runtime — only applies when ``meta.path`` is a real on-disk
-        SKILL.md (i.e. filesystem-backed skills; db-only skills without a
-        physical path leave the placeholder unchanged).
+        Filesystem-backed Skill 的 ``{baseDir}`` 替换为 ``meta.path.parent``（OpenSpace Convention），使
+        ``{baseDir}/scripts/foo.py`` 等 Relative Ref 可运行；DB-only/无 Physical Path Skill 保持 Placeholder
+        或按无 Base Resolver 处理。返回 Blob 表示内容已渲染，不表示已放入本轮 Prompt。
         """
         if max_inject is None:
             max_inject = getattr(self._config, "inject_max", 0) or 0
@@ -277,22 +260,23 @@ class LocalSkillCatalog:
         return "\n\n---\n\n".join(parts) if parts else ""
 
     def get_skill_metadata(self, name: str) -> dict | None:
-        """Top-level frontmatter dict, or ``None`` if absent."""
+        """返回 Top-level Frontmatter Dict；Skill Absent 时返回 `None`。
+
+        Metadata 是 Registry Parse Result，Caller 修改返回对象是否影响缓存取决于 Registry 实现，应按只读
+        使用。该接口不返回 Body。
+        """
         return self._registry.get_raw_metadata(name)
 
     def build_skills_summary(self, only: "list[SkillMeta] | list[str] | None" = None) -> str:
-        """XML-formatted skill directory.
+        """构建 XML-formatted Skill Directory。
 
         Args:
-            only: When provided, only these skills are included. Accepts
-                either ``list[SkillMeta]`` (canonical) or ``list[str]`` of
-                skill names (backward-compat for older callers). ``None``
-                preserves legacy behavior (full local directory), used as
-                a fallback when no selector picked.
+            only: 提供时只包含这些 Skills。Canonical 输入是 ``list[SkillMeta]``；Older Callers 可传
+                ``list[str]`` Names。`None` 保留 Legacy Full Local Directory，供 Selector 未命中时 Fallback。
 
-        Local skills render via their on-disk ``meta.path``; LLM reads the
-        full body via ``read_file``. ``available`` reflects ``requires``
-        checks on the registry.
+        Local Skills 通过 On-disk ``meta.path`` 呈现，LLM 后续用 ``read_file`` 读取 Full Body；``available``
+        来自 Registry ``requires`` Check，Unavailable 项附 Missing Requirements。XML 会 Escape Name/Desc，
+        但 Location 原样输出。Summary 是可发现目录，不等于 Skill 已注入。
         """
         if only is None:
             metas: list[SkillMeta] = self._registry.list_all()
@@ -330,12 +314,10 @@ class LocalSkillCatalog:
         return "\n".join(lines)
 
     def gather_all_skills(self) -> list[SkillMeta]:
-        """All skills visible to this catalog — the local file registry
-        (workspace, builtin, external mirrors).
+        """返回 Catalog 可见的全部 Skills：Workspace、Builtin、External Mirrors。
 
-        Used by CLI ``skill list`` / inspection helpers — gathers
-        everything unranked. Hot-path retrieval goes through
-        :class:`SkillForgeRouter` instead.
+        CLI ``skill list`` / Inspection Helpers 用它收集 Everything Unranked；Hot-path Retrieval 必须走
+        :class:`SkillForgeRouter`。结果包含 Unavailable/未选中项，不能直接当作本轮 Injected Set。
         """
         return self._registry.list_all()
 
@@ -344,7 +326,11 @@ class LocalSkillCatalog:
         name: str,
         source: str | None,
     ) -> SkillMeta | None:
-        """Resolve a (name, source) to a ``SkillMeta`` via the local registry."""
+        """通过 Local Registry 把 ``(name, source)`` Resolve 为 `SkillMeta`。
+
+        `source=None` 使用 Registry Priority；无命中返回 `None`。Helper 不检查 Requirements，也不读取
+        External Remote Source。
+        """
         return self._registry.get(name, source=source)
 
 

@@ -1,4 +1,4 @@
-"""Step ② — select WHY + design candidates (semantic, budgeted).
+"""执行 Step ②：选择 WHY，并在预算内语义化设计 candidates。
 
 Two halves, matching the SOP: a *deterministic* WHY selection off the failure
 map (pick 1-2 pathologies worth attacking this round), then a *semantic* design
@@ -15,8 +15,8 @@ for a bounded repair-retry.
 Writing a *useful* diff needs the target file's current contents; the caller
 supplies them via ``file_context`` (empty here keeps the node structural — it
 still produces a schema-valid patch, but a production run wires repo context in).
-The patch must be env-gated and default-off so the vanilla build stays
-byte-identical when the activation flag is unset (SOP §2 ②).
+patch 必须 env-gated 且 default-off，使 activation flag 未设置时 vanilla build byte-identical
+（SOP §2 ②）。设计输出只是 proposal，仍需 apply、manifest 与 eval gate。
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from pico.evolver.tree.node import AppliedPatch
 
 @dataclass(frozen=True)
 class WhyTarget:
-    """One pathology selected for this round, with its supporting evidence."""
+    """本 round 选中的 pathology，以及支持它的 WHERE、candidate count 与 trajectory evidence。"""
 
     why: str
     where_options: list[str]
@@ -41,12 +41,12 @@ class WhyTarget:
 
 
 def select_target_whys(failure_map: dict[str, Any], budget: Budget) -> list[WhyTarget]:
-    """Pick the top ``budget.max_why_per_round`` WHYs from the failure map.
+    """从 failure map 选择 top ``budget.max_why_per_round`` WHY。
 
     Ranks by how many L2/L3 candidates the diagnosis attributed to each WHY
     (``why_distribution``), then gathers each WHY's WHERE levers and evidence
     trajectory ids from ``cells`` (keyed ``"<WHERE>::<WHY>"``). Ties break by
-    WHY name so selection is reproducible.
+    WHY name，使 selection reproducible。返回 target 不证明 pathology 判断正确。
     """
     why_dist: dict[str, int] = failure_map.get("why_distribution", {})
     cells: dict[str, Any] = failure_map.get("cells", {})
@@ -85,11 +85,11 @@ def build_design_messages(
     file_context: str = "",
     archive_summary: str = "",
 ) -> list[dict[str, str]]:
-    """Assemble the design prompt for one candidate against one WHY.
+    """为一个 WHY 的单个 candidate 组装 design prompt。
 
     ``archive_summary`` (the GSME elite bank, one line per cell) tells the
     driver which mechanisms are already verified, so it neither re-invents a
-    banked win nor re-tries a pruned approach as if it were novel.
+    banked win，也不会把 pruned approach 当 novel。函数只构造 messages，不调用 model。
     """
     system = (
         "You design a single harness patch that fixes one pathology in an agent "
@@ -139,7 +139,10 @@ def design_candidate(
     archive_summary: str = "",
     max_retries: int = 3,
 ) -> AppliedPatch:
-    """Design one env-gated candidate patch for ``target`` (schema-validated)."""
+    """为 ``target`` 设计一个 env-gated、schema-validated ``AppliedPatch``。
+
+    bounded repair 耗尽会抛错；成功只表示 patch object 合规，不表示 diff 可应用。
+    """
     messages = build_design_messages(
         target,
         attempt_index=attempt_index,
@@ -167,11 +170,11 @@ def design_round(
     archive_summary: str = "",
     max_retries: int = 3,
 ) -> list[AppliedPatch]:
-    """Select WHYs and design up to ``candidates_per_why`` candidates each.
+    """选择 WHY，并为每项最多设计 ``candidates_per_why`` 个 candidate。
 
     ``file_context_for`` is an optional ``callable(WhyTarget) -> str`` returning
     the target file contents to ground the diff. A candidate whose design never
-    parses is skipped rather than aborting the round.
+    parse 的 candidate 被跳过而不 abort round，因此返回数量可低于 budget。
     """
     patches: list[AppliedPatch] = []
     for target in select_target_whys(failure_map, budget):

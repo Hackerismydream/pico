@@ -1,8 +1,8 @@
-"""Shared base class for channel adapters.
+"""Channel Adapters 共用的 Thin Construction Base。
 
-``ChannelBase`` is thin construction plumbing only; the contract the rest of the
-system depends on is the ``Channel`` protocol in
-:mod:`pico.channels.contract`.
+``ChannelBase`` 只消除 Config/Running/Intake 初始化 Boilerplate；Runtime 真正依赖的是
+:mod:`pico.channels.contract` 的 ``Channel`` Protocol，而不是继承关系。Inbound Normalization 属于 `Intake`，
+Transcription 属于 Helper，Platform Send/Start/Stop 属于各 Adapter。
 """
 
 from __future__ import annotations
@@ -14,16 +14,12 @@ from pico.channels.intake import Intake
 
 
 class ChannelBase:
-    """Thin construction base for channel adapters — shared plumbing only.
+    """Channel Adapter 的 Shared Plumbing Base，不拥有平台行为。
 
-    Carries no inbound/transcribe behaviour (that lives in ``Intake`` and the
-    ``transcribe`` helper); it only removes the ``__init__`` boilerplate every
-    adapter repeats. The contract the rest of the system depends on is the
-    ``Channel`` protocol in :mod:`pico.channels.contract`, not this class —
-    inheriting here is for code reuse; conformance is by protocol. A subclass
-    supplies ``name``/``display_name`` and ``start``/``stop``/``send``, and may
-    override ``is_allowed`` for bespoke matching; the override is picked up
-    automatically by the injected Intake.
+    Inbound/Transcribe 位于 ``Intake`` 与 ``transcribe`` Helper；本类只保存 Config、Running State、Injected
+    Intake。系统依赖 :mod:`pico.channels.contract` ``Channel`` Protocol，继承这里只为 Reuse，Conformance
+    仍按 Protocol。Subclass 提供 ``name``/``display_name`` 与 ``start``/``stop``/``send``，可 Override
+    ``is_allowed``；``__init__`` 创建的 Injected Intake 自动调用该 Override。
     """
 
     name: str = ""
@@ -41,8 +37,11 @@ class ChannelBase:
         return self._running
 
     def is_allowed(self, sender_id: str) -> bool:
-        """Deny-by-default allowlist check (empty = deny all; ``"*"`` = allow
-        all). Override for bespoke matching; the override flows into Intake."""
+        """执行 Deny-by-default Allowlist Check。
+
+        Empty 表示 Deny All，``"*"`` 表示 Allow All，其他值与 Stringified Sender ID Exact Match。Subclass 可
+        Override Bespoke Matching，结果会流入 Intake；通过此检查不等于平台签名/业务权限已验证。
+        """
         from pico.auth.allowlist import is_allowed as _check
 
         return _check(self.name, sender_id, getattr(self.config, "allow_from", None))

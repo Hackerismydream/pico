@@ -1,37 +1,20 @@
-"""LLM client for the judge — pluggable backends + mix routing.
+"""为 Judge 提供 pluggable LLM backend 与 mix routing。
 
-The judge has two distinct workloads:
+Judge 有两类 workload：L1 detection 判断 trajectory 是否被 infrastructure bug 破坏，主要是
+pattern recognition，cheap model 足够；L2/L3 patch proposal 要决定 file 与 change，需要更强
+reasoning，值得调用 larger model。
 
-- **L1 detection** (is this trajectory hosed by an infrastructure bug?)
-  — pattern recognition, cheap model suffices.
-- **L2 / L3 patch proposal** (which file to edit, what change) — needs
-  stronger reasoning; pay for a larger model.
+:class:`JudgeLLMConfig` 支持 ``single``，由一个足够强的 backend 处理全部、适合 ablation；
+``two_step`` 是 default mix，cheap L1 backend 先跑，判 L1 就返回并跳过 expensive call，否则
+丢弃 cheap patch guess，改由 strong backend 重写；``pure_<name>`` 是 single 的配置 convenience，
+两个 slot 使用同一 backend，例如 pure Qwen/OpenRouter。
 
-We support three operating modes, controllable via :class:`JudgeLLMConfig`:
+:class:`LitellmBackend` 包装 ``pico.providers`` 的 ``LLMProvider``，包括 self-hosted Qwen-397B；
+:class:`OpenRouterBackend` 直接 HTTPS 调用 ``openrouter.ai/api/v1``，访问 Claude/GPT/Gemini/
+Qwen/DeepSeek；:class:`MockBackend` 返回 scripted response，提供 deterministic test。
 
-- ``"single"`` — one backend handles everything. Pick a model strong
-  enough for patches; it will also do L1 detection. Useful for ablations.
-- ``"two_step"`` *(default mix mode)* — cheap L1 backend runs first; if
-  it determines L1, we return its output and skip the expensive call.
-  Otherwise we discard its patch guess and call the strong patch backend.
-- ``"pure_<name>"`` — alias for ``single`` with both slots configured to
-  the same backend (just a convenience for "use only Qwen" or "use only
-  OpenRouter").
-
-Backend implementations:
-
-- :class:`LitellmBackend` wraps any ``LLMProvider`` from
-  ``pico.providers`` — works with self-hosted Qwen-397B, plus any
-  other model the existing provider stack supports.
-- :class:`OpenRouterBackend` issues direct HTTPS to
-  ``openrouter.ai/api/v1`` — gives access to Claude / GPT / Gemini /
-  Qwen / DeepSeek through one API.
-- :class:`MockBackend` returns canned responses; used by every test in
-  this module and any downstream test that needs a deterministic judge.
-
-Configuration is data-driven (:func:`load_judge_config`) so the same
-code path runs in production (real backends), in tests (MockBackend),
-and in ablations (config-flip changes mode).
+configuration data-driven，使 production、test、ablation 走同一代码路径。backend call 成功只
+得到 raw Judge text；parse 成功才有 schema result，而二者都不是 benchmark 正向 evidence。
 """
 
 from __future__ import annotations
@@ -55,12 +38,11 @@ logger = logging.getLogger(__name__)
 
 
 class JudgeLLMBackend(ABC):
-    """Minimum surface a backend must expose.
+    """Judge backend 必须实现的 minimum interface。
 
-    The judge does not need streaming, tool calls, or function-calling —
-    just plain chat completion that returns the assistant's text. Keep
-    the interface narrow so adding a new backend (Vertex / Together /
-    a local vLLM endpoint) requires <30 lines.
+    Judge 不需要 streaming、Tool call 或 function-calling，只需返回 assistant text 的 plain chat
+    completion。narrow interface 使 Vertex、Together、local vLLM endpoint 等新 backend 可在
+    约 30 行内接入。实现拥有 stable ``name`` 供日志和 repr 使用。
     """
 
     name: str  # 由子类设置
@@ -73,23 +55,23 @@ class JudgeLLMBackend(ABC):
         max_tokens: int = 4000,
         temperature: float = 0.0,
     ) -> str:
-        """Run one chat completion. Returns the assistant's text body."""
+        """执行一次 chat completion，返回 assistant text body。
+
+        implementation 应在 provider/network/shape 失败时抛出异常，不得把空或非 string 内容
+        伪装成合法 Judge output。
+        """
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(name={self.name!r})"
 
 
 class LitellmBackend(JudgeLLMBackend):
-    """Backend that delegates to a Pico ``LLMProvider``.
+    """委托 Pico ``LLMProvider`` 的 Judge backend。
 
-    Used for the self-hosted Qwen-397B path (which Pico's LiteLLM
-    provider already routes). The provider is lazy-imported so this
-    module doesn't drag the full provider stack into pure-unit-test
-    environments.
-
-    The wrapped provider must expose ``async def chat(messages, ...)``
-    returning an object with a ``.content`` string attribute (the
-    standard ``LLMResponse``). We strip everything else.
+    主要用于已有 LiteLLM provider 路由的 self-hosted Qwen-397B，也支持 provider stack 的其他
+    model。wrapped provider 必须提供 ``chat_with_retry(messages, ...)``，返回标准
+    ``LLMResponse`` shape 且 ``.content`` 为 string；其他字段丢弃。调用走 base retry，使 Judge
+    继承 empty-response retry 与 sync OpenAI fallback。
     """
 
     def __init__(
@@ -128,27 +110,17 @@ class LitellmBackend(JudgeLLMBackend):
 
 
 class OpenRouterBackend(JudgeLLMBackend):
-    """Direct HTTP backend for OpenRouter (``openrouter.ai``).
+    """直接调用 OpenRouter（``openrouter.ai``）的 HTTP backend。
 
-    Why direct HTTP instead of routing through litellm? OpenRouter API
-    keys live in a separate env var from pico's main provider stack,
-    and we want the judge's external-LLM budget to be visible and
-    accounted independently — easier to enforce a hard cap and to swap
-    models per ablation. The HTTP shape is OpenAI-compatible, so the
-    code is small.
+    不经 litellm 是为了让 OpenRouter API key 与 Pico main provider 分离，并独立核算 external-LLM
+    budget，便于 hard cap 与 ablation 换模；HTTP shape 与 OpenAI compatible。model 使用
+    namespaced form，例如 ``anthropic/claude-haiku-4-5``、``openai/gpt-4.1-mini``、
+    ``google/gemini-2.5-flash``、``qwen/qwen3-235b``。
 
-    Model strings use OpenRouter's namespaced form, e.g.:
-
-    - ``"anthropic/claude-haiku-4-5"``
-    - ``"openai/gpt-4.1-mini"``
-    - ``"google/gemini-2.5-flash"``
-    - ``"qwen/qwen3-235b"``
-
-    API key resolution: explicit ``api_key`` arg → env var ``api_key_env``
-    → ``OPENROUTER_API_KEY``. Raises at call time if none found.
-
-    ``httpx`` is required at call time but imported lazily so unit tests
-    that only use ``MockBackend`` don't need it installed.
+    key resolution 顺序是 explicit ``api_key`` -> ``api_key_env`` ->
+    ``OPENROUTER_API_KEY``，call time 仍缺失则抛错。``httpx`` lazy import，使只用
+    ``MockBackend`` 的 unit test 不依赖它。empty content 与 transient HTTP error 使用
+    1/2/4 秒退避加 final attempt，共 4 次。
     """
 
     DEFAULT_API_BASE = "https://openrouter.ai/api/v1"
@@ -254,7 +226,7 @@ class OpenRouterBackend(JudgeLLMBackend):
 
     @staticmethod
     def _extract_content(data: dict[str, Any]) -> Optional[str]:
-        """Pull message content from an OpenAI-shaped response, or None."""
+        """从 OpenAI-shaped response 读取 message content，shape 不符返回 ``None``。"""
         try:
             return data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError):
@@ -262,15 +234,10 @@ class OpenRouterBackend(JudgeLLMBackend):
 
 
 class MockBackend(JudgeLLMBackend):
-    """In-memory backend that returns scripted responses, for tests.
+    """test 使用的 in-memory scripted backend。
 
-    Pass a list of strings in ``responses``; each call pops the next one
-    in order. Raises ``IndexError`` if the test under-scripts responses
-    — fail loud rather than silently re-using the last.
-
-    ``calls`` records every (messages, max_tokens, temperature) tuple for
-    assertions: tests can verify the backend was invoked the right number
-    of times with the expected payload.
+    ``responses`` 按调用顺序 pop；script 不足时抛出 ``IndexError``，fail loud 而不重复最后一项。
+    ``calls`` 记录每次 messages/max_tokens/temperature，供断言次数与 payload。无 network I/O。
     """
 
     def __init__(self, responses: list[str], *, name: str = "mock") -> None:
@@ -310,32 +277,15 @@ TrajectoryFormat = Literal["full", "compressed"]
 
 @dataclass
 class JudgeLLMConfig:
-    """Configuration for :class:`JudgeLLM`.
+    """配置 :class:`JudgeLLM` routing、trajectory format 与 sampling 参数。
 
-    The two backend slots are populated externally — we don't construct
-    backends from this config, so the config stays serialisation-friendly
-    (yaml/json) and the test harness can inject a ``MockBackend`` without
-    going through any factory.
+    backend slot 由外部注入，不直接放入 config，使 dataclass 保持 YAML/JSON-friendly，test 可直接
+    注入 ``MockBackend``。L1 slot 默认看 ``compressed``，因为 empty/Docker/repetition signal 在
+    约 10K summary 中可见；patch slot 默认看 ``full``，保留具体 Tool call 与 reasoning detail。
 
-    Trajectory format (full vs compressed) is configured per backend slot:
-
-    - ``l1_trajectory_format``: what the L1-detection backend sees. Default
-      ``"compressed"`` — L1 signals (empty content / docker errors /
-      pattern repetition) are visible in a ~10K compression; paying for
-      150K full context here is waste.
-    - ``patch_trajectory_format``: what the patch-proposal backend sees.
-      Default ``"full"`` — writing a good patch needs concrete tool calls
-      and detailed reasoning steps that compression can blur.
-
-    Caller supplies both ``trajectory_text`` (full) and optional
-    ``trajectory_text_compressed`` to :meth:`JudgeLLM.judge`. When a
-    backend slot's format is ``"compressed"`` but no compressed text was
-    passed, we fall back to full with a debug log (so misconfiguration
-    is visible but doesn't crash).
-
-    Use :func:`build_judge_llm` to assemble a ``JudgeLLM`` from a
-    config-dict that *does* describe backends. That function is the
-    integration point with yaml/json config files.
+    caller 向 ``JudgeLLM.judge`` 提供 full text 与 optional compressed text；配置要求 compressed
+    但未提供时，fallback 到 full 并在 debug_log 下告警，保证 correctness 但成本可能上升。
+    :func:`build_judge_llm` 是从含 backend spec 的 YAML/JSON dict 装配 facade 的 integration point。
     """
 
     mode: Mode = "two_step"
@@ -348,23 +298,15 @@ class JudgeLLMConfig:
 
 
 class JudgeLLM:
-    """Facade that orchestrates one judge analysis.
+    """编排一次 Judge analysis 的 facade。
 
-    Single-call mode is straightforward: build the (system, user)
-    messages, send to ``patch_backend``, parse and return.
+    single mode 直接构造 messages、调用 patch backend、parse 返回。default two-step 先用 L1
+    backend；若判 infrastructure L1 立即返回、节省 expensive call；若判 L2/L3，丢弃 cheap
+    model patch guess，调用 strong patch backend 重写。
 
-    Two-step mode is the default mix: ``l1_backend`` makes the first
-    pass. If it judges L1 (infrastructure bug), we return its result
-    immediately — saves the expensive patch_backend call. If it judges
-    L2/L3, we discard its patch guess (cheap models tend to be sloppy
-    on patch proposals) and call ``patch_backend`` for a higher-quality
-    rewrite.
-
-    Why discard the cheap model's patch instead of keeping it when good?
-    Reliability of the patch is downstream-critical (a bad patch wastes
-    evaluation budget). The cheap model's L1 detection is high-recall;
-    its patch field is low-precision. Splitting trust along this axis
-    is what makes the mix worth its complexity.
+    丢弃 cheap patch 是信任边界：bad patch 会浪费 downstream evaluation budget；cheap model
+    的 L1 detection high-recall，但 patch low-precision。facade 拥有 backend/config reference，
+    不缓存 Judge result。
     """
 
     def __init__(
@@ -388,14 +330,14 @@ class JudgeLLM:
         trajectory_text: str,
         trajectory_text_compressed: Optional[str] = None,
     ) -> JudgeResult:
-        """Run the full judge pipeline on one trajectory.
+        """对一段 trajectory 运行完整 Judge pipeline。
 
-        ``trajectory_text`` is the full original trajectory (required).
-        ``trajectory_text_compressed`` is an optional pre-compressed
-        summary (~10K tokens, "agent debugger" style). When provided AND
-        a backend slot's ``*_trajectory_format`` is ``"compressed"``, that
-        backend receives the compressed text; otherwise it falls back to
-        full (with a debug log when ``debug_log=True``).
+        ``trajectory_text`` 是 required full trajectory；``trajectory_text_compressed`` 是 optional
+        约 10K-token ``agent debugger`` summary。每个 slot 按 ``*_trajectory_format`` 选择文本，
+        missing compressed 时 fallback full。single 只调用 patch backend；two_step 最多两次 call。
+
+        返回 validated ``JudgeResult``；backend/parse error 向上抛出。返回结果仍需 downstream
+        evidence 验证，不能直接应用 patch。
         """
         l1_text = self._select_trajectory_text(
             self._config.l1_trajectory_format,
@@ -448,12 +390,10 @@ class JudgeLLM:
         *,
         slot: str,
     ) -> str:
-        """Pick which trajectory text to feed a backend, with fallback.
+        """按 slot 配置选择 full/compressed trajectory，并提供 fallback。
 
-        ``want`` is what the config requests; if it's ``"compressed"`` but
-        no compressed text was provided, we fall back to ``full`` so the
-        judge still runs (cost balloons but correctness is preserved).
-        Logged at debug level so misconfig is visible.
+        ``want="compressed"`` 但 compressed 为 ``None`` 时返回 full，使 Judge 继续运行；成本会
+        上升但不因配置遗漏 crash，debug_log 开启时记录 warning。其他情况返回请求的文本。
         """
         if want == "compressed":
             if compressed is None:
@@ -500,22 +440,12 @@ class JudgeLLM:
 
 
 def build_backend(spec: dict[str, Any]) -> JudgeLLMBackend:
-    """Build one backend from a config-dict.
+    """从 config dict 构造一个 Judge backend。
 
-    Supported ``type`` values:
-
-    - ``"openrouter"`` — :class:`OpenRouterBackend`. Required: ``model``.
-      Optional: ``api_key``, ``api_key_env``, ``api_base``,
-      ``timeout_seconds``, ``name``.
-    - ``"litellm"`` — :class:`LitellmBackend`. Required: ``provider``
-      (an already-instantiated ``LLMProvider``). Optional: ``model``,
-      ``name``. **Cannot be built from pure dict** because the provider
-      object must be constructed elsewhere — callers pass it in via
-      ``spec["provider"]`` (typically the same provider AgentLoop uses).
-    - ``"mock"`` — :class:`MockBackend`. Required: ``responses`` (list
-      of strings). For tests only.
-
-    Raises ``ValueError`` on unknown ``type``.
+    ``type="openrouter"`` 要求 model，可选 api_key/api_key_env/api_base/timeout/name；
+    ``type="litellm"`` 要求已实例化 ``provider``，可选 model/name，不能从 pure dict 独立创建，
+    通常复用 AgentLoop provider；``type="mock"`` 使用 response string list，仅供 test。
+    unknown type 或 litellm 缺 provider 抛出 ``ValueError``。
     """
     backend_type = spec.get("type")
     if backend_type == "openrouter":
@@ -546,7 +476,7 @@ def build_backend(spec: dict[str, Any]) -> JudgeLLMBackend:
 
 
 def build_judge_llm(spec: dict[str, Any]) -> JudgeLLM:
-    """Assemble a :class:`JudgeLLM` from one dict.
+    """从单个 dict 装配 :class:`JudgeLLM`。
 
     Expected shape::
 
@@ -559,13 +489,9 @@ def build_judge_llm(spec: dict[str, Any]) -> JudgeLLM:
           "patch_backend": { ... build_backend spec ... },
         }
 
-    For ``mode="single"``, ``l1_backend`` may be omitted (the
-    ``patch_backend`` handles everything). If both are present in
-    single mode, ``l1_backend`` is ignored.
-
-    Convenience: setting ``l1_backend`` and ``patch_backend`` to the
-    same spec is the "pure Qwen" / "pure OpenRouter" pattern — works
-    without a special mode.
+    ``mode="single"`` 可省略 l1_backend，patch_backend 处理全部；即使同时提供 l1 也被忽略。
+    ``two_step`` 必须同时有两个 spec。将两者设为相同 spec 就是 pure Qwen/OpenRouter pattern，
+    无需 special mode。missing required spec 或 backend build failure 向上抛出。
     """
     mode = spec.get("mode", "two_step")
     config = JudgeLLMConfig(

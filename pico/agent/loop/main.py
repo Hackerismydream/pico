@@ -1,4 +1,17 @@
-"""Agent loop: the core processing engine."""
+"""把一条用户请求推进为模型回复、工具执行和可交付结果的 Agent Loop 核心引擎。
+
+没有 Agent 开发经验时，可以先把这里理解为一次请求的“现场总调度”：它从 Spine 接收
+`TurnRequest`，借助 Context Engine 拼出模型本轮可见的历史、Memory 与 Skill，调用
+Provider 获得模型输出，再执行模型选择的 Tool。只要模型继续请求工具，这条链路就会
+在受限迭代预算内重复；得到最终文本、达到上限或遇到 Provider 错误后，结果再沿 Spine
+的单一 `emit` 边界交给 TUI、REPL 或其他出口。
+
+本模块还拥有几条不能被“循环调用模型”这个表面描述掩盖的边界：流式文本与非流式文本
+不能重复交付，工具输出过大时要在持久化和上下文窗口处分别收缩，MCP 与 Sandbox 资源
+按运行时生命周期启动和关闭，Checkpoint 只为符合策略的 Turn 留下 shadow-git 恢复证据。
+阅读时可先看 `AgentLoop.run_turn` 的入口与 `_run_agent_loop` 的迭代，再回到上下文组装、
+工具注册、恢复和关闭方法理解各自所有权。
+"""
 
 from __future__ import annotations
 
@@ -74,13 +87,21 @@ if TYPE_CHECKING:
 
 @dataclass
 class TurnOutcome:
-    """Result of one ``_run_agent_loop`` turn beyond its text reply.
+    """记录一次 ``_run_agent_loop`` 除文本回复之外的终态与恢复证据。
 
-    ``status`` distinguishes a normal completion from a max-iteration
-    interruption or an LLM error — so the caller never mistakes "ran out of
-    budget" for "done" (Bug2 / decision B). ``checkpoint_id`` and
-    ``edited_files`` carry the shadow-git snapshot info used to build the
-    next turn's recovery prompt.
+    Turn 是 Agent 围绕一条请求执行的一轮完整工作，不等同于模型生成的一段文字。调用方
+    除了需要最终文本，还必须知道循环为何停止、是否留下部分编辑以及下轮应从哪里核对。
+    这个值对象把这些控制面事实从回复正文中分离出来，避免调用方根据自然语言猜测状态。
+
+    ``status`` 明确区分三种终态：``"completed"`` 表示正常完成，``"interrupted"`` 表示
+    达到最大迭代预算后中断，``"error"`` 表示 LLM 调用出错。该区分落实 Bug2 / decision B：
+    调用方绝不能把 "ran out of budget" 当成 "done"。``error_category`` 在错误终态下携带
+    稳定分类，供边界外记录或展示，而不是要求读者解析 Provider 的原始异常文本。
+
+    ``checkpoint_id`` 与 ``edited_files`` 携带本轮 shadow-git 快照标识和已编辑文件清单。
+    `_stash_recovery` 只会为可恢复的中断保存它们，下一 Turn 的 `_inject_recovery_block`
+    再据此构造恢复提示。它们提供的是“先检查哪些现场”的证据，不保证下一轮一定能自动
+    恢复成功，也不会把模型回复本身当作文件状态的事实来源。
     """
 
     status: str = "completed"  # 可选 "completed" | "interrupted" | "error"
@@ -90,7 +111,13 @@ class TurnOutcome:
 
 
 class ProviderTurnError(RuntimeError):
-    """Safe terminal error raised when a Provider cannot complete a Turn."""
+    """在 Provider 无法完成 Turn 时，向运行边界传播安全、稳定的终止错误。
+
+    Provider 是 Agent Loop 与具体 LLM 服务之间的适配层。底层服务可能返回包含供应商细节
+    的异常，但上层只需要可记录、可比较的错误类别；因此本异常把 ``category`` 保存为字段，
+    并把消息规范化为 ``provider_error:{category}``。它表示本轮已经进入错误终态，不是可供
+    循环继续消费的普通模型回复；调用方应让 Spine 的失败事件处理这条路径。
+    """
 
     def __init__(self, category: str) -> None:
         self.category = category
@@ -162,10 +189,13 @@ def _is_tool_failure(result: object) -> bool:
 
 
 def _is_hard_tool_failure(result: object) -> bool:
-    """True for a deterministic tool failure (recurs on an identical retry).
+    """判断工具结果是否属于“原样重试仍会复现”的确定性失败。
 
-    False for success or a transient/retryable error. Used to decide whether a
-    repeated identical tool call is a stuck loop worth breaking.
+    返回 ``True`` 表示同一 Tool 和相同参数再次执行通常只会得到同类错误，可以计入连续
+    失败并触发循环打断；成功结果、可重试的临时错误以及合法的空搜索结果返回 ``False``。
+    429、超时、502/503 等标记会先被排除，因为外部依赖恢复后重试可能成功；"no matches
+    found" 和 "no files found" 也不是失败。最终的失败判定复用 `_is_tool_failure`，本函数
+    只负责增加“是否值得打断重复尝试”这一层语义。
     """
     s = str(result)
     low = s.lower()
@@ -177,8 +207,13 @@ def _is_hard_tool_failure(result: object) -> bool:
 
 
 def _loop_break_nudge(tool: str, n: int) -> str:
-    """Injected when the same tool fails deterministically N times running, so
-    the model stops repeating a dead approach instead of adapting."""
+    """生成同一工具连续确定性失败 ``n`` 次后注入模型的改路提示。
+
+    ``tool`` 是失败的 Tool 名称，``n`` 是当前连续次数。返回文本不会替模型选择具体方案，
+    而是明确禁止不变重试，并按外部依赖、文件路径和其他失败三类给出检查方向。它只在
+    `_is_hard_tool_failure` 已确认失败可复现后使用，目的是让模型改变工具、命令或策略，
+    而不是把瞬时网络错误误判为 Agent 卡死。
+    """
     return (
         f"[loop] `{tool}` has failed {n} times in a row with the same kind of error. "
         "Stop repeating it. If it is an external dependency (network/API/search), "
@@ -190,15 +225,19 @@ def _loop_break_nudge(tool: str, n: int) -> str:
 
 
 class AgentLoop:
-    """
-    The agent loop is the core processing engine.
+    """统筹一个 Agent Turn 从 Spine 入站到回复出站的核心处理引擎。
 
-    It:
-    1. Receives messages from the spine
-    2. Builds context with history, memory, skills
-    3. Calls the LLM
-    4. Executes tool calls
-    5. Sends responses back
+    对初学者而言，`AgentLoop` 不是“无限让模型思考”的循环，而是有预算、有资源生命周期、
+    有单一交付边界的请求协调器。它依次接收 Spine 消息，使用历史、Memory 和 Skill 构建
+    Context，调用 LLM，执行模型发出的 Tool 调用，并把文本、推理增量、工具事件、媒体与
+    Usage 送回同一个 `emit`。模型若请求工具，新的工具结果会进入下一次模型调用，直到得到
+    最终回答或抵达明确终态。
+
+    实例通常由 Gateway 等 Host 长期持有，因此它同时拥有 ToolRegistry、Context Engine、
+    SessionManager、SubagentManager、Sandbox executor、MCP 连接和后台个性化任务。`run`
+    只负责把这些运行时资源拉起并保持存活，真正的一轮请求从 `run_turn` 进入；`close` 与
+    `stop` 则分别完成异步资源清理和停止保活循环。跨 Turn 的可变状态必须显式按
+    `session_key` 隔离，不能把一次请求的恢复或失败计数泄漏给另一段会话。
     """
 
     _TOOL_RESULT_MAX_CHARS = 16_000
@@ -429,12 +468,12 @@ class AgentLoop:
         self._apply_disabled_tools()
 
     def _apply_disabled_tools(self) -> None:
-        """Unregister tools whose names appear in ``tools.disabled_tools``.
+        """从当前注册表移除 ``tools.disabled_tools`` 指定的 Tool。
 
-        Run after :meth:`_register_default_tools` (here) and after MCP connect
-        (see :meth:`_connect_mcp`) so the blacklist can cover either group.
-        Silent on misses — eval configs commonly carry an over-broad list
-        that's a no-op for tools that weren't registered in this build.
+        这一步必须在 :meth:`_register_default_tools` 注册内置与插件工具后执行，也必须在
+        :meth:`_connect_mcp` 动态加入 MCP 工具后再次执行，否则同一黑名单只能覆盖其中一组。
+        名称未注册时保持静默：评测配置经常给出比当前构建实际工具更宽的列表，缺失项应当是
+        no-op，而不是让 Agent 无法启动。方法原地修改 `ToolRegistry`，没有返回值。
         """
         if not self._disabled_tools:
             return
@@ -443,15 +482,15 @@ class AgentLoop:
                 self.tools.unregister(name)
 
     def configure_personalization(self, enable: bool) -> None:
-        """Global switch for the 4-step personalization flow (PAHF-inspired).
+        """设置全局四阶段个性化流程开关，该流程受 PAHF 思路启发。
 
-        When enabled, each message goes through:
-          Step 1 - classify:          classify() — does this request need a preference question?
-          Step 2 - pre-action interaction: ask one question if needed, extract and store the answer
-          Step 3 - execute:           normal agent loop (unchanged)
-          Step 4 - post-action learn: post_learn() runs in background after every response
+        开启后，一条消息先由 ``classify()`` 判断是否需要询问偏好；需要时在执行前只问一个
+        问题并提取、保存答案；随后进入完全不变的普通 Agent Loop；回复完成后再把
+        ``post_learn()`` 作为后台任务运行。这样偏好交互围绕主执行链展开，而不是替换它。
 
-        Disabled by default. Enable via config: agents.defaults.enable_personalization: true
+        ``enable`` 只是调用方意图，真正状态还受 `memory_enabled` 约束：没有 MemoryBackend
+        时无法持久化学习结果，即使传入 ``True`` 也会保持关闭。功能默认禁用，可由配置
+        ``agents.defaults.enable_personalization: true`` 开启。方法只更新实例状态并记录日志。
         """
         self.enable_personalization = bool(enable and self.memory_enabled)
         logger.info("Personalization flow: {}", "enabled" if self.enable_personalization else "disabled")
@@ -464,7 +503,13 @@ class AgentLoop:
         task.add_done_callback(self._personalization_tasks.discard)
 
     def begin_close(self) -> None:
-        """Seal and cancel background personalization without yielding."""
+        """同步封住新的个性化后台任务，并取消已经启动的任务。
+
+        关闭流程需要先阻止 `_start_personalization_task` 再接纳工作，否则等待旧任务时仍可能
+        产生新任务。该方法把 `_personalization_closed` 设为真并对当前任务快照调用
+        `cancel()`，整个过程不发生 ``await``，所以调用方可在进入异步 drain 前建立清晰屏障。
+        重复调用是 no-op；真正等待取消完成由 `close` 负责。
+        """
         if self._personalization_closed:
             return
         self._personalization_closed = True
@@ -472,7 +517,17 @@ class AgentLoop:
             task.cancel()
 
     def _register_default_tools(self) -> None:
-        """Register the default set of tools."""
+        """按运行时约束组装并注册 Agent 默认可用的 Tool 集合。
+
+        文件、Shell、Web、消息、子 Agent、提问和可选 Cron Tool 在这里绑定工作区、代理、
+        Sandbox executor 等依赖。插件工具随后以 ``replace=True`` 注册，因此插件可有意覆盖
+        同名内置实现；渐进式 Tool Search 最后建立，才能看到此前完整目录。MCP Tool 不在
+        此处连接，而由 `_connect_mcp` 在首次 Turn 前延迟加入。
+
+        方法只完成注册，不代表所有工具都最终可见：调用方紧接着执行
+        `_apply_disabled_tools`，Tool Search 策略也可能按 Turn 缩小暴露集合。若启用 Cron，
+        函数内延迟导入是为避开 `pico.agent.__init__` 的循环导入边界。
+        """
         allowed_dir = self.workspace if self.restrict_to_workspace else None
         for cls in (ReadFileTool, WriteFileTool, EditFileTool, ListDirTool, GrepTool, FindTool):
             self.tools.register(cls(workspace=self.workspace, allowed_dir=allowed_dir))
@@ -539,18 +594,26 @@ class AgentLoop:
     # ── 上下文引擎辅助方法 ─────────────────────────────────────────────
 
     def _context_messages_for_session(self, session: Session) -> list[dict[str, Any]]:
-        """Return the candidate message view owned by the active context engine.
+        """按当前 Context Engine 的所有权返回待组装会话消息视图。
 
-        Curator (``owns_compaction=True``) wants the full append-only log so
-        it can decide what to archive itself; Legacy wants the post-consolidation
-        slice to match the pre-Curator behavior exactly.
+        `Session` 保存追加式消息记录，但不同引擎对压缩的责任不同。Curator 在
+        ``owns_compaction=True`` 时必须看到完整 append-only log，才能自行决定哪些内容归档；
+        Legacy 引擎不拥有该决策，只读取 `get_history(max_messages=0)` 提供的 consolidation 后
+        切片，以保持引入 Curator 前的行为。返回的是新列表视图，方法不会修改 Session。
         """
         if self.context_engine.owns_compaction:
             return list(session.messages)
         return session.get_history(max_messages=0)
 
     def _make_token_budget(self, selected_skills: list[Any] | None = None) -> TokenBudget:
-        """Compute a conservative per-turn prompt budget for the active engine."""
+        """为当前 Context Engine 计算一份保守的单 Turn Prompt 预算。
+
+        预算从 `context_window_tokens` 总窗口中依次预留模型最大输出、当前 Tool definitions
+        和 System Prompt 所需 Token，剩余值才写入 `available_history` 供历史消息使用。
+        ``selected_skills`` 会影响 System Prompt 大小，因此必须在估算时传入；Provider 未
+        声明生成上限时按 4096 预留。任何扣减导致的负数都会收敛为 0，避免把超额空间伪装
+        成可用历史。返回 `TokenBudget`，不裁剪消息本身。
+        """
         reserved_output = int(getattr(getattr(self.provider, "generation", None), "max_tokens", 4096) or 4096)
         tool_tokens = estimate_prompt_tokens([], self.tools.get_definitions())
         system_prompt = self.context.build_system_prompt(
@@ -575,11 +638,13 @@ class AgentLoop:
         current_message: str,
         history: list[dict],
     ) -> list[Any] | None:
-        """No host-side pre-selection — the engine's SkillForgeRouter owns it.
+        """保留旧调用形状，但不在 Host 侧预选 Skill。
 
-        The unified engine selects + renders skills internally and
-        surfaces ``injected_skill_ids`` via per-Turn assembly metadata.
-        No SkillMeta list flows through this path.
+         统一 Context Engine 内部的 `SkillForgeRouter` 同时拥有 Skill 选择与渲染，随后通过
+        每 Turn 的 assembly metadata 暴露 ``injected_skill_ids``。因此 ``current_message``
+         与 ``history`` 在这条兼容入口中不会被再次消费，也没有 `SkillMeta` 列表流回 Host；
+         方法始终返回 ``None``。把选择留在 Engine 内可避免 Host 与 Context 对同一预算做两次
+         决策。
         """
         return None
 
@@ -595,7 +660,17 @@ class AgentLoop:
         selected_skills: list[Any] | None = None,
         metadata_sink: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        """Ask the active context engine for the main-agent message window."""
+        """请求当前 Context Engine 组装主 Agent 本轮实际可见的消息窗口。
+
+        方法先依据压缩所有权取得 Session 候选消息，再把 ``current_message``、媒体、通道、
+        会话标识和已选 Skill 封装为 `TurnContext`，连同 `_make_token_budget` 的结果交给
+        `context_engine.assemble`。返回值是可直接发给 Provider 的消息列表，不是完整 Session。
+
+        若提供 ``metadata_sink``，Engine 产出的 Memory 命中、Skill 注入和回退路径等元数据
+        会原地写入该字典，供 `run_turn` 形成证据；随后 `_inject_recovery_block` 可能把上轮
+        中断通知加到当前用户消息前。`TurnContext` 使用延迟导入，以维持模块顶部说明的循环
+        导入边界。
+        """
         from pico.context_engine import TurnContext  # 延迟导入，原因见模块说明
 
         session_messages = self._context_messages_for_session(session)
@@ -619,12 +694,13 @@ class AgentLoop:
 
     @staticmethod
     def _checkpoint_active(policy: str, interactive: bool) -> bool:
-        """Resolve ``runtime.checkpoint.policy`` against the call-site's
-        ``interactive`` signal. ``"interactive"`` (the default) skips the
-        snapshot for one-shot ``-m`` invocations — those have no "next turn"
-        to inject recovery into, so paying the snapshot cost there is just
-        deadweight. ``"always"`` opts in regardless; ``"never"`` opts out
-        regardless."""
+        """结合调用现场是否交互，解析 ``runtime.checkpoint.policy`` 是否启用快照。
+
+        默认策略 ``"interactive"`` 直接采用 ``interactive`` 信号：持续会话可能有 "next
+        turn" 可注入恢复信息，而一次性 ``-m`` 调用没有下一轮，创建快照只会增加无用成本。
+        ``"always"`` 无视调用形态强制开启，``"never"`` 无条件关闭。返回布尔值，只决定本次
+        AgentLoop 是否构建 CheckpointService，不创建任何快照。
+        """
         if policy == "never":
             return False
         if policy == "always":
@@ -632,15 +708,15 @@ class AgentLoop:
         return interactive  # policy 为 interactive
 
     def _stash_recovery(self, session_key: str, outcome: "TurnOutcome") -> None:
-        """Remember an interrupted turn's snapshot so the next turn in this
-        session gets a recovery prompt. No-op unless checkpoint is enabled
-        and the turn was actually interrupted with something to recover.
+        """暂存一次中断 Turn 的快照证据，供同一 Session 的下一轮生成恢复提示。
 
-        Status filter is intentional: only ``"interrupted"`` triggers a
-        recovery prompt. ``"error"`` turns still get a per-turn shadow
-        commit (useful for audit), but they don't usually have a partial-
-        edits trajectory to resume (provider 400 etc.) and surfacing
-        "Files modified last turn" for them would be misleading.
+        只有 Checkpoint 已启用、``outcome.status`` 精确为 ``"interrupted"``，并且确实存在
+        `checkpoint_id` 或 `edited_files` 时，方法才会把证据写入按 ``session_key`` 隔离的
+        `_pending_recovery`。其他情况是 no-op，避免为空现场制造恢复通知。
+
+        状态过滤是有意的：``"error"`` Turn 仍可能产生逐 Turn shadow commit 用于审计，但
+        Provider 400 等错误通常没有可继续的部分编辑轨迹；此时向用户展示 "Files modified
+        last turn" 会造成误导。这里保存的是下一轮要核验的线索，不把快照等同于恢复成功。
         """
         if self._checkpoint is None or outcome.status != "interrupted":
             return
@@ -651,11 +727,17 @@ class AgentLoop:
             }
 
     def _inject_recovery_block(self, session_key: str, messages: list[dict]) -> None:
-        """Prepend a recovery notice to the current user message when the
-        previous turn for this session was interrupted. Consumed once on
-        successful injection; if the current message's content has an
-        unexpected shape (None / dict / etc.) the pending entry is kept so
-        a later assembly with a normal content can still inject it."""
+        """把上轮中断现场的恢复通知前置到当前用户消息，并在成功后一次性消费。
+
+        方法按 ``session_key`` 查找待恢复记录，只在消息列表以 ``role="user"`` 结尾时处理。
+        通知包含可用的文件清单、Checkpoint 标识以及“先核对现状再继续”的要求；字符串内容
+        直接前置，多模态列表则插入一个文本块。这样 Provider 在读取用户本轮要求前先看到
+        上次未完成工作的证据边界。
+
+        若 ``content`` 是 None、dict 或其他未知形状，方法不会猜测如何改写，也不会删除待
+        恢复记录；后续一次正常 assembly 仍可注入。只有内容已安全写入后才从
+        `_pending_recovery` 弹出，保证异常形状不会让恢复线索静默丢失。
+        """
         recovery = self._pending_recovery.get(session_key)
         if not recovery or not messages:
             return
@@ -689,17 +771,16 @@ class AgentLoop:
         session_key: str,
         messages_slice: list[dict],
     ) -> None:
-        """AG-1: forward a turn's messages to the plugin :class:`MemoryBackend`.
+        """AG-1：把本轮新增消息转交插件 :class:`MemoryBackend` 持久化或建立索引。
 
-        Third peer step in the after-turn pipeline alongside
-        ``context_engine.after_turn`` (engine-side bookkeeping) and
-        ``memory.maybe_consolidate`` (Pico compaction). When no
-        backend was wired (``self.backend is None``), this is a no-op so
-        legacy callsites that never registered a plugin behave
-        identically to pre-AG-1.
+        一轮结束后有三个并列步骤：``context_engine.after_turn`` 处理 Engine 自身账本，
+        ``memory.maybe_consolidate`` 执行 Pico compaction，本方法负责插件 Backend。传入的
+        ``messages_slice`` 会先经 `sanitize_persisted_payload` 清理再调用 `store`，而不是让
+        后端接触未经约束的运行时对象。
 
-        Backend failures propagate after the append-only Session save, so the
-        Turn cannot be reported as successful when indexing failed.
+        当 ``self.backend is None`` 或消息切片为空时返回 no-op，使从未注册插件的旧调用方
+        与 pre-AG-1 行为一致。Backend failure 会在 append-only Session 已保存之后继续向外
+        传播：Session 事实不会回滚，但 Turn 也不能在索引失败时被报告为成功。
         """
         if self.backend is None or not messages_slice:
             return
@@ -712,17 +793,16 @@ class AgentLoop:
         self,
         selected: list[Any] | None,
     ) -> list[str]:
-        """Combine selector top-K + always-skills into a deduplicated id list.
+        """合并本轮 selector top-K 与 always-skills，生成去重后的 Skill 证据标识。
 
-        ``selected`` is the :class:`SkillMeta` list returned by the
-        retrieval selector for this turn (or ``None`` when the selector
-        is disabled / returned empty). always-skills are pulled from
-        :class:`LocalSkillCatalog` since they are unconditionally rendered
-        regardless of the selector's output.
+        ``selected`` 是检索 selector 返回的 :class:`SkillMeta` 列表；selector 关闭或无命中时
+        可以是 ``None``。always-skills 无论检索结果如何都会由 :class:`LocalSkillCatalog`
+        渲染，因此还要从 `self.context.skills` 单独读取，不能只记录 top-K。
 
-        Returns ids canonicalized to ``{source}/{stable_key}`` form.
-        Different SkillMeta producers populate ``meta.id`` inconsistently,
-        so this function normalizes them to a single shape for Turn evidence.
+        不同 SkillMeta 生产者对 ``meta.id`` 的填法并不一致：有的已经带 source，有的只有
+        stable key。方法统一规范为 ``{source}/{stable_key}``，按首次出现顺序去重后返回，
+        供 Turn evidence 写入 ``injected_skill_ids``。目录不存在或读取 always-skills 失败时
+        保守返回已有结果，不让证据收集阻断主请求。
         """
         skills_svc = getattr(self.context, "skills", None)
         if skills_svc is None:
@@ -752,7 +832,13 @@ class AgentLoop:
         return ids
 
     async def _start_executor(self) -> None:
-        """Idempotent: start the sandbox executor once before first use."""
+        """在首次使用前启动 Sandbox executor，并保证并发调用下只启动一次。
+
+        `_executor_start_lock` 串行化竞争者；已经启动时立即返回。首次启动会创建并进入
+        `AsyncExitStack`，再把 executor 作为异步上下文压栈，使关闭责任集中到
+        `close_executor`。若进入过程中抛出异常，临时 stack 会先清理再把异常原样传播，
+        `_executor_started` 也不会被误设为真。
+        """
         async with self._executor_start_lock:
             if self._executor_started:
                 return
@@ -767,7 +853,16 @@ class AgentLoop:
             self._executor_started = True
 
     async def _start_debug_server(self) -> None:
-        """Start the sandbox debug socket server if debug mode is enabled."""
+        """在 Sandbox 调试模式启用时启动本地 socket 调试服务器。
+
+        未配置 Sandbox、``debug.enabled`` 为假或 backend 为 ``"none"`` 时不会创建服务器；
+        最后一种情况会记录警告，因为没有 BoxLite runtime 可供调试。启用路径根据数据目录
+        解析 socket，传入当前 executor 拥有的实例 ID 和消息大小上限，再保存已启动的
+        `SandboxDebugServer` 供关闭阶段使用。
+
+        用户显式选择调试模式后，启动失败会记录具体错误但不终止整个 Agent runtime；这让
+        主请求仍可运行，同时避免稍后 `pico sandbox` 只看到“套接字不存在”却没有原因。
+        """
         cfg = self._sandbox_config
         if cfg is None or not cfg.debug.enabled:
             return
@@ -794,7 +889,13 @@ class AgentLoop:
             logger.error("Failed to start sandbox debug server: %s", exc)
 
     async def close_executor(self) -> None:
-        """Tear down the sandbox executor."""
+        """关闭调试服务器和 Sandbox executor，并把实例状态复位为可重新启动。
+
+        调试 socket 先停止，随后关闭保存 executor 生命周期的 `AsyncExitStack`。停止阶段的
+        普通异常会记录或被容忍，`RuntimeError` 与 `BaseExceptionGroup` 也不会让 shutdown
+        卡住；无论资源此前是否完整启动，最终都会清空引用并把 `_executor_started` 设为假。
+        方法可重复调用，适用于 Turn 失败后的急停和正常 runtime 关闭两条路径。
+        """
         if self._debug_server is not None:
             try:
                 await self._debug_server.stop()
@@ -810,7 +911,17 @@ class AgentLoop:
         self._executor_started = False
 
     async def _connect_mcp(self) -> None:
-        """Connect to configured MCP servers (one-time, lazy)."""
+        """在首次需要时一次性连接已配置的 MCP servers，并注册其 Tool。
+
+        已连接、正在连接或没有配置时立即返回。方法在第一个 ``await`` 前设置
+        `_mcp_connecting`，利用 asyncio 单线程任务切换边界阻止重复连接；随后确保 Sandbox
+        executor 已启动，用独立 `AsyncExitStack` 承担 MCP 连接的关闭责任，并把远端 Tool
+        加入当前 `ToolRegistry`。连接后再次执行 `_apply_disabled_tools`，使黑名单也覆盖
+        动态加入的 ``mcp_<server>_search`` 等名称。
+
+        任一步失败都会复位 connecting 标志、关闭部分建立的 stack 并重新抛出异常，因此
+        当前 Turn 能准确失败，后续调用也仍有机会重试，而不会永久停在“正在连接”状态。
+        """
         if self._mcp_connected or self._mcp_connecting or not self._mcp_servers:
             return
         # 在第一个 await 之前同步设置标志。asyncio 单线程执行，此处不会发生上下文切换，
@@ -847,7 +958,14 @@ class AgentLoop:
     def _set_tool_context(
         self, channel: str, chat_id: str, message_id: str | None = None, session_key: str | None = None
     ) -> None:
-        """Update context for all tools that need routing info."""
+        """把当前消息的路由上下文写入需要感知出口的 Tool。
+
+        ``channel``、``chat_id`` 和可选 ``message_id`` 交给 message Tool，使它能把回复送回
+        原会话；spawn Tool 还需要 ``session_key`` 关联父子 Turn，未提供时退化为
+        ``{channel}:{chat_id}``；cron Tool 只接收通道与聊天标识。没有 `set_context` 的工具
+        会被跳过。方法只更新当前注册表中的 message、spawn、cron 三类，不向所有 Tool
+        强加路由协议。
+        """
         for name in ("message", "spawn", "cron"):
             if tool := self.tools.get(name):
                 if not hasattr(tool, "set_context"):
@@ -861,14 +979,26 @@ class AgentLoop:
 
     @staticmethod
     def _strip_think(text: str | None) -> str | None:
-        """Remove <think>…</think> blocks that some models embed in content."""
+        """移除部分模型混入最终内容的 ``<think>…</think>`` 推理块。
+
+        输入为空时返回 ``None``；有文本时跨行删除所有成对标签及内部内容，再去除首尾空白。
+        清理后没有可见正文也返回 ``None``，让上层进入空响应恢复而不是交付空字符串。该方法
+        只处理显式标签，不猜测普通文本是否属于推理，也不修改独立的
+        `reasoning_content` 字段。
+        """
         if not text:
             return None
         return re.sub(r"<think>[\s\S]*?</think>", "", text).strip() or None
 
     @staticmethod
     def _tool_hint(tool_calls: list) -> str:
-        """Format tool calls as concise hint, e.g. 'web_search("query")'."""
+        """把一组 Tool 调用压缩成供进度出口展示的简短提示。
+
+        每个调用优先取参数字典中的第一个字符串值，渲染成例如
+        ``'web_search("query")'`` 的形式；值超过 40 个字符时截断并追加省略号。参数不是
+        字典、没有值或首值不是字符串时只展示 Tool 名，避免把复杂载荷泄漏到进度提示。
+        多个调用以逗号连接，返回值仅用于人类可读状态，不参与实际 Tool 执行。
+        """
 
         def _fmt(tc):
             args = (tc.arguments[0] if isinstance(tc.arguments, list) else tc.arguments) or {}
@@ -881,7 +1011,13 @@ class AgentLoop:
 
     @staticmethod
     def _build_usage_snapshot(response, model: str, session_key: str) -> "UsageSnapshot":
-        """Build the historical TokenWise view through canonical normalization."""
+        """经统一计费归一化构建历史 TokenWise 兼容视图。
+
+        方法用禁用上报的 `CallEfficiency` 记录 ``response``，同时带入请求 ``model`` 与
+        ``session_key``，让模型名称、Token 和成本字段先走当前 canonical normalization；
+        随后调用 `to_legacy_snapshot()` 转成旧 TokenWise 消费者期望的 `UsageSnapshot`。
+        它不产生外部遥测，也不绕过统一计费规则直接拼字段。
+        """
         from pico.call_efficiency import CallEfficiency
 
         return (
@@ -903,23 +1039,21 @@ class AgentLoop:
         on_token_delta: Callable[[str], Awaitable[None]] | None = None,
         on_reasoning_delta: Callable[[str], Awaitable[None]] | None = None,
     ) -> LLMResponse:
-        """Stream LLM response via ``provider.chat_stream`` + accumulate to LLMResponse.
+        """通过 ``provider.chat_stream`` 接收增量，并重组为完整 `LLMResponse`。
 
-        Per design.md §D3: when a turn caller wires ``on_token_delta``, AgentLoop
-        diverts to this helper instead of ``chat_with_retry``. Each non-empty
-        content chunk fires the callback; tool_call fragments are merged
-        positionally; the final response object is shape-compatible with what
-        ``chat()`` would have returned.
+        按 design.md §D3，Turn 调用方连接 ``on_token_delta`` 或推理回调时，AgentLoop 会走
+        本方法而不是 ``chat_with_retry``。每个非空内容片段立即触发对应回调，同时累积文本、
+        reasoning、usage、finish reason、模型和错误分类；Tool call 片段交给
+        `_merge_tool_call_fragments` 按 ``index`` 汇合，最终对象与普通 ``chat()`` 返回形状兼容。
 
-        v0.1 first-cut tool-call merge: assumes one tool call per position,
-        fragments arrive in order, ``id`` / ``function.name`` appear in the
-        first fragment, ``function.arguments`` is the concatenation of
-        per-fragment arguments strings. Multi-tool / out-of-order merging is
-        a v0.2 ask.
+        v0.1 first-cut 合并边界仍然保留：同一位置只表示一个 Tool call，片段按顺序抵达，
+        ``id`` / ``function.name`` 通常在该位置首片段出现，``function.arguments`` 由各片段
+        JSON 字符串直接连接。Multi-tool 的 index 已区分，但更一般的 out-of-order 修复仍是
+        v0.2 ask，不能把当前实现解释成任意乱序协议重组器。
 
-        No retry on transient errors in v0.1 stream mode — adding retry to
-        a partially-streamed call requires either restarting from scratch
-        (wasteful) or resume-from-offset (provider-specific). Deferred.
+        v0.1 stream mode 对临时错误不重试。已经向用户流出部分内容后，重头调用会重复输出，
+        从 offset 恢复又依赖具体 Provider；在没有明确协议前选择传播错误，而不是制造看似
+        完整但重复的回复。
         """
         content_buf: list[str] = []
         reasoning_buf: list[str] = []
@@ -986,14 +1120,16 @@ class AgentLoop:
 
     @classmethod
     def _emergency_shrink(cls, messages: list[dict]) -> tuple[list[dict], int]:
-        """Elide the bodies of older tool-result messages to fit a tighter window.
+        """在 Turn 中途上下文溢出时，省略较旧 Tool 结果正文以腾出窗口。
 
-        Mid-turn context overflow is almost always accumulated tool output, so
-        replacing the content of all but the most recent few ``role="tool"``
-        messages with a short placeholder frees the most tokens while keeping
-        system / user / assistant reasoning intact. Deterministic, no extra LLM
-        call. Returns ``(new_messages, num_elided)``; ``num_elided == 0`` means
-        there was nothing worth eliding (caller should not bother retrying).
+        中途增长通常来自累积的 ``role="tool"`` 输出。方法保留最近
+        `_SHRINK_KEEP_RECENT_TOOL_RESULTS` 条完整结果，把更旧且非空的正文替换成固定占位符；
+        System、User、Assistant 推理以及消息顺序保持不变。它基于输入生成新列表和复制后的
+        被改消息，不额外调用 LLM，因此收缩是确定且可计数的。
+
+        返回 ``(new_messages, num_elided)``。当 ``num_elided == 0`` 时没有值得省略的旧结果，
+        调用方不应靠相同重试期待窗口变小；原列表会直接返回。该机制保留最新操作现场，但
+        明确牺牲旧 Tool 正文，不等同于无损压缩。
         """
         placeholder = "[earlier tool output elided to fit the context window]"
         tool_idxs = [i for i, m in enumerate(messages) if m.get("role") == "tool"]
@@ -1021,18 +1157,17 @@ class AgentLoop:
         on_token_delta: Callable[[str], Awaitable[None]] | None = None,
         on_reasoning_delta: Callable[[str], Awaitable[None]] | None = None,
     ) -> str:
-        """One tools-disabled LLM call to wrap up after the iteration budget runs out.
+        """迭代预算耗尽后，用一次禁用 Tool 的 LLM 调用生成本轮收尾回复。
 
-        Instead of returning a canned apology, ask the model to summarize what
-        it accomplished and deliver its best partial answer. Tools are withheld
-        (``tools=None``) so it cannot start another tool call — or an
-        ``ask_user`` — at the cliff edge. Falls back to a static message if the
-        call errors or comes back empty, so the turn is never left silent.
+        与直接返回固定道歉不同，方法把 `_MAX_ITER_SYNTHESIS_PROMPT` 追加为 User 消息，请模型
+        只根据已经收集的材料总结完成项、部分结果和未完成项。调用明确传入 ``tools=None``，
+        因而模型不能在预算悬崖边再发起 Tool call 或 ``ask_user``。响应出错、为空或自身抛出
+        异常时返回 `_MAX_ITER_STATIC_FALLBACK`，保证 Turn 不会静默结束。
 
-        When the turn caller wired streaming callbacks, this synthesized reply
-        must stream too — otherwise it never reaches a streaming outlet: the
-        run_turn boundary only emits a closing ``Text`` when nothing streamed,
-        so a non-streamed wrap-up after an already-streamed turn gets dropped.
+        调用方若连接了 streaming callbacks，合成回复也必须走 `_llm_call_stream` 并继续流出；
+        否则 `run_turn` 在已有增量后会抑制结尾 ``Text``，非流式生成的收尾就会被出口丢弃。
+        未连接回调时使用 Provider 的 `chat_with_retry`。成功响应仍经 CallEfficiency 记录和
+        `_strip_think` 清理，返回值是最终可交付文本，不包含新增 Tool 结果。
         """
         synth_messages = messages + [{"role": "user", "content": _MAX_ITER_SYNTHESIS_PROMPT}]
         try:
@@ -1089,14 +1224,22 @@ class AgentLoop:
         drain: Drain | None = None,
         origin: Origin | None = None,
     ) -> tuple[str | None, list[str], list[dict], TurnOutcome]:
-        """Run the agent iteration loop.
+        """执行一次有预算的模型—Tool 迭代，并返回回复、证据与明确终态。
 
-        ``drain``, when wired, is called at the top of each iteration to pull
-        any user messages injected mid-turn (BusyPolicy.INJECT) and merge them
-        as user turns before the next LLM call.
+        `initial_messages` 是已经由 Context Engine 组装的模型窗口。每轮先读取 Tool
+        definitions 和策略变换后的调用参数，再请求 LLM；若响应含 Tool call，就执行并把结果
+        追加回消息，进入下一轮；若得到可用正文则结束。Provider error、空响应恢复耗尽或最大
+        迭代数到达都会走各自的显式终止路径，不会被伪装成普通完成。
 
-        ``session_key`` attributes usage and Checkpoint evidence to the
-        conversation when the loop is called through a host.
+        连接 ``drain`` 时，每次迭代顶部都会拉取 BusyPolicy.INJECT 在 Turn 中途注入的用户
+        消息，并在下一次 LLM 调用前合并为 User turn。``session_key`` 把 Usage、
+        CallEfficiency 与 Checkpoint evidence 归属到 Host 对话；省略时使用空字符串，而不是
+        猜测另一个会话。流式文本、推理和 Tool 事件分别经对应回调交付。
+
+        返回四元组依次是最终文本或 ``None``、本轮使用的 Tool 名列表、清理过合成恢复脚手架
+        的消息历史，以及本模块的 `TurnOutcome`。其中 ``status`` 区分 ``completed``、
+        ``interrupted``、``error``；达到上限时还会尝试一次 tools-disabled 收尾，但有回复不
+        会把“尚未完成”的 interrupted 事实改写成 completed。
         """
         messages = initial_messages
         iteration = 0
@@ -1475,12 +1618,15 @@ class AgentLoop:
         return final_content, tools_used, messages, outcome
 
     async def run(self) -> None:
-        """Bring the agent runtime up and stay alive.
+        """拉起 Agent runtime 依赖并作为长期任务保持存活。
 
-        Turns arrive through the spine (``run_turn``); this coroutine no longer
-        drains an inbound bus. It starts the executor / debug server / MCP, then
-        idles on ``self._running`` so the gateway can gather it as a long-lived
-        task and tear it down via ``stop()`` on shutdown.
+        Turn 已经统一从 Spine 的 ``run_turn`` 进入，本协程不再消费 inbound bus。它依次启动
+        executor、可选 debug server 和 MCP 连接，然后在 ``self._running`` 为真时短暂 sleep，
+        让 Gateway 能把它作为长期任务 gather。shutdown 通过 ``stop()`` 清除运行标志；真正
+        的 MCP、Sandbox 和后台任务清理由 `close` 系列方法负责。
+
+        若启动依赖时抛出异常，异常向 Host 传播而不是进入空保活循环。正常退出循环后也不会
+        自动重启资源，因此生命周期所有者必须显式决定何时再次调用 `run`。
         """
         self._running = True
         try:
@@ -1502,7 +1648,12 @@ class AgentLoop:
 
     @property
     def is_processing(self) -> bool:
-        """True while a turn is being dispatched under the global lock."""
+        """返回当前是否有 Turn 正在全局处理锁内分派。
+
+        结果来自 `_processing_lock.locked()`，表示这个 AgentLoop 实例的临界区占用状态，供
+        Host 判断 BusyPolicy 等行为。它不是队列长度，也不证明模型或 Tool 此刻正在运行；
+        锁从 Turn 进入到分派结束覆盖整条请求链，因此 ``True`` 只说明已有工作拥有该边界。
+        """
         return self._processing_lock.locked()
 
     def _notify_turn_complete(self) -> None:
@@ -1513,7 +1664,13 @@ class AgentLoop:
                 logger.exception("on_turn_complete callback failed")
 
     async def close_mcp(self) -> None:
-        """Close MCP connections and the sandbox executor."""
+        """关闭 MCP 连接栈，并无条件继续关闭 Sandbox executor。
+
+        已建立的 `_mcp_stack` 会先执行 `aclose()`；关闭期异常只记录为调试噪声，不阻断整体
+        shutdown。随后 `_mcp_connected` 与 `_mcp_connecting` 都复位，使实例若被重新使用仍可
+        连接。即使从未配置 MCP，也始终调用 `close_executor`，因为 Sandbox 生命周期不应
+        被 MCP 是否存在所绑架。
+        """
         if self._mcp_stack:
             try:
                 await self._mcp_stack.aclose()
@@ -1525,7 +1682,13 @@ class AgentLoop:
         await self.close_executor()  # 即使未配置 MCP 服务器也始终执行
 
     async def close(self) -> None:
-        """Stop background personalization before closing runtime resources."""
+        """先排空后台个性化任务，再关闭 Agent runtime 资源。
+
+        `_close_lock` 让并发关闭串行化，`_closed` 使重复调用成为 no-op。首次关闭先执行
+        `begin_close`，同步封住新个性化任务并取消旧任务；随后用 `gather(...,
+        return_exceptions=True)` 等待其完成，最后调用 `close_mcp` 释放 MCP 与 Sandbox。
+        只有这些步骤结束后才把实例标记为已关闭，避免 cleanup 尚未完成就对外宣称终止。
+        """
         async with self._close_lock:
             if self._closed:
                 return
@@ -1537,7 +1700,12 @@ class AgentLoop:
             self._closed = True
 
     def stop(self) -> None:
-        """Stop the agent loop."""
+        """请求长期 `run` 保活循环在下一次检查时停止。
+
+        方法只把 `_running` 设为 ``False`` 并记录日志，不等待循环退出，也不释放 MCP、
+        Sandbox 或后台任务。因此它适合 Host 的同步停止信号；需要完整资源清理时调用方仍应
+        await `close()`。重复调用不会改变额外状态。
+        """
         self._running = False
         logger.info("Agent loop stopping")
 
@@ -1571,12 +1739,18 @@ class AgentLoop:
         drain: Drain | None = None,
         context_metadata_sink: dict[str, Any] | None = None,
     ) -> tuple[str | None, list[str]] | None:
-        """Process a single turn request and return its reply.
+        """处理一个 `TurnRequest`，完成会话、上下文、迭代和事后流水线并返回回复。
 
-        Returns ``(reply_content, media_paths)`` for a turn that produced an
-        outbound reply, or ``None`` for a silent turn (the message tool already
-        sent, or a hook short-circuit chose to return None). ``origin`` is the
-        spine TurnRequest's origin.
+        方法从 ``req.source`` 取得 channel、sender、chat 与 extras，解析当前 Session，运行允许
+        的入站 Hook 和个性化前置步骤，再调用 Context Engine 组装消息并进入
+        `_run_agent_loop`。循环结束后，它保存本轮消息、执行 Engine/Memory/Backend 的事后
+        工作，并根据请求 ``origin`` 维持用户输入与 CRON、SUBAGENT 等系统来源的边界。
+
+        有待交付回复时返回 ``(reply_content, media_paths)``；返回 ``None`` 表示 silent turn，
+        例如 message Tool 已直接发送，或 Hook 短路选择了 None。这里的 silent 只说明本方法
+        不再返回第二份内容，不代表用户一定没有收到消息。``origin`` 是 Spine
+        `TurnRequest` 的来源事实，不能从文本内容反推。Provider 无法完成 Turn 时异常继续
+        传播给 `run_turn` 和 Lane，而不是转换成成功字符串。
         """
         from pico.agent.hook import AgentHookContext
 
@@ -1875,7 +2049,18 @@ class AgentLoop:
         skip: int,
         origin: Origin | None = None,
     ) -> list[dict]:
-        """Save new-turn messages into session, truncating large tool results."""
+        """把本轮新增消息清理后追加到 Session，并返回实际持久化的切片。
+
+        ``messages[skip:]`` 是相对组装窗口新增的部分。SUBAGENT 来源的首条系统回注、带
+        `_recovery_synthetic` 的空响应恢复脚手架，以及没有正文和 Tool call 的 Assistant
+        空消息都不会落盘。Tool 正文超过 `_TOOL_RESULT_MAX_CHARS` 时截断，避免单次外部输出
+        无限膨胀历史；该截断只影响 Session 副本，不修改调用方的原消息。
+
+        User 消息会剥离 `ContextBuilder._RUNTIME_CONTEXT_TAG` 前缀，多模态 data:image 只记录
+        ``[image]`` 占位，随后统一经过 `sanitize_persisted_payload`。每条记录补入时间戳并
+        调用 `session.record`，最后更新 `session.updated_at`。返回列表精确表示后续 Backend
+        可以消费的持久化事实，而不是原始运行时消息全集。
+        """
         persisted: list[dict] = []
         for index, m in enumerate(messages[skip:]):
             entry = dict(m)
@@ -1931,36 +2116,29 @@ class AgentLoop:
         usage_sink: dict[str, Any] | None = None,
         text_sink: dict[str, Any] | None = None,
     ) -> TurnOutcome:
-        """Spine-native turn entry: consume a TurnRequest, fan the agent's output
-        onto the single ``emit``, return a TurnOutcome. Collapses the legacy
-        output paths (a str return + the five callbacks) onto one boundary.
+        """作为 Spine 原生入口消费 `TurnRequest`，经单一 ``emit`` 扇出事件并返回 TurnOutcome。
 
-        Named ``run_turn`` rather than ``run``: ``run`` is the runtime keep-alive
-        (executor / debug server / MCP up, then idle). A spine runner wraps this
-        method to satisfy the TurnRunner protocol.
+        这个边界把旧实现的字符串返回值和五类 callback 收拢为一条可观察事件流。名称使用
+        ``run_turn`` 而不是 ``run``，因为后者只负责 executor、debug server、MCP 拉起后的
+        runtime keep-alive；Spine runner 包装本方法以满足 `TurnRunner` protocol，真实请求也
+        从这里进入 `_process_message`。
 
-        ``stream`` is the canon Q2-D assembly switch: a streaming outlet (TUI)
-        wires it True so the reply goes out as StreamDelta and dissolves (b2 — no
-        trailing Text); a non-streaming outlet (REPL) wires it False so the reply
-        is one Text. It gates both LLM callbacks (the loop streams when either is
-        wired) and the message-tool routing, so the whole reply travels one way.
+        ``stream`` 是 canon Q2-D assembly switch。TUI 等 streaming outlet 传 ``True`` 时，
+        回复以 StreamDelta 发送并在边界处 dissolves（b2 — no trailing Text）；REPL 等非流式
+        出口传 ``False`` 时只发送一个 Text。它同时控制 LLM callbacks 与 message-tool routing，
+        确保整份回复只走一种交付方式。媒体独立发为 MediaOut，Tool、Reasoning、Notice 和
+        Usage 也都使用同一个 ``emit``。
 
-        Exceptions propagate so the lane turns them into TurnFailed — run_turn
-        does not catch sandbox-init to return an error string (the legacy direct
-        path did; the spine surfaces it as a TurnFailed event instead).
+        ``usage_sink`` 允许调用方观察包含 cost / context 的完整 Token 账目，比三字段
+        TurnOutcome.usage 更丰富；TUI 用它填充 message.complete，REPL 可省略并读取返回值。
+        ``text_sink`` 是回复文本的同类观察副本：最终内容写入 ``text_sink["text"]``，但仍只
+        经 emit 交付一次，Cron Host 可在 Turn 后据此广播。``drain`` 则把
+        BusyPolicy.INJECT 的中途消息传入每次迭代顶部。
 
-        ``usage_sink`` lets a caller observe the turn's full token accounting
-        (cost / context, richer than the three-field TurnOutcome.usage): pass a
-        dict and it is filled. The TUI passes one to attach the rich usage to
-        message.complete; the REPL omits it and uses TurnOutcome.usage.
-
-        ``text_sink`` is its sibling for the reply text: pass a dict and the
-        final reply lands in text_sink["text"] (the reply still goes out via
-        emit — this is an observation copy, not a second delivery). Cron hosts
-        use it for broadcast or TUI delivery after the turn completes.
-
-        ``drain`` pulls user messages injected mid-turn (BusyPolicy.INJECT); it
-        is threaded into the agent loop and consumed at the top of each iteration.
+        Sandbox init 等异常不会在这里转成错误字符串，而是继续传播，让 Lane 产生
+        TurnFailed；这保留了 Spine 的失败事实。正常返回的 `TurnOutcome` 汇总 Usage、是否
+        显式回复、Tool 次数与失败数、Memory 命中、Skill 注入和 Context 回退证据，不包含
+        第二份用户回复。
         """
         from pico.proactive_engine.schedulers.cron.tool import CronTool
         from pico.spine.events import (
@@ -2136,17 +2314,16 @@ def _merge_tool_call_fragments(
     slots: list[dict[str, Any]],
     delta: dict[str, Any],
 ) -> None:
-    """Merge a single chat_stream tool_call_delta into accumulator slots.
+    """把一次 chat_stream ``tool_call_delta`` 合并进按位置保存的累积槽。
 
-    Each slot follows the shape ``{id, function: {name, arguments_buf: [str]}}``.
-    Per provider chunk semantics (OpenAI/LiteLLM): each tool call fragment
-    carries an ``index`` field; ``id`` / ``function.name`` typically appear in
-    the first fragment for that index, ``function.arguments`` is a JSON string
-    streamed in pieces.
+    每个 slot 使用 ``{id, function: {name, arguments_buf: [str]}}`` 形状。按照
+    OpenAI/LiteLLM Provider chunk 语义，片段携带 ``index``；对应 ``id`` 与
+    ``function.name`` 通常只在该 index 的首片段出现，``function.arguments`` 则是分段到达的
+    JSON string。方法只在槽中尚无 id/name 时写入它们，并按抵达顺序追加参数片段。
 
-    Respects the ``index`` field so parallel multi-tool streams do not
-    collapse into ``slots[0]``. Fragments without an ``index`` default to 0
-    (single-tool case, backward-compatible).
+    ``index`` 决定扩展和选择哪个 slot，因此并行 multi-tool stream 不会全部塌缩进
+    ``slots[0]``。缺少 ``index`` 时默认为 0，以兼容 single-tool case。delta 没有 Tool call
+    时直接返回；本函数只累积，不解析最终 JSON，也不构造 `ToolCallRequest`。
     """
     incoming = delta.get("tool_calls") or []
     if not incoming:
@@ -2166,7 +2343,13 @@ def _merge_tool_call_fragments(
 
 
 def _finalize_tool_calls(slots: list[dict[str, Any]]) -> list[ToolCallRequest]:
-    """Convert accumulator slots into final ToolCallRequest list."""
+    """把流式累积槽转换为可交给执行器的 `ToolCallRequest` 列表。
+
+    没有 ``function.name`` 的不完整槽会被跳过。其余槽按原顺序连接
+    ``arguments_buf``，非空时尝试作为 JSON 解析，空参数得到空字典；JSON 不完整或非法时不
+    丢弃调用，而以 ``{"_raw_arguments": args_text}`` 保存原始文本，交由后续参数校验给出
+    可解释失败。缺失 id 使用空字符串。返回值只完成协议形状归一化，不执行 Tool。
+    """
     result: list[ToolCallRequest] = []
     for slot in slots:
         name = slot["function"]["name"]

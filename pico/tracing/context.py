@@ -1,8 +1,11 @@
-"""Per-turn trace context, propagated via contextvars.
+"""通过 `contextvars` 传播的 Per-turn Trace Context。
 
-contextvars survive ``await`` and are snapshotted when ``asyncio.create_task``
-forks a child task — so a subagent spawned mid-turn (P1) inherits the turn's
-span as parent automatically, and nested LLM/tool calls hang off the right node.
+`contextvars` 能跨 ``await`` 保留，并在 ``asyncio.create_task`` Fork Child Task 时 Snapshot。因此 Mid-turn
+Spawn 的 Subagent（P1）会自动继承 Turn Span 作为 Parent，Nested LLM/Tool Calls 挂到正确 Node。Context
+携带 Trace/Session/Channel/Turn Correlation 与当前 Non-model Source。
+
+该传播只覆盖同一 Python Context Lineage；跨 Process/External Queue 仍需显式传递 ID。Context 存在不
+保证 Span 已持久化。
 """
 
 from __future__ import annotations
@@ -54,7 +57,11 @@ def turn_scope(
     chat_id: str | None,
     root_span_id: str,
 ) -> Iterator[TraceCtx]:
-    """Open a fresh trace for one turn; child spans parent onto ``root_span_id``."""
+    """为一个 Turn 打开 Fresh Trace，使 Child Spans Parent 到 ``root_span_id``。
+
+    方法生成 New Trace ID，绑定 Session/Channel/Chat 与 Root Parent，并在 Context Manager 退出时恢复此前
+    Context。Yield 的 `TraceCtx` 是 Frozen Snapshot；Scope 本身不创建或写入 Root Span Record。
+    """
     ctx = TraceCtx(
         trace_id=new_trace_id(),
         session_key=session_key,
@@ -79,14 +86,13 @@ def push(
     channel: str | None = None,
     chat_id: str | None = None,
 ):
-    """Set the active ctx so descendants parent onto ``span_id``; returns a reset token.
+    """设置 Active Context，使 Descendants Parent 到 ``span_id``，并返回 Reset Token。
 
-    Used by the ``trace.span`` facade for manual instrumentation — it controls
-    enter/exit explicitly rather than via a ``with`` block. Pair with :func:`reset`.
+    ``trace.span`` Facade 用于 Manual Instrumentation，显式控制 Enter/Exit 而非 ``with`` Block；必须与
+    :func:`reset` Pair。``name``/``kind`` 还传播 :class:`TraceCtx` 的 Enclosing ``source``：Non-model Span
+    成为后代 Source，Model Span 继承 Parent Source，永不把自身误标为 Invocation Source。
 
-    ``name``/``kind`` propagate the enclosing ``source`` (see :class:`TraceCtx`):
-    a non-model span becomes the source for its descendants; a model span inherits
-    its parent's source (so it is never its own invocation source).
+    ``session.turn`` 会把当前 Span 同时记为 ``turn_span_id``；其他 Span 继承已有 Turn Correlation。
     """
     cur = _CTX.get()
     parent_source = cur.source if cur else None
@@ -110,7 +116,11 @@ def reset(token) -> None:
 
 @contextlib.contextmanager
 def child_scope(span_id: str) -> Iterator[TraceCtx]:
-    """Re-parent descendants onto ``span_id`` (used by the subagent probe, P1)."""
+    """把 Descendants Re-parent 到 ``span_id``，供 Subagent Probe P1 使用。
+
+    当前 Context 缺失时创建 Fresh Trace，存在时保留其他字段只替换 Parent Span。退出时恢复原 Context，
+    避免后续 Sibling Calls 错挂到 Child。Scope 不验证 Parent Span 是否真实存在于 Store。
+    """
     cur = _CTX.get() or TraceCtx(trace_id=new_trace_id())
     token = _CTX.set(replace(cur, parent_span_id=span_id))
     try:

@@ -1,14 +1,11 @@
-"""Public instrumentation API — the standard adopters call.
+"""Standard Adopters 调用的 Public Instrumentation API。
 
-See ``docs/TRACING_STANDARD_API.md``. A thin facade over ``context`` / ``spans`` /
-``store``: open a span on enter, finalize + emit on exit. Nesting is automatic
-via contextvars (a span opened inside another becomes its child).
+历史说明见 ``docs/TRACING_STANDARD_API.md``。这是 ``context`` / ``spans`` / ``store`` 上的 Thin Facade：
+Enter 时 Open Span，Exit 时 Finalize + Emit；Contextvars 自动 Nest，内层 Span 成为外层 Child。
 
-Guarantees (so an adopter is safe):
-- **No-op when disabled** — yields a no-op handle, no I/O.
-- **Never breaks the caller** — swallows tracing-internal failures; re-raises the
-  application's own exception (after recording ``status=ERROR``).
-- **Import-safe** — importing and calling never requires config to be present.
+Safety Guarantees：Disabled 时 **No-op**，Yield No-op Handle 且无 IO；Tracing-internal Failure **Never Breaks
+Caller**，但 Application Own Exception 在记录 ``status=ERROR`` 后原样 Re-raise；Import/Call **Import-safe**，
+无需 Config File 存在。这些保证优先于观测完整性，因此 API Success 不保证 Span Durable。
 """
 
 from __future__ import annotations
@@ -48,7 +45,11 @@ def _derive_kind(name: str) -> str:
 
 
 class Span:
-    """Handle for an open span. Every method is no-throw and returns ``self``."""
+    """一个 Open Span 的 Mutable Handle；所有公开操作 No-throw 并返回 ``self``。
+
+    Handle 拥有 Identity、Parent、Session Correlation、Start Time、Attributes/Events、Status 与 Cancellation。
+    调用方可链式 Set/Artifact/Event/Error/Retype/Checkpoint；真正 Final Emit 由 `span` Context Manager 负责。
+    """
 
     __slots__ = (
         "name",
@@ -88,12 +89,11 @@ class Span:
         self._status_message = ""
 
     def set(self, attributes: dict[str, Any] | None = None, **kw) -> "Span":
-        """Merge attributes onto the span.
+        """把 Attributes Merge 到 Span。
 
-        Standard keys are fully-qualified and dotted (``llm.provider``,
-        ``tool.name`` — see the semantic conventions doc), so pass them as a
-        mapping: ``s.set({"llm.provider": p})``. Bare keywords (``s.set(foo=1)``)
-        are accepted for convenience but are stored verbatim (no auto-namespacing).
+        Standard Keys 使用 Fully-qualified Dotted Names，如 ``llm.provider``、``tool.name``，应以 Mapping
+        传入：``s.set({"llm.provider": p})``。Bare Keywords ``s.set(foo=1)`` 为 Convenience 接受，但 Verbatim
+        存储，不自动 Namespace。Later Value 覆盖 Same Key Earlier Value。
         """
         if attributes:
             self._attrs.update(attributes)
@@ -102,7 +102,12 @@ class Span:
         return self
 
     def artifact(self, key: str, payload: Any, *, kind: str = "json") -> "Span":
-        """Persist a large payload out-of-line; attach ``<key>.artifact_*`` + preview."""
+        """把 Large Payload Out-of-line Persist，并挂接 ``<key>.artifact_*`` + Preview。
+
+        写入前通过 `sanitize_persisted_payload` 移除 Inline Image Data。Storage Failure 仅 Debug Log，不抛错；
+        ``kind`` 保留在接口中，当前底层根据 Payload Type 选择文件扩展。Artifact Attributes 出现才表示返回
+        Reference，仍需检查 Error/Path。
+        """
         try:
             meta = {"traceId": self.trace_id, "sessionKey": self._session_key}
             art = _spans.persist_artifact(key, meta, sanitize_persisted_payload(payload), label=key)
@@ -121,11 +126,10 @@ class Span:
         return self
 
     def retype(self, name: str, kind: str | None = None) -> "Span":
-        """Change the span's name/kind at runtime (before emit).
+        """在 Emit 前 Runtime 修改 Span Name/Kind。
 
-        For spans whose true type is only known after the call — e.g. a ``tool.call``
-        that turns out to be a ``skill.read`` because it read a SKILL.md.
-        Nesting is unaffected because the span id is fixed.
+        用于 True Type 只有 Call 后才知道的情况，例如读取 ``SKILL.md`` 的 ``tool.call`` 应成为
+        ``skill.read``。Span ID 固定，因此 Nesting 不受影响；Kind 为 `None` 时只改 Name。
         """
         self.name = name
         if kind:
@@ -134,26 +138,31 @@ class Span:
 
     @property
     def invocation_source(self) -> str | None:
-        """Name of the nearest enclosing non-model span — the operation this span
-        runs on behalf of (``None`` at the root). Lets a model call self-label its
-        purpose without the extractor walking the tree."""
+        """返回 Nearest Enclosing Non-model Span Name，即本 Span 代表哪个 Operation 工作。
+
+        Root 返回 `None`。Model Call 可借此 Self-label Purpose，无需 Extractor Walk Tree；值由 Context Push
+        时继承。
+        """
         return self._source
 
     def elapsed_ms(self) -> int:
         return int((time.monotonic() - self._perf0) * 1000)
 
     def cancel(self) -> "Span":
-        """Drop this span — nothing is emitted on close. For conditional spans
-        (e.g. skill.inject only when something was actually injected)."""
+        """Drop 此 Span，使 Close 时 Nothing Emitted。
+
+        用于 Conditional Spans，例如只有真实注入时才保留 ``skill.inject``。Cancel 不回滚已经单独 Persist
+        的 Artifact，也不影响 Child Spans；Detached 模式用于避免 Child 挂到可能被取消的 Parent。
+        """
         self._cancelled = True
         return self
 
     def checkpoint(self) -> "Span":
-        """Emit the span's current (in-progress) state now, without closing it.
+        """立即 Emit Span 当前 In-progress State，但不 Close。
 
-        Same ``span_id`` as the final emit — the viewer dedups by id and keeps
-        the last write. Used by long root spans (a turn) so mid-flight children
-        already have a root to group under while the turn is still open.
+        Checkpoint 与 Final Emit 使用 Same ``span_id``，Viewer 按 ID Dedup 并保留 Last Write。Long Root Span
+        如 Turn 用它让 Mid-flight Children 在 Turn 未结束时已有 Root 可 Group。Emit Failure 被吞掉；后续
+        Final Close 仍会尝试写入。
         """
         try:
             _spans.emit(
@@ -180,7 +189,11 @@ class Span:
 
 
 class _NoopSpan:
-    """Returned when tracing is disabled or an internal open failed."""
+    """Tracing Disabled 或 Internal Open Failed 时返回的 No-op Handle。
+
+    它实现与 `Span` 相同的 Chainable Surface，Identity 为空、Elapsed 为零，所有方法无副作用，使 Caller
+    无需分支判断。
+    """
 
     trace_id = ""
     span_id = ""
@@ -225,15 +238,15 @@ def span(
     root: bool = False,
     **kw,
 ) -> Iterator[Any]:
-    """Open a span for ``name`` (``<domain>.<verb>``). Yields a :class:`Span` handle.
+    """为 ``name``（``<domain>.<verb>``）Open Span，并 Yield :class:`Span` Handle。
 
-    ``attributes`` is a mapping of fully-qualified dotted keys (the standard form,
-    e.g. ``{"llm.provider": p, "llm.model": m}``); ``**kw`` accepts bare keys for
-    convenience. Children opened inside the ``with`` block nest under this span.
-    On exception the span is marked ``ERROR`` and the exception re-raised unchanged.
+    ``attributes`` 使用 Fully-qualified Dotted Keys；调用形式是 ``with span(...):``，例如
+    ``{"llm.provider": p, "llm.model": m}``；``**kw`` 接受 Bare Keys。With Block 内 Child 自动 Nest。Body
+    Exception 会把 Span 标 ``ERROR``，再 Unchanged Re-raise；`CancelledError` 也明确记录 Cancelled。
 
-    ``root=True`` refuses any inherited context: the span always mints a fresh
-    trace and has no parent, whatever the task it runs on happens to carry.
+    ``root=True`` 拒绝 Inherited Context，始终 Mint Fresh Trace 且无 Parent。``detached=True`` 让 Span 不成为
+    Active Parent，适合可能 Cancel 的 Leaf。Disabled/Open Failure Yield `_NoopSpan`。Final Emission
+    Best-effort，不改变 Application Return/Exception。
     """
     if not config.enabled():
         yield _NoopSpan()
@@ -320,15 +333,14 @@ def span(
 
 @contextlib.contextmanager
 def attach(trace_id: str | None, parent_span_id: str | None = None) -> Iterator[None]:
-    """Re-enter an existing trace on a task that did not inherit its context.
+    """在未继承 Context 的 Task 上 Re-enter Existing Trace。
 
-    ``contextvars`` propagate into a task only at creation, so a *resident*
-    worker (one task serving many turns) carries the context of whichever turn
-    happened to start it. Such a worker captures the ids at hand-off and
-    re-attaches here, so the span it opens joins the originating trace instead
-    of minting an unrelated one or reusing a stale one.
+    ``contextvars`` 只在 Task Creation 时传播；一个服务 Many Turns 的 *Resident* Worker 会携带启动它的
+    某一 Turn Context。Worker 在 Hand-off 捕获 IDs，并在此 Attach，使新 Span Join Originating Trace，而
+    非 Mint Unrelated Trace 或 Reuse Stale One。
 
-    A falsy ``trace_id`` (tracing off at capture time) is a no-op.
+    Falsy ``trace_id`` 表示 Capture 时 Tracing Off，方法 No-op。Push/Reset Failure 只 Debug Log；Scope
+    退出恢复此前 Context。
     """
     if not config.enabled() or not trace_id:
         yield
@@ -349,27 +361,20 @@ def attach(trace_id: str | None, parent_span_id: str | None = None) -> Iterator[
 
 
 def instrument(name: str, *, kind: str | None = None, detached: bool = False, seed=None, on_open=None, extract=None):
-    """Decorator: wrap an async method so each call emits a ``name`` span.
+    """Decorator：Wrap Sync/Async Method，使每次 Call Emit ``name`` Span。
 
-    The adopter's integration surface — annotate a method, leave its body
-    untouched::
+    Adopter Integration Surface 只需 Annotate Method，不改 Body：
 
         @trace.instrument("llm.call", extract=semconv.llm_call)
         async def chat_with_retry(self, ...): ...
 
-    Hooks (all optional, all get ``bound_args`` = the call's arguments by name):
+    Optional Hooks 都接收按 Name Bind 的 ``bound_args``：``seed(bound) -> dict`` 提供
+    ``session_key``/``channel``/``chat_id``，给 Root Turn Seed Identity；``on_open(span, bound)`` 在 Body 前
+    记录 Input，并可调用 ``span.checkpoint()``；``extract(span, bound, result, exc)`` 在 ``finally`` 填 Final Attributes/Artifacts，
+    Error 时 Result 为 `None`，Success 时 Exc 为 `None`。
 
-    - ``seed(bound) -> dict`` — returns ``session_key`` / ``channel`` / ``chat_id``
-      to open the span with, seeding a *root* span (a turn) whose identity every
-      child inherits.
-    - ``on_open(span, bound)`` — runs right after open, before the body. Used to
-      record input + ``span.checkpoint()`` an in-progress root for live viewing.
-    - ``extract(span, bound, result, exc)`` — runs in ``finally`` (so input is
-      captured even on error); fills final attributes/artifacts. ``result`` is the
-      return (``None`` on error); ``exc`` is the exception (``None`` on success).
-
-    All tracing work is no-throw and no-op when disabled — the wrapped method's
-    behavior is never altered.
+    Wrapper 同时支持 Coroutine 与 Sync Function。所有 Tracing Work No-throw，Disabled 时 No-op；Application
+    Own BaseException 记录后原样传播，Wrapped Method Behavior 不被改变。
     """
     import functools
     import inspect
@@ -447,7 +452,10 @@ def instrument(name: str, *, kind: str | None = None, detached: bool = False, se
 
 
 def current() -> Any | None:
-    """The active trace context (or None). Exposed for adopters that need it."""
+    """返回 Active Trace Context；不存在时为 `None`。
+
+    供需要显式关联 Usage/Delivery 的 Adopters 读取；返回对象是 Context Snapshot，不应修改。
+    """
     return _ctx.current()
 
 

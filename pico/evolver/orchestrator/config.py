@@ -1,4 +1,4 @@
-"""Orchestrator configuration — one object wiring the whole seven-step funnel.
+"""用一组对象装配完整 seven-step funnel 的 Orchestrator config。
 
 Everything the FSM needs that is *not* code: where the scorer lives
 (``framework``), where the vanilla thick ledger sits (``cold_start_ledger_dir``,
@@ -6,11 +6,11 @@ the fixed comparison baseline — the funnel always compares against vanilla, no
 the previous parent), the anchor/screen knobs, the per-round design budget, the
 termination thresholds, and the on-disk state roots.
 
-The driver model is *not* constructed here — ``driver_llm_spec`` is the dict
-handed to ``pico.evolver.judge.llm_client.build_judge_llm``, so the same
-config serialises to yaml and a test can inject a ``MockBackend`` without a
-factory. Broad model support (self-hosted Qwen, Claude, OpenRouter) comes for
-free from that existing backend stack.
+driver model 不在这里构造；``driver_llm_spec`` 交给
+``pico.evolver.judge.llm_client.build_judge_llm``，使 config 可序列化为 YAML，test 也能不经
+factory 注入 ``MockBackend``。self-hosted Qwen、Claude、OpenRouter 等支持来自现有 backend。
+
+config 只定义 funnel 与 state roots，不证明 scorer/model 可用，也不承载 run progress。
 """
 
 from __future__ import annotations
@@ -22,7 +22,11 @@ from typing import Any
 
 @dataclass(frozen=True)
 class AnchorParams:
-    """Slot budget + cull width for the K=1 anchor screen (see ``select_anchor``)."""
+    """K=1 anchor screen 的 slot budget 与 cull width，见 ``select_anchor``。
+
+    default 12 sentinel 由 stable/borderline 分层轮换；n_icebreaker/n_borderline 控制组成，
+    cull_sigma_mult 控制 pruning 宽度。它们是策略参数，不是 measurement result。
+    """
 
     # 每个候选项使用 12 个对照：6 个稳定任务和 6 个边界任务，在 loop._sentinels_for 中分层并
     # 轮换。退化集中在边界任务；观察到仅 3 个稳定哨兵会漏掉退化 58% 的候选项。
@@ -34,10 +38,10 @@ class AnchorParams:
 
 @dataclass(frozen=True)
 class Budget:
-    """Per-round design budget (SOP §2 ②: 1-2 WHY x 2-3 candidates).
+    """per-round design budget（SOP §2 ②：1-2 WHY x 2-3 candidates）。
 
-    ``recombinations_per_round`` caps the deterministic cross-cell GSME
-    recombinations appended after the designed candidates (0 disables).
+    ``driver_token_budget`` 可限制 driver；``recombinations_per_round`` 限制 designed candidate
+    后追加的 deterministic cross-cell GSME recombination，0 表示关闭。
     """
 
     max_why_per_round: int = 2
@@ -48,14 +52,11 @@ class Budget:
 
 @dataclass(frozen=True)
 class Termination:
-    """Loop stop conditions. Compared against vanilla; test is never consulted.
+    """Loop stop conditions；只与 vanilla train 比较，绝不 consult test。
 
-    ``patience`` is the SOP's primary exhaustion signal (consecutive rounds with
-    no candidate beating vanilla on train); ``max_rounds`` is the hard cap.
-    ``max_consecutive_errors`` bounds consecutive no-decision rounds (driver or
-    infrastructure failure, or incomplete/inconclusive measurement) with an
-    honest ``errors_exhausted`` reason instead of letting them burn patience and
-    masquerade as exploration exhaustion.
+    ``patience`` 是连续无 candidate beat vanilla 的 primary exhaustion signal，``max_rounds``
+    是 hard cap；``max_consecutive_errors`` 限制 driver/infra/incomplete measurement 造成的
+    no-decision run，以 honest ``errors_exhausted`` 停止，不让错误 burn patience 并伪装成探索耗尽。
     """
 
     patience: int = 10
@@ -65,14 +66,12 @@ class Termination:
 
 @dataclass(frozen=True)
 class OrchestratorConfig:
-    """Top-level orchestrator configuration — bench-neutral.
+    """bench-neutral top-level Orchestrator config。
 
-    Nothing here names a benchmark: the scorer, the dataset splits, the
-    cold-start baseline, and the anchor all live behind the injected
-    :class:`~pico.evolver.orchestrator.scoring.EvalBackend`. This object only
-    holds the driver model, the funnel's numeric knobs, and the on-disk state
-    roots. ``anchor`` (AnchorParams) is neutral tuning a backend factory may
-    consume when it builds a trial-ledger anchor.
+    scorer、dataset split、cold-start baseline 与 anchor 都隐藏在 injected
+    :class:`~pico.evolver.orchestrator.scoring.EvalBackend` 后；本对象只保存 driver spec、funnel
+    numeric knob 与 on-disk roots。``anchor`` 是 backend factory 构建 trial-ledger anchor 时可用
+    的 neutral tuning。post-init 规范化 Path，并要求 K >= 1。
     """
 
     repo_root: Path

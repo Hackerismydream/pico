@@ -1,4 +1,9 @@
-"""LLM provider abstraction module."""
+"""重导出 LLM Provider Abstraction 与主要 Concrete Provider。
+
+PEP 562 Lazy Export 让导入 `pico.providers` 或其 Submodule 时不提前加载 litellm，避免 Provider
+SDK 主导 CLI Cold Start。Public Surface 包含 LLMProvider/LLMResponse、LiteLLM、Codex 与 Azure；
+未知 Symbol 明确 AttributeError，`__dir__` 仍稳定展示可用名称。
+"""
 
 from typing import TYPE_CHECKING
 

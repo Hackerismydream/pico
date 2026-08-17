@@ -1,4 +1,10 @@
-"""Subagent manager for background task execution."""
+"""管理后台 Subagent 的创建、隔离执行、限流、取消与结果重注入。
+
+每个 Subagent 使用独立 ToolRegistry 与 Sandbox Executor，在最多 15 次 Model/Tool Iteration 内
+完成一个可独立 Task；它不能使用 Message/Spawn，结果必须以 Origin.SUBAGENT 的新 Turn 回注
+Host Session，再由 Main Agent 面向用户总结。Manager 按 Session 实施 Hourly Spawn Limit，并以
+Semaphore 控制 VM Fan-out，避免递归委托耗尽 Host Resource。
+"""
 
 import asyncio
 import json
@@ -50,7 +56,16 @@ class SubagentOutcome:
 
 
 class SubagentManager:
-    """Manages background subagent execution."""
+    """拥有 Background Subagent 的 Task Registry、Resource Gate 与 Spine Reinjection。
+
+    Manager 长期由 AgentLoop 持有；`spawn` 只创建后台 Task 并立即返回启动 Receipt，
+    `_run_subagent` 在 per-Subagent Sandbox 内执行，`_announce_result` 把 Untrusted Result 包裹后提交
+    Host Turn。Running Tasks 与 Session→Task IDs 由 Done Callback 清理，Rate Window 也按 Session
+    隔离，Busy Session 不会限流其他会话。
+
+    Spine submit 在 Runtime Loop 建成后由 `set_submit` 延迟绑定。Manager 不直接向 Channel 发送，
+    不把 Spawn Receipt 当成 Outcome；`SubagentOutcome.status` 区分 COMPLETED、FAILED、EXHAUSTED。
+    """
 
     def __init__(
         self,
@@ -101,7 +116,16 @@ class SubagentManager:
         origin_chat_id: str = "direct",
         session_key: str | None = None,
     ) -> str:
-        """Spawn a subagent to execute a task in the background."""
+        """为 ``task`` 创建后台 Subagent，并立即返回可追踪的 Started Receipt。
+
+        Rate Limit 使用 ``session_key`` 或 ``default`` 作为 Quota Key，先按 Monotonic Time 移除一
+        小时窗口外记录；达到 ``max_spawns_per_hour`` 返回 failed ToolResult，并提示检查 Loop。
+        接受后生成 8 字符 Task ID 与 Display Label，创建 `_run_subagent` Task，并登记 Global/Session
+        Map；Done Callback 无论 Outcome 如何都清理 Registry。
+
+        返回 String 只说明 Started，完成结果稍后经 Spine Reinjection 通知。方法不等待 Subagent
+        业务完成，也不占用 Semaphore；实际 Resource Gate 在 Background Task 内。
+        """
         quota_key = session_key or "default"
         now = time.monotonic()
         window = self._session_spawn_times.setdefault(quota_key, deque())
@@ -151,7 +175,13 @@ class SubagentManager:
         label: str,
         origin: dict[str, str],
     ) -> SubagentOutcome:
-        """Execute the subagent task and announce the result."""
+        """在并发 Gate 与独立 Sandbox 内执行 Subagent，并宣布结构化 Outcome。
+
+        Semaphore 防止大量 VM 同时启动；每项用 `build_executor` 创建独立 Context，再调用
+        `_run_subagent_inner`。External CancelledError 必须传播，普通 Exception 转 FAILED Outcome。
+        无论 Completed/Failed/Exhausted，随后都 await `_announce_result` 把 Result 交回 Host；返回值
+        供 Background Task Registry 与 Test 观察。
+        """
         logger.info("Subagent [{}] starting task: {}", task_id, label)
 
         try:
@@ -275,9 +305,15 @@ class SubagentManager:
         origin: dict[str, str],
         status: SubagentStatus,
     ) -> None:
-        """Announce the subagent result to the main agent via the spine.
+        """通过 Spine 把 Subagent Result 作为 Inbound System Message 交回 Main Agent。
 
-        This inbound system message triggers a main-agent turn directly.
+        Status 映射为用户可理解的 Completed/Failed 文本；Result 可能来自 Web/File，因此先用
+        `wrap_untrusted(..., source="subagent")` Fence，再构造要求 Main Agent 用 1–2 句自然总结且
+        不提 Subagent/Task ID 的 Prompt。提交 `Origin.SUBAGENT`、原 Channel/Chat/Session 的
+        TurnRequest，直接触发 Host Turn。
+
+        `_submit` 必须已由 Runtime 绑定，Assert Failure 表示接线缺陷。方法 Fire-and-forget 提交，
+        不直接调用 Outlet，也不等待 Host Reply Delivery。
         """
         status_text = {
             SubagentStatus.COMPLETED: "completed successfully",
@@ -319,7 +355,13 @@ Summarize this naturally for the user. Keep it brief (1-2 sentences). Do not men
         logger.debug("Subagent [{}] announced result to {}", task_id, origin["session_key"])
 
     def _build_subagent_prompt(self) -> str:
-        """Build a focused system prompt for the subagent."""
+        """构建让 Subagent 只专注 Assigned Task 的 System Prompt。
+
+         临时 ContextBuilder（Watcher Disabled）提供 Runtime Context，Prompt 说明其 Final Response 会
+        回报 Main Agent，并写入 Workspace。另建 LocalSkillCatalog Summary；有 Skill 时只给目录与
+         read_file SKILL.md 指令，不直接内联所有正文。该 Prompt 不包含 User Memory、Message Tool
+         或 Spawn Tool，避免 Child 越过 Delegation Boundary。
+        """
         from pico.agent.context import ContextBuilder
         from pico.memory_engine.skill_forge import LocalSkillCatalog
 
@@ -351,7 +393,12 @@ Stay focused on the assigned task. Your final response will be reported back to 
         return "\n\n".join(parts)
 
     async def cancel_by_session(self, session_key: str) -> int:
-        """Cancel all subagents for the given session. Returns count cancelled."""
+        """取消指定 Session 的全部 Running Subagents，并返回取消数量。
+
+        方法收集 Registry 中尚未 Done 的 Task，逐项 cancel 后用 ``gather(return_exceptions=True)``
+        等待 Sandbox cleanup。随后删除该 Session Rate-limit Window，避免 Long-lived Process 为每个
+        已销毁 Session 永久保留 Key。其他 Session Task 与 Quota 不受影响。
+        """
         tasks = [
             self._running_tasks[tid]
             for tid in self._session_tasks.get(session_key, [])
@@ -367,5 +414,9 @@ Stay focused on the assigned task. Your final response will be reported back to 
         return len(tasks)
 
     def get_running_count(self) -> int:
-        """Return the number of currently running subagents."""
+        """返回 Manager Registry 中当前 Running Subagent Task 数量。
+
+        Done Callback 会移除完成项，因此长度反映尚未清理的 Background Work；它不区分正在等待
+        Semaphore、调用 LLM 或执行 Tool，也不包含已完成但 Host 尚未展示的 Reinjected Turn。
+        """
         return len(self._running_tasks)

@@ -1,4 +1,12 @@
-"""Cron service for scheduling agent tasks."""
+"""负责 Scheduling Agent Tasks 的 Persistent Cron Service。
+
+Service 管理 ``jobs.json`` Store、计算 At/Every/Cron 下一次触发时间、在多个 Process 间 Claim 到期
+Job，并在锁外执行 `on_job` Callback。它用原子 Replace 保存 Store、Sidecar Advisory Lock 协调并发、
+带 TTL 的 Claim 防止同一任务被活跃 Peer 重复执行。
+
+Cron Trigger 只证明任务到达计划时间并被交给 Callback；实际 Agent Turn、Channel Delivery 与用户是否
+收到结果属于下游证据。损坏或不兼容记录会保留成 Disabled Placeholder，避免加载时静默丢数据。
+"""
 
 import asyncio
 import json
@@ -49,7 +57,12 @@ def _expect_str(value: Any, field: str, *, allow_none: bool = False) -> str | No
 
 
 def _compute_next_run(schedule: CronSchedule, now_ms: int) -> int | None:
-    """Compute next run time in ms."""
+    """根据 ``schedule`` 与参考 ``now_ms`` 计算 Next Run Time，单位为 Milliseconds。
+
+    `at` 仅在时间仍位于未来时返回固定 Timestamp；`every` 从当前参考时间向后加正的 Interval；`cron`
+    使用 `croniter` 与可选 `ZoneInfo` 计算下一次日历触发。字段缺失、表达式/时区错误或没有未来触发时
+    返回 `None`，调用方必须把它视为 Non-runnable，而不是保存一个永不执行的 Job。
+    """
     if schedule.kind == "at":
         return schedule.at_ms if schedule.at_ms and schedule.at_ms > now_ms else None
 
@@ -78,7 +91,12 @@ def _compute_next_run(schedule: CronSchedule, now_ms: int) -> int | None:
 
 
 def _validate_schedule_for_add(schedule: CronSchedule, now_ms: int) -> None:
-    """Validate schedule fields that would otherwise create non-runnable jobs."""
+    """验证会导致 Non-runnable Jobs 的 Schedule Fields，并在 Add 前拒绝。
+
+    Timezone 只允许用于 Cron Schedule，未知 Zone 会抛出 `ValueError`。随后以 `_compute_next_run` 作为
+    “可运行”的唯一事实来源：过去的 `at`、非正 `every`、非法 Cron Expression 或未知 Kind 都返回
+    对应可诊断错误。验证与最终 Add 应共享同一个 `now_ms` Snapshot，避免临界时间先通过后失效。
+    """
     if schedule.tz and schedule.kind != "cron":
         raise ValueError("tz can only be used with cron schedules")
 
@@ -104,7 +122,13 @@ def _validate_schedule_for_add(schedule: CronSchedule, now_ms: int) -> None:
 
 
 class CronService:
-    """Service for managing and executing scheduled jobs."""
+    """管理、持久化并执行 Scheduled Jobs 的 Service。
+
+    生命周期从 `start` 加载并恢复 Store、重算 Next Runs、Arm Timer 开始，到 `stop` 取消 Timer 结束。
+    Public API 支持 Add/List/Enable/Remove/Manual Run，以及 Silent-fire 衰减。多实例可共享同一 Store，
+    通过锁和 Claim Ownership 避免并发覆盖与重复执行；Callback 本身在锁外运行，不能长期阻塞其他
+    Scheduler 修改任务。
+    """
 
     def __init__(
         self,
@@ -114,15 +138,16 @@ class CronService:
         allowed_channels: set[str] | None = None,
         now_fn: Callable[[], datetime] | None = None,
     ):
-        """``allowed_channels`` restricts which jobs this service will claim.
+        """创建 Service，并用 ``allowed_channels`` 限制它可 Claim 的 Jobs。
 
-        Set to e.g. ``{"cli"}`` in REPL mode so REPL doesn't steal Feishu /
-        Telegram reminders that gateway should deliver. ``None`` (default)
-        means any channel — use that in gateway where ChannelManager can
-        route replies to any configured channel.
+        例如 REPL Mode 设置 ``{"cli"}``，可避免 REPL 抢走应由 Gateway 交付的 Feishu / Telegram
+        Reminders。默认 `None` 表示 Any Channel，适合 `ChannelManager` 能路由到所有已配置 Channel 的
+        Gateway。``payload.channel`` 为空或 `None` 的旧 Jobs 始终可 Claim，因为它们早于 Channel
+        Attribution Field。
 
-        Jobs with empty/None ``payload.channel`` are always claimable —
-        they predate the channel attribution field.
+        `store_path` 指向共享 JSON Store，`on_job` 是到期时执行的 Async Callback，`now_fn` 可为
+        Benchmark Harness 注入 Fake Clock。构造函数只准备状态并启动 Writer-independent Fields，不会
+        自动加载、执行或 Arm Timer，调用方仍需 `start`。
         """
         self.store_path = store_path
         # 相邻文件用于 advisory lock；数据文件原子重命名后它仍存在，
@@ -144,19 +169,35 @@ class CronService:
         self._now_fn = now_fn
 
     def _now_ms(self) -> int:
-        """Return current time in ms, honouring fake-clock injection."""
+        """返回 Current Time 的 Milliseconds，并遵守 Fake-clock Injection。
+
+        提供 `now_fn` 时使用其 Timestamp，使新 Job 与 Longrun Benchmark 的 Simulated Time 对齐；否则
+        使用真实 `time.time()`。这是 Service 内所有调度计算的统一时钟来源。
+        """
         if self._now_fn is not None:
             return int(self._now_fn().timestamp() * 1000)
         return int(time.time() * 1000)
 
     @contextmanager
     def _locked(self) -> Iterator[None]:
-        """Hold the cross-platform lock on the jobs-file sibling."""
+        """在 Context Block 内持有 Jobs File Sibling 上的 Cross-platform Lock。
+
+        Lock Anchor 独立于会被原子 Replace 的 Data File，因此 Store Rename 后不同进程仍协调同一把锁。
+        方法只提供互斥范围，不自动 Reload 或 Save Store。
+        """
         with file_lock(self.lock_path):
             yield
 
     def _load_store(self) -> CronStore:
-        """Load jobs from disk. Reloads automatically if file was modified externally."""
+        """从 Disk 加载 Jobs；File 被 External Modification 后自动 Reload。
+
+        已缓存 Store 会比较 Nanosecond Mtime，变化时丢弃内存 Snapshot。加载时验证顶层结构、Store
+        Version 与每个 Job Field；单条 Incompatible Record 转成 Disabled Placeholder，并保留 Raw
+        Record 以便再次 Save 时原样写回。整个文件无法解析则记录 Warning 并退回 Empty Store。
+
+        该方法本身不获取 Cross-process Lock，Mutation Path 必须在 `_locked` 内先强制清空 Cache 再
+        调用，避免覆盖 Peer Writes。
+        """
         if self._store and self.store_path.exists():
             mtime = self.store_path.stat().st_mtime_ns
             if mtime != self._last_mtime:
@@ -298,7 +339,13 @@ class CronService:
         )
 
     def _save_store(self) -> None:
-        """Save jobs to disk."""
+        """把当前 In-memory Jobs Store 原子保存到 Disk。
+
+        方法保留未知 Top-level Metadata，并让 Incompatible Records 使用原 Raw Payload；正常 Job 则按
+        Version 1 Schema 序列化。数据先写到同目录 Temp File，再用 `os.replace` 发布，避免 Reader
+        看到 Partial JSON；成功后更新 Nanosecond Mtime Cache。Caller 必须在需要并发安全的路径持有
+        `_locked`。
+        """
         if not self._store:
             return
 
@@ -354,7 +401,12 @@ class CronService:
         }
 
     async def start(self) -> None:
-        """Start the cron service."""
+        """启动 Cron Service 并恢复 Persistent Schedule State。
+
+        设置 Running Flag，加载 Store，重算所有 Enabled Jobs 的 Next Run，保存恢复结果并 Arm Timer。
+        方法不会立即等待任务完成；到期执行由 Background Timer 驱动。重复调用会重新执行恢复流程并
+        替换现有 Timer Task。
+        """
         self._running = True
         self._load_store()
         self._recompute_next_runs()
@@ -363,18 +415,23 @@ class CronService:
         logger.info("Cron service started with {} jobs", len(self._store.jobs if self._store else []))
 
     def stop(self) -> None:
-        """Stop the cron service."""
+        """停止 Cron Service 并取消当前 Timer Task。
+
+        方法清除 Running Flag，使后续 Tick 不再调用 `run_due`。它不会删除 Persistent Jobs，也不等待
+        已在 `on_job` 中执行的 Callback；完整 Runtime Shutdown 仍需由上层协调正在运行的任务。
+        """
         self._running = False
         if self._timer_task:
             self._timer_task.cancel()
             self._timer_task = None
 
     def _recompute_next_runs(self) -> None:
-        """Recompute next run times for all enabled jobs.
+        """为所有 Enabled Jobs 重新计算 Next Run Times。
 
-        Jobs keep one persisted pending fire across restarts. A missed
-        recurring fire runs once and then advances from the recovery time
-        instead of backfilling every missed interval.
+        Job 在 Restart 间保留一个 Persisted Pending Fire。错过的 Recurring Fire 恢复后只运行一次，再从
+        Recovery Time 向后推进，不 Backfill 每个 Missed Interval。已完成/失败/过期的一次性 `at` Job
+        会禁用；无 Future Fire 的 Schedule 标记为 `expired` 并记录原因。已有合法 Pending Timestamp 的
+        Recurring Job 不被无故覆盖。
         """
         if not self._store:
             return
@@ -406,7 +463,11 @@ class CronService:
                 job.state.next_run_at_ms = next_run
 
     def _get_next_wake_ms(self) -> int | None:
-        """Get the earliest next run time across all jobs."""
+        """返回所有 Enabled Jobs 中最早的 Next Run Time。
+
+        只考虑有非空 `next_run_at_ms` 的 Job；Store 缺失或没有待运行项时返回 `None`。结果用于安排下个
+        Timer Tick，不代表该 Job 已成功 Claim。
+        """
         if not self._store:
             return None
         return min(
@@ -415,12 +476,13 @@ class CronService:
         )
 
     def _arm_timer(self) -> None:
-        """Schedule the next timer tick.
+        """安排下一次 Timer Tick。
 
-        Always sleeps at most ``_MAX_WAKE_INTERVAL_S`` so a peer process's
-        write to jobs.json (e.g. a new reminder from REPL while gateway is
-        running) gets picked up within that window — run_due reloads on
-        mtime change.
+         先取消旧 Timer，再按 Earliest Wake 计算 Delay；即使没有任务也最多休眠
+         ``_MAX_WAKE_INTERVAL_S``。因此 Peer Process 写入 ``jobs.json``，例如 Gateway 运行时 REPL 新增
+        更早 Reminder，最迟会在该 Window 内被发现，因为 `run_due` 会根据 Mtime Reload。
+
+         Service 未 Running 时不创建 Task。Timer 只负责唤醒 `run_due`，Claim 与执行仍在后者完成。
         """
         if self._timer_task:
             self._timer_task.cancel()
@@ -444,12 +506,15 @@ class CronService:
         self._timer_task = asyncio.create_task(tick())
 
     async def run_due(self) -> None:
-        """Claim and run jobs that are due.
+        """Claim 并运行已经 Due 的 Jobs。
 
-        Claim phase (under exclusive lock): reload from disk, pick due jobs
-        not already claimed by a live peer, stamp them with this pid+now,
-        save. Execution phase (lock released): run each claimed job; then
-        reacquire the lock to write post-run state and clear the claim.
+        Claim Phase 在 Exclusive Lock 内强制 Reload Disk，选择到期、Channel 允许、且未被 Live Peer
+        Claim 的 Jobs，写入当前 PID + Now 后保存。超过 `_CLAIM_TTL_MS` 的旧 Claim 可被接管。Execution
+        Phase 释放 Lock，逐个运行已 Claim Job；每项完成后重新加锁写入 Post-run State 并清除 Claim。
+
+        `finally` 还会释放本批残余 Claims 并重新 Arm Timer，覆盖取消与异常路径。多进程 Claim 降低重复
+        执行概率，但 Callback 的外部副作用仍应自行具备 Idempotency，因为 Process Crash 可能发生在
+        副作用完成而结果尚未持久化之间。
         """
         my_pid = os.getpid()
         with self._locked():
@@ -543,7 +608,13 @@ class CronService:
                 self._save_store()
 
     async def _execute_job(self, job: CronJob) -> None:
-        """Execute a single job."""
+        """执行一个已经 Claim 的 Job，并更新其 In-memory Run State。
+
+         有 `on_job` Callback 时 Await 执行；成功写入 `ok`，普通异常转成 `error` 与文本原因，
+         `CancelledError` 则记录 `cancelled` 后重新抛出。一次性 `at` Job 完成后删除或禁用；Enabled
+         Recurring Job 从当前时间计算下一次运行；被 ``cron run --force`` 强制执行的 Disabled Job 保持
+        禁用且不推进 Next Run。真正持久化由 Caller 随后的 `_persist_job_result` 完成。
+        """
         start_ms = self._now_ms()
         logger.info("Cron: executing job '{}' ({})", job.name, job.id)
 
@@ -588,10 +659,12 @@ class CronService:
     # ========== 公共 API ==========
 
     def record_silent_fire(self, job_id: str) -> bool:
-        """Increment silent_fire_count for a job; auto-disable when it
-        crosses silent_fire_limit. Called by harness/dispatch path right
-        after a cron fire is delivered. Returns True if the job was
-        auto-disabled this call."""
+        """递增 Job 的 ``silent_fire_count``，达到 ``silent_fire_limit`` 时 Auto-disable。
+
+        Harness/Dispatch Path 在一次 Cron Fire 已交付后立即调用。方法在 Lock 内 Reload Store、更新计数并
+        保存；达到正数 Limit 时同时清除 Next Run，防止长期没有 User Activity 的 Reminder 无限发送。
+        本次调用触发 Auto-disable 时返回 `True`，仅计数或未找到 Job 时返回 `False`。
+        """
         with self._locked():
             self._store = None
             store = self._load_store()
@@ -617,10 +690,12 @@ class CronService:
             return False
 
     def notify_user_active(self, channel: str | None = None, to: str | None = None) -> int:
-        """Reset silent_fire_count for jobs matching (channel, to) — call
-        whenever a genuine user-originated message arrives so recently-
-        firing crons don't decay toward auto-disable. None matches all.
-        Returns count of jobs whose state was reset."""
+        """为匹配 ``(channel, to)`` 的 Jobs 重置 ``silent_fire_count``。
+
+        每当 Genuine User-originated Message 到达时调用，使近期触发的 Crons 不会继续 Decay Toward
+        Auto-disable。`channel` 或 `to` 为 `None` 表示该维度 Match All；只处理 Enabled 且已有非零计数的
+        Jobs。返回实际 Reset 的 Job Count，只有 Count 大于零才写盘。
+        """
         reset = 0
         with self._locked():
             self._store = None
@@ -639,7 +714,11 @@ class CronService:
         return reset
 
     def list_jobs(self, include_disabled: bool = False) -> list[CronJob]:
-        """List all jobs."""
+        """列出 Jobs，并按 Next Run Time 排序。
+
+        默认只返回 Enabled Jobs；`include_disabled=True` 时包含 Expired、Incompatible 与用户停用项。
+        没有 Next Run 的 Job 排在末尾。返回的是当前 Store 中对象列表，不是深拷贝的长期 Snapshot。
+        """
         store = self._load_store()
         jobs = store.jobs if include_disabled else [j for j in store.jobs if j.enabled]
         return sorted(jobs, key=lambda j: j.state.next_run_at_ms or float("inf"))
@@ -655,29 +734,26 @@ class CronService:
         delete_after_run: bool = False,
         topic_tag: str | None = None,
     ) -> CronJob:
-        """Add a new job, or update an existing job with the same
-        (schedule, channel, to) triple — agents often re-register the
-        same recurring reminder with slightly different wording across
-        conversations; without dedup the user gets N near-identical
-        fires per scheduled tick.
+        """添加新 Job，或根据多层 Dedup 更新/复用 Existing Job。
 
-        Two cross-kind dedup layers also apply (in order):
+        最基础规则是相同 ``(schedule, channel, to)`` Triple：Agent 常在不同 Conversation 中用略有差异的
+        文案重复注册 Recurring Reminder；没有 Dedup，用户每个 Scheduled Tick 会收到 N 条近似消息。
 
-        1. **Message-equal dedup**: if any existing enabled job for the
-           same (channel, to) has a *byte-identical* ``payload.message``,
-           return it. Catches the case where the LLM creates the same
-           reminder N times across the simulation horizon (e.g. a
-           medication-reminder string appearing as both an ``at`` shot
-           today and a ``cron_expr`` recurring tomorrow — identical
-           text, different fire times).
+        更早执行的 Cross-kind Dedup Layers 依次是：
 
-        2. **Time-window dedup**: if any existing enabled job for the
-           same (channel, to) is scheduled to fire within 15 minutes of
-           this new schedule's next fire (regardless of schedule kind),
-           return it. Catches the case where the LLM creates both a
-           recurring ``cron_expr`` AND a same-day ``at`` shot for the
-           same intent (e.g. "daily 8:00 take meds" + "today 8:00 take
-           meds").
+        1. **Topic-tag Dedup**：同一 ``(channel, to, topic_tag)`` 代表同一逻辑提醒，直接原地更新 Message
+           与 Schedule；
+        2. **Message-equal Dedup**：同一 ``(channel, to)`` 下已有 Enabled Job 的
+           ``payload.message`` *Byte-identical* 时直接返回。它捕获 LLM 在 Simulation Horizon 多次创建同一
+           Reminder，例如同一 Medication String 同时作为今天 ``at`` Shot 与明天 ``cron_expr``；
+        3. **Time-window Dedup**：同一 ``(channel, to)`` 的 Existing Job 在新 Schedule Next Fire 前后 15
+           Minutes 内触发时直接返回，不区分 Schedule Kind。它捕获同一 Intent 同时创建 Recurring
+           ``cron_expr`` **AND** Same-day ``at`` Shot，例如 “daily 8:00 take meds” 与 “today 8:00 take
+           meds”。
+
+        所有判断在 Exclusive Lock 内基于 Reloaded Store；无效 Schedule 在争锁前失败。返回值可能是新
+        Job、被原地更新的 Job 或未修改的 Duplicate，因此 Caller 不应仅凭返回对象判断创建了新记录。
+        15-minute Trade-off 可能合并极少数真正独立的临近提醒，这是减少垃圾重复通知的显式策略。
         """
         # 校验与存储共用同一个 ``now`` 快照。校验谓词和存储的 next_run 必须对
         # “现在”达成一致，否则临界 ``at``（at ≈ now）可能通过校验却保存为
@@ -829,9 +905,12 @@ class CronService:
         channel: str | None,
         to: str | None,
     ) -> CronJob | None:
-        """Return an existing enabled job whose (schedule, channel, to)
-        matches — used by add_job for dedup. ``at`` jobs (one-shot) are
-        only deduped if their at_ms is identical (same instant)."""
+        """返回 ``(schedule, channel, to)`` 匹配的 Existing Enabled Job。
+
+        `add_job` 用此 Helper 执行最后一层 Dedup。Cron 要求 Expr 与 Timezone 相同，Every 要求 Interval
+        相同；``at`` One-shot Jobs 只有 ``at_ms`` 完全一致、即 Same Instant 时才合并。Disabled Job 与
+        不同 Recipient 不参与匹配；没有命中返回 `None`。
+        """
         for j in jobs:
             if not j.enabled:
                 continue
@@ -849,7 +928,12 @@ class CronService:
         return None
 
     def remove_job(self, job_id: str) -> bool:
-        """Remove a job by ID."""
+        """按 Job ID 删除一个 Persistent Job。
+
+        方法在 Lock 内 Reload Store 并过滤目标；找到并保存删除结果时返回 `True`，随后 Rearm Timer；
+        未找到返回 `False` 且不写盘。它不会取消一个已在锁外执行的 Callback，上层仍可能看到当前 Fire
+        完成。
+        """
         with self._locked():
             self._store = None
             store = self._load_store()
@@ -864,7 +948,12 @@ class CronService:
         return removed
 
     def enable_job(self, job_id: str, enabled: bool = True) -> CronJob | None:
-        """Enable or disable a job."""
+        """Enable 或 Disable 指定 Job，并返回更新后的对象。
+
+        Enable 时从当前时间重新计算 Next Run；没有 Future Fire 则保持 Disabled，并在非 Incompatible
+        情况下标为 `expired`。Disable 时清除 Next Run。找到 Job 后原子保存并 Rearm Timer；未知 ID
+        返回 `None`。该操作不立即执行任务。
+        """
         with self._locked():
             self._store = None
             store = self._load_store()
@@ -888,7 +977,13 @@ class CronService:
         return None
 
     async def run_job(self, job_id: str, force: bool = False) -> bool:
-        """Manually run a job."""
+        """手动 Claim 并运行一个 Job。
+
+        默认只运行 Enabled Job；`force=True` 可运行 Disabled Recurring Job，但仍拒绝 Expired、
+        Incompatible 或被 Fresh Peer Claim 的任务。成功取得 Claim 后在锁外 `_execute_job`，最后无论结果
+        都持久化状态、释放 Claim 并 Rearm Timer。开始执行时返回路径最终为 `True`，无法 Claim/找到时
+        返回 `False`；Callback Exception 通常已转成 Job Error State。
+        """
         claimed_by_pid = os.getpid()
         claimed_at_ms = self._now_ms()
         with self._locked():
@@ -918,7 +1013,11 @@ class CronService:
             self._arm_timer()
 
     def status(self) -> dict:
-        """Get service status."""
+        """返回 Cron Service 的当前 Status Snapshot。
+
+        Dict 包含 Running ``enabled``、Store 中总 ``jobs`` 数与最早 ``next_wake_at_ms``。它反映调度器
+        内部状态，不验证 Background Timer 仍健康，也不证明最近 Job 已成功交付。
+        """
         store = self._load_store()
         return {
             "enabled": self._running,

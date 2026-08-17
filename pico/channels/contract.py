@@ -1,14 +1,12 @@
-"""The channel contract — what a chat-channel adapter must satisfy and declare.
+"""Chat-channel Adapter 必须满足并声明的 Channel Contract。
 
-A channel implements the :class:`Channel` protocol (``start``/``stop``/``send``)
-and declares its :class:`Capabilities`; optional behaviours are separate
-``Supports*`` protocols a channel opts into. Each channel package exports a
-:class:`ChannelSpec` — a lightweight descriptor whose ``factory`` defers the
-heavy SDK import — consumed by the registry.
+Channel 实现 :class:`Channel` Protocol 的 ``start``/``stop``/``send``，并声明 :class:`Capabilities`；Optional
+Behavior 通过独立 ``Supports*`` Protocol Opt In。每个 Package 导出 Lightweight :class:`ChannelSpec`，其
+``factory`` 延迟 Heavy SDK Import，Registry 只消费 Descriptor。
 
-Composition over inheritance: there is no base class to subclass. Adapters
-satisfy the protocols structurally and inject the framework services
-(:mod:`.intake`, transcription) they need.
+设计采用 Composition over Inheritance：Adapter Structural Conformance，并注入所需 Framework Services，
+如 :mod:`.intake`、Transcription。Capabilities Declaration、Protocol Implementation 与 Live Evidence 必须
+一致，不能从某个 Method 存在就推断成熟度。
 """
 
 from __future__ import annotations
@@ -27,7 +25,11 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class Channel(Protocol):
-    """Minimal required contract every channel satisfies."""
+    """每个 Channel 必须满足的 Minimal Runtime Contract。
+
+    `name`/`capabilities`/`intake` 描述身份与 Inbound Boundary；Async `start`/`stop` 管理连接生命周期，
+    `send` 交付 Text/Optional Media。Runtime-checkable 只验证 Surface，不执行平台健康检查。
+    """
 
     name: str
     capabilities: Capabilities
@@ -40,7 +42,11 @@ class Channel(Protocol):
 
 @runtime_checkable
 class SupportsLogin(Protocol):
-    """Opt-in interactive (QR/scan) login, run once via CLI before ``start``."""
+    """Opt-in Interactive QR/Scan Login Protocol。
+
+    CLI 在 ``start`` 前按需运行一次；`force` 可要求重新鉴权。返回 Bool 是 Login Flow Result，不等于 Channel
+    Long Connection 已启动。
+    """
 
     async def login(self, force: bool = False) -> bool: ...
 
@@ -50,19 +56,15 @@ Maturity = Literal["beta", "live-gated"]
 
 @dataclass(frozen=True)
 class ChannelSpec:
-    """Declarative descriptor a channel package exports as ``SPEC``.
+    """Channel Package 以 ``SPEC`` 导出的 Declarative Descriptor。
 
-    ``factory`` defers the channel's heavy SDK import, so collecting specs
-    (listing / onboarding / login routing) stays cheap. Carries only what can't
-    be located elsewhere: the channel's name is its package name (the registry
-    key); dependency/setup guidance is derived by the CLI from capabilities +
-    the config schema.
+    ``factory`` 延迟 Heavy SDK Import，使 Listing/Onboarding/Login Routing 的 Spec Collection 保持 Cheap。
+    Descriptor 只携带其他位置无法推导的 Display Name、Factory、Capabilities、Maturity；Registry Key/Channel
+    Name 来自 Package，CLI 由 Capabilities + Config Schema 推导 Dependency/Setup Guidance。
 
-    ``maturity`` names the evidence level behind the adapter, not code quality:
-    ``beta`` = deterministic contract (V-C0) and security (V-S0) bundles only;
-    ``live-gated`` = a live Channel gate has also passed. It is the single
-    source the CLI, doctor, and onboarding read, so no surface can claim a
-    higher level than the spec declares.
+    ``maturity`` 表示 Adapter Evidence Level，而非 Code Quality：``beta`` 只有 Deterministic Contract V-C0 与
+    Security V-S0 Bundles；``live-gated`` 还通过 Live Channel Gate。它是 CLI/Doctor/Onboarding Single Source，
+    任何 Surface 都不能 Claim 高于 Spec 的 Level。
     """
 
     display_name: str
@@ -80,11 +82,10 @@ _CAP_PROTOCOLS: tuple[tuple[str, type], ...] = (
 
 
 def capability_violations(channel: object, caps: Capabilities | None = None) -> list[str]:
-    """Return mismatches between declared capabilities and implemented protocols.
+    """返回 Declared Capabilities 与 Implemented Protocols 的 Mismatches。
 
-    A channel declaring a capability must implement the matching ``Supports*``
-    protocol, and vice-versa. Empty list = consistent. Used by the per-channel
-    capability-proof tests.
+    Channel 声明 Capability 必须实现对应 ``Supports*`` Protocol，反之亦然。Empty List 表示一致，供
+    Per-channel Capability-proof Tests 使用；一致只证明声明与 Surface 对齐，不证明 Live Behavior。
     """
     caps = caps if caps is not None else getattr(channel, "capabilities", Capabilities())
     out: list[str] = []

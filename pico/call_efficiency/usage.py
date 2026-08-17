@@ -1,4 +1,12 @@
-"""Provider-aware usage normalization."""
+"""Provider-aware Usage Normalization。
+
+Provider 对 ``prompt_tokens`` 的语义并不一致：Anthropic 通常报告 Fresh Tokens，OpenRouter、DeepSeek
+与 OpenAI 路径可能报告包含 Cache 的 Total。`normalize_usage` 解析各字段、依据 Model Provider
+判断语义，并把结果统一成 `CallUsage.input_tokens = fresh tokens`，供定价层使用同一公式。
+
+缺字段、非法数值、Cache 超过 Prompt 或 Total 对不上都会写入 Findings，并把 `complete` 置为
+False。规范化函数宁可暴露 Ambiguous Evidence，也不通过猜测制造看似完整的成本记录。
+"""
 
 from __future__ import annotations
 

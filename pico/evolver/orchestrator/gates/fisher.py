@@ -1,4 +1,4 @@
-"""Focused-subset statistics for the two-stage Fisher gate (SOP §2 ⑤/⑥).
+"""实现 two-stage Fisher gate 的 focused-subset statistics（SOP §2 ⑤/⑥）。
 
 Ported from the AppWorld evolution driver so the two-stage gate is in-package
 and unit-testable. The stage-1 test asks a sharp, cheap question on a candidate's
@@ -9,9 +9,9 @@ trial table answers it without a full-train run.
 Denominator discipline (SOP §0 hard rule): infra-contaminated trials are NOT
 dropped from the denominator. Recoverable infra is salvaged upstream by the ≤2
 rerun ladder (:func:`pico.evolver.orchestrator.scoring.eval_with_infra_rerun`);
-only genuinely persistent infra reaches here and counts as a non-pass (fail),
-kept in the denominator. Dropping infra tasks would shrink the denominator and
-overestimate pass@1 (the fair-subset extrapolation trap).
+只有 persistent infra 到达这里，并作为 non-pass 留在 denominator。删除 infra task 会缩小分母、
+高估 pass@1，形成 fair-subset extrapolation trap。统计显著只针对 focused subset，不等于 full
+train promotion 或 sealed generalisation。
 """
 
 from __future__ import annotations
@@ -22,12 +22,10 @@ from pico.evolver.orchestrator.scoring import TaskEval
 
 
 def focused_counts(evals: dict[str, TaskEval], focused_ids: list[str]) -> tuple[int, int]:
-    """``(passes, fails)`` trial counts over the focused subset.
+    """返回 focused subset 的 ``(passes, fails)`` trial counts。
 
-    Infra-still-fail trials count as fails, not excluded — a task is never
-    dropped (SOP §0). A task absent from ``evals`` (never launched) has no trials
-    to count and is skipped here; the full-train denominator that governs pass@1
-    lives in :func:`train_mean`.
+    persistent infra trial 计 fail、不排除，符合 SOP §0。``evals`` 缺 task 表示 never launched，
+    这里无 trial 可计而跳过；full-train fixed denominator 由 :func:`train_mean` 保证。
     """
     passes = fails = 0
     for tid in focused_ids:
@@ -40,12 +38,10 @@ def focused_counts(evals: dict[str, TaskEval], focused_ids: list[str]) -> tuple[
 
 
 def train_mean(evals: dict[str, TaskEval], task_ids: list[str]) -> float:
-    """Mean per-task pass@1 over ``task_ids`` with a FIXED denominator (SOP §0).
+    """用 FIXED denominator 计算 ``task_ids`` 的 mean per-task pass@1（SOP §0）。
 
-    Denominator = ``len(task_ids)`` (the task count), always. A task missing or
-    all-infra contributes 0.0 — never dropped from the denominator, because
-    dropping it shrinks the denominator and overestimates pass@1. infra trials
-    count as non-passes via ``TaskEval.pass_rate`` (``passes / attempts``).
+    denominator 永远是 task count ``len(task_ids)``。missing/all-infra task 贡献 0.0，绝不 drop；
+    infra 通过 ``TaskEval.pass_rate = passes / attempts`` 计 non-pass。空 task list 返回 0.0。
     """
     if not task_ids:
         return 0.0
@@ -57,10 +53,10 @@ def train_mean(evals: dict[str, TaskEval], task_ids: list[str]) -> float:
 
 
 def fisher_one_sided(cp: int, cn: int, vp: int, vn: int) -> float:
-    """One-sided Fisher exact P(candidate pass-rate > vanilla) on a 2x2.
+    """在 2x2 table 上计算 one-sided Fisher exact P(candidate rate > vanilla)。
 
-    Table ``[[cp, cn], [vp, vn]]`` = candidate pass/fail vs vanilla pass/fail
-    (trial counts). Returns 1.0 (not significant) for degenerate margins.
+    ``[[cp, cn], [vp, vn]]`` 表示 candidate pass/fail 与 vanilla pass/fail trial count。degenerate
+    margin 返回 1.0（not significant）；否则用 log-gamma 计算 upper tail，结果上限 1.0。
     """
     row1, row2 = cp + cn, vp + vn
     col1, tot = cp + vp, cp + cn + vp + vn

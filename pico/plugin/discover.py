@@ -1,17 +1,16 @@
-"""Multi-source plugin discovery.
+"""Multi-source Plugin Discovery。
 
-A discovery pass scans every source the host knows about (bundled
-sub-tree, user-level dir, project-level dir, pip entry points),
-deduplicates by plugin id, and returns a stable list of
-:class:`DiscoveredPlugin` records. Discovery only reads manifests — no
-plugin Python code is imported here. The :class:`Source` enum doubles
-as the conflict-resolution priority ordering (higher wins).
+一次 Discovery Pass 扫描 Host 已知的所有 Sources：Bundled Sub-tree、User-level Dir、Project-level Dir
+与 Pip Entry Points；随后按 Plugin ID Deduplicate，返回稳定的 :class:`DiscoveredPlugin` Records。
+Discovery **只读 Manifests**，这里不 Import Plugin Python Code。:class:`Source` Enum 同时承担 Conflict
+Resolution Priority，数值越高越优先。
 
-Priority order (`bundled > user > project > entry_points`) follows the
-design's "builtin shadow rule": a bundled plugin can never be shadowed
-by a same-named local or pip-installed one. Among the non-bundled
-sources, user-level wins so a developer can substitute a locally edited
-copy for a pip-installed version while iterating.
+Priority Order 是 ``bundled > user > project > entry_points``，遵守设计中的 Builtin Shadow Rule：同名
+Local/Pip Plugin 永远不能 Shadow Bundled Plugin。Non-bundled Sources 中 User-level 胜出，使 Developer
+迭代时能用 Locally Edited Copy 替代 Pip-installed Version。
+
+Manifest Admission 仍会验证 Distribution Identity 与 Pico Version Compatibility；Stable Discovery List
+不代表 Factory 已 Import 或 Plugin 行为可信。
 """
 
 from __future__ import annotations
@@ -36,16 +35,27 @@ _MANIFEST_FILENAME = "pico-plugin.toml"
 
 
 class PluginCompatibilityError(RuntimeError):
-    """A plugin manifest excludes the installed Pico version."""
+    """Plugin Manifest 排除了 Installed Pico Version 时抛出。
+
+    这表示声明的 Compatibility Specifier 与当前 Runtime 不相交，Plugin 不应进入 Registry。修复方式是
+    安装兼容版本或禁用对应 Backend，不能忽略后继续 Lazy Import。
+    """
 
 
 class PluginIdentityError(RuntimeError):
-    """Installed distribution metadata disagrees with its plugin manifest."""
+    """Installed Distribution Metadata 与其 Plugin Manifest 不一致时抛出。
+
+    Entry Point 的 Owning Distribution Name、Version 或 File Inventory 与 Manifest 冲突可能表示错误打包、
+    陈旧安装或身份混淆。Discovery Fail Closed，并要求重新安装 Official Distribution。
+    """
 
 
 class Source(IntEnum):
-    """Where a manifest came from. Numeric value is conflict priority —
-    higher wins. Lower values lose silently and are logged."""
+    """Manifest 来源；Numeric Value 同时表示 Conflict Priority，Higher Wins。
+
+    Lower-priority Duplicate 不进入最终列表，但会记录日志而非完全 Silent，便于诊断 Shadowing。枚举顺序
+    是安全策略的一部分，修改数值会改变同名 Plugin 的实际选择。
+    """
 
     ENTRY_POINTS = 1
     PROJECT = 2
@@ -55,23 +65,25 @@ class Source(IntEnum):
 
 @dataclass(frozen=True)
 class DiscoveredPlugin:
-    """A manifest read from a specific source, awaiting activation."""
+    """从 Specific Source 读取、Awaiting Activation 的 Manifest Record。
+
+    它同时保留 Parsed `PluginManifest`、`Source` 与可选 Location。对象只代表发现事实，Factory 尚未
+    Import，Contributions 也尚未进入 Active Registry。
+    """
 
     manifest: PluginManifest
     source: Source
     location: Path | None
-    """Path to the manifest file. ``None`` for entry-points-discovered
-    plugins where the manifest lives inside a wheel's package data."""
+    """Manifest File Path。Entry-points-discovered Plugin 的 Manifest 位于 Wheel Package Data 中，
+    因此这里为 `None`；Discovery 仍通过 Distribution File Inventory 定位并读取真实文件。"""
 
 
 class PluginDiscovery:
-    """Scans every configured source and returns deduplicated plugins.
+    """扫描每个 Configured Source，并返回 Deduplicated Plugins。
 
-    Constructor params default to "off"; callers pass concrete paths
-    or the entry-point group name to opt each source in. This keeps
-    tests hermetic — they construct a discovery instance pointing at
-    tmp dirs and don't accidentally pick up real plugins on the
-    developer's machine.
+    Constructor Params 默认 ``off``；Caller 传入 Concrete Paths 或 Entry-point Group Name，逐个 Opt In Source。
+    这使 Tests 保持 Hermetic：测试只指向 Temp Dirs，不会意外捡到 Developer Machine 上的 Real Plugins。
+    实例还持有待验证的 Pico Version，所有 Scan 共享同一兼容标准。
     """
 
     def __init__(
@@ -90,10 +102,11 @@ class PluginDiscovery:
         self._pico_version = pico_version
 
     def discover(self) -> list[DiscoveredPlugin]:
-        """Run all enabled sources and resolve conflicts.
+        """运行所有 Enabled Sources，并 Resolve Conflicts。
 
-        The returned list is stable-ordered by plugin id so callers can
-        log / display it deterministically.
+        各 Source 只在构造时显式启用后扫描，结果合并再按 Priority Dedup。返回 List 按 Plugin ID Stable
+        Order，使 Caller 能 Deterministically Log / Display。Compatibility 或 Identity Error 会 Fail
+        Discovery；普通单 Manifest Parse Error 记录 Warning 后跳过。
         """
         all_found: list[DiscoveredPlugin] = []
         if self._bundled_dir is not None:
@@ -118,11 +131,11 @@ class PluginDiscovery:
         root: Path,
         source: Source,
     ) -> list[DiscoveredPlugin]:
-        """Look for ``<root>/<plugin_id>/pico-plugin.toml``.
+        """在 ``<root>/<plugin_id>/pico-plugin.toml`` 查找 File-based Plugins。
 
-        Subdir name is informational only — the canonical plugin id is
-        the one inside the manifest. A mismatch is logged but the
-        manifest still loads.
+        Subdir Name 只是 Informational，Canonical Plugin ID 来自 Manifest。两者 Mismatch 会记录日志但仍
+        加载；解析失败则 Warning + Skip。每个成功 Manifest 都立即验证 Pico Compatibility，返回的
+        `location` 指向真实 TOML 文件。扫描不会递归到更深任意路径。
         """
         out: list[DiscoveredPlugin] = []
         if not root.is_dir():
@@ -161,12 +174,12 @@ class PluginDiscovery:
     # ── 入口点来源 ───────────────────────────────────────────────
 
     def _scan_entry_points(self, group: str) -> list[DiscoveredPlugin]:
-        """Resolve every entry point in ``group`` and read the manifest
-        shipped inside that entry point's package.
+        """解析 ``group`` 中所有 Entry Points，并读取其 Package 内 Manifest。
 
-        Entry-point value names the package that owns ``pico-plugin.toml``.
-        The manifest is located through the owning distribution's installed
-        file inventory, so discovery does not import the plugin package.
+        Entry-point Value 指出拥有 ``pico-plugin.toml`` 的 Package。Discovery 通过 Owning Distribution 的
+        Installed File Inventory 定位 Manifest，**不 Import Plugin Package**。每项还验证 Distribution
+        Name/Version 与 Manifest Identity、以及 Pico Compatibility；Identity/Compatibility Error 向上
+        抛出，普通定位或 Parse Failure 则 Warning + Skip。
         """
         out: list[DiscoveredPlugin] = []
         try:
@@ -270,10 +283,11 @@ class PluginDiscovery:
     def _resolve_conflicts(
         found: list[DiscoveredPlugin],
     ) -> list[DiscoveredPlugin]:
-        """Group by plugin id, keep the highest-priority source.
+        """按 Plugin ID Group，并保留 Highest-priority Source。
 
-        Lower-priority duplicates are logged once each so a misconfigured
-        setup is debuggable without silently dropping plugins.
+        Higher Source 替换 Current 时记录 Shadows 日志，Lower Duplicate 也各记录一次 Shadowed By，使
+        Misconfigured Setup 可诊断而不是 Silently Dropping Plugins。同一 Priority 的重复项保持第一个；
+        最终按 Manifest ID 排序，确保展示稳定。
         """
         by_id: dict[str, DiscoveredPlugin] = {}
         for d in found:

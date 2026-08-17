@@ -1,15 +1,12 @@
-"""LocalSkillSource — wraps :class:`LocalPool` to emit :class:`RouterHit`.
+"""`LocalSkillSource` 把 :class:`LocalPool` Search Result 转成 :class:`RouterHit`。
 
-Hot-path observation: :class:`LocalPool` already returns the cheap
-``ScoredSkill(name, score, source)`` triple. To produce a
-:class:`RouterHit` we additionally need ``content`` (the SKILL.md body)
-which :class:`SkillRegistry.get` already has cached in memory — so the
-per-hit lookup is O(1) dict access, not a fresh disk read.
+Hot-path 上，:class:`LocalPool` 已返回 Cheap ``ScoredSkill(name, score, source)`` Triple。构造 Router Hit
+还需要 ``content``，即 ``SKILL.md`` Body；:class:`SkillRegistry.get` 已把它缓存到 Memory，所以 Per-hit
+Lookup 是 O(1) Dict Access，不会重新读 Disk。
 
-Hits whose name no longer resolves in the registry (race against a
-file-watcher delete between BM25 scoring and meta lookup) are skipped
-silently. The router's contract is "at most k hits", not "exactly k",
-so dropping is safer than emitting a hit with empty content.
+若 File Watcher 在 BM25 Scoring 与 Meta Lookup 之间删除 Skill，Name 不再 Resolve，该 Hit Silently Skip。
+Router Contract 是 ``at most k hits`` 而非 ``exactly k``，Drop 比发出 Empty Content 更安全。Search Hit
+只表示关键词相关，不代表 LLM Gate 已选择。
 """
 
 from __future__ import annotations
@@ -25,7 +22,14 @@ if TYPE_CHECKING:
 
 
 class LocalSkillSource:
-    """SkillSource adapter for the BM25 local pool."""
+    """BM25 Local Pool 的 Host-internal `SkillSource` Adapter。
+
+    实例持有 Pool、Registry 与 Nonnegative Finite `min_score`。`search` 忽略 History，只按 Query 调用
+    Local BM25，再补齐 Body、Physical Source、Always Flag、Skill Directory 与 Description。Qualified ID
+    固定为 ``local/<name>``，供 Fusion/Gate/Feedback 使用。
+
+    初始化时非法 `min_score` 抛出 `ValueError`。搜索返回数量可少于 K，包括低分过滤与 Watcher Race。
+    """
 
     name: str = "local"
     weight: float = 1.0

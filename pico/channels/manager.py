@@ -1,8 +1,11 @@
-"""Channel manager for coordinating chat channels.
+"""协调 Chat Channels 的 Construction 与 Lifecycle Manager。
 
-Construction + lifecycle only. Outbound delivery is the spine's
-DeliveryHub/Outlet (a ChannelOutletAdapter per channel registered by the
-gateway); inbound is each channel's Intake -> scheduler.submit.
+Manager 只负责 Discover/Construct Enabled Adapters、Start/Quiesce/Stop 与 Status。Outbound Delivery 属于
+Spine `DeliveryHub`/`Outlet`，Gateway 为每个 Channel 注册 `ChannelOutletAdapter`；Inbound 数据流是各
+Channel ``Intake -> scheduler.submit``。
+
+单 Channel Dependency/Factory Failure 只禁用该 Channel，不拖垮 Gateway。Manager Start Return、Channel
+Running、Turn Completion 与 Outbound Delivered 必须分别观察。
 """
 
 from __future__ import annotations
@@ -31,14 +34,12 @@ def _consume_task_result(task: asyncio.Task[Any]) -> None:
 
 
 def _missing_dep_hint(modname: str) -> str:
-    """How to install a channel's missing SDK, tailored to the install mode.
+    """根据 Install Mode 返回 Channel Missing SDK 的安装提示。
 
-    An editable (dev) checkout uses ``uv sync``; a wheel/tool install has no
-    source tree, so it must re-run the installer instead. PEP 610
-    ``direct_url.json`` distinguishes them -- a wheel install records
-    ``archive_info`` (no ``dir_info`` key), so ``.get`` chaining avoids a
-    KeyError when it is absent. This runs while a channel is already failing,
-    so a missing/corrupt file must degrade to the installer hint, never raise.
+    Editable Dev Checkout 使用 ``uv sync``；Wheel/Tool Install 无 Source Tree，必须 Re-run Installer。PEP 610
+    ``direct_url.json`` 区分两者；Wheel 记录 ``archive_info`` 且无 ``dir_info``，因此用 ``.get`` Chain 避免
+    KeyError。该函数运行在 Channel 已失败的路径，Missing/Corrupt Metadata 必须降级 Installer Hint，Never
+    Raise。
     """
     editable = False
     try:
@@ -62,7 +63,12 @@ def _missing_dep_hint(modname: str) -> str:
 
 
 class ChannelManager:
-    """Manages chat channels: construct enabled adapters, start/stop, status."""
+    """管理 Chat Channels：Construct Enabled Adapters、Start/Stop、Quiesce 与 Status。
+
+    构造时立即 Discover Specs、创建可用 Adapter 并验证 Allowlist；Runtime 生命周期由 Gateway 调用
+    `start_all`、Shutdown 先 `quiesce_intake` 再 `stop_all`。`channels` Dict 是 Active Constructed Set，不含
+    Disabled/Failed Specs。
+    """
 
     def __init__(self, config: Config):
         self.config = config
@@ -71,11 +77,11 @@ class ChannelManager:
         self._init_channels()
 
     def _init_channels(self) -> None:
-        """Initialize enabled channels from their declarative ``ChannelSpec``.
+        """从 Declarative ``ChannelSpec`` 初始化 Enabled Channels。
 
-        One channel's failure never propagates: a missing SDK, a crashing
-        factory, and a deny-all allowlist each disable only that channel, so the
-        remaining channels and the Gateway still start.
+        每个 Spec 读取 Matching Config Section，Factory Success 后注入 Transcription Key。Missing SDK、Factory
+        Crash、Deny-all Allowlist 都只 Disable One Channel，Never Propagate，使其他 Channels/Gateway 仍启动。
+        Factory Construction Success 尚未调用 Channel ``start``。
         """
         from pico.channels.registry import discover_specs
 
@@ -108,12 +114,10 @@ class ChannelManager:
         self._validate_allow_from()
 
     def _validate_allow_from(self) -> None:
-        """Disable any channel whose allowlist denies everyone.
+        """Disable Allowlist Denies Everyone 的 Channel。
 
-        An empty ``allow_from`` is a misconfiguration that would silently drop
-        every inbound message, so the channel is dropped loudly instead of being
-        left running as a black hole -- and instead of aborting the process,
-        which would let one channel's config error take down every other one.
+        Empty ``allow_from`` 是会 Silently Drop 每条 Inbound 的 Misconfiguration，因此 Loudly 从 Active Set
+        移除，避免 Running Black Hole；同时不 Abort Process，防止一条 Channel Config Error 拖垮其他 Channel。
         """
         for name in [n for n, ch in self.channels.items() if getattr(ch.config, "allow_from", None) == []]:
             logger.error(
@@ -124,15 +128,21 @@ class ChannelManager:
             del self.channels[name]
 
     async def _start_channel(self, name: str, channel: Channel) -> None:
-        """Start a channel and log any exceptions."""
+        """Start Single Channel，并 Log/Swallow Exception。
+
+        该隔离让 `start_all` 继续尝试其他 Adapters；失败 Channel 仍留在 Dict，但 Running State 应为 False。
+        """
         try:
             await channel.start()
         except Exception as e:
             logger.error("Failed to start channel {}: {}", name, e)
 
     async def start_all(self) -> None:
-        """Start all channels (they run forever). Outbound delivery is the
-        spine outlets', not this manager's."""
+        """并发 Start 所有 Constructed Channels，它们通常 Long-running。
+
+        无 Channel 时 Warning + Return。Tasks Gather with Return Exceptions，单项 Start 已自行 Log。Outbound
+        Delivery 属于 Spine Outlets，不是 Manager；方法返回只表示 Start Coroutines 已返回/失败。
+        """
         if not self.channels:
             logger.warning("No channels enabled")
             return
@@ -145,7 +155,12 @@ class ChannelManager:
         await asyncio.gather(*tasks, return_exceptions=True)
 
     async def quiesce_intake(self) -> None:
-        """Seal every Intake and bound the drain of admitted publishes."""
+        """Seal 每个 Intake，并为 Admitted Publishes 的 Drain 设置严格 Bound。
+
+        先拒绝 New Inbound，再 Shield Wait-idle Task。5s Timeout 或 Caller Cancellation 时 Cancel 所有 Inflight
+        Publishes，并通过 `finish_barrier` 等待清理完成后再 Raise；保证 Spine Teardown 前不残留新提交。
+        正常返回表示 Intake Idle，不表示已提交 Turn Delivered。
+        """
         intakes = [channel.intake for channel in self.channels.values()]
         for intake in intakes:
             intake.seal()
@@ -196,7 +211,11 @@ class ChannelManager:
         await task
 
     async def stop_all(self) -> None:
-        """Bound and attempt every channel transport stop."""
+        """对每个 Channel Transport 执行 Bounded Stop，并尝试全部项。
+
+        每项最多 5s；即使一个失败仍继续 Stop 其他 Channels。结束后 Cancellation 优先 Re-raise，其次 First
+        Error；全部成功才正常返回。Stop Return 表示 Transport Cleanup Attempt 完成，不删除 Config。
+        """
         logger.info("Stopping all channels...")
         first_error: BaseException | None = None
         cancellation: asyncio.CancelledError | None = None
@@ -218,14 +237,20 @@ class ChannelManager:
             raise first_error
 
     def get_channel(self, name: str) -> Channel | None:
-        """Get a channel by name."""
+        """按 Registry Name 返回 Active Constructed Channel；Absent/Disabled/Failed 时为 `None`。"""
         return self.channels.get(name)
 
     def get_status(self) -> dict[str, Any]:
-        """Get status of all channels."""
+        """返回所有 Active Channels 的 Enabled/Running Status Snapshot。
+
+        Status 不探测 Platform Connection 或最近 Delivery，仅读取 Adapter ``is_running``。
+        """
         return {name: {"enabled": True, "running": channel.is_running} for name, channel in self.channels.items()}
 
     @property
     def enabled_channels(self) -> list[str]:
-        """Get list of enabled channel names."""
+        """返回 Active Constructed Channel Names List。
+
+        这里的 Enabled 表示通过 Config/Construction/Allowlist Admission，不保证 Currently Running。
+        """
         return list(self.channels)

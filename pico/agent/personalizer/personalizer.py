@@ -1,11 +1,9 @@
-"""Personalizer: 4-step personalization flow inspired by PAHF.
+"""实现受 PAHF 启发的四阶段 Personalization Flow。
 
-Flow:
-  Step 1 - request triage:        classify()                     → is this a personalization request?
-  Step 2 - pre-action interaction: generate_question()             → ask one question before acting
-                                   extract_and_store_preference()  → learn from the user's answer
-  Step 3 - execution:             (handled by AgentLoop)
-  Step 4 - post-action learning:  post_learn()                    → passively extract signals from completed turn
+Step 1 Request Triage 由 ``classify()`` 判断是否绝对需要偏好；Step 2 Pre-action Interaction 用
+``generate_question()`` 只问一个问题，并由 ``extract_and_store_preference()`` 从答案学习可复用
+事实；Step 3 Execution 完全由 AgentLoop 处理；Step 4 ``post_learn()`` 在完成 Turn 后被动提取新
+Signal。所有 LLM Failure 都收敛为 Neutral Default，Personalization 不能阻塞 Main Agent。
 """
 
 from __future__ import annotations
@@ -121,10 +119,12 @@ for backwards compatibility — category defaults to "preference" in that case."
 
 
 class Personalizer:
-    """Implements the 4-step PAHF-inspired personalization flow.
+    """协调四阶段 PAHF-inspired Personalization，并把可复用偏好写入 MemoryStore。
 
-    All methods are safe to call independently — failures are logged
-    and return neutral defaults so the main agent loop is never blocked.
+    每个 Method 可独立调用：Classifier/Question/Extractor/Post-learn 都自行构造 Prompt、调用同一
+    Provider/Model，并在异常时 Log 后返回 False、空 String 或不澄清 Default，使 Main Agent Loop
+    never blocked。它只学习 General Reusable Preferences，不把单次 Task Result 或推测写成 User
+    Fact；Memory 更新通过锁保护的 Read-modify-write 完成。
     """
 
     def __init__(self, memory: MemoryStore, provider: LLMProvider, model: str):
@@ -134,15 +134,15 @@ class Personalizer:
 
     @trace.instrument("personalize.classify", kind="memory", extract=semconv.personalize)
     async def classify(self, message: str, history: list[dict] | None = None) -> dict:
-        """Determine if the request needs a personalization clarification question.
+        """判断当前 User ``message`` 是否必须先询问 Personalization Preference。
 
-        Args:
-            message: The current user message.
-            history: Recent conversation history (last 2-4 messages) for context.
+        可选 ``history`` 提供最近 2–4 条 Conversation Context，Long-term Memory 也进入 Classifier。
+        Prompt 强制 Default False：只有 Request 真正 Ambiguous、无 Reasonable Default、缺失偏好会
+        产生 Completely Different Answer，且 Memory/History 都未说明时才 True。
 
-        Returns:
-            {"needs_clarification": bool, "domain": str}
-            Falls back to {"needs_clarification": False} on any error.
+        返回 ``{"needs_clarification": bool, "domain": str}``。JSON Parse 或 Provider 任意 Error 回退
+        ``{"needs_clarification": False, "domain": ""}``，让 Agent 做合理假设而不因 Personalizer
+        阻塞。
         """
         current_memory = self.memory.read_long_term()
 
@@ -173,11 +173,11 @@ class Personalizer:
 
     @trace.instrument("personalize.question", kind="memory", extract=semconv.personalize)
     async def generate_question(self, message: str, domain: str) -> str:
-        """Generate a single focused clarifying question for the given request.
+        """为 Request 与 Preference ``domain`` 生成一个聚焦的 Clarifying Question。
 
-        Returns:
-            Question string, e.g. "Quick question: Which language? Options: Python / Go"
-            Returns "" on failure so the caller can skip clarification gracefully.
+        Prompt 带 Current Memory，并要求只问最重要缺失偏好、尽量列 Concrete Options。成功返回
+        例如 ``Quick question: Which language? Options: Python / Go`` 的单行 String；Provider Failure
+        返回 ``""``，Caller 可 Gracefully Skip Clarification。方法不发送问题或保存答案。
         """
         current_memory = self.memory.read_long_term()
 
@@ -203,10 +203,12 @@ class Personalizer:
 
     @trace.instrument("personalize.extract", kind="memory", extract=semconv.personalize)
     async def extract_and_store_preference(self, original_message: str, question: str, answer: str) -> bool:
-        """Extract reusable preferences from a Q&A pair and persist to MEMORY.md.
+        """从 Clarification Q&A 提取 Reusable Preference，并持久化到 MEMORY.md。
 
-        Called after the user answers a clarifying question.
-        Returns True if at least one fact was stored.
+        ``original_message``、实际 ``question`` 与 User ``answer`` 一起交给低温度 LLM，最多提取
+        1–3 条 General Rule 与目标 Section。空 Fact 返回 ``False``；有 Fact 则通过
+        `_append_to_memory_section` 加锁写入，并返回 ``True``。JSON/Provider/Storage Failure 记录后
+        返回 False，不把本次特定 Task Detail 强行推广为偏好。
         """
         prompt = _EXTRACT_PROMPT.format(
             original_message=original_message,
@@ -243,14 +245,15 @@ class Personalizer:
 
     @trace.instrument("personalize.postlearn", kind="memory", extract=semconv.personalize)
     async def post_learn(self, message: str, response_summary: str) -> bool:
-        """Passively extract new preference signals from a completed interaction.
+        """从 Completed Interaction 被动提取 New Preference Signal。
 
-        Intended to run as a background asyncio task — never blocks the response.
-        Returns True if new facts were stored.
+        本方法 Intended 作为 Background asyncio Task，never blocks Response；Response Summary 截到
+        600 字符，Current Memory 用于排除已有事实。只有 LLM 明确 ``has_new_preference`` 且归一化
+        后仍有 Fact 才分 Section 写入，返回是否实际存储。
 
-        Accepts both the new per-fact ``{text, category}`` schema and the
-        legacy flat-list format (backwards-compatible; legacy facts default
-        to the "preference" category).
+        同时接受新 Per-fact ``{text, category}`` Schema 与 Legacy Flat-list Format；Legacy Fact 的
+        Category Default 为 ``"preference"``，Sibling section 仍可指定 Header。任意 Failure 返回
+        False，不影响已交付 Reply。
         """
         current_memory = self.memory.read_long_term()
 
@@ -304,12 +307,11 @@ class Personalizer:
 
     @classmethod
     def _group_facts_by_category(cls, new_facts: list, legacy_section: str = "Preferences") -> dict[str, list[str]]:
-        """Normalize the two possible ``new_facts`` shapes into
-        ``{section_header: [fact_text, ...]}``.
+        """把两种 ``new_facts`` Shape 归一为 ``{section_header: [fact_text, ...]}``。
 
-        - New shape: ``[{"text": str, "category": str}]``
-        - Legacy shape: ``["fact text", "fact text"]`` with a sibling
-          ``section`` field on the result object (passed as ``legacy_section``).
+        New Shape 是 ``[{"text": str, "category": str}]``，Category 通过 Class Map 选择 Section；
+        Legacy Shape 是 ``["fact text", "fact text"]``，使用 Result Sibling ``section`` 传入的
+        ``legacy_section``。非 Dict/String、空 Text 跳过；返回值保留输入顺序，不去重 Fact。
         """
         grouped: dict[str, list[str]] = {}
         for item in new_facts or []:
@@ -329,7 +331,12 @@ class Personalizer:
 
     @staticmethod
     def _format_history(history: list[dict], max_messages: int = 4) -> str:
-        """Format recent conversation history into a compact string for prompts."""
+        """把最近 Conversation History 压缩为 Classifier Prompt 可读 String。
+
+        只读取最后 ``max_messages`` 条，Role 转大写，非空 String Content 最多保留 200 字符并加
+        Ellipsis；非 String/Empty Message 忽略。没有可用内容时返回 ``(no prior context)``，函数
+        不修改 History，也不把 Tool Structured Payload 展开。
+        """
         recent = history[-max_messages:]
         lines = []
         for m in recent:
@@ -341,9 +348,11 @@ class Personalizer:
         return "\n".join(lines) if lines else "(no prior context)"
 
     def _parse_json(self, text: str, fallback: dict) -> dict:
-        """Extract and parse the first JSON object found in text.
+        """从 LLM Text 中截取最外层首尾 Brace 范围并解析第一个 JSON Object。
 
-        Robust to LLM wrapping the JSON in extra prose.
+        这让模型在 JSON 外包 Extra Prose 时仍可恢复；找不到有效 ``{...}`` 或 `json.loads` 失败时
+        原样返回 ``fallback``。函数不修复 Invalid JSON、不执行 Code Fence，也不验证具体 Schema，
+        Caller 仍用 Default 读取 Field。
         """
         start = text.find("{")
         end = text.rfind("}") + 1
@@ -355,14 +364,12 @@ class Personalizer:
             return fallback
 
     def _append_to_memory_section(self, section: str, facts: list[str]) -> None:
-        """Append new facts under the given section header in MEMORY.md.
+        """把 New Facts 追加到 MEMORY.md 的指定 Section Header 下。
 
-        - If the section already exists: inserts lines right after the header.
-        - If the section is missing: appends a new section at the end of the file.
-
-        Read-modify-write is fcntl-locked via ``MemoryStore.locked()`` so
-        concurrent MemoryConsolidator writers on
-        another process don't clobber the update.
+        Existing Section 在 Header 后立即插入 Bullet；Missing Section 在 File End 新建。整个
+        Read-modify-write 经 ``MemoryStore.locked()`` 使用 fcntl Lock，使 Another Process 的
+        Concurrent MemoryConsolidator Writer 不会 Clobber Update。方法不做 Semantic Deduplication，
+        Caller 应先确保 Facts genuinely new。
         """
         header = f"## {section}"
         fact_lines = "\n".join(f"- {f}" for f in facts)

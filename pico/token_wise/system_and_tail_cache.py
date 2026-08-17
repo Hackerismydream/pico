@@ -1,20 +1,18 @@
-"""Faithful reproduction of Hermes Agent's ``system_and_3`` prompt-caching strategy.
+"""忠实复现 Hermes Agent 的 ``system_and_3`` Prompt-caching Strategy。
 
-Source: ``NousResearch/hermes-agent/agent/prompt_caching.py`` (v0.9.0, 2026-04-13)
+Source：``NousResearch/hermes-agent/agent/prompt_caching.py``（v0.9.0，2026-04-13）。
 
-Strategy: place up to 4 ``cache_control`` breakpoints —
-    1. System prompt (index 0, if role == system)
-    2–4. The **last 3 non-system messages** (rolling window at the tail)
+Strategy 最多放置 4 个 ``cache_control`` Breakpoints：
 
-This module wraps the Hermes logic as a ``TokenStrategy`` so it can be
-installed in Pico's ``StrategyRegistry`` side-by-side with our own
-``CacheOptimizer`` for A/B comparison.
+1. System Prompt，即 Index 0 且 Role 等于 System 的消息；
+2. 最后三条 **Non-system Messages**，构成位于 Tail 的 Rolling Window。
 
-Key behavioral differences vs Pico's CacheOptimizer:
-    - Does NOT mark the tools schema (all 4 breakpoints go to messages)
-    - Does NOT place a mid-history breakpoint
-    - Uses a **rolling tail window** that shifts every iteration / turn
-    - Mutates via deep-copy (same as Hermes original)
+本模块把 Hermes Logic 包装为 `TokenStrategy`，使它能与 Pico 自己的 `CacheOptimizer` 一起安装进
+`StrategyRegistry`，进行 A/B Comparison。
+
+相对 Pico `CacheOptimizer` 的 Key Behavioral Differences：它 **不** 标记 Tools Schema，四个断点
+全部用于 Messages；**不** 设置 Mid-history Breakpoint；使用每次 Iteration / Turn 都会移动的
+**Rolling Tail Window**；并像 Hermes Original 一样先 Deep-copy 再修改。
 """
 
 from __future__ import annotations
@@ -38,13 +36,14 @@ def _supports_cache_control(model: str) -> bool:
 
 
 def _apply_cache_marker(msg: dict[str, Any]) -> None:
-    """Add cache_control to a single message — handles str / list / None content.
+    """给单条 Message 添加 ``cache_control``，支持 `str` / `list` / `None` Content。
 
-    This is the same logic as Hermes's ``_apply_cache_marker`` (minus the
-    ``native_anthropic`` flag which only affects the ``tool`` role — we don't
-    mark tool messages in this reproduction because Hermes only marks
-    non-system messages and tool-role messages get the same treatment as
-    assistant/user via the content-list path).
+    逻辑与 Hermes 的 ``_apply_cache_marker`` 相同，但去掉了只影响 ``tool`` Role 的
+    ``native_anthropic`` Flag。本复现不单独标记 Tool Messages：Hermes 选择的是 Non-system
+    Messages，而 Tool-role 与 Assistant/User 一样通过 Content-list Path 处理。
+
+    函数会原地修改传入 Dict；安全性依赖调用方先 Deep-copy Messages。空 Content 在消息顶层加
+    Marker，字符串会包装成 Text Block，非空列表则只修改最后一个 Dict Block。
     """
     content = msg.get("content")
 
@@ -63,15 +62,14 @@ def _apply_cache_marker(msg: dict[str, Any]) -> None:
 
 
 class SystemAndTailCacheStrategy(TokenStrategy):
-    """``system + tail`` cache placement — a faithful reproduction of Hermes
-    Agent's ``system_and_3`` strategy (see module docstring for source/credit).
+    """``system + tail`` Cache Placement，忠实复现 Hermes Agent ``system_and_3``。
 
-    Breakpoints:
-        bp1  — system message (index 0)
-        bp2–4 — last 3 non-system messages (rolling)
+    Source 与 Credit 见 Module Docstring。Breakpoints 分配为：`bp1` 放在 Index 0 的 System Message，
+    `bp2` 到 `bp4` 放在最后三条 Non-system Messages 上并随 Tail Rolling。若没有 System Message，剩余
+    四个名额都可用于尾部消息。
 
-    The strategy deep-copies all messages before mutating, so the caller's
-    original list is never touched.
+    Strategy 在修改前 Deep-copies 所有 Messages，因此 Caller 的 Original List 与嵌套 Blocks 都不会
+    被触碰。Tools 原样返回且不加 Marker；不支持 Prompt Caching 的模型则整组输入直接透传。
     """
 
     name = "system_and_tail"

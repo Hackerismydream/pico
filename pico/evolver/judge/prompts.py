@@ -1,29 +1,18 @@
-"""LLM-judge prompt templates.
+"""定义 LLM-judge 使用的 prompt templates 与 message builder。
 
-Two top-level templates are exposed:
+``JUDGE_SYSTEM_PROMPT`` 是 role + rubric + output schema，作为 system message；
+``JUDGE_USER_TEMPLATE`` 注入 specific trajectory，作为 user message。system prompt 教授
+L1/L2/L3 rubric、``(WHERE, WHY)`` label 与 JSON schema。system/user 分离使 heavy rubric 可跨
+trajectory 缓存，避免重复支付 token。
 
-- ``JUDGE_SYSTEM_PROMPT``: the role + rubric + output schema text. Sent
-  as the system message of the judge LLM call.
-- ``JUDGE_USER_TEMPLATE``: parametrized with the specific trajectory
-  data; sent as the user message.
+``build_judge_messages`` 返回可直接交给 chat-style provider 的 message pair；
+``WHERE_DESCRIPTIONS``/``WHY_DESCRIPTIONS`` 用 human terms 解释 Enum，并注入 prompt，使 Judge
+不只看到裸 string。
 
-The system prompt teaches the L1/L2/L3 rubric, the (WHERE, WHY) labels,
-and the JSON output schema. Decoupling system + user lets us reuse the
-heavy rubric across many trajectories without re-paying tokens.
-
-Building blocks:
-
-- ``build_judge_messages`` returns the (system, user) pair given a
-  trajectory record — feed directly to any chat-style LLM provider.
-- ``WHERE_DESCRIPTIONS`` / ``WHY_DESCRIPTIONS`` document each enum value
-  in human terms; they are injected into the prompt so the judge model
-  has a concrete signpost (not just the enum string).
-
-All prompt text is intentionally explicit about the cross-field
-invariants enforced by ``JudgeResult.__post_init__``: L1 → no patch,
-L2/L3 → patch_where + patch_why required, ``other`` → must carry a
-sub-name. Saying it both in the prompt and in code reduces wasted
-LLM calls that produce invalid JSON.
+prompt 明确重复 ``JudgeResult.__post_init__`` 的 invariant：L1 不得有 patch；L2/L3 必须有
+patch_where + patch_why；``other`` 必须带 sub-name。prompt 与 code 双重约束减少 invalid JSON
+round-trip。此文件中的英文 prompt 是 machine-facing protocol content，本次只本地化 docstring，
+不得改变其字面行为。
 """
 
 from __future__ import annotations
@@ -363,19 +352,16 @@ def build_judge_messages(
     task_description: str,
     trajectory_text: str,
 ) -> list[dict[str, str]]:
-    """Assemble the (system, user) message pair for one judge call.
+    """为一次 Judge call 组装 ``(system, user)`` message pair。
 
-    Returns the list shape most chat-style LLM SDKs expect:
-    ``[{"role": "system", "content": ...}, {"role": "user", "content": ...}]``.
+    返回 chat-style LLM SDK 常见 shape：
+    ``[{"role": "system", "content": ...}, {"role": "user", "content": ...}]``。
+    ``trajectory_text`` 必须已压到 Judge context budget，通常是 spec §11.4.5 的 5-15K-token
+    ``Agent Debugger`` summary；raw multi-million-token trajectory NOT supported，upstream 必须
+    先压缩。
 
-    ``trajectory_text`` should already be compressed to the judge's context
-    budget — typically 5-15K tokens of "Agent Debugger" style event summary
-    (spec §11.4.5). Raw multi-million-token trajectories are NOT supported;
-    upstream must compress first.
-
-    No string interpolation happens in the system prompt — its content is
-    fixed across calls, so most providers will cache it on subsequent calls
-    (significant cost savings during a long evolution run).
+    system prompt 不做 string interpolation，跨 call 固定，provider 可缓存并在长 evolution run
+    中节省成本。task/trajectory 去除首尾空白后注入 user template；函数不调用 LLM。
     """
     user = JUDGE_USER_TEMPLATE.format(
         trajectory_id=trajectory_id,
@@ -402,7 +388,12 @@ PASS_FAIL_SYSTEM_PROMPT = (
 def build_pass_fail_messages(
     task_description: str, trajectory_text: str, *, trajectory_id: str = ""
 ) -> list[dict[str, str]]:
-    """Assemble the (system, user) pair for a no-benchmark pass/fail verdict."""
+    """为 no-benchmark pass/fail verdict 组装 system/user message pair。
+
+    prompt 要求 Judge 只按任务是否实际达成、正确 final answer 或 requested action 是否完成并
+    verified 来判断，不能把 effort/intent 当 success。``trajectory_id`` 当前为兼容参数，未写入
+    user text。函数不解析 verdict。
+    """
     user = (
         f"Task:\n{task_description.strip()}\n\n"
         f"Agent trajectory:\n{trajectory_text.strip()}\n\n"

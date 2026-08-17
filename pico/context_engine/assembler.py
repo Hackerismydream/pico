@@ -1,22 +1,14 @@
-"""ContextAssembler — the single context engine.
+"""实现唯一 Context Engine，把统一 SegmentBuilder 列表组装成本轮模型消息。
 
-Assembles a uniform list of :class:`SegmentBuilder` into the turn's
-message array. Two phases:
+Phase A 并行运行所有 ``needs_prefix=False`` 的 Builder，即 seg1–5：identity、bootstrap、
+memory、active-skills、skills。各自 ``text`` 按 order 连接成 System prefix，``meta`` 合并为
+组装证据。Phase B 再运行 ``needs_prefix=True`` 的 Curator；此时 ``ctx.prefix`` 已含精确的
+System prefix、User message 与 Tool definitions，所以它能用固定开销预算 ``*history``，并
+贡献 segment 6 与唯一 History slot。
 
-- **Phase A (parallel)** — every builder with ``needs_prefix=False``
-  (seg1–5: identity / bootstrap / memory / active-skills / skills) runs
-  concurrently. Their ``text`` joins into the system prefix; their
-  ``meta`` merges into the assembled metadata.
-- **Phase B (serial)** — builders with ``needs_prefix=True`` (the
-  Curator) run with ``ctx.prefix`` populated (the assembled prefix +
-  user message + tool defs), so they size ``*history`` against the exact
-  fixed overhead. The Curator contributes segment 6 (``text``) and the
-  history slot (``history``).
-
-The user message is a structural built-in (every turn has exactly one),
-not a pluggable builder. Tools are a side channel — passed to the LLM
-alongside ``messages`` and counted in the budget, never rendered into a
-segment.
+User message 是结构内建项，每个 Turn 恰好一个，不是可插拔 Builder；Tool 走 side channel，
+随 messages 一起交给 LLM 并计入预算，但永不渲染成 Segment。`ContextAssembler` 最终只产出
+``[system, *history, user]`` 和 metadata，不执行 Memory/Skill 的业务选择，也不调用主 Agent。
 """
 
 from __future__ import annotations
@@ -40,7 +32,16 @@ if TYPE_CHECKING:
 
 
 class ContextAssembler(ContextEngine):
-    """The one engine. Assembles SegmentBuilders into the turn context."""
+    """把 SegmentBuilders 的两阶段产物合并为单 Turn Context 的唯一 Engine。
+
+    构造时按 ``order`` 排序，并依据 ``needs_prefix`` 固定 Phase A/Phase B；`assemble` 每轮并行
+    运行独立贡献者、建立 `AssembledPrefix`、再运行依赖固定开销的贡献者。实例长期由
+    AgentLoop 持有，可通过 `replace_model` 把模型变化转发给需要它的 Builder。
+
+    Engine ``owns_compaction=True``，因为 Curator 自行选择和归档 History；Host 必须传完整
+    append-only 候选并跳过 MemoryConsolidator。最终 metadata 会带 ``engine`` 名称，便于 Turn
+    evidence 确认实际组装路径。
+    """
 
     def __init__(
         self,
@@ -146,7 +147,15 @@ class ContextAssembler(ContextEngine):
                 await hook(session_key, outcome, usage)
 
     def _build_user(self, ctx: AssemblyContext) -> dict[str, Any]:
-        """The single structural user message: runtime context + content."""
+        """构造唯一结构化 User message，把运行时上下文放在真实内容之前。
+
+        `render.build_runtime_context` 根据当前时间、Channel 与 Chat 生成每轮环境前缀，
+        `render.build_user_content` 则把 ``current_message`` 和 Media 转成 Provider 可接受内容。
+        纯文本用两个换行连接；多模态列表在首位插入 runtime text block，保持图片等后续块顺序。
+
+        返回固定 ``{"role": "user", "content": merged}`` 形状。该运行时前缀只供本轮模型使用，
+        Session 持久化会把它剥离，避免每轮动态时间污染长期用户历史。
+        """
         runtime_ctx = render.build_runtime_context(self._now_fn, ctx.channel, ctx.chat_id)
         user_content = render.build_user_content(ctx.current_message, ctx.media)
         if isinstance(user_content, str):

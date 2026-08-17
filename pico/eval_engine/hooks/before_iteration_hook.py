@@ -1,14 +1,12 @@
-"""Before-iteration token-budget / pruning gate.
+"""Before-iteration Token-budget / Pruning Gate。
 
-Cheapest of the three hooks: zero LLM calls, just a rough token
-estimate on the messages list. If the estimate exceeds
-``config.max_iteration_tokens`` the hook short-circuits the
-iteration with a synthetic "budget exhausted" response.
+这是三个 Hooks 中 Cheapest 的一个：Zero LLM Calls，只对 Messages List 做 Rough Token Estimate。若
+Estimate 超过 ``config.max_iteration_tokens``，Hook 会用 Synthetic ``budget exhausted`` Response
+Short-circuit 当前 Iteration，阻止循环继续扩大 Context。
 
-The estimator is intentionally crude — `len(json.dumps(msgs)) // 4` —
-because (a) AgentLoop already has tighter budget logic elsewhere and
-(b) the goal here is to prevent a runaway iteration loop, not to be
-millisecond-accurate.
+Estimator 刻意保持 Crude，公式是 ``len(json.dumps(msgs)) // 4``。原因是 AgentLoop 其他位置已有更严格
+Budget Logic，而这里的目标是 Prevent Runaway Iteration Loop，不是做到 Millisecond-accurate 或提供
+Provider Billing Evidence。估算失败返回零并 Pass-through，不能被解读为消息真的不占 Token。
 """
 
 from __future__ import annotations
@@ -23,12 +21,11 @@ logger = logging.getLogger(__name__)
 
 
 class BeforeIterationHook(AgentHook):
-    """Token-budget / pruning gate.
+    """执行 Token-budget / Pruning 的 Iteration Gate。
 
-    Pass-through unless ``config.enabled and config.on_iteration_gate``
-    are both True. When active, computes a rough byte/4 estimate of
-    ``ctx.messages`` length and short-circuits with a polite halt
-    string if the budget is exceeded.
+    只有 ``config.enabled and config.on_iteration_gate`` 同时为 `True` 才会工作，其他情况完全
+    Pass-through。启用后对 ``ctx.messages`` 计算 Rough Byte/4 Estimate；预算内继续，超过时返回 Polite
+    Halt String 与可诊断 Note。它只阻止下一次 Iteration，不裁剪或修改已有 Messages。
     """
 
     def __init__(self, config: EvalEngineConfig) -> None:

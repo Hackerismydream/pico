@@ -1,4 +1,19 @@
-"""Durable evidence and rollback artifacts for candidate activation."""
+"""为 candidate activation 创建、校验和推进 durable evidence/rollback bundle。
+
+本模块把 candidate identity、label policy、manifest、before/after snapshot、rollback、Runtime
+evidence、Git parent/child binding 与 activation state machine 固化为 canonical JSON。所有
+payload 都有 SHA-256，path 必须位于 activation root 内且不能经过 symlink；accepted evidence
+还必须绑定 repo 中 direct parent/child commit、exact changed paths 与 snapshot bytes。
+
+``create_activation_artifacts`` 只生成 immutable bundle，不把 candidate 应用到 checkout；
+``verify_activation_artifacts`` 从磁盘重新计算所有关系；``set_activation_state`` 只按允许的
+``ineligible/pending_human/ready/activated/rolled_back`` transition 更新 ledger。rollback payload
+必须与 before snapshot 完全一致。
+
+关键证据边界：文件写入成功不等于 bundle 验证通过；evidence accepted 不等于已 activated；
+human review 只解除对应 gate；activated 也不证明后续 Runtime 调用或业务任务完成。任何正向
+结论必须来自 canonical measurements、Git binding、artifact digest 和 state history 的联合验证。
+"""
 
 from __future__ import annotations
 
@@ -105,6 +120,12 @@ _TRANSITION_KEYS = frozenset({"from", "to", "human_actor", "reason"})
 
 
 class EvidenceOutcome(str, Enum):
+    """candidate evidence 的四种终态值。
+
+    ``accepted`` 表示 canonical gate measurement 通过；``rejected`` 表示明确未通过；``failed``
+    可携带 failure_class；``inconclusive`` 表示证据不足。只有 accepted 允许进入 ready 路径。
+    """
+
     accepted = "accepted"
     rejected = "rejected"
     failed = "failed"
@@ -112,6 +133,12 @@ class EvidenceOutcome(str, Enum):
 
 
 class ActivationState(str, Enum):
+    """activation bundle 的 durable lifecycle state。
+
+    ``ineligible`` 与 ``rolled_back`` 是终态；``pending_human -> ready -> activated ->
+    rolled_back`` 是允许主链。状态不允许跳跃或倒退，实际合法性由 state history replay 验证。
+    """
+
     ineligible = "ineligible"
     pending_human = "pending_human"
     ready = "ready"
@@ -130,6 +157,13 @@ _TRANSITIONS = {
 
 @dataclass(frozen=True)
 class EvidenceDecision:
+    """把 evidence outcome 与 gate 语义绑定为不可变 decision。
+
+    ``gate_passed`` 当且仅当 outcome 为 ``accepted``；accepted 不能同时 regression 或携带
+    failure_class，failure_class 只允许用于 ``failed``。``reason`` 保存解释，``regression``
+    标记明确退化。构造时会规范化 Enum 与小写 failure class，并拒绝矛盾组合。
+    """
+
     outcome: EvidenceOutcome | str
     gate_passed: bool
     reason: str = ""
@@ -747,7 +781,21 @@ def create_activation_artifacts(
     candidate_sha: str | None = None,
     repo_root: Path | str | None = None,
 ) -> Path:
-    """Create an immutable activation bundle without applying the candidate."""
+    """创建 immutable activation bundle，但不应用 candidate。
+
+    ``work_dir/candidate_id`` 经过 traversal/symlink 防护。函数验证 label 与 canonical
+    ``CandidateManifest``，把 evidence 归一化为 ``EvidenceDecision``；accepted evidence 必须
+    包含 canonical candidate/control measurements、合法 label policy、parent/candidate 40-char
+    SHA，并使用 ``repo_root`` 验证 direct child、changed paths、file mode 与 before/after bytes。
+
+    ``before``/``after`` 只允许 manifest target，内容编码为 base64 并逐项校验 SHA-256；
+    ``rollback.json`` 等于 ``before.json``。payload 先 atomic write，再写带 identity digest 与
+    initial state 的 ``activation.json``，最后全量回读验证。已存在相同 durable identity 时
+    幂等返回；任一 immutable field 不同则抛出 ``ValueError``。
+
+    返回 artifact directory。成功表示 bundle 已持久化且当前验证通过，不表示 candidate 已
+    activated、checkout 已改变或效果已在线上出现。
+    """
 
     candidate_id = _validate_candidate_id(candidate_id)
     try:
@@ -918,6 +966,12 @@ def load_activation_record(
     *,
     repo_root: Path | str | None = None,
 ) -> dict[str, Any]:
+    """验证并加载 activation record。
+
+    该入口直接委托 ``verify_activation_artifacts``，因此不是宽松 read：digest、canonical JSON、
+    manifest/snapshot/evidence/state relationship 任一异常都会抛出 ``ValueError``。提供
+    ``repo_root`` 时还会重新验证 accepted Git binding。返回的是验证后的 record dict。
+    """
     return verify_activation_artifacts(artifact_dir, repo_root=repo_root)
 
 
@@ -926,6 +980,16 @@ def verify_activation_artifacts(
     *,
     repo_root: Path | str | None = None,
 ) -> dict[str, Any]:
+    """从磁盘全量验证 activation bundle，并返回 durable record。
+
+    验证覆盖目录边界、required payload set、每个 SHA-256、canonical JSON、rollback=before、
+    identity digest、manifest policy、snapshot path/content、accepted Runtime measurement、commit
+    identity、可选 Git tree binding，以及 state history replay。non-accepted evidence 不得夹带
+    accepted measurement；human-review label 必须保留 ``requires_human``。
+
+    任一不一致抛出 ``ValueError``，不会尝试修复文件。返回成功说明 bundle 在当前读取时
+    self-consistent；若省略 ``repo_root``，不会重新访问 Git repo 验证 commit contents。
+    """
     artifact_dir = _validated_artifact_directory(artifact_dir)
     record = _read_activation_record(artifact_dir)
     decision_outcome = EvidenceOutcome(record["evidence_outcome"])
@@ -1071,7 +1135,16 @@ def set_activation_state(
     human_actor: str | None = None,
     reason: str = "",
 ) -> dict[str, Any]:
-    """Advance artifact state while leaving the caller's checkout untouched."""
+    """推进 artifact state，同时保持 caller checkout untouched。
+
+    方法先全量 verify，same-state request 幂等返回；其他请求必须属于 ``_TRANSITIONS``。
+    ``pending_human -> ready`` 强制要求 non-empty ``human_actor``，``reason`` 必须是 string。
+    transition 追加到 immutable history 语义的 list，atomic rewrite ``activation.json`` 后再次
+    verify。
+
+    返回更新后的 record。state 变为 ``activated`` 仍只表示 durable approval 状态，本方法
+    不应用 patch；真正 checkout mutation 属于 applier/launch 路径。
+    """
 
     artifact_dir = Path(artifact_dir)
     record = verify_activation_artifacts(artifact_dir)

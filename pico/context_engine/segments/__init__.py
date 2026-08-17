@@ -1,9 +1,9 @@
-"""System-prompt segment builders.
+"""集中导出组成 System Prompt 与 History 的 SegmentBuilder 实现。
 
-Each module here defines one :class:`SegmentBuilder` (seg1–5 plus the
-Curator). They all share the same interface and are assembled uniformly
-by :class:`ContextAssembler`. ``render.py`` holds the shared low-level
-rendering helpers (formerly ``ContextBuilder`` methods).
+每个子模块定义一个 :class:`SegmentBuilder`，共同覆盖 seg1–5 与 Curator。它们使用同一
+AssemblyContext/Segment 接口，并由 :class:`ContextAssembler` 按 order 与 needs_prefix 统一
+调度，而不是由 Host 手写不同分支。``render.py`` 保存共享低层渲染函数，这些函数以前属于
+``ContextBuilder`` methods；Builder 负责数据来源与 Segment 所有权，render 只负责文本形状。
 """
 
 from pico.context_engine.segments.active_skills import ActiveSkillsSegmentBuilder

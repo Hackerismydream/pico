@@ -1,4 +1,4 @@
-"""Gate2 — paired lift + 2σ significance (a generalisation of round7_paired).
+"""Gate2：paired lift + 2σ significance，推广自 ``round7_paired``。
 
 The scratchpad ``round7_paired.py`` hard-coded its anchor/explore task lists and
 its two arms. This is the same statistics with the task set and the two arms
@@ -24,9 +24,8 @@ budgetnudge banked on +6.4pp over vanilla even though its paired z (1.71) fell
 short of 2σ. A candidate that improves every shared task identically has
 ``se == 0``; that deterministic win is reported as ``z = inf``.
 
-Whether a banked candidate becomes the next parent, or is pruned for a
-qualitative reason (e.g. anchor/full-set sign-flip signalling interference), is
-a semantic step ⑦ decision layered on top of this gate, not part of it.
+banked candidate 是否成为 next parent，或因 anchor/full-set sign-flip 等 qualitative reason 被
+prune，属于 gate 之上的 semantic step ⑦，不是 paired test 职责。
 """
 
 from __future__ import annotations
@@ -46,7 +45,11 @@ from pico.evolver.orchestrator.scoring import (
 
 @dataclass(frozen=True)
 class PairedResult:
-    """Outcome of the paired lift test between a candidate and a control arm."""
+    """candidate/control paired lift test 的完整结果。
+
+    同时保存 navigator ``promoted`` 与独立 ``credited_2sigma``，不能将二者混用；还保留两臂
+    measurement validity，便于 fail/inconclusive 审计。
+    """
 
     n_tasks: int
     candidate_mean: float
@@ -75,11 +78,12 @@ def paired_lift(
     expected_attempts: int,
     z_threshold: float = 2.0,
 ) -> PairedResult:
-    """Paired lift + 2σ test over ``task_ids`` (candidate arm vs control arm).
+    """在 shared ``task_ids`` 上执行 candidate/control paired lift + 2σ test。
 
-    ``task_ids`` is the shared task set both arms were evaluated on (the full
-    train set for a confirm). ``expected_attempts`` is the K each requested task
-    must reach before either arm can produce a decision.
+    task_ids 通常是 confirm full train shared set；``expected_attempts`` 是两臂每个 task 必须达到
+    的 K。先计算 measurement validity，再计算 per-task diff、mean、paired SE 与 z。failed 优先于
+    inconclusive；只有两臂 measured 且 candidate mean > control mean 才 accepted/promoted；
+    ``credited_2sigma`` 还要求 z >= threshold。空 task list 抛 ``ValueError``。
     """
     if not task_ids:
         raise ValueError("paired_lift requires a non-empty task list")

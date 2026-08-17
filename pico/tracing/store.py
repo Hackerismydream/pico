@@ -1,14 +1,17 @@
-"""JSONL + artifact storage for the trace core (audit.span.v1).
+"""Trace Core ``audit.span.v1`` 的 JSONL + Artifact Storage。
 
-Dependency-free (stdlib only). Copied from the shared tracing-plugin core so
-this package stays self-contained for a clean ``pip install``.
+实现 Dependency-free，仅使用 Stdlib；从 Shared Tracing-plugin Core 复制，使 Package 在 Clean
+``pip install`` 后保持 Self-contained。
 
-Layout under the state dir::
+State Dir Layout：
 
-    <state_dir>/logs/audit-events.log      # one JSON event record per line
-    <state_dir>/logs/audit-spans.log       # one JSON span per line
-    <state_dir>/logs/audit-artifacts/...    # SHA-1 identified payloads
-    <state_dir>/logs/archive/<date>/...     # rotated logs
+    <state_dir>/logs/audit-events.log       # 每行一个 JSON Event Record
+    <state_dir>/logs/audit-spans.log        # 每行一个 JSON Span
+    <state_dir>/logs/audit-artifacts/...    # SHA-1 Identified Payloads
+    <state_dir>/logs/archive/<date>/...     # Rotated Logs
+
+Store 以日期或大小轮换 Active Logs，Artifacts 保存 Full Payload 与 Preview Reference。写入多为
+Best-effort，JSONL Append/Artifact Path 出现不代表 Viewer 已成功读取。
 """
 
 from __future__ import annotations
@@ -62,7 +65,12 @@ def safe_segment(value: Any, fallback: str = "unknown") -> str:
 
 
 class TraceStore:
-    """Append-only JSONL store + artifact persistence for one state dir."""
+    """一个 State Dir 的 Append-only JSONL Store + Artifact Persistence。
+
+    实例拥有 Logs/Artifacts/Archive Paths 与 Maximum Active Log Bytes。Span/Event 追加在 OSError 时静默
+    降级；Artifact Persist 返回包含 Path/SHA-1/Bytes/Preview 的 Dict，失败则在 Dict 中显式携带 Error。
+    Store 不维护跨进程文件锁，Concurrent Writer 的完整性取决于 OS Append/Rename 行为。
+    """
 
     def __init__(self, state_dir: str | os.PathLike[str], max_bytes: int | None = None) -> None:
         self.state_dir = Path(state_dir).expanduser()

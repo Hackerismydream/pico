@@ -1,14 +1,18 @@
-"""Self-written async JSON-RPC 2.0 dispatcher.
+"""实现 Pico TUI 所需的轻量异步 JSON-RPC 2.0 分派器。
 
-Decision: see design.md §3 D8 — we chose a self-written ~30-line dispatcher
-over `ajsonrpc` / `jsonrpcserver` framework. Rationale:
-- Pydantic v2 already covers schema validation (no framework dup).
-- Newline-delimited JSON framing is trivial.
-- Subscription registry + 16ms throttle is custom anyway.
-- Fewer dependencies → smaller `pip-audit` surface.
+模块接收已经解析为 Python object 的 request frame，校验 ``jsonrpc``、``method`` 和
+``params``，查找异步 handler，再把返回值或异常包装成 JSON-RPC response。newline-
+delimited JSON framing 属于 :mod:`pico.tui_rpc.server`，Pydantic v2 参数校验属于各
+``methods`` handler，subscription registry 与 16ms throttle 则属于订阅层。
 
-Fallback: if cancellation/error edge cases blow up beyond budget, switch to
-`ajsonrpc` and reuse its dispatch + add notification side-channel manually.
+design.md §3 D8 的决定是使用自写约 30 行核心分派逻辑，而不是引入 ``ajsonrpc`` 或
+``jsonrpcserver``：Pydantic v2 已覆盖 schema validation，framing 很简单，自定义订阅
+side-channel 仍需单独实现，且更少依赖意味着更小的 ``pip-audit`` surface。若未来
+cancellation/error edge cases 超出可维护预算，fallback 是切换到 ``ajsonrpc``，复用其
+dispatch，并手工补上 notification side-channel。
+
+成功 response 只表示 handler 返回了合规 dict；它不自动证明 handler 的副作用已
+持久化、Agent 任务完成或最终回复已交付。
 """
 
 from __future__ import annotations
@@ -32,18 +36,33 @@ Handler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 
 class Dispatcher:
-    """Routes JSON-RPC 2.0 request frames to registered async handlers.
+    """把 JSON-RPC 2.0 request frame 路由到已注册的异步 handler。
 
-    Usage:
+    实例拥有 ``method -> Handler`` 映射；方法注册通常发生在 ``RpcServer`` 启动阶段，
+    随后 ``dispatch()`` 只读该映射。所有 handler 必须是 async，并返回可放入
+    ``result`` 的 dict。``RpcError`` 会保留协议错误码，未处理异常则收敛成
+    ``INTERNAL_ERROR``，避免单个方法使 server 主循环退出。
+
+    使用示例::
+
         d = Dispatcher()
         d.register("system.hello", system_hello)
         response = await d.dispatch(request_frame)
+
+    Dispatcher 不解析 stdin 字节、不管理 subscription，也不拥有 Runtime 状态；它只对
+    单帧调用的协议形状负责。
     """
 
     def __init__(self) -> None:
         self._handlers: dict[str, Handler] = {}
 
     def register(self, method: str, handler: Handler) -> None:
+        """注册一个 JSON-RPC ``method`` 对应的异步 ``handler``。
+
+        ``handler`` 必须是 coroutine function，否则抛出 ``TypeError``；同名 method
+        已存在时抛出 ``ValueError``，防止后注册代码静默覆盖协议行为。注册成功无返回值，
+        也不会立即调用 handler 或验证它未来的 result schema。
+        """
         if not inspect.iscoroutinefunction(handler):
             raise TypeError(f"handler for '{method}' must be async; got {type(handler).__name__}")
         if method in self._handlers:
@@ -51,13 +70,24 @@ class Dispatcher:
         self._handlers[method] = handler
 
     def methods(self) -> list[str]:
+        """返回当前已注册 method 名称的排序副本。
+
+        排序使 capability 握手和测试结果稳定；调用方修改返回 list 不会改变内部 handler
+        映射。列表只能证明方法已注册，不能证明相关 Runtime 依赖已经就绪。
+        """
         return sorted(self._handlers)
 
     async def dispatch(self, frame: dict[str, Any]) -> dict[str, Any]:
-        """Validate frame, route to handler, wrap result/error per JSON-RPC 2.0.
+        """校验并分派一帧请求，按 JSON-RPC 2.0 包装 result 或 error。
 
-        Per spec, parse errors and frames without a recoverable `id` still
-        return a response with `id: null`; callers may choose to drop those.
+        ``frame`` 应是解析后的 object。非 object、版本错误、method 缺失、params 非 object
+        或 method 未注册时不会调用 handler，而是返回相应协议错误。``params=None`` 被
+        归一化为空 dict。handler 的 ``RpcError`` 保留 code/message/data；``SystemExit``
+        和其他异常转成 ``INTERNAL_ERROR``，并只暴露截断后的 traceback tail。
+
+        每条路径都返回 response dict。按照规范，parse error 与无法恢复 ``id`` 的帧仍返回
+        ``id: null``，上层调用者可以选择丢弃。handler 返回非 dict 也视为内部错误。正常
+        result 仅表示该调用完成，不能单独推出状态已持久化或任务已完成。
         """
         # ----- 帧校验 -----------------------------------------------------
         if not isinstance(frame, dict):
@@ -158,7 +188,12 @@ def _err_frame(
 
 
 def _truncate_traceback(tb: str, max_lines: int = 12) -> str:
-    """Truncate a formatted traceback to its trailing N lines."""
+    """把格式化 traceback 截断为末尾 ``max_lines`` 行。
+
+    traceback 未超过上限时保持全部行；超过时以前缀 ``...`` 表示省略。保留尾部是因为
+    通常包含最终异常类型和最接近失败点的 stack frame。该字符串会进入 RPC error data，
+    只用于诊断，不应被调用方解析为稳定协议字段。
+    """
     lines = tb.strip().splitlines()
     if len(lines) <= max_lines:
         return "\n".join(lines)

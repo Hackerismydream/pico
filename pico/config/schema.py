@@ -1,4 +1,9 @@
-"""Configuration schema using Pydantic."""
+"""Pico Base Agent Runtime 的 Pydantic Configuration Schema。
+
+这里定义 Channels、Agent Defaults、Providers、Routing、Gateway、Tools、Cron 与 Root `Config`。Schema
+同时接受 CamelCase/Snake_case，提供 Defaults，并把 Unknown Root/Feature Fields 交给 Loader/Config
+Validation 处理。模型构造成功只证明字段类型合法，不验证 Credentials、Network、Executable 或 MCP Server。
+"""
 
 from pathlib import Path
 from typing import Literal
@@ -12,13 +17,20 @@ from pico.sandbox.config import SandboxConfig
 
 
 class Base(BaseModel):
-    """Base model that accepts both camelCase and snake_case keys."""
+    """同时接受 ``camelCase`` 与 ``snake_case`` Keys 的 Base Pydantic Model。
+
+    Alias Generator 统一 File/CLI 与 Python Naming，`populate_by_name=True` 让两种拼写都能 Validate。
+    """
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class FeishuConfig(Base):
-    """Feishu/Lark channel configuration using WebSocket long connection."""
+    """使用 WebSocket Long Connection 的 Feishu/Lark Channel Configuration。
+
+    包含 App Credentials、Event Verification、Sender Allowlist、Reaction 与 Group Policy。`enabled=True` 只
+    表示 Runtime 应尝试启动，连接与鉴权仍在 Channel Adapter 验证。
+    """
 
     enabled: bool = False
     app_id: str = Field(default="", json_schema_extra={"required": True})  # 飞书开放平台 App ID
@@ -31,7 +43,10 @@ class FeishuConfig(Base):
 
 
 class QQConfig(Base):
-    """QQ channel configuration using botpy SDK."""
+    """使用 Botpy SDK 的 QQ Channel Configuration。
+
+    App ID/Secret 与 Sender OpenID Allowlist 由 Adapter 消费；Defaults 公开访问但仍需平台鉴权。
+    """
 
     enabled: bool = False
     app_id: str = Field(default="", json_schema_extra={"required": True})  # q.qq.com 机器人 AppID
@@ -40,7 +55,10 @@ class QQConfig(Base):
 
 
 class WecomConfig(Base):
-    """WeCom (Enterprise WeChat) AI Bot channel configuration."""
+    """WeCom（Enterprise WeChat）AI Bot Channel Configuration。
+
+    包含 Bot ID/Secret、Allowlist 与 Enter-chat Welcome Message。Config 不持有 Socket/Delivery State。
+    """
 
     enabled: bool = False
     bot_id: str = Field(default="", json_schema_extra={"required": True})  # 企业微信 AI Bot 平台 Bot ID
@@ -50,7 +68,11 @@ class WecomConfig(Base):
 
 
 class ChannelsConfig(Base):
-    """Configuration for chat channels."""
+    """Chat Channels 的 Root Configuration。
+
+    `send_progress`/`send_tool_hints` 控制 Runtime 中间信息，Per-channel Blocks 决定启用与凭据。Channel
+    Enabled 与 Message Delivered 必须通过运行时证据区分。
+    """
 
     send_progress: bool = True  # 向渠道流式发送 Agent 文本进度
     send_tool_hints: bool = False  # 流式发送工具调用提示，如 read_file("…")
@@ -60,7 +82,11 @@ class ChannelsConfig(Base):
 
 
 class AgentDefaults(Base):
-    """Default agent configuration."""
+    """Agent Runtime 的 Default Model、Workspace、Budget、Tool-loop 与 Subagent Safety Configuration。
+
+    这些值作为每个 AgentLoop 的构造基线。Concurrency/Hourly Spawn Limits 防止 Prompt-injected Agent 无界
+    Spawn；Empty-response Recovery Budgets 限制额外 Nudges/Retry；Deprecated Fields 仅为旧 Config Load。
+    """
 
     workspace: str = DEFAULT_WORKSPACE_SPEC
     model: str = "anthropic/claude-opus-4-5"
@@ -91,37 +117,45 @@ class AgentDefaults(Base):
 
     @property
     def should_warn_deprecated_memory_window(self) -> bool:
-        """Return True when old memoryWindow is present without contextWindowTokens."""
+        """旧 ``memoryWindow`` 存在且未显式提供 ``contextWindowTokens`` 时返回 `True`。
+
+        供 CLI 发出迁移 Warning；不会自动把旧值映射成新 Context Window。
+        """
         return self.memory_window is not None and "context_window_tokens" not in self.model_fields_set
 
 
 class AgentsConfig(Base):
-    """Agent configuration."""
+    """Agent Configuration Root，目前承载共享 `defaults`。
+
+    Wrapper 为未来 Per-agent Overrides 保留稳定层级；当前所有 AgentLoop 从同一 `AgentDefaults` 构造基线。
+    """
 
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
 
 
 class CronConfig(Base):
-    """Cron scheduler configuration.
+    """Cron Scheduler 的 Trigger-time Delivery Configuration。
 
-    Only consulted at cron job TRIGGER time, never at creation. Ephemeral
-    channels (cli / tui — anything not in ChannelManager.enabled_channels)
-    cannot deliver to themselves after the host process exits, so the
-    forward_channels list resolves which real channels receive the reminder.
+    **Only** 在 Cron Job TRIGGER Time 读取，Creation Time 不使用。Ephemeral CLI/TUI，即不在
+    `ChannelManager.enabled_channels` 的 Channel，在 Host Process 退出后无法自行 Deliver；
+    `forward_channels` 决定哪些 Real Channels 接收 Reminder。
     """
 
     forward_channels: list[str] = Field(default_factory=lambda: ["*"])
-    """Channels to deliver ephemeral-origin reminders to. ``["*"]`` broadcasts
-    to every enabled channel. Specific names (``["feishu", "qq"]``)
-    restrict to those. Non-ephemeral Channels ignore this list; they always
-    pass through to the per-job Channel."""
+    """Ephemeral-origin Reminder 的 Forward Channels。``["*"]`` Broadcast 到每个 Enabled Channel；
+    ``["feishu", "qq"]`` 等 Specific Names 限制范围。Non-ephemeral Channel 忽略该 List，始终按 Per-job
+    Binding Pass-through。"""
 
     default_timezone: str = "Asia/Shanghai"
-    """Default IANA timezone for cron expressions without explicit ``--tz``."""
+    """Cron Expression 未显式 ``--tz`` 时使用的 Default IANA Timezone。"""
 
 
 class ProviderConfig(Base):
-    """LLM provider configuration."""
+    """通用 LLM Provider Configuration。
+
+    包含 API Key、Optional Base URL/Headers 与 User-curated Model Names。Secret 只是配置值，不应进入
+    Diagnostics；字段非空也不代表鉴权成功。
+    """
 
     api_key: str = ""
     api_base: str | None = None
@@ -130,23 +164,26 @@ class ProviderConfig(Base):
 
 
 class GeminiProviderConfig(ProviderConfig):
-    """Gemini provider configuration with Vertex AI and multi-key support.
+    """支持 Vertex AI 与 Multi-key Rotation 的 Gemini Provider Config。
 
-    Example YAML:
+    Example YAML：
         gemini:
           vertex: true
           api_key_list:
             - "key1"
             - "key2"
+    `vertex=True` 由 Provider Setup 设置 Vertex Environment；`api_key_list` 按 Round-robin 轮换。Schema 不
+    联网验证 Keys。
     """
 
     vertex: bool = False  # 为 True 时设置 GOOGLE_GENAI_USE_VERTEXAI=True，以使用 Vertex AI
     api_key_list: list[str] = Field(default_factory=list)  # 用于轮换的多个 API key
 
     def next_api_key(self) -> str:
-        """Return the next API key using round-robin rotation.
+        """使用 Round-robin Rotation 返回 Next API Key。
 
-        Falls back to single api_key if api_key_list is empty.
+        `api_key_list` Empty 时回退 Single ``api_key``；完全无 Key 返回空字符串。Cycle 在实例上 Lazy
+        Create，后续调用持续轮换，不探测 Key 是否可用。
         """
         import itertools
 
@@ -160,21 +197,31 @@ class GeminiProviderConfig(ProviderConfig):
 
     @property
     def effective_api_key(self) -> str:
-        """Get the current effective API key (first from list, or single key)."""
+        """返回 Current Effective API Key：List First Item 优先，否则 Single Key。
+
+        该 Property 不推进 Round-robin Cycle，适合环境初始化 Preview。
+        """
         if self.api_key_list:
             return self.api_key_list[0]
         return self.api_key
 
     @property
     def all_keys(self) -> list[str]:
-        """Return all configured API keys."""
+        """返回所有 Configured API Keys 的 List Copy。
+
+        Multi-key List 优先，只有 Single Key 时包装成 One-item List，完全无配置时为空；不会推进 Rotation。
+        """
         if self.api_key_list:
             return list(self.api_key_list)
         return [self.api_key] if self.api_key else []
 
 
 class ProvidersConfig(Base):
-    """Configuration for LLM providers."""
+    """所有 Builtin LLM Providers 的 Configuration Registry。
+
+    每个字段使用 `ProviderConfig` 或 Specialized Gemini Config。Provider Selection 由 Root Config 与
+    `pico.providers.registry` 完成；声明 Block 不自动 Import/Connect Provider。
+    """
 
     custom: ProviderConfig = Field(default_factory=ProviderConfig)  # 任意 OpenAI-compatible 端点
     azure_openai: ProviderConfig = Field(default_factory=ProviderConfig)  # Azure OpenAI，model 为部署名称
@@ -198,7 +245,11 @@ class ProvidersConfig(Base):
 
 
 class ModelEndpoint(Base):
-    """A routable model and the OpenAI-compatible endpoint that serves it."""
+    """一个 Routable Model 与服务它的 OpenAI-compatible Endpoint。
+
+    KNN Router 用该记录建立候选与请求地址；Default ``api_key="EMPTY"`` 适合不鉴权 Local Endpoint，
+    不是生产 Secret。
+    """
 
     model: str = ""
     api_base: str = ""
@@ -206,11 +257,11 @@ class ModelEndpoint(Base):
 
 
 class RoutingConfig(Base):
-    """Model routing configuration.
+    """Model Routing Configuration。
 
-    ``backend`` picks the router: ``ecoclaw`` (PinchBench benchmark scores, the
-    original) or ``knn`` (task-level KNN over per-model rewards). Fields under
-    "knn backend" are read only when ``backend == 'knn'``.
+    ``backend`` 选择 ``ecoclaw``（Original PinchBench Benchmark Scores）或 ``knn``（Per-model Rewards 上的
+    Task-level KNN）。KNN Fields 只有 ``backend == 'knn'`` 时读取。Similarity/Neighbour/Memory/Margin Gates
+    让证据不足时保留 Default Model；Routing Enabled 不保证候选 Endpoint 在线。
     """
 
     enabled: bool = False
@@ -234,15 +285,11 @@ class RoutingConfig(Base):
 
 
 class GatewayLogConfig(Base):
-    """Gateway logging configuration.
+    """Gateway Logging、Rotation 与 Retention Configuration。
 
-    ``rotation`` / ``retention`` accept loguru's vocabulary: rotation by size
-    (``"10 MB"``), wall-clock (``"00:00"`` for daily), or interval
-    (``"1 week"``); retention as a file count (``7``) or a duration
-    (``"14 days"``).
-
-    ``level`` filters the persisted ``gateway.log`` file; ``console_level``
-    filters the live stderr mirror the foreground gateway keeps printing.
+    ``rotation`` / ``retention`` 接受 Loguru Vocabulary：按 Size ``"10 MB"``、Wall-clock ``"00:00"`` Daily、
+    Interval ``"1 week"`` 轮换；Retention 可为 File Count ``7`` 或 Duration ``"14 days"``。``level`` 过滤
+    Persisted ``gateway.log``，``console_level`` 过滤 Foreground Gateway Live Stderr Mirror。
     """
 
     rotation: str = "10 MB"
@@ -252,7 +299,11 @@ class GatewayLogConfig(Base):
 
 
 class GatewayConfig(Base):
-    """Gateway/server configuration."""
+    """Long-running Gateway/Server Configuration。
+
+    Host/Port 决定 Listener，User/System Pools 控制 Lane Capacity，Send Retries 控制 Delivery Retry，Log Block
+    管理文件与 Console。配置不执行 Bind 或健康检查。
+    """
 
     host: str = "0.0.0.0"
     port: int = 18790
@@ -263,14 +314,20 @@ class GatewayConfig(Base):
 
 
 class WebSearchConfig(Base):
-    """Web search tool configuration."""
+    """Web Search Tool Configuration。
+
+    包含 Serper API Key 与 Per-query Maximum Results；Schema 不验证 Credential 或 Search Endpoint 可达性。
+    """
 
     api_key: str = ""  # Serper API 密钥
     max_results: int = 5
 
 
 class WebToolsConfig(Base):
-    """Web tools configuration."""
+    """Web Tools 的 Shared Configuration。
+
+    包含 Optional HTTP/SOCKS5 Proxy、Jina Reader API Key 与 Search Sub-config；每个 Tool 按需消费字段。
+    """
 
     proxy: str | None = None  # HTTP/SOCKS5 代理 URL，如 "http://127.0.0.1:7890" 或 "socks5://127.0.0.1:1080"
     jina_api_key: str = ""  # Jina Reader API 密钥
@@ -278,14 +335,21 @@ class WebToolsConfig(Base):
 
 
 class ExecToolConfig(Base):
-    """Shell exec tool configuration."""
+    """Shell Exec Tool 的 Default Timeout 与 PATH Append Configuration。
+
+    该 Block 不决定 Host/Sandbox Backend，隔离策略位于 `ToolsConfig.sandbox`。
+    """
 
     timeout: int = 60
     path_append: str = ""
 
 
 class MCPServerConfig(Base):
-    """MCP server connection configuration (stdio or HTTP)."""
+    """MCP Server Connection Configuration，支持 Stdio、SSE、Streamable HTTP。
+
+    Type 省略时 Runtime Auto-detect。Stdio 使用 Command/Args/Env；HTTP/SSE 使用 URL/Headers；
+    `tool_timeout` 限制 Tool Call。Schema 合法不代表 Server 可启动或 Handshake 成功。
+    """
 
     type: Literal["stdio", "sse", "streamableHttp"] | None = None  # 省略时自动检测
     command: str = ""  # Stdio：要运行的命令，如 "npx"
@@ -297,28 +361,29 @@ class MCPServerConfig(Base):
 
 
 class ToolSearchConfig(Base):
-    """Progressive tool disclosure.
+    """Progressive Tool Disclosure Configuration。
 
-    When the live tool catalog (built-ins + plugins + MCP) grows past
-    ``compaction_threshold``, most tool schemas are withheld from each request and reached
-    on demand through the ``tool_search`` / ``tool_call`` meta-tools, so context
-    cost stops scaling with tool count and the per-turn tool list (and thus the
-    prompt cache) stays stable. At or below the threshold every tool is exposed
-    directly (unchanged behavior) and the meta-tools are omitted.
+    Live Tool Catalog（Builtins + Plugins + MCP）超过 ``compaction_threshold`` 时，大多数 Tool Schemas 不再
+    随每个 Request 发送，而通过 ``tool_search`` / ``tool_call`` Meta-tools On-demand 访问，使 Context Cost
+    不再随 Tool Count 线性增长，Per-turn Tool List 与 Prompt Cache 更稳定。Threshold 以下全部 Directly
+    Exposed，Meta-tools Omitted，保持旧行为。
     """
 
     enabled: bool = False
     compaction_threshold: int = 50
-    """Tool-catalog size that triggers compaction: at or below this many tools
-    everything is exposed directly; above it, schemas are withheld."""
+    """触发 Compaction 的 Tool-catalog Size。At or Below 时 Direct Exposure，Above 时 Withhold Schemas。"""
     search_result_limit: int = 10
-    """Default number of hits ``tool_search`` returns per query."""
+    """``tool_search`` 每 Query 返回的 Default Hit Count。"""
     always_visible: list[str] = Field(default_factory=list)
-    """Extra tool names kept exposed every turn, on top of the core set."""
+    """除 Core Set 外，每 Turn 仍 Direct Exposed 的 Extra Tool Names。"""
 
 
 class ToolsConfig(Base):
-    """Tools configuration."""
+    """Agent Tool Surface 的 Root Configuration。
+
+    聚合 Web、Exec、Workspace Restriction、MCP、Sandbox、Progressive Search 与 Disabled Tools。各子项只配置
+    Admission/Behavior，实际 Registration/Connection 由 Runtime Stack 完成。
+    """
 
     web: WebToolsConfig = Field(default_factory=WebToolsConfig)
     exec: ExecToolConfig = Field(default_factory=ExecToolConfig)
@@ -327,14 +392,20 @@ class ToolsConfig(Base):
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     tool_search: ToolSearchConfig = Field(default_factory=ToolSearchConfig)
     disabled_tools: list[str] = Field(default_factory=list)
-    """Tool names to unregister after default-tool registration and MCP connect.
-    Used by eval harnesses (e.g. BrowseComp-Plus) that need to constrain the
-    agent to a specific tool subset. Names match those in ``ToolRegistry``
-    (e.g. ``read_file``, ``web_search``, or ``mcp_bcp-search_search``)."""
+    """Default-tool Registration 与 MCP Connect 后要 Unregister 的 Tool Names。
+
+    Eval Harnesses 如 BrowseComp-Plus 用它把 Agent 限制到 Specific Subset。Names 必须匹配
+    ``ToolRegistry``，例如 ``read_file``、``web_search``、``mcp_bcp-search_search``。Unknown Name 通常无
+    效果，实际移除需运行时验证。
+    """
 
 
 class Config(BaseSettings):
-    """Root configuration for pico."""
+    """Pico Base Agent Runtime 的 Root Configuration。
+
+    组合 Agents、Channels、Providers、Gateway、Tools、Routing、Cron 与 UI Language，并支持 ``PICO_`` Env
+    Prefix + ``__`` Nested Delimiter。Pico Feature Extensions 通过 `load_pico_config` 另行 Compose。
+    """
 
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
     channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
@@ -349,12 +420,20 @@ class Config(BaseSettings):
 
     @property
     def workspace_path(self) -> Path:
-        """Get expanded workspace path."""
+        """返回 Expand 后的 Workspace Path。
+
+        Default Spec 映射到 Product Default Workspace；Custom Value 只 Expanduser，不创建目录。
+        """
         workspace = self.agents.defaults.workspace
         return get_default_workspace() if workspace == DEFAULT_WORKSPACE_SPEC else Path(workspace).expanduser()
 
     def _match_provider(self, model: str | None = None) -> tuple["ProviderConfig | None", str | None]:
-        """Match provider config and its registry name. Returns (config, spec_name)."""
+        """匹配 Provider Config 与 Registry Name，返回 ``(config, spec_name)``。
+
+        Forced Provider 优先；Auto 模式先匹配 Explicit Model Prefix，再按 Registry Keywords，之后尝试已配置
+        Local Provider，最后按 Registry 顺序回退 Non-OAuth Credential Provider。OAuth Provider 不能隐式
+        Fallback，必须显式 Model Prefix。无可用配置返回 ``(None, None)``。
+        """
         from pico.providers.registry import PROVIDERS
 
         forced = self.agents.defaults.provider
@@ -405,22 +484,29 @@ class Config(BaseSettings):
         return None, None
 
     def get_provider(self, model: str | None = None) -> ProviderConfig | None:
-        """Get matched provider config (api_key, api_base, extra_headers). Falls back to first available."""
+        """返回 Matched Provider Config，包括 ``api_key``、``api_base``、``extra_headers``；必要时回退 First Available。
+
+        返回对象不执行鉴权或模型可用性检查。
+        """
         p, _ = self._match_provider(model)
         return p
 
     def get_provider_name(self, model: str | None = None) -> str | None:
-        """Get the registry name of the matched provider (e.g. "deepseek", "openrouter")."""
+        """返回 Matched Provider Registry Name，例如 ``"deepseek"`` / ``"openrouter"``；无匹配为 `None`。"""
         _, name = self._match_provider(model)
         return name
 
     def get_api_key(self, model: str | None = None) -> str | None:
-        """Get API key for the given model. Falls back to first available key."""
+        """返回给定 Model 的 API Key，必要时回退 First Available Key；无 Provider 返回 `None`。"""
         p = self.get_provider(model)
         return p.api_key if p else None
 
     def get_api_base(self, model: str | None = None) -> str | None:
-        """Get API base URL for the given model. Applies default URLs for gateway/local providers."""
+        """返回给定 Model 的 API Base URL，并为 Gateway/Local Provider 应用 Default URLs。
+
+        Explicit Config 优先。Standard Provider 的 Base 通常由 Environment Setup 管理，避免污染 Global
+        LiteLLM Base；无适用 URL 返回 `None`。
+        """
         from pico.providers.registry import find_by_name
 
         p, name = self._match_provider(model)
@@ -437,10 +523,10 @@ class Config(BaseSettings):
 
     @property
     def skill_forge(self):
-        """Returns the default SkillForgeConfig. Extension blocks are
-        loaded via ``load_pico_config``, not through the base
-        Config. This property exists for backward compat with code that
-        accesses ``config.skill_forge`` on a plain ``Config`` instance.
+        """返回 Default `SkillForgeConfig` Compatibility View。
+
+        Extension Blocks 由 ``load_pico_config`` 加载，不通过 Base `Config`。该 Property 只为访问 Plain
+        ``config.skill_forge`` / ``Config.skill_forge`` 的 Older Code 保留；每次返回 Default Object，不代表 User Extension Values。
         """
         from pico.config.pico import SkillForgeConfig
 

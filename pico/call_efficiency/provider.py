@@ -1,4 +1,13 @@
-"""Provider decorator that applies CallEfficiency to every Runtime-owned call."""
+"""把 `CallEfficiency` 应用于每次 Runtime-owned Call 的 Provider Decorator。
+
+`CallEfficiencyProvider` 包装真实 `LLMProvider`，在请求前调用 Controller `prepare` 统一 Cache Policy，
+在普通响应、Retry Attempt、Stream 完成、异常和取消等终点调用 `record`。Decorator 保留底层
+Provider 的 Chat Interface，因此 Agent Loop 不需要为计量逻辑增加另一条调用路径。
+
+包装器通过快照与锁支持运行期替换 Delegate，并避免重复包装形成嵌套 Controller。它记录的是每次
+实际 Attempt 的模型、Usage 与 Outcome；发生异常时会先尽力写下失败证据再重新抛出，绝不把计量
+行为变成对 Provider Error 的吞没。
+"""
 
 from __future__ import annotations
 

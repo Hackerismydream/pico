@@ -1,4 +1,12 @@
-"""Runtime path helpers derived from the active config context."""
+"""从 Active Config Context 派生 Runtime Paths 的 Helpers。
+
+路径模型区分 Foreground Workspace/Project State 与 Long-running Service Workspace：默认 Foreground 命令在
+Current Working Directory 运行，并把状态隔离到 Product Home 的 Project Hash；显式 Workspace 或 Service
+则使用同一路径保存状态。其他 Helpers 从 Active Config File Parent 派生 Instance Data Subdirs。
+
+多数 Getter 会 `ensure_dir` 产生目录；仅返回 History File Path 的接口不创建文件。路径解析成功不证明
+权限可写或 Backend 可启动。
+"""
 
 from __future__ import annotations
 
@@ -45,48 +53,70 @@ def resolve_service_paths(config: "Config") -> RuntimePaths:
 
 
 def get_data_dir() -> Path:
-    """Return the instance-level runtime data directory."""
+    """返回并创建 Instance-level Runtime Data Directory。
+
+    路径是 Active Config File 的 Parent，因此 ``--config`` 可隔离多个 Pico Instance State。
+    """
     return ensure_dir(get_config_path().parent)
 
 
 def get_runtime_subdir(name: str) -> Path:
-    """Return a named runtime subdirectory under the instance data dir."""
+    """返回并创建 Instance Data Dir 下的 Named Runtime Subdirectory。
+
+    `name` 由受信调用点提供；函数不清理 Path Separator，不应直接传入用户任意路径。
+    """
     return ensure_dir(get_data_dir() / name)
 
 
 def get_media_dir(channel: str | None = None) -> Path:
-    """Return the media directory, optionally namespaced per channel."""
+    """返回并创建 Media Directory，可选按 Channel Namespace。
+
+    无 Channel 返回 Shared ``media`` Root；有值时创建 Child。它不验证 Channel Name 是否安全，Caller 应
+    传稳定内部标识符。
+    """
     base = get_runtime_subdir("media")
     return ensure_dir(base / channel) if channel else base
 
 
 def get_cron_dir() -> Path:
-    """Return the cron storage directory."""
+    """返回并创建 Persistent Cron Storage Directory。
+
+    Cron Service 在此保存 Job Store/Lock 等实例级状态；函数不启动 Scheduler。
+    """
     return get_runtime_subdir("cron")
 
 
 def get_cache_dir() -> Path:
-    """Return the disposable, refetchable on-disk cache directory."""
+    """返回并创建 Disposable、Refetchable On-disk Cache Directory。
+
+    其中数据不应成为唯一业务事实，清空后应可从 Authoritative Source 重建。
+    """
     return get_runtime_subdir("cache")
 
 
 def get_sandbox_dir(backend: str) -> Path:
-    """Return the sandbox runtime home directory for the given backend.
+    """返回并创建给定 Backend 的 Sandbox Runtime Home Directory。
 
-    e.g. backend='boxlite' → <data_dir>/sandbox/boxlite (used as boxlite's
-    home_dir so its DB, images, and layers live under Pico's data dir
-    instead of ~/.boxlite).
+    例如 ``backend='boxlite'`` → ``<data_dir>/sandbox/boxlite``，作为 BoxLite ``home_dir``，使 DB、Images、
+    Layers 位于 Pico Data Dir 而非 ``~/.boxlite``。函数只分配路径，不创建 VM。
     """
     return ensure_dir(get_runtime_subdir("sandbox") / backend)
 
 
 def get_logs_dir() -> Path:
-    """Return the logs directory."""
+    """返回并创建当前 Instance 的 Logs Directory。
+
+    Gateway 等 Long-running Components 在此写日志；函数不配置 Rotation 或打开文件。
+    """
     return get_runtime_subdir("logs")
 
 
 def get_workspace_path(workspace: str | None = None) -> Path:
-    """Resolve and ensure the agent workspace path."""
+    """Resolve 并 Ensure Agent Workspace Path。
+
+    `None` 或 ``DEFAULT_WORKSPACE_SPEC`` 使用 Product Default Workspace；其他值 Expanduser 后使用。方法会
+    创建目录，不执行 Project State Hashing，Foreground Path Policy 由 `resolve_foreground_paths` 负责。
+    """
     path = (
         get_default_workspace()
         if workspace is None or workspace == DEFAULT_WORKSPACE_SPEC
@@ -96,5 +126,8 @@ def get_workspace_path(workspace: str | None = None) -> Path:
 
 
 def get_cli_history_path() -> Path:
-    """Return the shared CLI history file path."""
+    """返回 Shared CLI History File Path ``<product_home>/.pico_history``。
+
+    函数不创建文件；多个 CLI Session 共用该路径。
+    """
     return get_product_home() / ".pico_history"

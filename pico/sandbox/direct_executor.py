@@ -1,4 +1,10 @@
-"""DirectExecutor: runs commands directly on the host process (no isolation)."""
+"""`DirectExecutor`：直接在 Host Process 上运行 Commands，**No Isolation**。
+
+这是 Sandbox Backend 为 ``none`` 时的兼容 Fallback。它仍限制单次 Timeout，并只把明确 Allowlist 的
+基础环境变量加上 Caller 显式 Env 传给子进程，降低 Prompt Injection 直接读取 API Keys/Cloud
+Credentials 的风险；但 Command 拥有当前用户对 Host Filesystem 与 Network 的全部权限，环境过滤不
+等于沙箱。
+"""
 
 from __future__ import annotations
 
@@ -72,7 +78,14 @@ def _baseline_env() -> dict[str, str]:
 
 
 class DirectExecutor(SandboxExecutor):
-    """No-op sandbox: runs commands directly on the host (current behavior)."""
+    """No-op Sandbox，在 Host 直接执行命令的 Executor。
+
+    `is_sandboxed` 明确返回 `False`。`exec` 使用 Shell Subprocess，捕获 Stdout/Stderr，Timeout 最多限制
+    为 600 Seconds；超时会 Kill Process 并返回 Exit Code -1。输出以 UTF-8 ``errors="replace"`` 解码。
+
+    它不实现 Long-running Process Spawning，也不隔离 CWD、Filesystem 或 Network。只有用户明确选择
+    Host Execution、或运行环境无法使用 BoxLite 时才应使用，并把命令视为等同当前账户手动执行。
+    """
 
     @property
     def is_sandboxed(self) -> bool:

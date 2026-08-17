@@ -1,4 +1,9 @@
-"""Voice transcription provider using Groq."""
+"""实现使用 Groq Whisper API 的 Voice Transcription Provider。
+
+该 Provider 独立于主 LLM Chat Contract，只把 Local Audio File 作为 Multipart 上传到
+``whisper-large-v3``，返回 Transcribed Text。API Key 可由 Constructor 或 GROQ_API_KEY 提供；
+缺配置、缺文件、HTTP/JSON Error 都记录并返回空 String，不阻断 Channel Main Flow。
+"""
 
 import os
 from pathlib import Path
@@ -8,10 +13,11 @@ from loguru import logger
 
 
 class GroqTranscriptionProvider:
-    """
-    Voice transcription provider using Groq's Whisper API.
+    """通过 Groq Whisper API 提供快速 Voice-to-text Transcription。
 
-    Groq offers extremely fast transcription with a generous free tier.
+    实例保存 API Key 与固定 Transcriptions Endpoint。Groq 提供 Extremely Fast Transcription 与
+    Generous Free Tier，但本类不管理 Quota、Retry 或 Audio Conversion；Caller 必须提供 API 支持
+    的真实 File。
     """
 
     def __init__(self, api_key: str | None = None):
@@ -19,14 +25,11 @@ class GroqTranscriptionProvider:
         self.api_url = "https://api.groq.com/openai/v1/audio/transcriptions"
 
     async def transcribe(self, file_path: str | Path) -> str:
-        """
-        Transcribe an audio file using Groq.
+        """把 ``file_path`` 指向的 Audio File 上传 Groq 并返回 Transcribed Text。
 
-        Args:
-            file_path: Path to the audio file.
-
-        Returns:
-            Transcribed text.
+        缺 API Key 或 Path 不存在时返回空 String。有效文件以 Binary Multipart ``file`` 与 Model
+        ``whisper-large-v3`` POST，Bearer Header 鉴权，Timeout 60 秒；成功读取 JSON ``text`` Field。
+        HTTP、File、Decode 任意 Exception 记录 Error 并返回空 String。方法不删除、转换或缓存源文件。
         """
         if not self.api_key:
             logger.warning("Groq API key not configured for transcription")

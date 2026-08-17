@@ -1,4 +1,10 @@
-"""Data types for the EcoClaw-style model router."""
+"""EcoClaw-style Model Router 各阶段共享的 Data Types。
+
+这些类型把路由数据流分成四层：`ModelBenchmark` 保存远端评测事实，`RoutingProfile` 表达质量与
+成本偏好，`ClassificationResult` 记录 Prompt 分类依据，`SelectionResult` 携带最终候选顺序。
+Dataclass 只负责结构化传递数据，不执行网络请求、分数计算或模型调用；阅读路由代码时可用这些
+类型判断每一步“已经知道什么”，避免把 Benchmark、分类相似度和最终执行结果混为一谈。
+"""
 
 from __future__ import annotations
 

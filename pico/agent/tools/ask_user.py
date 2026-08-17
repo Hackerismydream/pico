@@ -1,11 +1,12 @@
-"""ask_user tool — pause the turn to ask the user a question and await the reply.
+"""实现可在 Turn 中暂停执行、向用户提问并等待回答的 ``ask_user`` Tool。
 
-Blocking interaction: the registry does NOT wrap this in a timeout (the
-QuestionBroker manages its own fail-safe). On execute the tool hands the turn's
-conversation_id and the prompt to the broker, which emits a ``clarify.request``
-notification and blocks until an inbound answer arrives (or the broker's
-fail-safe default fires). The returned answer is rendered as a natural-language
-tool result; the loop never sees an exception.
+这是 blocking interaction：Registry 不为它包装统一 Tool timeout，等待的 fail-safe 由
+QuestionBroker 自己管理。执行时 Tool 把本 Turn 的 conversation_id、问题和选项交给 Broker；
+Broker 发出 ``clarify.request`` notification，直到入站答案到达或 fail-safe default 触发。
+
+回答会转成自然语言 Tool Result，再进入下一轮 LLM Context；Agent Loop 不需要捕获 Broker
+异常。共享 Tool 实例用 ContextVar 隔离并发 Turn 的 conversation key，Broker 则是传输层单例，
+两者生命周期不能颠倒。
 """
 
 from contextvars import ContextVar
@@ -16,12 +17,16 @@ from pico.tui_rpc.question_broker import QuestionBroker
 
 
 class AskUserTool(Tool):
-    """Ask the user a question mid-turn and wait for their answer.
+    """在 Turn 中途向用户提出一个或多个问题，并等待对应回答。
 
-    Wiring: the layer that builds the per-turn tool set must inject a
-    :class:`QuestionBroker` (constructor or :meth:`set_broker`) and the turn's
-    conversation_id via :meth:`set_context` — the same conversation_id the
-    scheduler derives (``req.conversation or f"{channel}:{chat_id}"``).
+    构建 Tool 集合的层必须通过 constructor 或 :meth:`set_broker` 注入共享
+    :class:`QuestionBroker`，并用 :meth:`set_context` 写入本 Turn conversation_id；该 key 必须与
+    Scheduler 的 ``req.conversation or f"{channel}:{chat_id}"`` 完全一致，Broker 才能把入站回答
+    路由回正确等待者。
+
+    Tool 标记 ``blocking_interaction=True``，所以等待人类不受 Registry 兜底超时影响。缺 Broker、
+    缺 Context 或没有非空问题时返回明确 Error 字符串；无回答时返回“按最佳判断继续”的结果，
+    不让模型误以为用户选择了某个选项。
     """
 
     blocking_interaction = True
@@ -38,11 +43,21 @@ class AskUserTool(Tool):
         self._cid: ContextVar[str] = ContextVar("ask_user_cid", default=conversation_id)
 
     def set_broker(self, broker: QuestionBroker | None) -> None:
-        """Set the QuestionBroker. ``None`` disables the round-trip."""
+        """设置共享 QuestionBroker；传 ``None`` 会禁用问答 round-trip。
+
+        Broker 属于传输层而非单 Turn，因此直接保存在 Tool 实例。禁用后 `execute` 返回
+        ``not configured`` Error，不会在没有接收方时永久等待。方法不迁移已经在旧 Broker 上
+        等待的问题。
+        """
         self._broker = broker
 
     def set_context(self, conversation_id: str) -> None:
-        """Set the current turn's conversation_id (the broker key, turn-local)."""
+        """设置当前 Turn 的 ``conversation_id``，作为 Broker 的 turn-local routing key。
+
+        值写入 ContextVar，同一 AskUserTool 被 USER 与 System Turn 并发共享时互不覆盖。调用方
+        应在实际运行 Turn 的 asyncio task 内设置；空字符串会让 execute 返回 context Error，
+        而不是把问题发送到未知会话。
+        """
         self._cid.set(conversation_id)
 
     @property

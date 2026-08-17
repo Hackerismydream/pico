@@ -1,14 +1,13 @@
-"""SubscriptionEmitter — per-session subscription registry + 16ms coalesce loop.
+"""管理 per-session subscription，并用 16ms coalesce loop 合并 token event。
 
-Per-session subscription registry with a coalesce loop:
+registry 维护 ``session_key → [Subscription]``。每个 subscription 拥有 capacity 512 的
+bounded ``asyncio.Queue`` 和独立 consumer task；consumer 每 16ms 形成 batch，只合并连续
+``token.delta``，其他 event 原样通过并保持顺序。Queue overflow 时只影响该 subscription：
+发送 ``error(code=-32016)`` 后关闭，其他 subscriber 继续工作。
 
-- Per-session subscription map (`session_key → [Subscription]`)
-- Each subscription owns a bounded asyncio.Queue (capacity 512)
-- 16ms coalesce loop merges consecutive `token.delta` events into one frame
-- Queue overflow → emit error(code=-32010) + close subscription
-- Non-token events pass through preserving order
-
-Owned by the RPC server; passed to `register_turn_methods(dispatcher, emitter)`.
+``SubscriptionEmitter`` 由 RPC server 拥有，并传给
+``register_turn_methods(dispatcher, emitter)``。``emit()`` 返回只表示 event 已入 queue 或
+overflow 已处理；真正写入 transport 发生在后台 coalesce task，仍不等于 frontend 已渲染。
 """
 
 from __future__ import annotations
@@ -38,7 +37,14 @@ SendFrame = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 class SubscriptionEmitter:
-    """Routes TurnEvent notifications to per-session subscribers."""
+    """把 TurnEvent notification 路由到对应 Session 的 subscribers。
+
+    实例生命周期与 ``RpcServer`` 一致，拥有 session/id 两套 index。每个 ``register()``
+    创建独立 queue 与 coalesce task；``unregister()`` 关闭单项，``close_session()`` 关闭一个
+    Session 的全部订阅。subscription 是 Session-scoped，Turn 结束或取消不会自动关闭。
+
+    本对象只保证进程内 FIFO/coalesce 规则，不持久化 event，也没有 transport ack。
+    """
 
     def __init__(self, send_frame: SendFrame) -> None:
         self._send_frame = send_frame
@@ -46,7 +52,11 @@ class SubscriptionEmitter:
         self._by_id: dict[str, Subscription] = {}
 
     async def register(self, session_key: str) -> str:
-        """Create a subscription, start its coalesce loop, return the sub_id."""
+        """为 ``session_key`` 创建 subscription，启动 coalesce loop，并返回 ``sub_id``。
+
+        ID 使用随机 UUID hex。queue capacity 固定为 ``QUEUE_CAPACITY``；task 创建后立即放入
+        两套 index。返回成功表示订阅已可接收后续 event，不重放注册前历史。
+        """
         sub = Subscription(
             sub_id=uuid4().hex,
             session_key=session_key,
@@ -58,7 +68,11 @@ class SubscriptionEmitter:
         return sub.sub_id
 
     async def unregister(self, sub_id: str) -> bool:
-        """Close the subscription if it exists and is open. Idempotent."""
+        """关闭存在且仍 open 的 subscription，操作幂等。
+
+        首次关闭会取消 coalesce task、移除 indexes 并返回 ``True``；unknown 或已关闭 ID
+        返回 ``False``。队列中尚未发送的 event 会被丢弃。
+        """
         sub = self._by_id.get(sub_id)
         if sub is None or sub.closed:
             self._by_id.pop(sub_id, None)
@@ -67,10 +81,11 @@ class SubscriptionEmitter:
         return True
 
     async def emit(self, session_key: str, event: dict[str, Any]) -> None:
-        """Push event to every open subscriber of session_key.
+        """把 ``event`` 推入 ``session_key`` 的每个 open subscriber queue。
 
-        Overflow → emit error event + close the affected subscription.
-        Other subscribers unaffected.
+        无 subscriber 时 no-op。每个 queue 独立使用 ``put_nowait``；overflow 时向该
+        subscriber 直接发送 error event 并关闭它，其他 subscriber 不受影响。函数不验证
+        event schema，调用方必须传入 OpenRPC 允许的 TurnEvent shape。
         """
         for sub in list(self._by_session.get(session_key, [])):
             if sub.closed:
@@ -81,7 +96,11 @@ class SubscriptionEmitter:
                 await self._close_overflow(sub)
 
     async def close_session(self, session_key: str) -> None:
-        """Close all subscriptions belonging to session_key."""
+        """关闭属于 ``session_key`` 的全部 subscription。
+
+        对当前 bucket snapshot 逐项调用幂等 ``unregister``。函数完成后该 Session 不再接收
+        event，但不会取消对应 Turn。
+        """
         for sub in list(self._by_session.get(session_key, [])):
             await self.unregister(sub.sub_id)
 
@@ -90,7 +109,11 @@ class SubscriptionEmitter:
     # ------------------------------------------------------------------
 
     def _mark_closed(self, sub: Subscription) -> None:
-        """Mark subscription closed, cancel its loop, drop from indexes."""
+        """标记 subscription closed，取消 consumer，并从两套 index 删除。
+
+        最后一个 session subscription 删除后同时移除空 bucket。此函数不 await 被取消 task，
+        也不发送 terminal notification。
+        """
         sub.closed = True
         if sub.coalesce_task is not None and not sub.coalesce_task.done():
             sub.coalesce_task.cancel()
@@ -102,14 +125,14 @@ class SubscriptionEmitter:
                 del self._by_session[sub.session_key]
 
     async def _coalesce_loop(self, sub: Subscription) -> None:
-        """Per-subscription 16ms window coalesce loop.
+        """运行单个 subscription 的 16ms window coalesce loop。
 
-        Each iteration:
-          1. Block waiting for the first event.
-          2. Sleep 16ms — accumulate any further events into a batch.
-          3. Drain non-blockingly.
-          4. Merge consecutive token.delta events; pass through others in order.
-          5. Write each merged event as a JSON-RPC notification.
+        每轮先阻塞等待首个 event，再 sleep 16ms 收集 batch，随后 non-blocking drain queue；
+        ``_merge_consecutive_token_deltas`` 只合并连续 ``token.delta``，其他 event 保序；最后把每个
+        merged event 包装成 method ``event`` 的 JSON-RPC notification 写出。
+
+        ``CancelledError`` 是正常关闭并被吞掉；其他异常记录日志，避免传播到 server read
+        pump。异常退出不会自动重启 consumer。
         """
         try:
             while not sub.closed:
@@ -138,11 +161,11 @@ class SubscriptionEmitter:
             logger.exception("subscription coalesce loop crashed sub_id={}", sub.sub_id)
 
     async def _close_overflow(self, sub: Subscription) -> None:
-        """Emit -32016 overflow notification, then close the subscription.
+        """发送 ``-32016`` overflow notification，再关闭 subscription。
 
-        Code -32016 from the extension range (-32016..-32049). Originally
-        spec'd as -32010 in early drafts — collides with the live
-        ConfigFieldReadonlyError.
+        code ``-32016`` 来自 extension range ``-32016..-32049``。early draft 曾使用
+        ``-32010``，但它与 live ``ConfigFieldReadonlyError`` 冲突。即使 notification 写出
+        失败，``finally`` 仍会关闭 subscription，防止继续无界积压。
         """
         if sub.closed:
             return
@@ -176,10 +199,11 @@ class SubscriptionEmitter:
 def _merge_consecutive_token_deltas(
     batch: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Collapse runs of `token.delta` events into a single merged frame.
+    """把连续 ``token.delta`` run 折叠为单个 merged frame。
 
-    Non-delta events break the run and pass through unchanged. Preserves
-    overall event ordering.
+    delta 的 ``payload.text`` 按原顺序拼接；任何 non-delta event 都终止当前 run，并原样加入
+    结果，因此 overall event ordering 保持不变。空 batch 返回空 list。函数假定 delta
+    payload 已含 text，不执行 schema validation。
     """
     result: list[dict[str, Any]] = []
     pending: dict[str, Any] | None = None

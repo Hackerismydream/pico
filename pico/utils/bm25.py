@@ -1,11 +1,12 @@
-"""Dependency-free BM25 keyword retrieval over small in-memory corpora.
+"""面向 Small In-memory Corpora 的 Dependency-free BM25 Keyword Retrieval。
 
-A self-contained Okapi BM25 (no ``rank_bm25`` / ``jieba`` / ``nltk``) plus a
-CJK-aware tokenizer, shared by anything that needs cheap keyword ranking over
-a few hundred short documents — file-based skills, tool catalogs, etc.
+模块提供 Self-contained Okapi BM25，不依赖 ``rank_bm25``、``jieba`` 或 ``nltk``，并附带 CJK-aware
+Tokenizer。它适合在几百篇短 Documents 上做低成本 Keyword Ranking，例如 File-based Skills 与 Tool
+Catalogs；不是面向大规模全文索引的搜索引擎。
 
-Tokenization splits on word boundaries and treats each Chinese ideograph as a
-single token, so Chinese queries match instead of collapsing to empty.
+Tokenization 按 Word Boundaries 提取长度至少为二的字母数字串，并把每个 Chinese Ideograph 视为单独
+Token，因此中文 Query 能产生匹配，不会 Collapse to Empty。逐字切分简单可预测，但不理解中文词语
+边界或语义同义关系。
 """
 
 from __future__ import annotations
@@ -23,10 +24,14 @@ def tokenize(text: str) -> list[str]:
 
 
 class BM25Okapi:
-    """Minimal Okapi BM25 — same formula as rank_bm25 / Lucene defaults.
+    """Minimal Okapi BM25，采用与 `rank_bm25` / Lucene Defaults 相同的 Formula。
 
     ``score(D, Q) = Σ idf(q_i) * f(q_i, D) * (k1 + 1)
                           / (f(q_i, D) + k1 * (1 - b + b * |D| / avgdl))``
+
+    初始化时从 Tokenized Corpus 计算 Document Length、Term Frequency 与 IDF；`get_scores` 再为每个
+    Query Token 累加所有文档得分。返回列表与输入 Corpus 保持同一顺序，数值越大表示关键词相关性
+    越强。空 Corpus 或空 Query 全部返回零；分数是词项排序依据，不证明文档能完成 Agent Task。
     """
 
     def __init__(

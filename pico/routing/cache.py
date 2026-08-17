@@ -1,10 +1,15 @@
-"""Benchmark data cache — mirrors EcoClaw's cache.ts.
+"""Benchmark 数据缓存，整体行为与 EcoClaw 的 `cache.ts` 保持对应。
 
-4-tier fallback:
-  1. In-memory  (instant)
-  2. Disk cache (< 6h old)
-  3. Stale disk cache (API failed)
-  4. Hardcoded snapshot.json
+模型路由依赖 Benchmark 数据比较候选模型，但联网 API 并不总是可用。这个模块因此实现 4-tier
+fallback，并按照可信度和响应速度依次选择数据源：
+
+1. In-memory：进程内已有数据时立即返回；
+2. Disk cache：磁盘缓存未超过 6h 时先返回，并在后台刷新；
+3. Stale disk cache：缓存已经过期、但 API 刷新失败时，继续使用旧数据保障路由可用；
+4. Hardcoded `snapshot.json`：首次运行既无缓存、API 也不可用时使用随包快照。
+
+因此，缓存命中只能说明路由器取得了一份可用的 Benchmark Snapshot，不能证明它一定是服务端的
+最新版本。调用方若关心新鲜度，需要结合这里的 TTL 与刷新日志判断。
 """
 
 from __future__ import annotations
@@ -26,7 +31,13 @@ _SNAPSHOT_PATH = Path(__file__).parent / "snapshot.json"
 
 
 def _load_snapshot() -> BenchmarkData:
-    """Load hardcoded fallback data from snapshot.json."""
+    """从随包的 `snapshot.json` 加载 Hardcoded Fallback Data。
+
+    函数把 JSON 中的每个有效模型转换为 `ModelBenchmark`，并把各任务分数转换为
+    `ModelTaskScore`。缺少或不大于零的 Cost 会被跳过，因为没有有效成本的模型无法参与成本约束下的
+    选择。读取、解析或字段转换失败时记录错误并返回已经成功解析的部分；返回空字典表示没有可用
+    快照，而不是 API 查询结果为空。
+    """
     data: BenchmarkData = {}
     try:
         raw = json.loads(_SNAPSHOT_PATH.read_text(encoding="utf-8"))
@@ -106,7 +117,13 @@ def _deserialize(raw: dict) -> tuple[BenchmarkData, float] | None:
 
 
 class BenchmarkCache:
-    """Thread-safe benchmark data cache with background refresh."""
+    """带 Background Refresh 的 Thread-safe Benchmark Data Cache。
+
+    一个实例同时持有进程内 Snapshot、磁盘缓存路径与至多一个后台刷新 Task。`load` 是主要生命周期
+    入口：第一次调用建立数据，后续调用复用 `_data`；磁盘新鲜数据会立即服务请求，再异步刷新，避免
+    让模型选择等待网络。这里的 Thread-safe 指不会重复安排并发后台刷新，不代表多个 OS Process 会对
+    同一缓存文件做事务协调；写盘失败仅降级缓存持久性，不阻断本次路由。
+    """
 
     def __init__(self, cache_path: Path | None = None):
         self._cache_path = cache_path or get_product_home() / "routing" / "benchmark-cache.json"
@@ -114,7 +131,13 @@ class BenchmarkCache:
         self._refresh_task: asyncio.Task | None = None
 
     async def load(self) -> BenchmarkData:
-        """Return benchmark data, fetching/refreshing as needed."""
+        """返回 Benchmark Data，并按需要 Fetch 或 Refresh。
+
+        调用顺序严格遵循模块说明中的四级回退：先读 In-memory，再读 6 小时内的 Disk Cache，过期缓存
+        则同步尝试 API，最后才读 `snapshot.json`。新鲜磁盘缓存返回前会安排一次后台刷新；API 异常不会
+        直接传给调用方，而是尽可能退回旧缓存或快照。返回值始终是以模型名为 Key 的 `BenchmarkData`，
+        但可能为空，也可能不是最新数据，调用方不应把“成功返回”误解为“在线刷新成功”。
+        """
         # 1. 命中内存缓存。
         if self._data is not None:
             return self._data

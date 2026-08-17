@@ -1,4 +1,4 @@
-"""Step ⑦ — draft a per-round verdict for the findings log (semantic).
+"""执行 Step ⑦：为 findings log 起草 per-round semantic verdict。
 
 After the gates decide bank/prune, the driver drafts a short narrative for the
 findings log: what this round tried, what the result was, the next target, and
@@ -8,7 +8,7 @@ verdict — but the ``ceiling_signal`` hint is what a human reads to decide an
 early unseal (SOP §154 low-ceiling note).
 
 Kept schema-light (three fields) so even a weak driver returns something usable;
-parse failure is non-fatal — the caller falls back to a plain summary.
+parse failure non-fatal，caller 回退 plain summary。verdict advisory，不控制 stop/promotion。
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from pico.evolver.orchestrator.nodes.semantic import CallFn, SemanticNode
 
 @dataclass(frozen=True)
 class Verdict:
-    """Driver's narrative verdict on one round."""
+    """Driver 对一轮的 narrative summary、next target 与 advisory ceiling signal。"""
 
     summary: str
     next_target: str
@@ -66,11 +66,11 @@ def draft_verdict(
     why_keys: Optional[list[str]] = None,
     max_retries: int = 2,
 ) -> Verdict:
-    """Draft a verdict for one round from a factual ``round_summary`` string.
+    """从 factual ``round_summary`` 起草一轮 verdict。
 
     ``history`` (prior rounds' factual summaries) grounds ``ceiling_signal`` — a
     curve cannot be judged from one round. ``why_keys`` constrains
-    ``next_target`` to the taxonomy so the field stays machine-readable.
+    ``next_target`` 到 taxonomy。ceiling_signal 仍不得替代 deterministic TerminationTracker。
     """
     target_rule = f" — MUST be one of the WHY keys: {', '.join(why_keys)}" if why_keys else ""
     messages = [

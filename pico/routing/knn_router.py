@@ -1,24 +1,22 @@
-"""Task-level KNN model router.
+"""面向单个 Task 的 KNN Model Router。
 
-For each incoming task: embed it, retrieve the K nearest training tasks from a
-prebuilt memory, and pick the model with the best expected value
-(``reward - lambda_cost * cost``) averaged over those neighbours. Exposes the
-same ``select_model_chain`` interface as the EcoClaw ``ModelRouter`` so the
-agent loop can use either interchangeably.
+每个新任务到达时，路由器先生成 Embedding，再从预构建 Memory 中检索 K 个最近的训练任务。它对
+这些 Neighbours 上每个模型的期望价值取平均，价值公式为
+``reward - lambda_cost * cost``，最后选择得分最高的模型。模块公开与 EcoClaw `ModelRouter` 相同的
+`select_model_chain` Interface，因此 Agent Loop 可以互换两种路由器而不改变调用协议。
 
-Memory schema (JSON list), one entry per training task::
+Memory Schema 是 JSON List，每个训练任务一条记录：
 
     {"task_name": str,
-     "text": str,               # task description; embedded at load when
-                                # "embedding" is absent (keeps the file small
-                                # and the vectors consistent with live queries)
-     "embedding": [float, ...], # optional precomputed vector; used as-is if set
+     "text": str,               # 任务描述；缺少 "embedding" 时在加载阶段生成，
+                                 # 这样既缩小文件，也让训练任务与在线查询使用一致向量模型
+     "embedding": [float, ...], # 可选预计算向量；存在时原样使用
      "rewards": {model_name: float, ...},
      "costs":   {model_name: float, ...}}
 
-Routing candidates are the intersection of configured models and models that
-appear in the memory. Any failure (missing memory, embedding error, no
-candidates) yields ``(None, [])`` so the caller falls back to the default model.
+Routing Candidates 是配置模型与 Memory 中出现模型的 Intersection。缺少 Memory、Embedding Error、
+No Candidates 或证据门禁不足都会返回 ``(None, [])``，让 Caller 回退到 Default Model。这个返回值
+表示“不建议覆盖默认选择”，不是一次失败的模型调用。
 """
 
 from __future__ import annotations
@@ -41,7 +39,15 @@ def _normalize(mat: np.ndarray) -> np.ndarray:
 
 
 class KNNModelRouter:
-    """Route each task to the best-value model via KNN over per-model rewards."""
+    """通过 Per-model Rewards 上的 KNN，把每个任务路由给 Best-value Model。
+
+    初始化时读取路由参数与训练 Memory，归一化任务向量，并只保留配置和 Memory 共同支持的模型。
+    运行期 `select_model_chain` 为 Prompt 生成向量、检索邻居并应用相似度、样本数与 Margin 门禁。实例
+    不执行最终 LLM Call，也不修改 Agent 的默认模型；证据不足时始终把决定权交回调用方。
+
+    Memory Embedding 可以预先提供，也可以通过配置的 Endpoint 在加载时补齐并缓存。缓存只用于减少
+    重复计算，写入失败不会改变路由正确性，只会使下次加载重新生成向量。
+    """
 
     def __init__(self, routing_cfg, default_model: str | None = None):
         self._k = max(1, int(routing_cfg.k))
@@ -98,9 +104,16 @@ class KNNModelRouter:
         )
 
     def _resolve_embeddings(self, entries: list[dict], path: str) -> "np.ndarray | None":
-        """Use precomputed ``embedding`` vectors if present; otherwise embed each
-        entry's ``text`` one at a time (batch=1, to match how live queries are
-        embedded) via the configured endpoint, cached next to the memory file."""
+        """优先使用 Precomputed ``embedding``，否则逐条生成每个 Entry 的 ``text`` 向量。
+
+        所有 Entry 都携带向量时直接构造 `np.ndarray`。只要存在缺失，就从 ``text`` 取任务描述，缺失文本
+        时退回 ``task_name``，并通过配置的 Endpoint 以 batch=1 请求；逐条处理是为了与 Live Queries 的
+        Embedding 方式一致。生成结果缓存在由 Memory Path 与 Endpoint 共同派生的用户目录文件中，而
+        不是写到可能只读的 Memory File 旁边。
+
+        未配置 Endpoint 或任一网络/响应解析过程失败时返回 `None`，调用方据此禁用本次路由。返回数组
+        仅说明每条任务取得了数值向量，归一化由 `_load_memory` 随后完成。
+        """
         if all("embedding" in e for e in entries):
             return np.array([e["embedding"] for e in entries], dtype=np.float32)
 
@@ -162,7 +175,18 @@ class KNNModelRouter:
             return None
 
     async def select_model_chain(self, prompt: str) -> tuple[str | None, list[str]]:
-        """Return ``(primary_model, [fallback_models])``; ``(None, [])`` to use default."""
+        """返回 ``(primary_model, [fallback_models])``；``(None, [])`` 表示使用 Default。
+
+        方法先执行冷启动结构门禁：候选模型少于两个或 Memory Size 不足时不参与决策。随后生成 Prompt
+        Embedding，取 K 个最近邻，只保留 Cosine Similarity 达到阈值的样本，并要求 Similar Neighbours
+        数量足够。每个候选模型只在确实含有其 Reward 的同一批邻居上计算平均 Reward 与 Cost，避免缺失值
+        被错误地当作零分。
+
+        排名第一的模型若就是 `_default_model`，或相对默认模型的得分优势未达到 `min_margin`，仍返回
+        ``(None, [])``；真正切换时才返回 Primary 与其余 Ranked Fallbacks。Embedding、矩阵维度或数据
+        计算发生任何异常也会降级而不让 Turn 崩溃，因此成功选出模型只代表历史证据通过门禁，不保证本轮
+        任务最终完成。
+        """
         # 冷启动/结构门禁：候选或记忆过少时无法可靠决策，保留调用方默认模型。
         if len(self._candidates) < 2 or self._embeddings.shape[0] < self._min_memory_size:
             return None, []

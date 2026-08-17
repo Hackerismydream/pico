@@ -1,4 +1,13 @@
-"""Provider-aware cache ownership and request planning."""
+"""Provider-aware Cache Ownership 与 Request Planning。
+
+不同 Provider 对 Prompt Cache 的控制方式不同：有些自动缓存，有些要求 Anthropic-style 显式
+``cache_control``，还有些完全不支持。本模块先通过 `cache_capability` 判定所有权，再负责验证、移除
+或补充请求中的 Cache Markers。这样 Runtime 不会把某家 Provider 的协议字段错误发送给另一家，
+也不会覆盖调用方已经明确给出的合法缓存计划。
+
+这些函数只规划请求结构；Cache Marker 存在不代表远端一定命中缓存，实际 Read/Write Tokens 仍以
+Provider 返回的 Usage Evidence 为准。
+"""
 
 from __future__ import annotations
 

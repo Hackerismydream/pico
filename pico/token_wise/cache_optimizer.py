@@ -1,30 +1,26 @@
-"""CacheOptimizer — places Anthropic ``cache_control`` breakpoints optimally.
+"""`CacheOptimizer` 为 Anthropic 合理放置 ``cache_control`` Breakpoints。
 
-Anthropic allows up to 4 ephemeral cache breakpoints per request. The cache
-key for each breakpoint is every block *up to and including* that breakpoint,
-so placement determines what is actually cacheable.
+Anthropic 每个请求最多允许 4 个 Ephemeral Cache Breakpoints。每个断点的 Cache Key 覆盖从请求开头
+到该断点（*包含断点自身*）的所有 Blocks，因此断点位置直接决定哪些前缀真正可缓存。当前策略来自
+与 Hermes Agent ``system_and_3`` Strategy 的 Head-to-head Benchmark，详见
+``EXPERIMENT_REPORT_CACHE_STRATEGIES.md``。
 
-The current strategy is informed by head-to-head benchmarking against Hermes
-Agent's ``system_and_3`` strategy. See
-``EXPERIMENT_REPORT_CACHE_STRATEGIES.md``.
+存在 Tools 时，这是常见 Agent Scenario，四个位置依次是：
 
-When tools are present (common agent scenario):
-    1. Tools list end — tool schemas rarely change; caching them saves the
-       full schema re-send cost every call.
-    2. System prompt tail — SOUL + USER + MEMORY + built-ins is stable.
-    3. ``messages[-2]`` — rolling tail; covers the intra-turn tool-chain
-       prefix so each iteration only pays fresh for the newest result.
-    4. ``messages[-1]`` — rolling tail; written as cache this call, read as
-       cache next call; completes the rolling coverage.
+1. Tools List End：Tool Schemas 很少变化，缓存后可省去每次重发完整 Schema 的成本；
+2. System Prompt Tail：SOUL + USER + MEMORY + Built-ins 通常稳定；
+3. ``messages[-2]``：Rolling Tail 覆盖 Intra-turn Tool-chain Prefix，使每轮只为最新 Result 支付
+   Fresh Tokens；
+4. ``messages[-1]``：本次写入缓存、下次作为 Cache Read，补全滚动覆盖。
 
-When no tools are present (pure conversation):
-    1. System prompt tail.
-    2–4. Last 3 non-system messages (rolling window identical to Hermes's
-         ``system_and_3`` — proven optimal for cross-turn prefix matching).
+不存在 Tools、即 Pure Conversation 时：
 
-For models that do not support prompt caching, this strategy is a no-op.
-Original messages and tools are *never* mutated; deep copies are taken for
-every block that gets a ``cache_control`` marker.
+1. System Prompt Tail；
+2. 最后三条 Non-system Messages，组成与 Hermes ``system_and_3`` 相同的 Rolling Window；基准结果
+   表明它适合 Cross-turn Prefix Matching。
+
+不支持 Prompt Caching 的模型使用本策略时是 No-op。Original Messages 与 Tools *绝不原地修改*；
+每个新增 ``cache_control`` Marker 的 Block 都通过复制产生，调用方可以安全保留原请求对象。
 """
 
 from __future__ import annotations
@@ -59,11 +55,14 @@ def _mark_cache(block: dict[str, Any]) -> dict[str, Any]:
 
 
 def _mark_message_tail(msg: dict[str, Any]) -> dict[str, Any]:
-    """Return a copy of ``msg`` with ``cache_control`` on the last content block.
+    """复制 ``msg``，并在最后一个 Content Block 上放置 ``cache_control``。
 
-    - str content → wrapped into a single text block with cache_control
-    - list content → last block gets cache_control
-    - other (None/dict/unknown) → returned unchanged
+    - `str` Content：包装成一个带 Cache Control 的 Text Block；
+    - `list` Content：复制列表，只给 Last Block 添加 Cache Control；
+    - 其他类型，包括 `None`、`dict` 与 Unknown：原样返回。
+
+    如果 List 的末项不是 Dict，也会返回原消息，因为无法安全附加协议字段。函数只复制需要改动的
+    外层结构，不承诺对所有嵌套内容做完整 Deep Copy。
     """
     content = msg.get("content")
     if isinstance(content, str):
@@ -81,19 +80,19 @@ def _mark_message_tail(msg: dict[str, Any]) -> dict[str, Any]:
 
 
 class CacheOptimizer(TokenStrategy):
-    """Adaptive cache breakpoint placement.
+    """根据请求结构自适应放置 Cache Breakpoints 的 Token Strategy。
 
-    Uses all 4 Anthropic breakpoints. The allocation adapts to whether tools
-    are present:
+    默认使用 Anthropic 全部 4 个 Breakpoints，并根据是否存在 Tools 分配：
 
-    - **With tools**: tools + system + msg[-2] + msg[-1]  (2 rolling)
-    - **Without tools**: system + msg[-3] + msg[-2] + msg[-1]  (3 rolling,
-      equivalent to Hermes ``system_and_3``)
+    - **With tools**：Tools + System + ``msg[-2]`` + ``msg[-1]``，其中 2 个 Rolling；
+    - **Without tools**：System + ``msg[-3]`` + ``msg[-2]`` + ``msg[-1]``，其中 3 个 Rolling，等价于
+      Hermes ``system_and_3``。
 
-    The rolling tail ensures that intra-turn tool chains are cached
-    incrementally (each iteration's new tool_result becomes cached prefix
-    for the next iteration), and cross-turn prefixes hit the cache through
-    the natural overlap between turn N's tail and turn N+1's window.
+    Rolling Tail 让 Intra-turn Tool Chains 渐进缓存：每次迭代新增的 ``tool_result`` 会成为下一次的
+    Cached Prefix；Turn N 的尾部与 Turn N+1 的窗口自然重叠，也让 Cross-turn Prefix 命中缓存。
+
+    实例生命周期中 `max_breakpoints` 固定在 1 到 4，越小会按相同优先级提前停止。每次
+    `before_llm_call` 都返回新的受影响结构与原 Model；不支持 Cache Control 时完全透传。
     """
 
     name = "cache_optimizer"

@@ -1,4 +1,4 @@
-"""Bench-neutral WHY/WHERE taxonomy: the spec + open-ended induction (map-reduce).
+"""定义 bench-neutral WHY/WHERE taxonomy 与 open-ended map-reduce induction。
 
 A benchmark's diagnosis step classifies failing trajectories into a
 :class:`TaxonomySpec` — WHY (failure-mode) x WHERE (patch-lever) classes. A
@@ -9,9 +9,8 @@ trajectory (parallel, no preset table), stage-2 clusters all reports into
 classes and assigns each report to its WHY(s).
 
 Induction failure raises :class:`TaxonomyInductionError` — there is no silent
-fallback here, because the only universally-wrong answer for "a brand-new
-benchmark's taxonomy" is some *other* benchmark's table. The bench wiring
-decides what its safe default is (or lets the run stop loudly).
+silent fallback，因为 brand-new benchmark 唯一普遍错误答案就是复用 other benchmark table。
+bench wiring 决定 safe default，或 loud stop。taxonomy 只组织 diagnosis，不证明因果分类正确。
 """
 
 from __future__ import annotations
@@ -26,16 +25,16 @@ DEFAULT_BENCH_DESC = "an agent harness benchmark"
 
 
 class TaxonomyInductionError(RuntimeError):
-    """Raised when open-ended taxonomy induction produced no usable taxonomy."""
+    """open-ended induction 无法产生 usable taxonomy 时抛出的异常。"""
 
 
 @dataclass(frozen=True)
 class TaxonomySpec:
-    """A benchmark's WHY (failure-mode) x WHERE (patch-lever) classification.
+    """一个 benchmark 的 WHY failure-mode x WHERE patch-lever classification。
 
     ``why_classes`` / ``where_classes`` map a stable key to a one-line
     description. ``other`` (why) and ``none`` (where) are the escape hatches and
-    are always present (added on construction if the source omitted them).
+    总会存在，source 缺失时 post-init 补入。
     """
 
     why_classes: dict[str, str]
@@ -64,8 +63,10 @@ def strip_code_fence(raw: str) -> str:
 
 
 def _why_prefix_match(why: str, key: str) -> bool:
-    """True when ``why`` carries ``key``'s leading code with a clean boundary
-    (``W1_x`` matches ``W1_...`` but ``W10_x`` must not match ``W1_...``)."""
+    """仅当 WHY 带 key leading code 且 boundary 清晰时返回 True。
+
+    ``W1_x`` 匹配 ``W1_...``，但 ``W10_x`` 不得误匹配 ``W1_...``。
+    """
     prefix = key.split("_")[0].upper()
     w = str(why).upper()
     if not w.startswith(prefix):
@@ -75,7 +76,10 @@ def _why_prefix_match(why: str, key: str) -> bool:
 
 
 def coerce_mode(obj: dict, taxonomy: TaxonomySpec) -> dict:
-    """Normalise one diagnosed failure mode onto the taxonomy's keys."""
+    """把 diagnosed failure mode 归一化到 taxonomy key。
+
+    unknown WHY 尝试 prefix match 后回退 other，unknown WHERE 回退 none；reason/fix_hint 截断。
+    """
     why = obj.get("why")
     if why not in taxonomy.why_classes:
         cand = next(
@@ -114,10 +118,10 @@ def add_failure_mode(fm: dict, trajectory_id: str, mode: dict) -> None:
 
 
 def _parse_modes(raw: str, taxonomy: TaxonomySpec) -> list[dict] | None:
-    """Parse a multi-label diagnosis response into a list of modes.
+    """把 multi-label diagnosis response 解析为 mode list。
 
     Accepts a JSON array (preferred) or a single JSON object (back-compat with
-    single-label callers) -> normalised to a one-element list.
+    single-label caller）并归一化为 one-element list。确保恰一个 dominant mode。
     """
     s = strip_code_fence(raw)
     obj = None
@@ -157,7 +161,7 @@ def classify_failures(
     max_workers: int = 8,
     retries: int = 2,
 ) -> dict:
-    """Judge failing trajectories into a multi-label failure_map over ``taxonomy``.
+    """按 ``taxonomy`` 把 failing trajectories Judge 为 multi-label failure_map。
 
     The bench-neutral diagnosis core: ``bench_intro`` describes the harness and
     task shape (one or two sentences); ``extra_rules`` optionally appends
@@ -165,7 +169,7 @@ def classify_failures(
     ``trajectories`` = ``(trajectory_id, task_description, transcript)`` tuples;
     each trajectory can contribute several modes and every hit increments its
     WHY. Output shape matches ``failure_map_builder.build_failure_map`` so
-    ``select_target_whys`` / the design step consume it unchanged.
+    ``select_target_whys``/design 原样消费。每条 trajectory parse failure 在 bounded retry 后跳过。
     """
     sys = (
         f"{bench_intro} You are given ONE failing trajectory. Classify "
@@ -216,7 +220,7 @@ def classify_failures(
 
 
 def _parse_reports(raw: str) -> list[dict] | None:
-    """Stage-1 report parse: list of {failure_point, evidence, fixes:[...]}."""
+    """解析 Stage-1 ``{failure_point, evidence, fixes:[...]}`` report list。"""
     s = strip_code_fence(raw)
     i, j = s.find("["), s.rfind("]")
     if i < 0 or j <= i:
@@ -234,7 +238,7 @@ def _parse_reports(raw: str) -> list[dict] | None:
 
 
 def _induce_reports(call_fn, trajectories, *, bench_desc, max_workers, retries) -> list[dict]:
-    """Stage 1 (map): one open-ended failure report per trajectory (parallel)."""
+    """Stage 1 map：并行生成每 trajectory 一个 open-ended failure report。"""
     sys = (
         f"You analyse ONE failing agent trajectory from {bench_desc} with NO preset failure "
         "taxonomy. Describe every distinct way it failed (usually 1-3). For each: the concrete "
@@ -270,7 +274,7 @@ def _induce_reports(call_fn, trajectories, *, bench_desc, max_workers, retries) 
 
 
 def _parse_taxonomy(raw: str) -> tuple[TaxonomySpec, list[dict]]:
-    """Stage-2 reduce parse: TaxonomySpec + per-report assignments (multi-label)."""
+    """解析 Stage-2 reduce 的 TaxonomySpec 与 multi-label per-report assignments。"""
     s = strip_code_fence(raw)
     i, j = s.find("{"), s.rfind("}")
     if i < 0 or j <= i:
@@ -285,12 +289,12 @@ def _parse_taxonomy(raw: str) -> tuple[TaxonomySpec, list[dict]]:
 
 
 def _pack_reports(reports: list[dict], *, budget: int) -> str:
-    """JSON-array payload of WHOLE reports within ``budget`` chars.
+    """在 ``budget`` character 内打包 WHOLE report 的 JSON-array payload。
 
     A raw ``json.dumps(reports)[:budget]`` cut mid-record, leaving invalid
     JSON and silently biasing the taxonomy toward early trajectories; packing
     whole records keeps the payload parseable and makes any drop explicit
-    (the trailing marker names how many were left out).
+    trailing marker 明确 omitted count。
     """
     parts: list[str] = []
     size = 2  # 方括号
@@ -318,7 +322,7 @@ def induce_taxonomy(
     target_min: int = 5,
     target_max: int = 9,
 ) -> tuple[TaxonomySpec, dict]:
-    """Discover a WHY/WHERE taxonomy from vanilla failures (open-ended map-reduce).
+    """从 vanilla failures 以 open-ended map-reduce 发现 WHY/WHERE taxonomy。
 
     Stage 1 (map): one compact failure report per trajectory, no preset table.
     Stage 2 (reduce): cluster all reports into ``target_min..target_max`` WHY
@@ -326,7 +330,7 @@ def induce_taxonomy(
     the :class:`TaxonomySpec` plus a seed multi-label failure_map from the
     assignments. Raises :class:`TaxonomyInductionError` when no report parses or
     the reduce never yields a taxonomy — never silently substitutes another
-    bench's table.
+    bench table。返回 taxonomy 与 seed failure map，不代表分类经过人工确认。
     """
     reports = _induce_reports(call_fn, trajectories, bench_desc=bench_desc, max_workers=max_workers, retries=retries)
     if not reports:
@@ -404,7 +408,7 @@ def ensure_taxonomy(
     max_workers: int = 8,
     seed_path: Optional[str | Path] = None,
 ) -> TaxonomySpec:
-    """Resolve the taxonomy for a bench: hardcoded default, or induce-and-cache.
+    """为 bench 解析 hardcoded taxonomy，或 induce-and-cache。
 
     ``mode="hardcoded"`` returns ``default`` (required — the bench's own table).
     ``mode="induce"`` loads ``path`` if it exists, else runs
@@ -416,7 +420,7 @@ def ensure_taxonomy(
     the taxonomy, so the caller can feed it to round 1 instead of re-judging the
     very trajectories induction just judged (round-0 is genuinely free). It is
     written only when induction actually runs; a cached taxonomy leaves any
-    previously written seed in place.
+    previously written seed。induction failure 不回退 other bench default。
     """
     if mode == "hardcoded":
         if default is None:
@@ -445,7 +449,7 @@ def resolve_taxonomy(
     hardcoded: Optional[TaxonomySpec] = None,
     taxonomy_path: Optional[str | Path] = None,
 ) -> tuple[TaxonomySpec, Optional[dict]]:
-    """Resolve the round's taxonomy + (for induce) a round-1 seed failure map.
+    """解析 round taxonomy，并在 induce mode 返回 round-1 seed failure map。
 
     The shared front half of both benches' diagnose wiring. In ``"hardcoded"``
     mode returns the caller-supplied ``hardcoded`` table and no seed. In
@@ -454,7 +458,7 @@ def resolve_taxonomy(
     judges those failures already, returns its seed failure map marked with the
     root as diagnosed — so round 1 reuses it instead of re-judging the same
     trajectories (round-0 free). Requires the vanilla ledger to already exist
-    (cold start run) so ``trajectory_source`` has trajectories to read.
+    cold start ledger 已存在。seed 标记 root diagnosed，避免重复 Judge 同一 trajectory。
     """
     if mode == "hardcoded":
         if hardcoded is None:

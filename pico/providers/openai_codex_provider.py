@@ -1,4 +1,9 @@
-"""OpenAI Codex Responses Provider."""
+"""实现使用 Codex OAuth 调用 OpenAI Responses API 的 Provider。
+
+Provider 把 Pico Chat Messages/Function Schema 转成 Codex Responses Flat Items，从 oauth-cli-kit
+取得 Account Token，以 SSE 消费 Content 与 Tool Call。Request ``store=False`` 并带 Prompt Cache
+Key；Certificate Verify 失败才显式 Retry verify=False。API Error 归一为 LLMResponse Error。
+"""
 
 from __future__ import annotations
 
@@ -17,7 +22,12 @@ DEFAULT_ORIGINATOR = "pico"
 
 
 class OpenAICodexProvider(LLMProvider):
-    """Use Codex OAuth to call the Responses API."""
+    """使用 Codex OAuth Credential 调用 Responses API，并适配为 LLMProvider。
+
+    Chat 将 System Prompt 与 Input Items 分离，Model Prefix 移除，Tool 转 Flat Schema；可选 Reasoning
+    Effort 进入 Body。缺 ``tools`` Extra 时给出 Source/Tool Install 指令。SSE 返回的 Tool Call ID
+    保留 Call/Item Pair，供后续 Function Output Round-trip。Provider 不使用 API Key Config。
+    """
 
     def __init__(self, default_model: str = "openai-codex/gpt-5.1-codex"):
         super().__init__(api_key=None, api_base=None)
@@ -125,7 +135,12 @@ async def _request_codex(
 
 
 def _convert_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Convert OpenAI function-calling schema to Codex flat format."""
+    """把 OpenAI Function-calling Schema 转为 Codex Flat Tool Format。
+
+    支持标准 ``{type:function,function:{...}}`` 与已扁平输入；缺 Name 的项跳过。Parameters 不是
+    Dict 时回退空 Object，Description 缺失为空 String。返回新 List，不修改原 Schema，也不改变
+    Tool 顺序。
+    """
     converted: list[dict[str, Any]] = []
     for tool in tools:
         fn = (tool.get("function") or {}) if tool.get("type") == "function" else tool

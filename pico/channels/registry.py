@@ -1,4 +1,8 @@
-"""Auto-discovery for channel adapters — no hardcoded registry."""
+"""Channel Adapters 的 Auto-discovery，无 Hardcoded Registry。
+
+Registry 通过 Package Scan 发现 Adapter Names，并只 Import Cheap ``spec.py``。Heavy SDK Import 延迟到
+Factory Construction，使 CLI Listing/Onboarding 在缺可选依赖时仍可运行。
+"""
 
 from __future__ import annotations
 
@@ -13,12 +17,10 @@ _ADAPTERS_PKG = "pico.channels.adapters"
 
 
 def discover_specs() -> dict[str, ChannelSpec]:
-    """Return ``{name: ChannelSpec}`` for migrated adapters, keyed by package
-    name.
+    """返回按 Package Name Keyed 的 ``{name: ChannelSpec}``。
 
-    Imports only each ``<name>/spec.py`` (cheap — the heavy SDK import is
-    deferred into the spec's ``factory``). An adapter without a ``spec.py`` is
-    skipped.
+    只 Import 每个 ``<name>/spec.py``；Heavy SDK 延迟到 ``factory``。没有 ``spec.py`` 的未迁移 Adapter Skip。
+    Spec Import 内其他 ModuleNotFoundError 当前也会 Skip，Factory/Capability 验证在后续完成。
     """
     import pico.channels.adapters as pkg
 
@@ -36,12 +38,10 @@ def discover_specs() -> dict[str, ChannelSpec]:
 
 
 def discover_channel_names() -> list[str]:
-    """Return adapter names by scanning the adapters package (zero imports).
+    """Zero Imports 扫描 Adapters Package，返回 Sorted Adapter Names。
 
-    Enumerates both flat modules and adapter sub-packages. The scan is one
-    level deep, so helper modules nested
-    inside an adapter sub-package are not listed and never get mistaken
-    for a channel.
+    枚举 Flat Modules 与 Adapter Subpackages；Scan One Level Deep，因此 Nested Helper Modules 不会被误认为
+    Channel。Name Discovery 不保证存在 Migrated Spec。
     """
     import pico.channels.adapters as pkg
 

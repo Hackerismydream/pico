@@ -1,4 +1,4 @@
-"""Agentic analysis session: full-tool Claude Code, locked to read-only.
+"""运行拥有完整分析能力、但被锁定为 read-only 的 Claude Code Agentic session。
 
 The map-reduce diagnosis reads every failing trajectory once, shallowly. The
 ``agentic`` analysis mode replaces that front half with one Claude Code session
@@ -16,8 +16,11 @@ Safety model (the session must not be able to leave the safe zone):
 - ``cwd`` is the assembled analysis workspace (digest + run data + a pinned
   harness worktree), not the live repo — no CLAUDE.md/project injection and
   nothing load-bearing to touch even if a write slipped through.
-- Only Claude models may run this mode (enforced here): the analyst rides the
-  local CLI's logged-in subscription, like :mod:`.claude_cli`.
+* 该 mode 只允许 Claude model，本模块强制验证；analyst 像 :mod:`.claude_cli` 一样使用 local
+  CLI 已登录 subscription。
+
+session 返回 structured diagnosis 只表示分析调用完成，不是 benchmark verdict、candidate
+promotion 或任务完成证据。
 """
 
 from __future__ import annotations
@@ -32,7 +35,11 @@ AGENTIC_TOOLS = ("Read", "Glob", "Grep")
 
 
 def claude_cli_available(claude_bin: str = "claude") -> bool:
-    """True when the claude CLI is on PATH and answers ``--version``."""
+    """仅当 Claude CLI 在 ``PATH`` 且 ``--version`` 成功时返回 ``True``。
+
+    binary 缺失、timeout 或任意 probe exception 都返回 ``False``；该探测不验证 subscription
+    quota 或后续 model call 一定成功。
+    """
     if shutil.which(claude_bin) is None:
         return False
     try:
@@ -43,7 +50,11 @@ def claude_cli_available(claude_bin: str = "claude") -> bool:
 
 
 def require_claude_for_agentic(model: str, claude_bin: str = "claude") -> None:
-    """Gate for analysis_mode="agentic": claude models + a working CLI only."""
+    """校验 ``analysis_mode="agentic"`` 只使用 Claude model 与可工作的 local CLI。
+
+    model name 不以 ``claude`` 开头时抛出 ``ValueError``；CLI probe 失败时抛出
+    ``RuntimeError``。函数不启动 analysis session。
+    """
     if not str(model).startswith("claude"):
         raise ValueError(
             f"analysis_mode='agentic' only runs on Claude models via the local "
@@ -67,7 +78,7 @@ def run_agentic_session(
     add_dirs: tuple = (),
     run: Optional[Callable[..., "subprocess.CompletedProcess"]] = None,
 ) -> str:
-    """One read-only agentic Claude Code session; returns its final text.
+    """运行一次 read-only Claude Code Agentic session，返回 final text。
 
     ``--append-system-prompt`` (not ``--system-prompt``) keeps Claude Code's
     native agentic system prompt so Read/Glob/Grep are actually driven well;
@@ -78,7 +89,7 @@ def run_agentic_session(
     symlinks pointing at run data are denied without it (observed live: the
     analyst reported the data 'absent' and degraded to signature analogy).
     The tool whitelist stays read-only, so the grant widens visibility, not
-    write reach.
+    write reach。非零 exit、``is_error`` 或 empty result 都抛出 ``RuntimeError``。
     """
     require_claude_for_agentic(model, claude_bin)
     _run = run or subprocess.run

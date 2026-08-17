@@ -1,14 +1,12 @@
-"""EvalEngine orchestrator.
+"""`EvalEngine` Orchestrator，集中装配评估阶段所需依赖。
 
-Holds a config and constructs the three AgentHook instances plus the
-judge + adapter dependencies. Exposes a single :meth:`hooks` accessor
-that returns the three hooks in a stable order, so an Eval-aware
-CLI stack can ``CompositeHook.extend(engine.hooks())`` without
-re-implementing the wiring.
+它持有 Config，构造三个 `AgentHook` Instances 以及 Judge + Adapter Dependencies，并通过唯一
+:meth:`hooks` Accessor 按稳定顺序返回 Hooks。Eval-aware CLI Stack 因而可直接执行
+``CompositeHook.extend(engine.hooks())``，无需重新实现 Wire-up。
 
-Designed so a caller without an LLM provider or MemoryEngine can
-construct a degraded EvalEngine — useful for tests that only want
-to exercise the deterministic deny-list path.
+没有 LLM Provider 或 MemoryEngine 的 Caller 仍可构造 Degraded `EvalEngine`，这对只想覆盖
+Deterministic Deny-list Path 的 Tests 很有用。降级实例会明确使用 No-op Judge/Hook，而不是假装已经
+完成评估。
 """
 
 from __future__ import annotations
@@ -29,11 +27,14 @@ if TYPE_CHECKING:
 
 
 class EvalEngine:
-    """Aggregates the three Eval Engine hooks behind a single factory.
+    """通过 Single Factory 聚合 Eval Engine 的三个 Hooks。
 
-    Phase B-3: the ``memory`` arg was re-typed from the (deleted)
-    ``MemoryEngine`` facade to :class:`MemoryStore` since the only
-    method the adapter uses is ``append_history``.
+    Phase B-3 将 ``memory`` Argument 从已删除的 ``MemoryEngine`` Facade 改为
+    :class:`MemoryStore`，因为 Adapter 唯一使用的方法是 ``append_history``。初始化时，有 Provider 才
+    建立真实 `EvalJudge`，有 Memory Store 才建立真实 After-iteration Write-back；其余阶段仍保持可用。
+
+    实例生命周期与挂载它的 Agent Loop 一致，Config 在创建时固定。Engine 只负责装配，不自行触发
+    Hook，也不合并 Verdict 与 Runtime Outcome。
     """
 
     def __init__(
@@ -69,7 +70,11 @@ class EvalEngine:
         return self._config
 
     def hooks(self) -> list["AgentHook"]:
-        """Return the three hooks in canonical iteration order."""
+        """按 Canonical Iteration Order 返回三个 Hooks。
+
+        顺序固定为 Before Iteration、Tool Audit、After Iteration，确保 `CompositeHook` 在正确生命周期
+        阶段调用对应逻辑。每次返回新 List，但 Hook Instances 为 Engine 内同一对象。
+        """
         return [
             self._before_iteration,
             self._tool_audit,
@@ -89,9 +94,11 @@ from pico.eval_engine.judge.judge import JudgeVerdict
 
 
 class _NoopJudge:
-    """Drop-in judge used when no LLM provider is supplied. Always
-    returns ``JudgeVerdict.unknown`` so the AfterIterationHook stays
-    quiet."""
+    """没有 LLM Provider 时使用的 Drop-in Judge。
+
+    它始终返回 ``JudgeVerdict.unknown``，使 `AfterIterationHook` 保持 Quiet，不写下没有真实判断依据的
+    Completed/Failed 结果。接口与真实 Judge 一致，便于 Engine 无条件装配。
+    """
 
     async def judge(
         self,
@@ -103,9 +110,12 @@ class _NoopJudge:
 
 
 class _NoopHook(AgentHook):
-    """Fallback hook used when no MemoryEngine is wired into the
-    EvalEngine — every phase is pass-through. Distinct from a plain
-    ``AgentHook()`` only so debug logs identify it clearly."""
+    """`EvalEngine` 没有 MemoryEngine Wire-up 时使用的 Fallback Hook。
+
+    每个 Phase 都是 Pass-through，不产生 Verdict Write-back。它与普通 ``AgentHook()`` 的行为差别不大，
+    单独命名只是为了让 Debug Logs 能清晰识别 Eval Degradation，而不是误以为真实 After-iteration
+    Evaluation 已运行。
+    """
 
     @property
     def name(self) -> str:

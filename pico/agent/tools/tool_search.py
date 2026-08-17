@@ -1,26 +1,17 @@
-"""Progressive tool disclosure for large catalogs.
+"""为大型 Tool Catalog 提供 Progressive disclosure 与稳定 Prompt cache。
 
-When built-ins + plugins + MCP push the tool count past a threshold, injecting
-every schema into each request burns context that scales with tool count. This
-module withholds most schemas and exposes two meta-tools instead:
+当 built-ins + plugins + MCP 超过阈值，每轮注入全部 Schema 会让 Context 成本随 Tool 数量增长。
+本模块只保留核心 Tool 与两个 Meta Tool：``tool_search`` 用 BM25 搜索隐藏 Catalog，并返回 name、
+description、parameter schema；``tool_call`` 按名称转发 Registry，后者校验 arguments 并返回可
+修正错误。模型无需第二次 describe lookup 即可调用命中能力。
 
-  - ``tool_search`` — BM25 keyword search over the hidden catalog; each hit
-                      carries name + description + parameter schema, enough to
-                      call the tool without a second lookup.
-  - ``tool_call``   — invoke a cataloged tool by name; forwards through the
-                      registry, which validates arguments and returns a
-                      correctable error when they don't fit the schema.
+每 Turn 发送的 Tool list 固定为 Core + Meta，Prompt cache 因而跨 Session 稳定；Tools 位于 cached
+prefix 的 System+Messages 之前，动态列表会使后续全部失效。代价是 Cataloged Tool 通过
+``tool_call`` 而不是 Native function-calling 执行。
 
-The tool list sent to the model never changes turn-to-turn (always the core
-set + these two meta-tools), so the prompt cache stays stable across the
-whole session — tools sit ahead of system+messages in the cached prefix, so a
-changing tool list would invalidate everything after it. The cost is that
-cataloged tools are invoked through ``tool_call`` rather than native
-function-calling.
-
-Two visibility tiers per turn (see :class:`ToolSearchStrategy`):
-  - always-visible: a core set + the meta-tools (full schema every turn);
-  - cataloged:      everything else — searchable, schema withheld until asked.
+:class:`ToolSearchStrategy` 维护两个 Visibility tier：always-visible 每轮带完整 Schema，Cataloged
+其余能力仅在搜索时披露。小于阈值时 Meta Tool 被移除并保持旧行为；Meta 被 disabled 时回退
+暴露全部 Tool，不能把能力困在不可调用搜索之后。
 """
 
 from __future__ import annotations
@@ -59,11 +50,12 @@ META_TOOL_NAMES: frozenset[str] = frozenset({"tool_search", TOOL_CALL_NAME})
 
 
 class ToolSearchController:
-    """Shared state between the meta-tools and the strategy.
+    """共享 Meta Tool 与 Strategy 所需的 Live Catalog、Index 和 Visibility State。
 
-    Holds the live registry (the catalog source of truth) and the BM25 index.
-    The visible set is constant (core + meta-tools), which keeps the per-turn
-    tool list — and thus the prompt cache — stable.
+    Registry 是 Tool Catalog Source of Truth，ToolIndex 只保存可搜索 BM25 投影。``always_visible`` 在
+    构造时强制加入 META_TOOL_NAMES，所以大型 Catalog 的 per-turn Tool list 始终是 Core + Meta，
+    Prompt cache 得以稳定。Controller 负责搜索结果组装与 Nested invocation 解析，不直接参与
+    LLM Strategy 生命周期。
     """
 
     def __init__(
@@ -79,7 +71,11 @@ class ToolSearchController:
         self._index = ToolIndex()
 
     def _catalog_tools(self) -> list[Tool]:
-        """All registered tools except the meta-tools (never self-searchable)."""
+        """返回所有已注册但非 Meta 的 Tool，防止搜索与调用工具自我编目。
+
+        方法按 Registry 顺序读取 Live instance，热删除后 get 为 None 的名称跳过。``tool_search``
+        与 ``tool_call`` 永远不进入自身 BM25 结果，否则模型可能形成递归 Meta 调用。
+        """
         out = []
         for name in self._registry.tool_names:
             if name in META_TOOL_NAMES:
@@ -90,15 +86,23 @@ class ToolSearchController:
         return out
 
     def refresh(self) -> None:
-        """Sync the BM25 index with the current registry (no-op if unchanged)."""
+        """用当前 Registry Catalog 同步 BM25 Index，Signature 未变时 no-op。
+
+        每次大型 Catalog LLM call 前调用，确保 Plugin/MCP 热加入可搜索；昂贵 Rebuild 是否需要由
+        ToolIndex.ensure 的 name/description/parameters Signature 决定。
+        """
         self._index.ensure(self._catalog_tools())
 
     def visible_names(self) -> set[str]:
         return self.always_visible
 
     def search(self, query: str, limit: int | None = None) -> list[dict[str, Any]]:
-        """Hits carry name + description + parameter schema, so the model can go
-        straight to tool_call without a separate describe round-trip."""
+        """搜索 Catalog，并为每个 Hit 返回 name、description 与 parameter schema。
+
+        Limit 缺失时使用 Controller 默认值。BM25 先只返回 Name，随后重新从 Live Registry 获取
+        Tool，已热删除项跳过；完整 Schema 让模型可直接进入 ``tool_call``，无需 separate describe
+        round-trip。结果顺序沿用 BM25 rank，方法不把 Tool 加入 always-visible set。
+        """
         names = self._index.search(query, limit or self.search_result_limit)
         hits = []
         for name in names:
@@ -142,10 +146,12 @@ class ToolSearchController:
         arguments: dict[str, Any] | None,
         context: ToolExecutionContext | None = None,
     ) -> str:
-        """Invoke a cataloged tool: forward to the registry (validates args).
+        """调用一个 Cataloged Tool，并把 Argument validation 与执行转交 Registry。
 
-        Models sometimes emit the nested ``arguments`` as a JSON string rather
-        than an object; parse that case so the call still goes through.
+        模型有时把 Nested ``arguments`` 发成 JSON string，方法先解析这种形状；非法 JSON、非
+        Object、Meta Tool 自调用或未知 Name 均返回可修正 Error。合法输入经 `resolve_invocation`
+        生成 Child ToolExecutionContext，再由 Registry execute_invocation，保留 timeout、Schema、
+        failure 与 tracing 语义。返回目标 Tool Result，不伪装 Meta Tool 自己完成业务。
         """
         if isinstance(arguments, str):
             try:
@@ -164,7 +170,12 @@ class ToolSearchController:
 
 
 class ToolSearchTool(Tool):
-    """Keyword search over tools whose schemas are not currently loaded."""
+    """对当前未加载 Schema 的 Tool Catalog 执行 Keyword Search。
+
+    Query 应描述所需 Task capability，可中英文；结果是包含 description 与 Schema 的 JSON，直接
+    可交给 `tool_call`。无命中返回提示扩大关键词的普通文本。Tool 只搜索本地 Index，不执行
+    命中能力，也不改变 Visible Set。
+    """
 
     def __init__(self, controller: ToolSearchController) -> None:
         self._ctrl = controller
@@ -209,7 +220,13 @@ class ToolSearchTool(Tool):
 
 
 class ToolCallTool(Tool):
-    """Invoke a cataloged tool by name. Arguments are validated by the registry."""
+    """按精确名称调用 Cataloged Tool，Arguments 由 Registry 校验。
+
+    目标 Name 必须来自 ``tool_search`` 结果，Nested arguments 为对应 Schema Object。普通 execute
+    使用空 Context；`execute_with_context` 保留 Meta call id，并由 Controller 生成 Child call id，
+    让 ToolEvent 显示实际目标。`resolve_invocation` 还使 execute_many 在并发判定前看到目标 Tool
+    capability，而不是错误把 Meta Tool 当作安全 Read。
+    """
 
     def __init__(self, controller: ToolSearchController) -> None:
         self._ctrl = controller
@@ -267,12 +284,14 @@ class ToolCallTool(Tool):
 
 
 class ToolSearchStrategy(TokenStrategy):
-    """``before_llm_call`` hook that compacts the tool list for large catalogs.
+    """在 ``before_llm_call`` 为大型 Catalog 压缩 Tool list 的 Token Strategy。
 
-    At or below ``compaction_threshold`` tools it passes through unchanged (and
-    drops the meta-tools, so small setups are byte-for-byte as before). Above
-    it, only the always-visible core + meta-tools keep their schema in the
-    request; the rest stay reachable via ``tool_search`` / ``tool_call``.
+    Catalog 数量不超过 ``compaction_threshold`` 时移除 Meta Tool，其余 definitions 原样通过，
+    让小型 Setup 保持 byte-for-byte 旧行为。超过阈值时先 refresh Index，再只保留 always-visible
+    Core + Meta Schema，其余仍可经 ``tool_search`` / ``tool_call`` 到达。
+
+    若两 Meta definitions 未同时出现，例如被 disabled_tools 移除，Strategy 直接暴露全部列表，
+    不实施不可逆隐藏。Messages 与 Model 始终原样返回，策略只改变 Tool definitions。
     """
 
     def __init__(self, controller: ToolSearchController, *, compaction_threshold: int = 50) -> None:

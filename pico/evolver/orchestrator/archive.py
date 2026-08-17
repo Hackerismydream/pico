@@ -1,4 +1,4 @@
-"""GSME archive — one gated elite per (WHERE x WHY) cell, plus recombination.
+"""维护每个 ``WHERE x WHY`` cell 一个 gated elite 的 GSME archive，并提出 recombination。
 
 The paper's Gated Semantic MAP-Elites has three parts: a categorical archive
 keyed on the pathology a patch addresses (one elite per cell, entered only
@@ -23,8 +23,8 @@ steers which combinations get measured, so label noise in WHY degrades
 coverage, never the quality of what is ultimately promoted (same argument as
 the paper's descriptor-noise analysis).
 
-State persists to one JSON (``config.archive_path``) after every round, so a
-resumed run keeps its elites, lineage metadata, and attempted pairings.
+state 每 round 持久化到 ``config.archive_path`` JSON，resume 保留 elite、lineage metadata 与
+attempted pairing。archive 只选择“值得测”的组合，不授予 credit；recombinant 仍走完整 gate。
 """
 
 from __future__ import annotations
@@ -40,13 +40,11 @@ from pico.evolver.tree.node import AppliedPatch, HarnessNode, PatchWhy
 
 @dataclass(frozen=True)
 class CellElite:
-    """The gated elite of one (WHERE x WHY) cell.
+    """一个 ``WHERE x WHY`` cell 的 gated elite record。
 
-    ``files`` / ``deletions`` are the repo-relative paths the elite's edit
-    changed vs its own parent commit — together with ``git_commit_sha`` they
-    are all a recombiner needs to re-materialise the mechanism onto a new
-    parent (the bytes are read back from the commit, so this record is
-    resume-safe without storing file contents).
+    ``files``/``deletions`` 是相对自身 parent 的 repo-relative edit path；配合 git_commit_sha，
+    recombiner 可从 commit 回读 bytes 并重现机制，无需在 JSON 保存 content，因此 resume-safe。
+    ``credited`` 只表示 2sigma label，不改变 navigator elite 资格。
     """
 
     cell: str
@@ -98,15 +96,11 @@ class CellElite:
 
 @dataclass
 class RecombinantCandidate:
-    """A cross-cell recombination candidate: an elite's edit re-materialised
-    onto the current parent.
+    """把 cross-cell elite edit 重现到 current parent 的 candidate。
 
-    Duck-types the bench candidate contract the wired lines share
-    (``files`` bytes / ``deletions`` / ``why`` / ``focused_task_ids`` /
-    ``summary``), so ``files_of`` / ``deletions_of`` / ``focused_source`` /
-    ``outcome_hook`` all consume it unchanged and it flows through the standard
-    apply -> gate pipeline like any designed candidate. ``elite_node_id`` marks
-    it for pairing bookkeeping and the audit trail.
+    对 bench shared contract 采用 duck type：files bytes、deletions、why、focused_task_ids、summary，
+    因而可被 files/deletions/focused/outcome hook 原样消费，并像 designed candidate 一样走
+    apply -> gate。``elite_node_id`` 用于 pairing audit；``has_beacon`` 继承 identical code bytes。
     """
 
     files: dict[str, bytes]
@@ -140,13 +134,10 @@ def _lever_of_path(path: str) -> str:
 
 
 def bind_where(paths) -> str:
-    """Mechanically bind the WHERE lever from the files a patch touches.
+    """根据 patch touched files 机械绑定 WHERE lever。
 
-    The paper's WHERE is read off the patch artifact, never self-declared —
-    that keeps the archive's WHERE axis noise-free while WHY carries all the
-    modeling error. A patch spanning several levers is its own ``"mixed"``
-    coordinate (stacking it wholesale is still meaningful); no paths at all
-    (a metadata-only candidate) binds to ``"edit"``, the unknown lever.
+    WHERE 从 artifact 读取、从不 self-declare，使该 axis noise-free，model error 全留在 WHY。
+    多 lever patch 为 ``mixed``；无 path 的 metadata-only candidate 为 unknown ``edit``。
     """
     levers = {_lever_of_path(p) for p in paths}
     if not levers:
@@ -157,10 +148,11 @@ def bind_where(paths) -> str:
 
 
 def cell_of(cand: Any) -> Optional[tuple[str, str]]:
-    """The (WHERE-lever, WHY) coordinate of a candidate, or None when it has
-    no WHY. WHERE is bound mechanically from the touched files (:func:`bind_where`);
-    a driver-declared ``patch_where`` stays on the node ledger for audit but
-    never decides the archive coordinate."""
+    """返回 candidate 的 ``(WHERE lever, WHY)`` coordinate，无 WHY 时为 ``None``。
+
+    WHERE 由 :func:`bind_where` 从 touched files 计算；driver-declared patch_where 只留在 node
+    ledger audit，绝不决定 archive coordinate。
+    """
     if isinstance(cand, AppliedPatch):
         why = cand.patch_why_extra if cand.patch_why == PatchWhy.other else cand.patch_why.value
         paths = [c.target_file for c in cand.components]
@@ -173,7 +165,7 @@ def cell_of(cand: Any) -> Optional[tuple[str, str]]:
 
 
 def _touched_paths(cand: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """(changed, deleted) repo-relative paths of a candidate's edit."""
+    """返回 candidate edit 的 ``(changed, deleted)`` repo-relative paths。"""
     if isinstance(cand, AppliedPatch):
         return tuple(c.target_file for c in cand.components), ()
     files = getattr(cand, "files", None)
@@ -183,12 +175,11 @@ def _touched_paths(cand: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
 
 
 def describe_candidate(cand: Any) -> Optional[dict]:
-    """JSON-safe candidate metadata for the node ledger.
+    """生成 node ledger 使用的 JSON-safe candidate metadata。
 
-    The wired bench candidates are not :class:`AppliedPatch`, so a node record
-    would otherwise carry ``patch: null`` and lose the WHERE/WHY/touched-files/
-    activation info the ledger is supposed to hold. Returns None for a
-    candidate with no coordinate (nothing to record).
+    wired bench candidate 不是 :class:`AppliedPatch`，若不转换会丢失 WHERE/WHY/touched file/
+    activation。无 coordinate 返回 None；有值时保留 summary、beacon、activation_spec、manifest
+    与 recombination provenance。description 不验证这些声明。
     """
     coord = cell_of(cand)
     if coord is None:
@@ -217,7 +208,7 @@ def describe_candidate(cand: Any) -> Optional[dict]:
 
 
 class GsmeArchive:
-    """The persistent GSME state: cell elites, lineage metadata, pairings.
+    """持久化 GSME cell elite、lineage metadata 与 attempted pairing。
 
     ``node_meta`` records, for every PROMOTED node, which cells its lineage has
     stacked and which files that lineage touched — the exclusion sets
@@ -226,7 +217,7 @@ class GsmeArchive:
     its outcome), so a patience streak does not re-propose the same pair every
     round. A parent with no metadata (the root, or a pre-archive journal)
     just gets an empty lineage: redundant proposals are then caught by the
-    pairing record and, failing that, measured and rejected by the gate.
+    pairing record 捕获，最后仍由 gate 测量/拒绝。实例 load failure 保守回到 empty state。
     """
 
     def __init__(self, path: str | Path):
@@ -248,7 +239,11 @@ class GsmeArchive:
         vanilla_train_mean: float,
         round_index: int,
     ) -> None:
-        """Observe one gated outcome: record pairings, lineage, and elites."""
+        """观察一个 gated outcome，更新 pairing、promoted lineage 与 cell elite。
+
+        recombination 总是记录 pairing。只有 outcome promoted、含 confirm eval、score beat fixed
+        vanilla，且优于现有 cell elite 时才入 archive。rejected/failed/inconclusive 永不进入。
+        """
         elite_id = getattr(cand, "elite_node_id", None)
         if elite_id:
             self.record_pairing(parent_id, elite_id, outcome.status.value)
@@ -295,13 +290,13 @@ class GsmeArchive:
     # ---- 重组提案 ---------------------------------------------------------
 
     def eligible_elites(self, parent_id: str, *, limit: int = 1) -> list[CellElite]:
-        """Elites worth stacking onto ``parent_id``, best score first.
+        """返回值得 stack 到 ``parent_id`` 的 elite，按 score descending。
 
         Excluded: cells already in the parent's lineage, the parent itself,
         pairings already attempted, and elites whose edit overlaps a file the
         lineage already changed (byte-level stacking cannot merge same-file
         edits, only replace — an overlapping "stack" would silently drop one
-        mechanism and measure a lie).
+        mechanism 并测量谎言。``limit<=0`` 返回空 list。
         """
         if limit <= 0:
             return []
@@ -326,8 +321,10 @@ class GsmeArchive:
     # ---- 报告 -------------------------------------------------------------
 
     def summary_text(self) -> str:
-        """One line per cell elite — injectable into a design prompt so the
-        driver knows which mechanisms are already banked."""
+        """生成每个 cell elite 一行的 design-prompt summary。
+
+        empty archive 返回空 string；文本只提示 already banked mechanism，不是重新验证结果。
+        """
         if not self._cells:
             return ""
         lines = ["ARCHIVE (verified elites, one per failure cell):"]
@@ -347,7 +344,10 @@ class GsmeArchive:
     # ---- 持久化 ------------------------------------------------------------
 
     def save(self) -> None:
-        """Persist to ``path`` (best-effort, atomic tmp+rename)."""
+        """以 tmp+rename best-effort 保存 archive JSON。
+
+        OSError 被吞掉，因此调用返回不证明 state 已持久化；resume 必须从文件实际回读。
+        """
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             payload = json.dumps(

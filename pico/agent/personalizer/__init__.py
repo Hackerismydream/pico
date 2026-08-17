@@ -1,10 +1,10 @@
-"""Personalizer — PAHF 4-step personalization flow.
+"""重导出实现 PAHF 四阶段 Personalization Flow 的 Personalizer。
 
-Implementation lives in ``personalizer.py``.
-
-External callers should keep using:
+Implementation 位于 ``personalizer.py``。External Caller 应保持稳定 Import：
 
     from pico.agent.personalizer import Personalizer
+
+该入口不创建 Provider、Memory 或 Background Task，只稳定 Package Surface。
 """
 
 from pico.agent.personalizer.personalizer import Personalizer

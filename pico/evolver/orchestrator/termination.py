@@ -1,4 +1,4 @@
-"""Loop termination — the "never stop early" discipline, as code not prompt.
+"""把 ``never stop early`` 的 Loop termination discipline 固化为代码。
 
 The SOP stops on the first of these conditions, and the exhaustion signal is
 always measured against VANILLA (the fixed cold-start baseline) on train, never
@@ -13,12 +13,9 @@ against the previous parent and never against the sealed test set:
   loop either, so it gets its own counter and an honest ``errors_exhausted``
   stop reason.
 
-``record_round(promoted=...)`` takes the vanilla-comparison signal: True iff at
-least one candidate's full-train confirm beat vanilla this round (regardless of
-whether it also beat its ratcheted parent baseline and banked). Keeping this in
-a small, unit-tested tracker is exactly what lets a weak driver model run the
-loop: the stop decision is the harness's, not something the model has to
-remember to check.
+``record_round(promoted=...)`` 接收 vanilla-comparison signal：本轮至少一个 candidate full-train
+confirm beat vanilla 才为 True，不管它是否同时 beat ratcheted parent 并 bank。small unit-tested
+tracker 让 weak driver 也能运行 Loop；stop decision 属于 Harness，不依赖 model 记忆。
 """
 
 from __future__ import annotations
@@ -28,7 +25,10 @@ from dataclasses import dataclass
 
 @dataclass
 class TerminationTracker:
-    """Track per-round outcomes across rounds and decide when to stop."""
+    """跨 round 跟踪 promotion/no-decision counter，并决定是否停止。
+
+    tracker 是进程内状态，resume 时应由 journal replay 恢复；它不读取 sealed test。
+    """
 
     patience: int = 10
     max_rounds: int = 20
@@ -46,13 +46,11 @@ class TerminationTracker:
             raise ValueError("max_consecutive_errors must be >= 1")
 
     def record_round(self, promoted: bool, *, errored: bool = False) -> None:
-        """Record one completed round's outcome.
+        """记录一个 completed round outcome。
 
-        ``promoted`` is the SOP exhaustion signal: True iff at least one
-        candidate beat VANILLA on the full train set this round. ``errored``
-        marks a round that produced no real decision because every candidate
-        failed or was inconclusive; it advances the round and no-decision
-        counters while leaving patience untouched.
+        ``promoted`` 是 SOP exhaustion signal：至少一个 candidate full-train beat VANILLA。
+        ``errored`` 表示全部 candidate failed/inconclusive、无真实 decision；它增加 round/error
+        counter，但保持 patience untouched。正常 decision 会 reset consecutive_errors。
         """
         self.rounds_completed += 1
         if errored:
@@ -65,11 +63,11 @@ class TerminationTracker:
             self.consecutive_no_promotion += 1
 
     def should_stop(self) -> tuple[bool, str | None]:
-        """Return ``(stop, reason)`` given rounds recorded so far.
+        """根据已记录 round 返回 ``(stop, reason)``。
 
-        ``reason`` is None while the loop should continue. ``max_rounds`` is
-        checked first so hitting the cap reports the cap even if patience was
-        also exhausted on the same round.
+        continue 时 reason 为 ``None``。检查顺序为 max_rounds、errors_exhausted、
+        patience_exhausted，因此同轮同时到 cap/patience 时报告 hard cap。返回 stop 不是 run
+        finalize/unseal 已完成的证明。
         """
         if self.rounds_completed >= self.max_rounds:
             return True, "max_rounds"

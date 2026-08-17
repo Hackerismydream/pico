@@ -1,4 +1,13 @@
-"""Runtime owner for request caching, usage normalization, and call cost."""
+"""Request Caching、Usage Normalization 与 Call Cost 的 Runtime Owner。
+
+`CallEfficiency` 是一次 Provider Call 计量链的协调者。调用前，`prepare` 根据 Mode 与 Provider
+Capability 决定保留、清除或重新规划 ``cache_control``；调用后，`record` 统一不同 Provider 的 Usage、
+选择 Accounting Model、估算 Cost，并生成带 Trace Correlation 的 `CallRecord` 交给 Ledger。
+
+Mode 分为 `off`、`observe` 与 `optimize`：关闭时不持久化，观察时只记录而不改请求，优化时才应用
+Cache Plan。Ledger Failure 会记录日志但不能把已经完成的 Provider Call 变成失败 Turn；因此调用
+记录是独立 Evidence，持久化健康状态必须另行核对。
+"""
 
 from __future__ import annotations
 

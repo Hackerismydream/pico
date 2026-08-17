@@ -1,7 +1,11 @@
-"""Model selector — mirrors EcoClaw's selector.ts.
+"""Model Selector，对应 EcoClaw 的 `selector.ts`。
 
-Scores each model by composite(quality, cost) and returns the top choice
-plus 2 fallbacks.
+Selector 接收已经分类的 Task 与 Benchmark Data，用 ``composite(quality, cost)`` 为每个合格模型
+打分，再返回 Top Choice 与 2 个 Fallbacks。Quality 来自该任务的专项 Benchmark，Cost 会在当前
+候选集合内归一化；Routing Profile 决定两者各占多大权重。
+
+这里输出的是基于历史评测的相对排序，不执行模型，也不保证 Primary 在当前请求上一定优于
+Fallback。缺少任务专项数据的模型通常被排除，只有所有模型都缺数据时才退回 Overall Score。
 """
 
 from __future__ import annotations
@@ -23,11 +27,11 @@ _warned_missing: set[str] = set()
 
 
 def _get_task_score(model: ModelBenchmark, task_id: str) -> float | None:
-    """Return the model's score for task_id, or None if no data exists.
+    """返回模型在 ``task_id`` 上的 Score；没有数据时返回 `None`。
 
-    None means the model has never been benchmarked on this task and should
-    be excluded from routing for it — using overall score as a proxy would
-    misrepresent capability on tasks the model hasn't been tested on.
+    `None` 表示该模型从未在此任务上完成 Benchmark，因而应从该任务的 Routing 中排除。不能直接用
+    Overall Score 代替，因为那会把其他任务上的能力误表述成未经测试任务的能力。首次发现某个
+    Model/Task 组合缺分时会记录 Warning，同一组合后续不重复刷日志。
     """
     for ts in model.task_scores:
         if ts.task_id == task_id:
@@ -56,7 +60,12 @@ def _score_model_by_overall(
     cost_min: float,
     cost_max: float,
 ) -> ModelScore:
-    """Score a model using its overall benchmark score (last-resort fallback only)."""
+    """用模型的 Overall Benchmark Score 打分，仅供 Last-resort Fallback 使用。
+
+    质量项取 `overall_score`，成本项在当前候选的 `cost_min` 到 `cost_max` 内反向归一化，再按照指定
+    Routing Profile 合成 `ModelScore`。只有所有候选都没有 Task-specific Score 时才应调用本函数；
+    它提供可用排序，但不能证明模型对当前类别有专项评测证据。
+    """
     profile = ROUTING_PROFILES[profile_name]
     cost_score = _normalize(model.cost, cost_min, cost_max, invert=True)
     composite = profile.quality_weight * (model.overall_score / 100.0) + profile.cost_weight * cost_score
@@ -76,7 +85,12 @@ def _score_model(
     cost_min: float,
     cost_max: float,
 ) -> ModelScore | None:
-    """Return a ModelScore, or None if the model has no data for this task."""
+    """返回模型在当前 Task 上的 `ModelScore`；缺少该任务数据时返回 `None`。
+
+    函数将 Task Score 转成 0 到 1 的质量项，把 Cost 反向归一化为“越便宜越高分”，再依据
+    `profile_name` 的 Quality/Cost 权重计算 Composite Score。`None` 是明确的证据缺失信号，调用方
+    必须排除该模型，不能把它当成零分模型混入排名。
+    """
     task_score = _get_task_score(model, task_id)
     if task_score is None:
         return None
@@ -97,7 +111,15 @@ def select_model(
     category: TaskCategory,
     profile_name: RoutingProfileName,
 ) -> SelectionResult:
-    """Return primary + 2 fallback models for the given category and profile."""
+    """按给定 Category 与 Profile 返回 Primary + 2 Fallback Models。
+
+    首先只保留 Cost 大于零且 Model ID 含 ``/`` 的合格模型；没有候选时抛出 `ValueError`。随后将
+    `category` 映射为 PinchBench Task ID，在候选成本区间内为具有专项得分的模型计算 Composite
+    Score 并降序排列。若所有候选都缺专项数据，则记录 Warning 并改用 Overall-score Ranking。
+
+    返回的 `SelectionResult` 保留 Primary、至多两个 Runner-up、Category 与 Profile，供上层构造
+    Model Chain 和记录路由依据。它只表示本次排序结果，不表示这些模型当前在线或调用已经成功。
+    """
     # 过滤有效模型。
     models = [m for m in benchmark_data.values() if m.cost is not None and m.cost > 0 and "/" in m.model]
     if not models:

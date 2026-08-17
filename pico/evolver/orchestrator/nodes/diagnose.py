@@ -1,4 +1,4 @@
-"""Step ① — diagnose failing trajectories into a failure map (semantic).
+"""执行 Step ①：把 failing trajectories 语义诊断为 failure map。
 
 This is the first semantic step, and it reuses the canonical judge stack rather
 than re-inventing it: the judge already has a system prompt
@@ -12,7 +12,7 @@ parse error fed back and retries instead of derailing the round.
 ``diagnose_trajectory`` judges one trajectory into a :class:`JudgeResult`;
 ``diagnose_round`` judges a batch and folds them into the cross-round failure
 map. The result is a plain dict — the loop persists and re-reads it, so no model
-holds diagnosis state across rounds.
+持久化并重读，因此 model 不持有 cross-round diagnosis state。Judge diagnosis 不是 ground truth。
 """
 
 from __future__ import annotations
@@ -34,7 +34,10 @@ def diagnose_trajectory(
     trajectory_text: str,
     max_retries: int = 3,
 ) -> JudgeResult:
-    """Judge one trajectory into a validated :class:`JudgeResult`."""
+    """把一段 trajectory Judge 为 validated :class:`JudgeResult`。
+
+    parse failure 通过 SemanticNode bounded repair；耗尽时抛异常。
+    """
     messages = build_judge_messages(
         trajectory_id=trajectory_id,
         task_description=task_description,
@@ -57,12 +60,11 @@ def diagnose_round(
     min_why_classes: int = 7,
     max_retries: int = 3,
 ) -> dict[str, Any]:
-    """Judge a batch of ``(trajectory_id, task_description, trajectory_text)`` and
-    aggregate into a failure map.
+    """Judge 一批 ``(trajectory_id, task_description, trajectory_text)`` 并聚合 failure map。
 
     A trajectory whose diagnosis fails to parse after all retries is skipped
     (its id collected under ``_diagnose_failures``) rather than aborting the
-    round — one unparseable trajectory should not sink a round's diagnosis.
+    round；单个 unparseable trajectory 不应击沉整轮。失败 ID 写入 ``_diagnose_failures``。
     """
     results: list[JudgeResult] = []
     failures: list[str] = []
@@ -87,14 +89,14 @@ def diagnose_round(
 
 
 def merge_failure_maps(acc: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
-    """Append ``new`` into the accumulated failure map (cross-round live map).
+    """把 ``new`` 合入 cross-round accumulated live failure map。
 
     The failure map is meant to accumulate across rounds (SOP §2 ①: a live map
     that accumulates across rounds), so WHY-distribution shifts are auditable
     over the evolution. Cells
     are merged by ``WHERE::WHY`` key (trajectory ids / candidates concatenated,
     counts summed); distributions and totals are summed; covered WHY classes are
-    unioned. ``acc`` empty returns a copy of ``new``.
+    union。``acc`` empty 返回 new copy；函数不重新 Judge 旧 result。
     """
     if not acc:
         return dict(new)

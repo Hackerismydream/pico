@@ -1,19 +1,21 @@
-"""``turn.*`` real handlers.
+"""实现把 TUI request 接入 Pico Spine 的 ``turn.*`` handlers。
 
-* ``turn.send`` submits the turn onto the spine (one per ``session_key``) and
-  returns ``{turn_id, accepted: True}`` synchronously; streaming output flows
-  out via the build_tui runner/hub/sink as ``SubscriptionEmitter``
-  notifications.
-* ``turn.subscribe`` wraps ``SubscriptionEmitter.register``.
-* ``turn.unsubscribe`` wraps ``SubscriptionEmitter.unregister`` (idempotent).
-* ``turn.cancel`` cancels the in-flight turn handle and emits the one
-  ``error`` event with ``reason="cancelled_by_client"`` (the sink stays silent
-  on a cancelled TurnFailed to avoid a double error).
+* ``turn.send`` 向 Spine 提交 Turn，每个 ``session_key`` 同时最多一个，并同步返回
+  ``{turn_id, accepted: True}``；streaming output 通过 build_tui runner/hub/sink 变成
+  ``SubscriptionEmitter`` notification；
+* ``turn.subscribe`` 包装 ``SubscriptionEmitter.register``；
+* ``turn.unsubscribe`` 幂等包装 ``SubscriptionEmitter.unregister``；
+* ``turn.cancel`` 取消 in-flight ``TurnHandle``，并发出唯一一条
+  ``reason="cancelled_by_client"`` error；sink 对 cancelled ``TurnFailed`` 保持静默，以免
+  double error。
 
-The handlers are exposed at the module level so tests can patch the
-``_resolve_model`` seam. ``register_turn_methods`` closes the ``emitter`` and
-the build_tui bundle (``scheduler`` / ``turn_ids`` / ``submission_ids`` /
-``build_error``) into single-argument dispatcher handlers.
+module-level handler 让 test 可以 patch ``_resolve_model`` seam。
+``register_turn_methods`` 把 ``emitter`` 与 build_tui bundle（``scheduler``、``turn_ids``、
+``submission_ids``、``build_error``）闭包为 Dispatcher 所需的单参数 handler。
+
+最重要的状态边界是：``accepted=True`` 只表示请求已被接纳或已生成可见失败事件，不等于
+Turn 已开始、Agent 已完成、Session 已持久化或回复已交付。真正终态来自后续 subscription
+的 ``message.complete`` 或 ``error``。
 """
 
 from __future__ import annotations
@@ -54,21 +56,29 @@ _active_request_keys: dict[str, int] = {}
 
 
 def is_turn_active(session_key: str) -> bool:
-    """True if a turn is in flight for this session (the sink drops the slot on
-    turn end, so presence is liveness)."""
+    """判断 ``session_key`` 是否存在 in-flight Turn。
+
+    build_tui sink 会在 Turn 终止时删除 active slot，因此映射中存在即表示 liveness。该值是
+    当前进程 snapshot，只覆盖 TUI handler 管理的 Turn，不是持久化任务状态。
+    """
     return session_key in _active_turns
 
 
 def has_active_turns() -> bool:
+    """返回当前是否至少有一个 TUI Turn 处于 active slot。
+
+    该全局 gate 用于禁止 live model switch 等跨 Session 操作；返回 ``False`` 不代表 Spine
+    没有其他来源的 pending work。
+    """
     return bool(_active_turns)
 
 
 def clear_active(session_key: str, request_key: int | None = None) -> None:
-    """Drop the matching session active-turn slot.
+    """删除匹配的 Session active-turn slot。
 
-    ``build_tui`` supplies the completed request's identity, so a preceding
-    system turn on the same Spine lane cannot clear a queued user turn. A caller
-    may omit it for unconditional teardown between independent lifecycles.
+    ``build_tui`` 提供 completed request identity，只有与 ``_active_request_keys`` 相同才会
+    清理，防止同一 Spine lane 上更早的 system Turn 错误删除 queued user Turn。独立生命周期
+    之间做 unconditional teardown 时可省略 ``request_key``。未知或 identity 不匹配时 no-op。
     """
     if request_key is not None and _active_request_keys.get(session_key) != request_key:
         return
@@ -82,11 +92,11 @@ def clear_active(session_key: str, request_key: int | None = None) -> None:
 
 
 def _resolve_model(parsed: TurnSendParams) -> str:
-    """Resolve the model id for a turn before spawning AgentLoop.
+    """在生成 AgentLoop 前解析本 Turn 的 model id。
 
-    Raises ``ModelNotAvailableError`` (-32008) if no provider/model is
-    routable. The default impl is a no-op pass-through — AgentLoop owns the
-    real model selection. Tests patch this seam to assert -32008 path.
+    若没有 routable provider/model，应抛出 ``ModelNotAvailableError``（``-32008``）。当前
+    default implementation 是 no-op pass-through，real model selection 由 AgentLoop 拥有；
+    test 会 patch 此 seam 断言 ``-32008`` 路径。``parsed`` 已由 ``TurnSendParams`` 校验。
     """
     return "default"
 
@@ -141,16 +151,24 @@ async def turn_send(
     submission_ids: dict[int, str] | None = None,
     build_error: RpcError | None = None,
 ) -> dict[str, Any]:
-    """``turn.send`` — submit a turn onto the spine, return ``{turn_id, accepted}``.
+    """执行 ``turn.send``：向 Spine 提交 Turn，返回 ``{turn_id, accepted}``。
 
-    The turn streams out via the build_tui runner/hub/sink. The runner emits
-    message.start only when this exact request begins, followed by token deltas;
-    the sink emits message.complete / error.
+    ``params`` 先由 ``TurnSendParams`` 校验。可选 ``scheduler_factory`` 只在 scheduler 缺失时
+    lazy 构建；构建 ``RpcError`` 被保存为 ``build_error``。model seam 在占用 active slot 前
+    快速检查，不可路由时抛出 ``ModelNotAvailableError``。每次请求生成 ``turn_id``，并复用
+    或生成 ``submission_id``。
 
-    Errors:
-      -32003 (TurnInProgressError) — session already has an active TUI turn or
-      its Scheduler Lane owns pending/running work.
-      -32008 (ModelNotAvailableError) — no provider/model routable.
+    没有 scheduler 时不执行 Turn：pending image 会被消费，并通过 emitter 发送
+    ``message.start`` 后紧跟 build error 或 ``-32008 model_not_available``，仍返回
+    ``accepted=True`` 让前端按统一 event 流收尾。已有 active TUI Turn 或 Scheduler Lane
+    pending/running work 时抛出 ``-32003 TurnInProgressError``。``SchedulerDrainingError``
+    同样转换为 start + ``turn_failed`` event。
+
+    submit 成功后，函数在无 await 间隙内按 request identity 绑定 ``turn_ids``、
+    ``submission_ids`` 与 active handle，再消费附件。runner 只在 exact request 真正开始时
+    发 ``message.start`` 和 token delta，``build_tui`` sink 发 ``message.complete`` /
+    ``error``。返回
+    ``accepted=True`` 不是任务完成判定。
     """
     try:
         parsed = TurnSendParams.model_validate(params)
@@ -256,7 +274,12 @@ async def turn_subscribe(
     *,
     emitter: SubscriptionEmitter | None = None,
 ) -> dict[str, Any]:
-    """``turn.subscribe`` — open a subscription, return ``{subscription_id}``."""
+    """执行 ``turn.subscribe``，为 Session 打开 event subscription。
+
+    参数按 ``TurnSubscribeParams`` 校验。缺少 ``SubscriptionEmitter`` 表示装配错误，会抛出
+    ``RuntimeError``；成功时调用 ``emitter.register(session_key)`` 并返回
+    ``{subscription_id}``。订阅建立不启动 Turn，也不重放此前事件。
+    """
     parsed = TurnSubscribeParams.model_validate(params)
     if emitter is None:
         raise RuntimeError(
@@ -271,7 +294,12 @@ async def turn_unsubscribe(
     *,
     emitter: SubscriptionEmitter | None = None,
 ) -> dict[str, Any]:
-    """``turn.unsubscribe`` — close a subscription (idempotent)."""
+    """执行 ``turn.unsubscribe``，幂等关闭指定 subscription。
+
+    参数按 ``TurnUnsubscribeParams`` 校验。缺少 emitter 时抛出 ``RuntimeError``；返回
+    ``{"unsubscribed": bool}``，unknown/已关闭 ID 得到 ``False``。关闭订阅不会取消正在
+    运行的 Turn。
+    """
     parsed = TurnUnsubscribeParams.model_validate(params)
     if emitter is None:
         raise RuntimeError(
@@ -288,24 +316,21 @@ async def turn_cancel(
     turn_ids: dict[int, str] | None = None,
     submission_ids: dict[int, str] | None = None,
 ) -> dict[str, Any]:
-    """``turn.cancel`` — cancel the in-flight turn + notify subscribers.
+    """执行 ``turn.cancel``：取消 in-flight Turn，并通知 subscribers。
 
-    Sequence:
-      1. Look up the active turn handle; if absent → ``{cancelled: False}``.
-      2. ``handle.cancel()``.
-      3. ``emitter.emit(session_key, error(reason="cancelled_by_client"))`` — the
-         client resets its UI off this event. This is the ONLY cancelled-turn
-         error; the sink stays silent on a cancelled TurnFailed (avoiding a
-         double error), so this emit is the one signal that clears the front-end
-         turn slot — it must always fire.
-      4. Await the handle so the turn is provably unwound (the sink's TurnFailed
-         handler drops the active-turn slot) before returning, so the next
-         ``turn.send`` cannot race a half-unwound turn into a phantom -32003.
-      5. Return ``{cancelled: True}``.
+    顺序不能改变：先查 active handle，缺失返回 ``{cancelled: False}``；再调用
+    ``handle.cancel()``；若有 emitter，执行
+    ``emitter.emit(session_key, error(reason="cancelled_by_client"))`` 的等价 wire 发送。
+    这是 ONLY cancelled-turn error，也是 MUST 发送的 UI 清理信号；sink 对 cancelled
+    ``TurnFailed`` 静默，避免 double error。``session_key`` 是对应 subscription key。
 
-    The subscription is SESSION-scoped, not turn-scoped: a per-turn cancel ends
-    only the turn and MUST leave the session's subscriptions open so the next
-    turn's events still reach the client.
+    随后等待 ``handle.result()``，证明 Turn 已 unwind、sink 有机会释放 active slot，再清理
+    request identity maps 并返回 ``{cancelled: True}``。这样下一次 ``turn.send`` 不会与
+    half-unwound Turn 竞争并产生 phantom ``-32003``。
+
+    subscription 是 SESSION-scoped，不是 turn-scoped；取消一个 Turn 必须保留 Session
+    subscriptions，使下一次 Turn event 仍能到达 client。返回 ``True`` 表示取消与 drain
+    完成，不等于之前已发生的外部 Tool 副作用被回滚。
     """
     parsed = TurnCancelParams.model_validate(params)
 
@@ -364,12 +389,14 @@ def register_turn_methods(
     submission_ids: dict[int, str] | None = None,
     build_error: RpcError | None = None,
 ) -> None:
-    """Register ``turn.{send,subscribe,unsubscribe,cancel}`` on a dispatcher.
+    """在 Dispatcher 注册 ``turn.{send,subscribe,unsubscribe,cancel}``。
 
-    Wraps the four module-level handlers in single-argument closures that
-    pre-bind the ``emitter`` and the build_tui spine bundle (``scheduler`` /
-    ``turn_ids``) plus the latched ``build_error``, per the dispatcher's
-    single-argument handler contract.
+    四个 module-level handler 被包装为单参数 closure，预绑定 ``emitter``、build_tui Spine
+    bundle（``scheduler``、``scheduler_factory``、``turn_ids``、``submission_ids``）与
+    latched ``build_error``，满足 Dispatcher single-argument handler contract。
+
+    注册不会创建 subscription 或提交 Turn；若 ``emitter`` 缺失，subscribe/unsubscribe 会在
+    调用时明确失败。重复注册由 Dispatcher 抛出 ``ValueError``。
     """
 
     async def _send(params: dict[str, Any]) -> dict[str, Any]:

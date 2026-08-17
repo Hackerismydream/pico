@@ -1,4 +1,4 @@
-"""Role call_fn factory: yaml ``models:`` section -> {driver, design, verdict}.
+"""把 YAML ``models:`` 配置构造成 ``{driver, design, verdict}`` role call_fn。
 
 Provider specs:
 
@@ -10,10 +10,9 @@ Provider specs:
   to Pico's ``agents.defaults.model`` - so a config file with no
   ``models:`` section evolves with whatever model Pico itself is running.
 
-Role fallbacks: ``design`` omitted -> reuse driver; ``verdict`` omitted ->
-None (the orchestrator then drafts verdicts with the driver). Note the driver
-model and the *subject's* model are different knobs: the subject agent's model
-lives in the bench config and is pinned for the whole run (same-regime rule).
+role fallback 是 design omitted -> reuse driver；verdict omitted -> None，由 orchestrator 用
+driver draft verdict。driver model 与 subject model 是不同 knob；subject Agent model 位于 bench
+config，并按 same-regime rule 在完整 run 中 pinned。call_fn 构建成功不验证远端 model 可用。
 """
 
 from __future__ import annotations
@@ -119,7 +118,11 @@ def build_role_call_fns(models_cfg: dict) -> dict[str, Optional[CallFn]]:
 
 
 def describe_models(models_cfg: dict) -> dict:
-    """Resolved model description for the run_meta snapshot (no secrets)."""
+    """为 run_meta snapshot 生成 resolved model description，不包含 secrets。
+
+    role 缺失时写入实际 inheritance/omission 语义；所有 key name 含 ``key`` 的字段被过滤。
+    Pico default model 读取失败时写 ``<pico default>``。返回值供 provenance，不用于创建 provider。
+    """
     out = {}
     for role in ("driver", "design", "verdict"):
         spec = models_cfg.get(role)

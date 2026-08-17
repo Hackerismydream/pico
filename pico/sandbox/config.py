@@ -1,4 +1,8 @@
-"""Pydantic configuration model for the sandbox package."""
+"""Sandbox Package 的 Pydantic Configuration Models。
+
+配置覆盖 Backend/Image、VM CPU/Memory/Disk、Network Policy、Extra Volumes、Timeouts 与 Debug Socket。
+Pydantic 禁止 Unknown Fields 并验证含糊或危险组合，使隔离错误在 Runtime Start 前尽早暴露。
+"""
 
 from __future__ import annotations
 
@@ -10,7 +14,12 @@ from pydantic.alias_generators import to_camel
 
 
 class SandboxDebugConfig(BaseModel):
-    """Debug socket server configuration (nested under sandbox.debug)."""
+    """Debug Socket Server Configuration，嵌套在 ``sandbox.debug`` 下。
+
+    `enabled` 控制是否暴露 Local Debug Socket，`socket` 是相对/绝对路径配置，`max_message_bytes` 限制
+    单条 Request 防止无界内存占用且必须大于零。启用 Debug Server 会增加本地管理面，应结合 Socket
+    文件权限使用。
+    """
 
     model_config = ConfigDict(extra="forbid", alias_generator=to_camel, populate_by_name=True)
 
@@ -27,7 +36,15 @@ class SandboxDebugConfig(BaseModel):
 
 
 class SandboxConfig(BaseModel):
-    """Sandbox execution configuration (boxlite microVM)."""
+    """Sandbox Execution Configuration，当前隔离实现为 BoxLite MicroVM。
+
+    `backend="none"` 明确选择 Host `DirectExecutor`，不提供隔离；`auto` 与 `boxlite` 都要求 BoxLite
+    可用，失败时启动报错而非静默降级。其余字段决定 VM 资源、Network、Mounts 与生命周期 Timeout。
+
+    `allow_net=[]` 被拒绝，因为不同 Runtime 可能把空 Allowlist 解释为 Allow All 或 Allow None；禁网必须
+    写 `False`。Extra Volume 两端必须是 Absolute Path，Mode 只能为 `ro`/`rw`，避免相对路径在 Host 与
+    Guest 间产生歧义。
+    """
 
     model_config = ConfigDict(extra="forbid", alias_generator=to_camel, populate_by_name=True)
 

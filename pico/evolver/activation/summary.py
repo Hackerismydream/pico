@@ -1,4 +1,15 @@
-"""Deterministic Evolution Run summaries from durable artifacts."""
+"""从 durable artifacts 重建 deterministic Evolution Run summary。
+
+summary 不信任单一 ledger。它合并 round journal、per-node JSON 与 verified activation bundle，
+检查 candidate ID/filename、显式 outcome、status type、journal-node outcome、Git commit identity、
+manifest、accepted activation presence 等 cross-source integrity。任何损坏或矛盾 candidate 都
+归入 ``failed``，同时保留结构化 ``integrity_errors``，避免把缺失证据默认为成功。
+
+``build_evolution_summary`` 在 resume 与 finalize 都从磁盘重算相同结果，按
+``accepted/rejected/failed/inconclusive`` 与 activation state 分组排序；
+``write_evolution_summary`` 以 canonical JSON atomic write。summary 是 evidence index，不重跑
+benchmark，也不能把 ``accepted``、``activated`` 与任务交付成功或 sealed 正向结论混为一谈。
+"""
 
 from __future__ import annotations
 
@@ -523,7 +534,16 @@ def _missing_activation_errors(
 
 
 def build_evolution_summary(work_dir: Path | str) -> dict[str, Any]:
-    """Rebuild the same summary on resume and finalize from durable state."""
+    """从 ``work_dir`` durable state 重建 resume/finalize 共用 summary。
+
+    函数依次读取 journal、node 与 activation records，验证 source 之间的 outcome、candidate
+    SHA、manifest 和 required bundle 关系。journal 最后一行若是 partial invalid JSON 被视为
+    crash residue 并忽略；中间损坏、shape 错误或 cross-ledger mismatch 都形成 integrity error。
+
+    failed integrity ID 会覆盖为 ``EvidenceOutcome.failed``；其余 candidate 按 explicit outcome
+    或 status/failure_class 保守分类。返回 schema version、各 outcome/state count 与排序 ID，
+    以及确定性排序的 error list。调用不修改源 artifact。
+    """
 
     work_dir = Path(work_dir)
     candidates, journal_errors, failed_journal_ids = _journal_records(work_dir)
@@ -624,6 +644,11 @@ def write_evolution_summary(
     work_dir: Path | str,
     output_path: Path | str | None = None,
 ) -> Path:
+    """构建 summary，并以 canonical JSON atomic write 到目标路径。
+
+    ``output_path`` 缺失时使用 ``work_dir/evolution_summary.json``。函数返回实际 path；返回
+    成功表示 summary file 已写入，不表示 ``integrity_error_count`` 为 0，调用方仍需检查内容。
+    """
     work_dir = Path(work_dir)
     path = Path(output_path) if output_path is not None else work_dir / SUMMARY_FILENAME
     _atomic_write(path, _canonical_json(build_evolution_summary(work_dir)))

@@ -1,15 +1,13 @@
-"""On-disk persistence for the model catalog (per-model pricing + context window).
+"""把 Model Catalog 持久化到磁盘，内容包括 Per-model Pricing 与 Context Window。
 
-A single versioned JSON file under ``~/.pico/cache/``, written atomically
-(temp-file + ``os.replace``) so concurrent multi-process readers never observe a
-torn file. The catalog is a disposable, refetchable whole-blob cache with an
-authoritative network source, so a lost write race just costs one extra refetch
-— no lock is needed.
+缓存是 ``~/.pico/cache/`` 下一个带 Version 的 JSON 文件，通过 Temp-file + ``os.replace`` 原子写入，
+保证并发 Multi-process Readers 不会看到 Torn File。Catalog 是可丢弃、可重新 Fetch 的 Whole-blob
+Cache，Authoritative Source 在网络端；即使两个 Writer 发生 Lost Write Race，代价也只是下一次多做
+一次 Refetch，不会丢失唯一业务数据，所以无需 File Lock。
 
-Named after what it persists (the model catalog), not its source: the storage
-layer is source-agnostic, so a future catalog source reuses it unchanged. This
-is the storage layer only; freshness (TTL), the in-process tier, and the actual
-fetch are the caller's concern (see ``pricing._fetch_openrouter_models``).
+模块按它持久化的对象 Model Catalog 命名，而不是按当前 Source 命名。Storage Layer 保持
+Source-agnostic，未来更换 Catalog Source 仍可复用。这里仅负责磁盘存储；Freshness TTL、In-process
+Tier 与真实 Fetch 都由 Caller 管理，参见 ``pricing._fetch_openrouter_models``。
 """
 
 from __future__ import annotations
@@ -33,17 +31,22 @@ _CACHE_PATH: Path | None = None
 
 
 def cache_path() -> Path:
-    """Resolve the on-disk catalog path (honoring the test override)."""
+    """解析 On-disk Catalog Path，并遵守 Test Override。
+
+    `_CACHE_PATH` 非 `None` 时原样返回测试指定路径，避免测试触碰真实用户缓存；否则惰性组合
+    `get_cache_dir()` 与 `CACHE_FILENAME`。函数只计算路径，不创建目录或检查文件存在。
+    """
     if _CACHE_PATH is not None:
         return _CACHE_PATH
     return get_cache_dir() / CACHE_FILENAME
 
 
 def load() -> tuple[dict[str, dict], float] | None:
-    """Return ``(models, fetched_at)`` from disk, else None.
+    """从磁盘返回 ``(models, fetched_at)``，无法使用时返回 `None`。
 
-    A missing, unparseable, malformed, or wrong-version file is treated as a
-    miss (None) — reading the cache must never raise into the cost path.
+    Missing、Unparseable、Malformed 或 Wrong-version File 都视为 Cache Miss；读取缓存绝不能把异常
+    传播进 Cost Path。成功返回前会验证 Version、Models 必须是 Dict、Fetched Timestamp 必须可转成
+    Float，但不深度校验每个模型字段，具体定价解析仍由上层负责。
     """
     try:
         path = cache_path()
@@ -65,11 +68,11 @@ def load() -> tuple[dict[str, dict], float] | None:
 
 
 def save(models: dict[str, dict]) -> None:
-    """Atomically persist the catalog: temp file + ``os.replace`` (best-effort).
+    """以 Temp File + ``os.replace`` 原子持久化 Catalog，采用 Best-effort 语义。
 
-    The temp file lives in the same directory (so the rename is POSIX-atomic on
-    one filesystem) and is pid-suffixed so racing writers don't clobber each
-    other's temp. A lost rename race just costs one extra fetch — never data.
+    Temp File 位于目标的 Same Directory，因而同一 Filesystem 上 Rename 具有 POSIX-atomic 保证；
+    文件名带 PID，避免 Racing Writers 互相覆盖临时文件。Lost Rename Race 最多导致额外一次 Fetch，
+    不会丢失唯一数据。目录创建、序列化或替换失败时仅记录 Debug 并跳过，定价主路径不会因此失败。
     """
     try:
         path = cache_path()

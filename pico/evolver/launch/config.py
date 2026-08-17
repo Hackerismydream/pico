@@ -1,4 +1,4 @@
-"""Run-spec loading: YAML -> validated RunSpec (+ --smoke overlay).
+"""把 YAML run spec 加载为 validated ``RunSpec``，并应用 ``--smoke`` overlay。
 
 The YAML shape:
 
@@ -23,9 +23,12 @@ The YAML shape:
 
     smoke: {...}                         # optional deep-merge overlay for --smoke
 
-``--smoke`` applies built-in shrink defaults (1 WHY x 1 candidate x 1 round,
-K=1) first, then the user's ``smoke:`` section on top, and suffixes work_dir
-with ``_smoke`` so a smoke run never touches the real run's state.
+``--smoke`` 先应用 built-in shrink default：1 WHY x 1 candidate x 1 round、K=1，再 deep-merge
+用户 ``smoke:``，并给 work_dir 加 ``_smoke`` suffix，确保 smoke state 不触碰 real run。
+
+loader 还固定 subject commit、验证 role/model shape 与 funnel bounds，并确保 work_dir 在 repo
+外、由 ``run_meta.json`` 标记 ownership 且可写。配置加载成功只证明静态 contract 合法，不
+执行 provider/benchmark precheck。
 """
 
 from __future__ import annotations
@@ -56,7 +59,7 @@ SMOKE_BUILTIN: dict = {
 
 
 class RunSpecError(ValueError):
-    """A config file problem the user must fix; message says exactly what."""
+    """用户必须修复的 run spec 问题，message 提供具体字段或路径原因。"""
 
 
 def _redact_secrets(models: dict) -> dict:
@@ -72,6 +75,10 @@ def _redact_secrets(models: dict) -> dict:
 
 
 def deep_merge(base: dict, overlay: dict) -> dict:
+    """递归合并 mapping，并返回不共享 mutable value 的 deep copy。
+
+    两侧同 key 都为 dict 时递归；其他情况 overlay 完全替换 base。输入不被修改。
+    """
     out = copy.deepcopy(base)
     for k, v in overlay.items():
         if isinstance(v, dict) and isinstance(out.get(k), dict):
@@ -83,6 +90,13 @@ def deep_merge(base: dict, overlay: dict) -> dict:
 
 @dataclass
 class RunSpec:
+    """一次 Evolution Run 的 effective、已解析配置。
+
+    对象拥有 subject repo/base commit、owned work_dir、orchestrator funnel、role model config、
+    bench-specific config、smoke 标记与原始 merged mapping。``base_sha_defaulted`` 记录 YAML
+    是否省略 commit，便于提示 provenance。
+    """
+
     bench: str
     repo_root: Path
     base_sha: str
@@ -96,11 +110,11 @@ class RunSpec:
     raw: dict = field(default_factory=dict)
 
     def snapshot(self) -> dict:
-        """The effective configuration recorded in run_meta (drift guard).
+        """生成写入 run_meta、用于 drift guard 的 effective config snapshot。
 
-        Secrets are redacted before they reach disk — work dirs get shared —
-        and the redaction is a constant, so rotating a key does not trip the
-        config-drift guard.
+        secret 在落盘前用 constant ``<redacted>`` 替换，因为 work_dir 可能共享；constant
+        redaction 还确保 key rotation 不触发 config drift。snapshot 包含 bench、repo/base、
+        models、funnel、bench_config 与 smoke，不包含 runtime callable。
         """
         return {
             "bench": self.bench,
@@ -145,6 +159,15 @@ def _build_funnel(repo_root: Path, work_dir: Path, funnel: dict) -> Orchestrator
 
 
 def load_run_spec(config_path: str | Path, *, smoke: bool = False) -> RunSpec:
+    """读取、合并并验证一份 run-spec YAML。
+
+    file missing、YAML/top-level shape、required key、Git checkout/commit、work_dir ownership、
+    model role 或 funnel value 不合规时抛出 ``RunSpecError``。relative path 以 config file 目录
+    为基准，使从不同 cwd resume 仍定位同一 state。省略 base_sha 时立即解析当前 HEAD 为 full
+    commit；smoke 使用独立 suffixed work_dir。
+
+    返回 ``RunSpec``，并确保 work_dir 已存在且可写；不会创建 ``RunMeta`` 或运行 trial。
+    """
     path = Path(config_path)
     if not path.is_file():
         raise RunSpecError(f"config file not found: {path}")
@@ -212,12 +235,11 @@ def load_run_spec(config_path: str | Path, *, smoke: bool = False) -> RunSpec:
 
 
 def _resolve_head(repo_root: Path) -> str:
-    """Resolve the subject repo's HEAD when the yaml omits ``base_sha``.
+    """YAML 省略 ``base_sha`` 时解析 subject repo 当前 ``HEAD``。
 
-    Resolved to a full sha at load time and recorded in the config snapshot,
-    so the run stays pinned to the commit HEAD pointed at when it started —
-    resuming after the repo gained commits trips the drift guard instead of
-    silently moving the root.
+    load time 固定为 full SHA 并写入 config snapshot，使 run 始终 pinned 到启动时 commit；repo
+    后续新增 commit 时 resume 会触发 drift guard，而不会 silently move root。git 不可执行或
+    rev-parse 失败抛出 ``RunSpecError``。
     """
     try:
         proc = subprocess.run(

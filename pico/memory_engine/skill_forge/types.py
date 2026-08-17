@@ -1,22 +1,18 @@
-"""SkillForgeRouter data types — :class:`RouterHit` + :class:`SkillSource` Protocol.
+"""`SkillForgeRouter` Data Types：:class:`RouterHit` + :class:`SkillSource` Protocol。
 
-Two design points worth highlighting:
+Two Design Points：
 
-- :class:`RouterHit` is **self-contained**. Unlike the legacy
-  ``ScoredSkill`` in :mod:`pico.memory_engine.skill_local.types` (which
-  only carried name + score and forced consumers to re-fetch the body
-  from SkillRegistry), :class:`RouterHit` ships the rendered ``content``
-  so :class:`ContextBuilder` can write it straight into the prompt
-  without a second round-trip to the source.
+- :class:`RouterHit` **Self-contained**。Legacy ``ScoredSkill`` 只携带 Name + Score，Consumer 必须再从
+  `SkillRegistry` Fetch Body；Router Hit 自带 Rendered ``content``，:class:`ContextBuilder` 可直接写入
+  Prompt，无需 Second Round-trip。
+- :class:`SkillSource` 是 Host-internal，不是 Plugin Contribution Point。``@runtime_checkable`` 让 Tests
+  无需继承即可 Assert Duck-typed Conformance，代价是 Surface Matching Object 都会通过；Registration Set
+  Closed，因此可接受。
 
-- :class:`SkillSource` is internal rather than a plugin contribution point.
-  ``@runtime_checkable`` lets tests assert duck-typed conformance
-  without inheritance; the cost is accepting any object whose surface
-  matches, which is fine because the registration set is closed.
-
-The legacy ``ScoredSkill`` in ``skill/types.py`` stays untouched for
-now — :class:`LocalPool` and :class:`SkillService` continue to use it.
-The cleanup PR collapses the two once SkillService is removed.
+Legacy ``ScoredSkill`` 定义于 :mod:`pico.memory_engine.skill_local.types`，历史文档也称
+``skill/types.py``；它仍供 :class:`LocalPool` 与旧 ``SkillService`` Path 使用。原 Cleanup PR 计划在
+移除 SkillService 后合并两者；当前 ``types.py`` 仍明确保留这道边界。类型通过不证明 Source 排序语义或
+Hit 内容正确。
 """
 
 from __future__ import annotations
@@ -27,67 +23,62 @@ from typing import Any, Protocol, runtime_checkable
 
 @dataclass(frozen=True)
 class RouterHit:
-    """One ranked skill returned by a :class:`SkillSource`.
+    """一个 :class:`SkillSource` 返回的 Ranked Skill。
 
-    Carries everything :class:`ContextBuilder` needs to render the
-    skill into the system prompt — no further registry lookup happens
-    on the consumer side.
-
-    The ``qualified_id`` format is ``<source>/<native_id>``.
+    它携带 :class:`ContextBuilder` 渲染 System Prompt 所需全部字段，Consumer Side 不再 Lookup Registry。
+    ``qualified_id`` 格式是 ``<source>/<native_id>``；`name` 用于跨 Source Dedup，`content` 是 Body，
+    `score` 是 Source-local Relevance，`meta` 保存 Provenance/Fusion Details。Frozen 防止字段重新绑定。
     """
 
     qualified_id: str
-    """Globally-unique id with source prefix. Examples:
-    ``"local/git-resolver"`` / ``"mirror/git-resolver"``. The slash split is
-    unambiguous because
-    source names are simple identifiers (no embedded slashes)."""
+    """带 Source Prefix 的 Globally-unique ID，例如 ``"local/git-resolver"`` /
+    ``"mirror/git-resolver"``。Source Names 是不含 Embedded Slashes 的 Simple Identifiers，因此 Slash
+    Split 无歧义。"""
 
     name: str
-    """Skill display name. Used as the cross-source dedup key inside
-    :func:`rrf_merge_weighted` (lands in SR-2): two hits with the same
-    ``name`` are collapsed to one with summed RRF score, regardless of
-    which source they came from."""
+    """Skill Display Name，也是 :func:`rrf_merge_weighted` 的默认 Cross-source Dedup Key。
+
+    SR-2 中相同 ``name`` 的 Two Hits 无论来源都会 Collapse，RRF Score Sum 后保留一个 Representative。
+    因此不同技能不应意外共享同名。
+    """
 
     content: str
-    """Pre-rendered SKILL.md body (frontmatter already stripped) that
-    will land in the prompt's ``# Skills`` block. Empty string means
-    the source has metadata but no body — consumers skip such hits
-    from the body-join, while still letting the name appear in
-    summaries."""
+    """Pre-rendered ``SKILL.md`` Body，Frontmatter 已移除，候选可进入 Prompt ``# Skills`` Block。
+
+    Empty String 表示 Source 只有 Metadata、没有 Body；Consumer 在 Body Join 时跳过，但 Name 仍可出现在
+    Summary。字段存在不表示本轮一定注入，仍需 Resolver/Gate。
+    """
 
     score: float
-    """Source-internal relevance. Each source normalizes to its own
-    scale (BM25 raw / cosine sim / EverMem score); RRF doesn't compare
-    them directly so absolute values across sources are not meaningful.
-    Used only for "pick the best representative when two hits collide
-    on ``name``" — :func:`rrf_merge_weighted` keeps the one with the
-    higher ``score``."""
+    """Source-internal Relevance；各 Source 有自己的 Scale，例如 BM25 Raw / Cosine Sim / EverMem Score。
+
+    RRF 不直接比较 Cross-source Absolute Values，因此它们跨来源无 Meaning。该值只用于同 ``name`` Hit
+    Collision 时选择 Best Representative，:func:`rrf_merge_weighted` 保留更高 ``score`` 的一项。
+    """
 
     meta: dict[str, Any] = field(default_factory=dict)
-    """Source-specific escape hatch.
+    """Source-specific Escape Hatch。
 
-    SR-2 stuffs ``rrf_score`` and ``contributing_sources`` here for
-    telemetry; sources stuff their physical-origin label, native id,
-    confidence, ``always`` flag, etc.
+    SR-2 在这里加入 ``rrf_score`` 与 ``contributing_sources`` 供 Telemetry；Sources 可加入 Physical-origin
+    Label、Native ID、Confidence、``always`` Flag 等。Consumer 应按 Key Capability 读取，不能假设所有
+    Source 都提供同一 Metadata。
     """
 
 
 @runtime_checkable
 class SkillSource(Protocol):
-    """One pool of skills the router can ask.
+    """Router 可查询的一池 Skills。
 
-    Why ``weight`` is a class attribute, not a method param: weights
-    are router-wide policy, not per-call, so they belong with the
-    source's identity. Tests and config tweaks set them once at
-    construction.
+    ``weight`` 是 Class/Instance Attribute 而非 Method Param，因为 Weight 属于 Router-wide Policy，不是
+    Per-call Input；Tests 与 Config 在 Construction 时设置一次。Protocol 只要求 Stable Name、Weight 与
+    Async Search，具体索引和生命周期由 Source Own。
     """
 
     name: str
-    """Stable source identifier used in :attr:`RouterHit.qualified_id`."""
+    """用于 :attr:`RouterHit.qualified_id` 的 Stable Source Identifier，不应含 Slash。"""
 
     weight: float
-    """RRF source weight. Higher = source contributes more rank mass
-    when the same skill surfaces from multiple sources."""
+    """RRF Source Weight。Higher 表示同一 Skill 从多个 Sources Surface 时，本 Source 贡献更多 Rank Mass。"""
 
     async def search(
         self,
@@ -95,15 +86,11 @@ class SkillSource(Protocol):
         history: list[dict[str, Any]],
         k: int,
     ) -> list[RouterHit]:
-        """Return at most ``k`` :class:`RouterHit` records ranked best-first.
+        """返回至多 ``k`` 条 Best-first :class:`RouterHit` Records。
 
-        ``history`` is the session-level message list — sources free to
-        ignore it or use it as context for a smarter ranker.
-
-        Empty list is a valid response — the router's
-        ``_safe_search`` wrapper additionally turns exceptions into
-        empty lists so a single source's failure doesn't poison the
-        whole assembly.
+        ``history`` 是 Session-level Message List，Source 可 Ignore，也可给 Smarter Ranker 作为 Context。
+        Empty List 是合法响应；Router ``_safe_search`` 还会把 Exception 转成 Empty，使 Single Source
+        Failure 不 Poison Whole Assembly。实现不应返回超过 K 的无界结果。
         """
         ...
 
