@@ -78,6 +78,7 @@ proof that the corresponding product behavior works.
 | [PicoBench Ship-1 contract](evaluation/picobench-ship-1.md) | Runtime, Context, Memory/Skill, Tool/MCP, and paired-evaluation task protocol |
 | [PicoBench semantic addendum](evaluation/picobench-semantic-addendum.md) | Historical production EverOS semantic retrieval, source fusion, cumulative budget, and separate claim gates |
 | [PicoBench Myna task-effect v1](evaluation/picobench-myna-task-effect-v1.md) | Installed-candidate cross-Session Memory A/B, rediscovery-efficiency metric, and claim gates |
+| [PicoBench Skill transfer v1](evaluation/picobench-skill-transfer-v1.md) | Frozen instance-disjoint verified Skill-effect A/B, budget, and current no-result boundary |
 | [Myna Memory backend](specs/myna-memory-backend.md) | Current public Plugin identity, ownership, lifecycle, failure semantics, and acceptance Gates |
 | [Channel evidence contract](specs/channel-evidence-gates.md) | V-C0, V-S0, adapter maturity, deterministic matrices, and live-evidence boundary |
 | [Turn evidence correlation](specs/turn-evidence-correlation.md) | V-TE0 trace, usage, delivery, terminal-state, and verifier contract |
@@ -144,6 +145,9 @@ EvoAgentBench or other benchmark lines remain future examples unless
 corresponding code exists.
 
 ## Teaching snapshot
+
+[Verified Skill Evolution 面试故事](verified-skill-evolution.zh-CN.md) gives the
+current user path, safety boundary, experiment design, and answer script.
 
 [中文架构与面试教程](tutorial-zh/README.md) is a detailed teaching snapshot.
 Its implementation narrative is deliberately pinned to PR #47 and its first
