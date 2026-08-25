@@ -55,9 +55,12 @@ def _records(corpus, candidate, *, control_pass: bool = False):
                             injected_skill_ids=(),
                             source_experience_ids=(),
                             tool_calls=3,
+                            turns=1,
+                            latency_ms=300,
                             input_tokens=900,
                             output_tokens=100,
                             provider_calls=3,
+                            estimated_cost_cny=0.002,
                             verification_receipt=(
                                 {
                                     "schema": "pico.picobench.skill-transfer.verification.v1",
@@ -80,9 +83,12 @@ def _records(corpus, candidate, *, control_pass: bool = False):
                             injected_skill_ids=(revision,),
                             source_experience_ids=sources,
                             tool_calls=2,
+                            turns=1,
+                            latency_ms=250,
                             input_tokens=700,
                             output_tokens=80,
                             provider_calls=2,
+                            estimated_cost_cny=0.0015,
                             verification_receipt={
                                 "schema": "pico.picobench.skill-transfer.verification.v1",
                                 "fixture": task.fixture,

@@ -91,9 +91,12 @@ class TrialRecord:
     injected_skill_ids: tuple[str, ...]
     source_experience_ids: tuple[str, ...]
     tool_calls: int
+    turns: int
+    latency_ms: int
     input_tokens: int
     output_tokens: int
     provider_calls: int
+    estimated_cost_cny: float
     verification_receipt: dict[str, Any] | None
     failure_class: str | None = None
     schema: str = TRIAL_SCHEMA
@@ -291,7 +294,16 @@ def build_report(
             axis_valid = False
         by_arm[trial.arm_id] = trial
         resource_complete &= all(
-            value >= 0 for value in (trial.tool_calls, trial.input_tokens, trial.output_tokens, trial.provider_calls)
+            value >= 0
+            for value in (
+                trial.tool_calls,
+                trial.turns,
+                trial.latency_ms,
+                trial.input_tokens,
+                trial.output_tokens,
+                trial.provider_calls,
+                trial.estimated_cost_cny,
+            )
         )
         receipt = trial.verification_receipt
         verification_receipts_valid &= bool(
@@ -711,7 +723,15 @@ def _resource_report(pairs: list[tuple[TrialRecord, TrialRecord]]) -> dict[str, 
 
     return {
         field: {"control_mean": arm_mean(0, field), "treatment_mean": arm_mean(1, field)}
-        for field in ("tool_calls", "input_tokens", "output_tokens", "provider_calls")
+        for field in (
+            "tool_calls",
+            "turns",
+            "latency_ms",
+            "input_tokens",
+            "output_tokens",
+            "provider_calls",
+            "estimated_cost_cny",
+        )
     }
 
 

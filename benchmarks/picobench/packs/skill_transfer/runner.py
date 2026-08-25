@@ -9,6 +9,7 @@ import ssl
 import subprocess
 import textwrap
 import threading
+import time
 from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
@@ -158,6 +159,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
             cwd=workspace,
             environment_overrides={"MYNA_SEMANTIC_API_KEY": ""},
         )
+        started = time.monotonic_ns()
         worker = self._worker_call(
             self._turn_spec(
                 ability, task, repetition=repetition, arm_id=arm_id, workspace=workspace, state=trial_root / "state"
@@ -168,6 +170,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
                 "PICO_BENCH_PROVIDER_API_KEY": self._provider_api_key,
             },
         )
+        latency_ms = max(0, round((time.monotonic_ns() - started) / 1_000_000))
         receipt = verify(workspace, task.fixture)
         smoke_unchanged = hashlib.sha256((workspace / "smoke.py").read_bytes()).hexdigest() == smoke_digest
         receipt["smoke_fixture_unchanged"] = smoke_unchanged
@@ -179,6 +182,8 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
         revision = str(snapshot["active_revision_id"])
         injected = tuple(revision for item in qualified if item.endswith(f"@{revision}"))
         metrics = _tool_metrics(worker.get("tool_events"))
+        input_tokens = int(worker.get("input_tokens", 0) or 0)
+        output_tokens = int(worker.get("output_tokens", 0) or 0)
         return TrialRecord(
             task_id=task.instance_id,
             ability_id=ability.ability_id,
@@ -190,9 +195,12 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
             injected_skill_ids=injected,
             source_experience_ids=tuple(str(item) for item in snapshot["source_experience_ids"]),
             tool_calls=metrics["tool_calls"],
-            input_tokens=int(worker.get("input_tokens", 0) or 0),
-            output_tokens=int(worker.get("output_tokens", 0) or 0),
+            turns=1,
+            latency_ms=latency_ms,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             provider_calls=int(worker.get("provider_calls", 0) or 0),
+            estimated_cost_cny=self._budget_config.cost_cny(input_tokens, output_tokens),
             verification_receipt=receipt,
             failure_class=None if passed else str(failure_class),
         )
