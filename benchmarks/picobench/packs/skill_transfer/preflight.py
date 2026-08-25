@@ -80,6 +80,18 @@ def run_preflight(config: CampaignConfig) -> dict[str, Any]:
             raise RuntimeError("preflight candidate input digest mismatch")
         if len(candidate.get("active_revisions", {})) != 6:
             raise RuntimeError("preflight did not create six active Skill revisions")
+        expected_admissions = {
+            item.instance_id: [candidate["active_revisions"][ability.ability_id]]
+            for ability in corpus.abilities
+            for item in ability.held_out
+        }
+        if candidate.get("held_out_admission_precheck") != expected_admissions:
+            missing = sorted(
+                task_id
+                for task_id, expected in expected_admissions.items()
+                if candidate.get("held_out_admission_precheck", {}).get(task_id) != expected
+            )
+            raise RuntimeError(f"preflight held-out admission failed: {missing}")
         if len(negatives) != 24 or any(item.recalled_revision_ids for item in negatives):
             admitted = {
                 item.instance_id: list(item.recalled_revision_ids) for item in negatives if item.recalled_revision_ids
@@ -93,6 +105,7 @@ def run_preflight(config: CampaignConfig) -> dict[str, Any]:
             "schema": "pico.picobench.skill-transfer.preflight.v1",
             "passed": True,
             "active_revisions": len(candidate["active_revisions"]),
+            "held_out_admissions": len(expected_admissions),
             "hard_negatives": len(negatives),
             "incorrect_skill_admissions": sum(bool(item.recalled_revision_ids) for item in negatives),
             "provider_request_attempts": snapshot.request_attempts,

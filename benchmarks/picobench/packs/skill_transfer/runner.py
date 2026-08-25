@@ -117,7 +117,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
                 learning_experience_maps[ability.ability_id] = {
                     str(key): str(value) for key, value in result["learning_experience_map"].items()
                 }
-        return {
+        receipt = {
             "schema": "pico.picobench.skill-transfer.candidate-receipt.v1",
             "candidate_input_digest": canonical_digest([learning_projection(ability) for ability in corpus.abilities]),
             "active_revisions": active,
@@ -133,6 +133,9 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
                 "provider_request_attempts": provider.ledger.snapshot().request_attempts - attempts_before,
             },
         }
+        receipt["held_out_admission_precheck"] = self.admission_precheck(corpus)
+        receipt["candidate_frozen_before_admission_precheck"] = True
+        return receipt
 
     def load_candidates(self, corpus: SkillTransferCorpus, receipt: dict[str, Any], *, snapshot_root: Path) -> None:
         active = receipt.get("active_revisions", {})
@@ -254,30 +257,13 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
         records: list[NegativeRecord] = []
         for ability in corpus.abilities:
             snapshot = self._snapshots[ability.ability_id]
+            results = self._recall_queries(
+                ability,
+                {item.instance_id: item.query for item in ability.hard_negatives},
+                category="negatives",
+            )
             for item in ability.hard_negatives:
-                root = self._root / "negatives" / item.instance_id
-                workspace = root / "repository"
-                workspace.mkdir(parents=True)
-                self._run(("git", "init", "-q"), cwd=workspace)
-                runtime = root / "myna-runtime"
-                shutil.copytree(Path(snapshot["treatment_runtime"]), runtime)
-                self._run(
-                    (
-                        str(self._myna),
-                        "init",
-                        "--root",
-                        str(runtime),
-                        "--repo-key",
-                        f"skill-transfer/{ability.ability_id}",
-                    ),
-                    cwd=workspace,
-                    environment_overrides={"MYNA_SEMANTIC_API_KEY": ""},
-                )
-                result = self._candidate_call(
-                    {"mode": "recall", "repository": str(workspace), "query": item.query},
-                    root / "worker",
-                    environment_overrides={"MYNA_SEMANTIC_API_KEY": ""},
-                )
+                result = results[item.instance_id]
                 records.append(
                     NegativeRecord(
                         instance_id=item.instance_id,
@@ -287,6 +273,55 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
                     )
                 )
         return tuple(records)
+
+    def admission_precheck(self, corpus: SkillTransferCorpus) -> dict[str, list[str]]:
+        results: dict[str, list[str]] = {}
+        for ability in corpus.abilities:
+            observed = self._recall_queries(
+                ability,
+                {item.instance_id: item.prompt for item in ability.held_out},
+                category="admission",
+            )
+            for item in ability.held_out:
+                results[item.instance_id] = [
+                    str(value) for value in observed[item.instance_id]["recalled_revision_ids"]
+                ]
+        return results
+
+    def _recall_queries(
+        self,
+        ability: AbilityDefinition,
+        queries: dict[str, str],
+        *,
+        category: str,
+    ) -> dict[str, Any]:
+        snapshot = self._snapshots[ability.ability_id]
+        root = self._root / category / ability.ability_id
+        workspace = root / "repository"
+        workspace.mkdir(parents=True)
+        self._run(("git", "init", "-q"), cwd=workspace)
+        runtime = root / "myna-runtime"
+        shutil.copytree(Path(snapshot["treatment_runtime"]), runtime)
+        self._run(
+            (
+                str(self._myna),
+                "init",
+                "--root",
+                str(runtime),
+                "--repo-key",
+                f"skill-transfer/{ability.ability_id}",
+            ),
+            cwd=workspace,
+            environment_overrides={"MYNA_SEMANTIC_API_KEY": ""},
+        )
+        result = self._candidate_call(
+            {"mode": "recall_many", "repository": str(workspace), "queries": queries},
+            root / "worker",
+            environment_overrides={"MYNA_SEMANTIC_API_KEY": ""},
+        )
+        if set(result) != set(queries):
+            raise RuntimeError("Skill admission precheck returned an incomplete query set")
+        return result
 
     def _turn_spec(
         self,

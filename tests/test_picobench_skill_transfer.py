@@ -47,6 +47,12 @@ def _candidate(corpus) -> dict:
         for ability in corpus.abilities
     }
     candidate["candidate_input_digest"] = corpus_split_digests(corpus)["learning"]
+    candidate["candidate_frozen_before_admission_precheck"] = True
+    candidate["held_out_admission_precheck"] = {
+        item.instance_id: [candidate["active_revisions"][ability.ability_id]]
+        for ability in corpus.abilities
+        for item in ability.held_out
+    }
     return candidate
 
 
@@ -161,6 +167,7 @@ def test_report_requires_all_pairs_provenance_negatives_and_positive_clustered_c
         "resource_observations_complete": True,
         "verification_receipts_valid": True,
         "candidate_input_sealed": True,
+        "admission_precheck_complete": True,
     }
     assert report["capability"]["verified_pass_delta_pp"] == 100.0
     assert report["capability"]["task_clustered_bootstrap_95_ci"]["lower"] == 1.0
@@ -237,6 +244,21 @@ def test_candidate_input_must_bind_learning_only_projection() -> None:
     )
 
     assert report["measurement"]["candidate_input_sealed"] is False
+    assert report["claim"]["measurement_valid"] is False
+
+
+def test_candidate_admission_precheck_must_recall_exact_revision() -> None:
+    corpus = load_corpus(CORPUS)
+    candidate = _candidate(corpus)
+    trials, negatives = _records(corpus, candidate)
+    task = corpus.abilities[0].held_out[0]
+    candidate["held_out_admission_precheck"][task.instance_id] = []
+
+    report = build_report(
+        corpus=corpus, trials=trials, negatives=negatives, candidate_receipt=candidate, bootstrap_samples=20
+    )
+
+    assert report["measurement"]["admission_precheck_complete"] is False
     assert report["claim"]["measurement_valid"] is False
 
 

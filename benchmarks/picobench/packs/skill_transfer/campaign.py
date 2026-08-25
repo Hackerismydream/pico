@@ -270,6 +270,7 @@ def build_report(
     experience_provenance = candidate_receipt.get("source_experience_ids", {})
     experience_maps = candidate_receipt.get("learning_experience_maps", {})
     candidate_input_sealed = candidate_receipt.get("candidate_input_digest") == corpus_split_digests(corpus)["learning"]
+    admission_precheck_complete = _candidate_admission_valid(corpus, candidate_receipt)
     provenance_complete = (
         isinstance(revisions, dict)
         and isinstance(learning_provenance, dict)
@@ -383,6 +384,7 @@ def build_report(
         and resource_complete
         and verification_receipts_valid
         and candidate_input_sealed
+        and admission_precheck_complete
     )
     deltas_by_task: dict[str, list[float]] = {}
     for control, treatment in valid_pairs:
@@ -417,6 +419,7 @@ def build_report(
             "resource_observations_complete": resource_complete,
             "verification_receipts_valid": verification_receipts_valid,
             "candidate_input_sealed": candidate_input_sealed,
+            "admission_precheck_complete": admission_precheck_complete,
         },
         "capability": {
             "control_passes": control_passes,
@@ -518,6 +521,8 @@ def run_campaign(
             else:
                 candidate = executor.prepare_candidates(corpus, snapshot_root=snapshot_root)
                 _freeze_json(candidate_path, candidate)
+            if not _candidate_admission_valid(corpus, candidate):
+                raise ValueError("frozen Skill candidate failed held-out admission precheck")
             records = _trial_journal(output / "raw-outcomes.jsonl")
             expected = {
                 (task.instance_id, repetition, arm_id)
@@ -659,6 +664,25 @@ def _verify_budget(
         )
     except (KeyError, TypeError, ValueError):
         return False
+
+
+def _candidate_admission_valid(corpus: SkillTransferCorpus, candidate: dict[str, Any]) -> bool:
+    observed = candidate.get("held_out_admission_precheck")
+    revisions = candidate.get("active_revisions")
+    if (
+        candidate.get("candidate_frozen_before_admission_precheck") is not True
+        or not isinstance(observed, dict)
+        or not isinstance(revisions, dict)
+    ):
+        return False
+    expected_ids = {item.instance_id for ability in corpus.abilities for item in ability.held_out}
+    if set(observed) != expected_ids:
+        return False
+    return all(
+        observed.get(item.instance_id) == [revisions.get(ability.ability_id)]
+        for ability in corpus.abilities
+        for item in ability.held_out
+    )
 
 
 def _verify_candidate_snapshots(
@@ -813,6 +837,7 @@ def _verifier_report(report: dict[str, Any]) -> dict[str, Any]:
             "resource_observations_complete": report["measurement"]["resource_observations_complete"],
             "verification_receipts_valid": report["measurement"]["verification_receipts_valid"],
             "candidate_input_sealed": report["measurement"]["candidate_input_sealed"],
+            "admission_precheck_complete": report["measurement"]["admission_precheck_complete"],
         },
     }
 

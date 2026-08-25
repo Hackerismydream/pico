@@ -149,6 +149,14 @@ def main() -> int:
     if spec.get("mode") == "recall":
         print(json.dumps(asyncio.run(_recall(Path(spec["repository"]), spec["query"])), sort_keys=True))
         return 0
+    if spec.get("mode") == "recall_many":
+        print(
+            json.dumps(
+                asyncio.run(_recall_many(Path(spec["repository"]), spec["queries"])),
+                sort_keys=True,
+            )
+        )
+        return 0
     root = Path(spec["root"]).resolve()
     repository = root / "repository"
     runtime = root / "runtime"
@@ -222,6 +230,22 @@ async def _recall(repository: Path, query: str) -> dict[str, Any]:
         "recalled_revision_ids": [str(item.metadata.get("revision_id")) for item in hits],
         "source_experience_ids": [item.metadata.get("source_experience_ids", []) for item in hits],
     }
+
+
+async def _recall_many(repository: Path, queries: dict[str, str]) -> dict[str, Any]:
+    backend = _backend(repository)
+    await backend.start()
+    try:
+        results = {}
+        for query_id, query in queries.items():
+            hits = await backend.recall(query, agent_id="pico", top_k=5)
+            results[query_id] = {
+                "recalled_revision_ids": [str(item.metadata.get("revision_id")) for item in hits],
+                "source_experience_ids": [item.metadata.get("source_experience_ids", []) for item in hits],
+            }
+    finally:
+        await backend.stop()
+    return results
 
 
 if __name__ == "__main__":
