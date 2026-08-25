@@ -1,4 +1,4 @@
-.PHONY: help install install-deps format check lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-reproduce picobench-scorecard-estimate picobench-scorecard-ship picobench-scorecard-score picobench-runtime-scheduler picobench-runtime-tools picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify picobench-call-efficiency-plan picobench-call-efficiency-preflight picobench-call-efficiency-run picobench-call-efficiency-verify picobench-tracing-plan picobench-tracing-run picobench-tracing-verify picobench-myna-task-effect-plan picobench-myna-task-effect-run picobench-myna-task-effect-verify picobench-memory-agent-plan picobench-memory-agent-run picobench-memory-agent-verify picobench-skill-transfer-plan picobench-skill-transfer-run picobench-skill-transfer-verify verify-myna-integration verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
+.PHONY: help install install-deps format check lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-reproduce picobench-scorecard-estimate picobench-scorecard-ship picobench-scorecard-score picobench-runtime-scheduler picobench-runtime-tools picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify picobench-call-efficiency-plan picobench-call-efficiency-preflight picobench-call-efficiency-run picobench-call-efficiency-verify picobench-tracing-plan picobench-tracing-run picobench-tracing-verify picobench-myna-task-effect-plan picobench-myna-task-effect-run picobench-myna-task-effect-verify picobench-memory-agent-plan picobench-memory-agent-run picobench-memory-agent-verify picobench-skill-transfer-plan picobench-skill-transfer-preflight picobench-skill-transfer-run picobench-skill-transfer-verify verify-myna-integration verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
 
 PYTHON ?= python3
 PYTHON_LINT_TARGETS ?= scripts/check_commit_file.py scripts/check_commit_messages.py scripts/check_pr_title.py scripts/check_large_files.py scripts/commit_lint.py tests/test_commit_lint.py tests/test_large_file_check.py
@@ -45,6 +45,7 @@ help:
 	@echo "  picobench-memory-agent-run Run or resume the approved 48-Trial Agent A/B"
 	@echo "  picobench-memory-agent-verify Rebuild Agent A/B metrics without Provider calls"
 	@echo "  picobench-skill-transfer-plan Freeze the instance-disjoint verified Skill A/B plan"
+	@echo "  picobench-skill-transfer-preflight Run credential-free installed candidate and hard-negative gates"
 	@echo "  picobench-skill-transfer-run Run the approved 96-Trial verified Skill A/B"
 	@echo "  picobench-skill-transfer-verify Rebuild verified Skill A/B evidence without Provider calls"
 	@echo "  picobench      Run the frozen PicoBench calibration and formal campaign"
@@ -203,6 +204,19 @@ picobench-skill-transfer-plan:
 	@test -n "$$PICO_MYNA_PICO_COMMIT" || (echo "PICO_MYNA_PICO_COMMIT is required" >&2; exit 2)
 	@test -n "$$PICO_MYNA_COMMIT" || (echo "PICO_MYNA_COMMIT is required" >&2; exit 2)
 	uv run --frozen --all-extras --exact python -m benchmarks.picobench.packs.skill_transfer.campaign plan \
+		--corpus "$(PICO_SKILL_TRANSFER_CORPUS)" \
+		--output-root "$(PICO_SKILL_TRANSFER_OUTPUT)" \
+		--pico-wheel "$$PICO_MYNA_PICO_WHEEL" \
+		--myna-wheel "$$PICO_MYNA_WHEEL" \
+		--pico-commit "$$PICO_MYNA_PICO_COMMIT" \
+		--myna-commit "$$PICO_MYNA_COMMIT"
+
+picobench-skill-transfer-preflight:
+	@test -n "$$PICO_MYNA_PICO_WHEEL" || (echo "PICO_MYNA_PICO_WHEEL is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_WHEEL" || (echo "PICO_MYNA_WHEEL is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_PICO_COMMIT" || (echo "PICO_MYNA_PICO_COMMIT is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_COMMIT" || (echo "PICO_MYNA_COMMIT is required" >&2; exit 2)
+	uv run --frozen --all-extras --exact python -m benchmarks.picobench.packs.skill_transfer.preflight \
 		--corpus "$(PICO_SKILL_TRANSFER_CORPUS)" \
 		--output-root "$(PICO_SKILL_TRANSFER_OUTPUT)" \
 		--pico-wheel "$$PICO_MYNA_PICO_WHEEL" \

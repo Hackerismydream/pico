@@ -15,6 +15,8 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Iterator
 
+import certifi
+
 from benchmarks.picobench.budget import (
     BudgetGuardedProvider,
     ProviderBudgetConfig,
@@ -24,6 +26,7 @@ from benchmarks.picobench.budget import (
 from benchmarks.picobench.canonical import canonical_digest
 from pico.cli._helpers import make_provider
 from pico.config.schema import Config
+from pico.providers.base import LLMProvider
 
 from ..myna_task_effect.runner import InstalledTrialExecutor, _tool_metrics
 from .campaign import (
@@ -40,13 +43,21 @@ from .fixtures import materialize, verify
 
 
 class InstalledSkillTransferExecutor(InstalledTrialExecutor):
-    def __init__(self, config: CampaignConfig, *, provider_api_key: str, provider_api_base: str | None) -> None:
+    def __init__(
+        self,
+        config: CampaignConfig,
+        *,
+        provider_api_key: str,
+        provider_api_base: str | None,
+        skill_provider_override: LLMProvider | None = None,
+    ) -> None:
         if not provider_api_key:
             raise ValueError("skill transfer Provider credential is required")
         super().__init__(config)  # type: ignore[arg-type]
         self._config = config
         self._provider_api_key = provider_api_key
         self._provider_api_base = provider_api_base
+        self._skill_provider_override = skill_provider_override
         self._candidate_worker = Path(__file__).with_name("candidate_worker.py").resolve()
         self._benchmark_root = Path(__file__).resolve().parents[4]
         self._budget_path: Path | None = None
@@ -60,11 +71,13 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
     def prepare_candidates(self, corpus: SkillTransferCorpus, *, snapshot_root: Path) -> dict[str, Any]:
         if self._budget_path is None or self._budget_config is None:
             raise ValueError("skill transfer budget is not configured")
-        provider = _skill_provider(
+        provider = self._skill_provider_override or _skill_provider(
             api_key=self._provider_api_key,
             api_base=self._provider_api_base,
             ledger=ProviderBudgetLedger(self._budget_path, self._budget_config),
         )
+        if not isinstance(provider, BudgetGuardedProvider):
+            raise ValueError("Skill extraction Provider must be budget guarded")
         attempts_before = provider.ledger.snapshot().request_attempts
         active: dict[str, str] = {}
         experiences: dict[str, list[str]] = {}
@@ -373,6 +386,8 @@ class _Proxy:
 def _skill_proxy(root: Path, provider: BudgetGuardedProvider, *, config: CampaignConfig) -> Iterator[_Proxy]:
     root.mkdir(parents=True)
     certificate, key = _certificate(root)
+    trust_bundle = root / "ca-bundle.pem"
+    trust_bundle.write_bytes(Path(certifi.where()).read_bytes() + b"\n" + certificate.read_bytes())
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_POST(self) -> None:
@@ -423,7 +438,7 @@ def _skill_proxy(root: Path, provider: BudgetGuardedProvider, *, config: Campaig
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield _Proxy(f"https://localhost:{server.server_port}/v1", certificate)
+        yield _Proxy(f"https://localhost:{server.server_port}/v1", trust_bundle)
     finally:
         server.shutdown()
         thread.join(timeout=5)

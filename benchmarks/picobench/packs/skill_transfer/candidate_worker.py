@@ -57,6 +57,24 @@ def _backend(repository: Path):
     return make_backend(context)
 
 
+async def _stop_with_index_recovery(backend: Any, repository: Path) -> None:
+    try:
+        await backend.stop()
+    except Exception as error:
+        if getattr(error, "code", None) != "index_not_ready":
+            raise
+        report = _cli_json(repository, "process", "--no-semantic", "--index", "--max-jobs", "128")
+        health = report.get("index", {})
+        if any(int(health.get(field, 0)) for field in ("pending", "leased", "failed", "stale")):
+            raise RuntimeError(
+                "candidate index recovery did not reach ready state: "
+                + json.dumps(
+                    {field: health.get(field) for field in ("pending", "leased", "indexed", "failed", "stale")},
+                    sort_keys=True,
+                )
+            ) from error
+
+
 async def _capture(repository: Path, ability: dict[str, Any]) -> None:
     backend = _backend(repository)
     await backend.start()
@@ -88,7 +106,7 @@ async def _capture(repository: Path, ability: dict[str, Any]) -> None:
                 }
             )
     finally:
-        await backend.stop()
+        await _stop_with_index_recovery(backend, repository)
 
 
 async def _retry_pending(repository: Path, ability_id: str) -> None:
@@ -123,7 +141,7 @@ async def _retry_pending(repository: Path, ability_id: str) -> None:
             }
         )
     finally:
-        await backend.stop()
+        await _stop_with_index_recovery(backend, repository)
 
 
 def main() -> int:
