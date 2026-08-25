@@ -36,7 +36,7 @@ hard-negative identities are globally disjoint in the checked-in corpus.
 
 The current frozen plan binds:
 
-- Pico commit `af2038662f09bfae3008e56516538193b8fe2186`;
+- Pico commit `363e7abcdf861f052b3448d0215cd0412c0428e6`;
 - Pico wheel SHA-256
   `0e19c558c388cc912e779f16278866f3ede7070aea6655fcde1b4af6e2d9810e`;
 - Myna commit `14ae4adea26b28321d1616a6b393d0c47be1a9d8`;
@@ -44,7 +44,7 @@ The current frozen plan binds:
   `d591b35378ba45d845ed9eaa987afb32a5f136efa2d641759104a74d318fb09f`;
 - DeepSeek V4 Flash through the frozen Pico Provider adapter;
 - approval digest
-  `ab877e9a807ba9ec2c0481514b210a0881364d5437c9a16427b36cd1884c9a08`;
+  `b7747b8bc3b9ffe78f08f84e77a04dbd69e4dce1bca69c51e9cd525059546084`;
 - worst-case budget CNY 22.527590 under a CNY 25 hard cap.
 
 The six Skill-extraction calls and all evaluation-Agent calls share one durable
@@ -92,8 +92,9 @@ As of 2026-08-25:
 - the credential-free formal-runner preflight installs the same wheels, creates
   and activates six Skills from learning-only projections, binds the six pairs
   of candidate runtime snapshots, maps all 18 learning instances to their Task
-  Experiences, and records zero incorrect admissions across 24 hard negatives;
-- the full Pico check passes 4,006 Python tests and 830 TUI tests;
+  Experiences, confirms exact-revision admission for all 24 frozen held-out
+  prompts, and records zero incorrect admissions across 24 hard negatives;
+- the full Pico check passes 4,011 Python tests and 830 TUI tests;
 - the full Myna check passes 584 Python tests, 53 Hub tests, and its integration
   checks; and
 - the paid 96-Trial campaign has **not run**. Therefore there is no current
