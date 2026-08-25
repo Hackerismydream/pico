@@ -94,7 +94,7 @@ As of 2026-08-25:
   of candidate runtime snapshots, maps all 18 learning instances to their Task
   Experiences, confirms exact-revision admission for all 24 frozen held-out
   prompts, and records zero incorrect admissions across 24 hard negatives;
-- the full Pico check passes 4,011 Python tests and 830 TUI tests;
+- the full Pico check passes 4,012 Python tests and 830 TUI tests;
 - the full Myna check passes 584 Python tests, 53 Hub tests, and its integration
   checks; and
 - the paid 96-Trial campaign has **not run**. Therefore there is no current
