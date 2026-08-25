@@ -7,6 +7,7 @@ import pytest
 
 from benchmarks.picobench.packs.skill_transfer import campaign as skill_campaign
 from benchmarks.picobench.packs.skill_transfer import candidate_worker
+from benchmarks.picobench.packs.skill_transfer import runner as skill_runner
 from benchmarks.picobench.packs.skill_transfer.campaign import (
     CampaignConfig,
     NegativeRecord,
@@ -52,6 +53,21 @@ def _candidate(corpus) -> dict:
         item.instance_id: [candidate["active_revisions"][ability.ability_id]]
         for ability in corpus.abilities
         for item in ability.held_out
+    }
+    candidate["skills"] = {
+        ability.ability_id: {
+            "skill_id": f"skill_{ability.ability_id}",
+            "revision_id": candidate["active_revisions"][ability.ability_id],
+            "content": {
+                "name": ability.ability_id.replace("_", " ").title(),
+                "description": ability.goal,
+                "applicability": [ability.goal],
+                "procedure": ["Apply the verified procedure."],
+                "verification": ["Run the requested verification."],
+                "failure_avoidance": ["Do not apply this procedure to unrelated tasks."],
+            },
+        }
+        for ability in corpus.abilities
     }
     return candidate
 
@@ -281,6 +297,8 @@ def test_plan_freezes_candidate_budget_and_requires_exact_wheels(tmp_path: Path)
     assert frozen["manifest"]["execution"]["planned_primary_pairs"] == 48
     assert frozen["manifest"]["execution"]["planned_primary_trials"] == 96
     assert frozen["manifest"]["sealed_inputs"]["candidate_worker_receives_learning_projection_only"] is True
+    assert frozen["manifest"]["budget"]["maximum_candidate_attempts"] == 12
+    assert frozen["manifest"]["budget"]["maximum_candidate_cost_cny"] <= 0.25
     assert frozen["manifest"]["budget"]["maximum_cost_cny"] <= 25
     assert len(frozen["approval_digest"]) == 64
 
@@ -378,6 +396,100 @@ def test_paid_run_rejects_missing_exact_approval_before_installing(tmp_path: Pat
             execute_paid=True,
             provider_api_key="unused",
             provider_api_base=None,
+        )
+
+
+def test_prepare_only_freezes_reviewable_candidates_without_running_trials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pico = tmp_path / "pico.whl"
+    myna = tmp_path / "myna.whl"
+    pico.write_bytes(b"pico")
+    myna.write_bytes(b"myna")
+    config = CampaignConfig(
+        corpus_path=CORPUS,
+        output_root=tmp_path / "evidence",
+        pico_wheel=pico,
+        myna_wheel=myna,
+        pico_commit="a" * 40,
+        myna_commit="b" * 40,
+    )
+    corpus = load_corpus(CORPUS)
+    candidate = _candidate(corpus)
+    configured = {}
+
+    class Executor:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args) -> None:
+            pass
+
+        def configure_budget(self, path, budget) -> None:
+            configured["maximum_provider_attempts"] = budget.max_total_request_attempts
+
+        def prepare_candidates(self, observed, *, snapshot_root):
+            assert observed == corpus
+            return candidate
+
+        def run_trial(self, *args, **kwargs):
+            raise AssertionError("prepare-only must not start primary trials")
+
+        def hard_negatives(self, observed):
+            raise AssertionError("prepare-only must not run hard negatives")
+
+    monkeypatch.setattr(skill_runner, "InstalledSkillTransferExecutor", Executor)
+    frozen = plan(config)
+
+    report = run_campaign(
+        config,
+        approval_digest=frozen["approval_digest"],
+        approved_cny=0.25,
+        execute_paid=True,
+        provider_api_key="fixture-key",
+        provider_api_base=None,
+        prepare_only=True,
+    )
+
+    assert report["status"] == "candidate_ready"
+    assert report["admission"] == {"exact_revision_matches": 24, "expected": 24, "passed": True}
+    assert report["budget"]["maximum_stage_cost_cny"] <= 0.25
+    assert configured["maximum_provider_attempts"] == 12
+    assert len(report["skills"]) == 6
+    assert all(item["content"]["procedure"] for item in report["skills"])
+    assert (config.output_root / "candidate-receipt.json").is_file()
+    assert (config.output_root / "candidate-preparation-report.json").is_file()
+    assert not (config.output_root / "raw-outcomes.jsonl").exists()
+    assert not (config.output_root / "hard-negative-outcomes.jsonl").exists()
+
+
+def test_prepare_only_rejects_approval_below_its_frozen_cost_ceiling(tmp_path: Path) -> None:
+    pico = tmp_path / "pico.whl"
+    myna = tmp_path / "myna.whl"
+    pico.write_bytes(b"pico")
+    myna.write_bytes(b"myna")
+    config = CampaignConfig(
+        corpus_path=CORPUS,
+        output_root=tmp_path / "evidence",
+        pico_wheel=pico,
+        myna_wheel=myna,
+        pico_commit="a" * 40,
+        myna_commit="b" * 40,
+    )
+    frozen = plan(config)
+
+    with pytest.raises(ValueError, match="approved CNY"):
+        run_campaign(
+            config,
+            approval_digest=frozen["approval_digest"],
+            approved_cny=config.maximum_candidate_cost_cny - 0.001,
+            execute_paid=True,
+            provider_api_key="fixture-key",
+            provider_api_base=None,
+            prepare_only=True,
         )
 
 

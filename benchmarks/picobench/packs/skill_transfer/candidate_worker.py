@@ -208,6 +208,11 @@ def main() -> int:
                 "active_revision_id": activation["revision_id"],
                 "control_runtime": str(control),
                 "skill_id": revision["skill_id"],
+                "skill": {
+                    "skill_id": revision["skill_id"],
+                    "revision_id": revision["revision_id"],
+                    "content": revision["content"],
+                },
                 "learning_experience_map": learning_experiences,
                 "source_experience_ids": revision["source_experience_ids"],
                 "source_fact_ids": revision["source_fact_ids"],

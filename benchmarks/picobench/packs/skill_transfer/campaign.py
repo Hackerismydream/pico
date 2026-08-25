@@ -28,6 +28,7 @@ _ARMS = ("control", "treatment")
 _ARTIFACT_PATHS = (
     "manifest.json",
     "candidate-receipt.json",
+    "candidate-preparation-report.json",
     "raw-outcomes.jsonl",
     "hard-negative-outcomes.jsonl",
     "aggregate.json",
@@ -158,9 +159,21 @@ class CampaignConfig:
 
     @property
     def maximum_provider_attempts(self) -> int:
-        extraction_attempts = 6 * self.max_attempts_per_call
+        extraction_attempts = self.maximum_candidate_attempts
         task_attempts = self.planned_trials * (self.max_tool_iterations + 1) * self.max_attempts_per_call
         return extraction_attempts + task_attempts
+
+    @property
+    def maximum_candidate_attempts(self) -> int:
+        return 6 * self.max_attempts_per_call
+
+    @property
+    def maximum_candidate_cost_cny(self) -> float:
+        usd = self.maximum_candidate_attempts * (
+            self.max_input_tokens_per_call / 1_000_000 * self.input_cache_miss_usd_per_million
+            + self.max_output_tokens_per_call / 1_000_000 * self.output_usd_per_million
+        )
+        return usd * self.conservative_usd_to_cny_multiplier
 
     @property
     def maximum_cost_cny(self) -> float:
@@ -209,6 +222,8 @@ class CampaignConfig:
                 "confidence_level": 0.95,
             },
             "budget": {
+                "maximum_candidate_attempts": self.maximum_candidate_attempts,
+                "maximum_candidate_cost_cny": round(self.maximum_candidate_cost_cny, 6),
                 "maximum_provider_attempts": self.maximum_provider_attempts,
                 "maximum_cost_cny": round(self.maximum_cost_cny, 6),
                 "hard_cap_cny": self.hard_cap_cny,
@@ -492,6 +507,7 @@ def run_campaign(
     execute_paid: bool,
     provider_api_key: str,
     provider_api_base: str | None,
+    prepare_only: bool = False,
 ) -> dict[str, Any]:
     from .runner import InstalledSkillTransferExecutor
 
@@ -500,13 +516,21 @@ def run_campaign(
     expected_digest = canonical_digest(manifest)
     if not execute_paid or approval_digest != expected_digest:
         raise ValueError("paid execution requires the exact frozen approval digest")
-    if not math.isfinite(approved_cny) or approved_cny < config.maximum_cost_cny or approved_cny > config.hard_cap_cny:
+    required_approval = config.maximum_candidate_cost_cny if prepare_only else config.maximum_cost_cny
+    if not math.isfinite(approved_cny) or approved_cny < required_approval or approved_cny > config.hard_cap_cny:
         raise ValueError("approved CNY must cover the frozen maximum within the hard cap")
     output = config.output_root.resolve()
     output.mkdir(parents=True, exist_ok=True)
     with file_lock(output / ".run.lock", blocking=False):
         _freeze_json(output / "manifest.json", manifest)
-        ledger, budget_config = _prepare_budget(config, output=output, approval_digest=approval_digest)
+        ledger, budget_config = _prepare_budget(
+            config,
+            output=output,
+            approval_digest=approval_digest,
+            maximum_provider_attempts=(
+                config.maximum_candidate_attempts if prepare_only else config.maximum_provider_attempts
+            ),
+        )
         with InstalledSkillTransferExecutor(
             config,
             provider_api_key=provider_api_key,
@@ -523,6 +547,21 @@ def run_campaign(
                 _freeze_json(candidate_path, candidate)
             if not _candidate_admission_valid(corpus, candidate):
                 raise ValueError("frozen Skill candidate failed held-out admission precheck")
+            preparation_path = output / "candidate-preparation-report.json"
+            if preparation_path.exists():
+                preparation = _json(preparation_path)
+            else:
+                preparation = _candidate_preparation_report(
+                    config,
+                    corpus,
+                    candidate,
+                    ledger.snapshot(),
+                    approval_digest=approval_digest,
+                    approved_cny=approved_cny,
+                )
+                _freeze_json(preparation_path, preparation)
+            if prepare_only:
+                return preparation
             records = _trial_journal(output / "raw-outcomes.jsonl")
             expected = {
                 (task.instance_id, repetition, arm_id)
@@ -582,15 +621,70 @@ def run_campaign(
         return report
 
 
+def _candidate_preparation_report(
+    config: CampaignConfig,
+    corpus: SkillTransferCorpus,
+    candidate: dict[str, Any],
+    budget: Any,
+    *,
+    approval_digest: str,
+    approved_cny: float,
+) -> dict[str, Any]:
+    revisions = candidate.get("active_revisions", {})
+    skills = candidate.get("skills", {})
+    if not isinstance(revisions, dict) or not isinstance(skills, dict):
+        raise ValueError("candidate receipt does not contain reviewable Skill content")
+    reviewable = []
+    for ability in corpus.abilities:
+        skill = skills.get(ability.ability_id)
+        if not isinstance(skill, dict) or skill.get("revision_id") != revisions.get(ability.ability_id):
+            raise ValueError("candidate receipt Skill content does not match the active revision")
+        reviewable.append(
+            {
+                "ability_id": ability.ability_id,
+                "goal": ability.goal,
+                "skill_id": skill.get("skill_id"),
+                "revision_id": skill["revision_id"],
+                "content": skill.get("content"),
+                "learning_instance_ids": [item.instance_id for item in ability.learning],
+                "source_experience_ids": candidate["source_experience_ids"][ability.ability_id],
+            }
+        )
+    exact_matches = sum(
+        candidate["held_out_admission_precheck"].get(item.instance_id) == [revisions.get(ability.ability_id)]
+        for ability in corpus.abilities
+        for item in ability.held_out
+    )
+    return {
+        "schema": "pico.picobench.skill-transfer.candidate-preparation.v1",
+        "status": "candidate_ready",
+        "approval_digest": approval_digest,
+        "candidate_input_digest": candidate.get("candidate_input_digest"),
+        "skills": reviewable,
+        "admission": {"exact_revision_matches": exact_matches, "expected": 24, "passed": exact_matches == 24},
+        "budget": {
+            "approved_cny": approved_cny,
+            "maximum_stage_cost_cny": round(config.maximum_candidate_cost_cny, 6),
+            "request_attempts": budget.request_attempts,
+            "charged_cny": budget.provider_charged_cny,
+        },
+        "planned_primary_trials_remaining": config.planned_trials,
+    }
+
+
 def _prepare_budget(
-    config: CampaignConfig, *, output: Path, approval_digest: str
+    config: CampaignConfig,
+    *,
+    output: Path,
+    approval_digest: str,
+    maximum_provider_attempts: int,
 ) -> tuple[ProviderBudgetLedger, ProviderBudgetConfig]:
     ledger_path = output / "provider-budget.jsonl"
     approval_path = output / "provider-budget-approval.json"
     base = ProviderBudgetConfig(
         hard_cap_cny=config.hard_cap_cny,
         external_service_reserve_cny=0.0,
-        max_total_request_attempts=config.maximum_provider_attempts,
+        max_total_request_attempts=maximum_provider_attempts,
         max_input_tokens_per_call=config.max_input_tokens_per_call,
         max_output_tokens_per_call=config.max_output_tokens_per_call,
         input_cache_miss_usd_per_million=config.input_cache_miss_usd_per_million,
@@ -902,18 +996,20 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Plan, run, or verify the skill_transfer_v1 campaign")
     subparsers = parser.add_subparsers(dest="command", required=True)
     plan_parser = subparsers.add_parser("plan")
+    prepare_parser = subparsers.add_parser("prepare")
     run_parser = subparsers.add_parser("run")
-    for child in (plan_parser, run_parser):
+    for child in (plan_parser, prepare_parser, run_parser):
         child.add_argument("--corpus", type=Path, required=True)
         child.add_argument("--output-root", type=Path, required=True)
         child.add_argument("--pico-wheel", type=Path, required=True)
         child.add_argument("--myna-wheel", type=Path, required=True)
         child.add_argument("--pico-commit", required=True)
         child.add_argument("--myna-commit", required=True)
-    run_parser.add_argument("--approval-digest", required=True)
-    run_parser.add_argument("--approved-cny", type=float, required=True)
-    run_parser.add_argument("--provider-api-base")
-    run_parser.add_argument("--execute-paid", action="store_true")
+    for child in (prepare_parser, run_parser):
+        child.add_argument("--approval-digest", required=True)
+        child.add_argument("--approved-cny", type=float, required=True)
+        child.add_argument("--provider-api-base")
+        child.add_argument("--execute-paid", action="store_true")
     verify_parser = subparsers.add_parser("verify")
     verify_parser.add_argument("--corpus", type=Path, required=True)
     verify_parser.add_argument("--output-root", type=Path, required=True)
@@ -941,8 +1037,9 @@ def main() -> int:
                 execute_paid=args.execute_paid,
                 provider_api_key=os.environ.get("DEEPSEEK_API_KEY", ""),
                 provider_api_base=args.provider_api_base,
+                prepare_only=args.command == "prepare",
             )
-            if args.command == "run"
+            if args.command in {"prepare", "run"}
             else plan(config)
         )
     print(json.dumps(result, sort_keys=True))

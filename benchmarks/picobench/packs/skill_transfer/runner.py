@@ -84,6 +84,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
         facts: dict[str, list[str]] = {}
         learning: dict[str, list[str]] = {}
         learning_experience_maps: dict[str, dict[str, str]] = {}
+        skills: dict[str, dict[str, Any]] = {}
         snapshot_digests: dict[str, dict[str, str]] = {}
         with _skill_proxy(self._root / "skill-proxy", provider, config=self._config) as proxy:
             for ability in corpus.abilities:
@@ -117,6 +118,10 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
                 learning_experience_maps[ability.ability_id] = {
                     str(key): str(value) for key, value in result["learning_experience_map"].items()
                 }
+                skill = result.get("skill")
+                if not isinstance(skill, dict):
+                    raise RuntimeError("candidate worker did not return reviewable Skill content")
+                skills[ability.ability_id] = skill
         receipt = {
             "schema": "pico.picobench.skill-transfer.candidate-receipt.v1",
             "candidate_input_digest": canonical_digest([learning_projection(ability) for ability in corpus.abilities]),
@@ -125,6 +130,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
             "source_fact_ids": facts,
             "source_learning_instance_ids": learning,
             "learning_experience_maps": learning_experience_maps,
+            "skills": skills,
             "runtime_snapshot_digests": snapshot_digests,
             "extractor": {
                 "provider": self._config.provider,
