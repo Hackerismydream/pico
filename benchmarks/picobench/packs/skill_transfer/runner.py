@@ -490,7 +490,7 @@ def _skill_proxy(root: Path, provider: BudgetGuardedProvider, *, config: Campaig
                 usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             else:
                 ability = json.loads(messages[-1]["content"])["ability_fingerprint"]
-                cache_key = canonical_digest(request)
+                cache_key = str(ability)
                 with response_cache_lock:
                     content = response_cache.get(cache_key)
                 if content is None:
