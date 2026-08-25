@@ -3,17 +3,21 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import http.server
 import json
 import os
 import shutil
 import sqlite3
+import ssl
 import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
+from contextlib import contextmanager
 from importlib import metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 EXPECTED_PLUGIN_ID = "myna-memory"
 EXPECTED_PLUGIN_VERSION = "0.1.1rc3"
@@ -21,6 +25,8 @@ EXPECTED_COMPATIBILITY = ">=0.1,<0.2"
 EXPECTED_BACKEND = "myna"
 EXPECTED_FACTORY = "myna.integrations.pico:make_backend"
 MEMORY_TEXT = "Pico releases require make check."
+SKILL_QUERY = "Apply the repository verification workflow."
+SKILL_PROCEDURE = "Run make check from the repository root."
 
 
 class VerificationError(RuntimeError):
@@ -60,6 +66,74 @@ class _RecordingProvider:
         return Provider()
 
 
+class _VerifyingProvider:
+    def __new__(cls):
+        from pico.providers.base import LLMProvider, LLMResponse, ToolCallRequest
+
+        class Provider(LLMProvider):
+            def __init__(self) -> None:
+                super().__init__(api_key="installed-smoke")
+                self._requested_check = False
+
+            async def chat(
+                self,
+                messages,
+                tools=None,
+                model=None,
+                max_tokens=4096,
+                temperature=0.7,
+                reasoning_effort=None,
+                tool_choice=None,
+            ):
+                if not self._requested_check:
+                    self._requested_check = True
+                    return LLMResponse(
+                        content="",
+                        tool_calls=[ToolCallRequest(id="verify", name="exec", arguments={"command": "make check"})],
+                        finish_reason="tool_calls",
+                    )
+                return LLMResponse(content="Repository verification completed.", finish_reason="stop")
+
+            def get_default_model(self) -> str:
+                return "installed-smoke"
+
+        return Provider()
+
+
+class _SemanticHandler(http.server.BaseHTTPRequestHandler):
+    skill_requests = 0
+
+    def do_POST(self) -> None:
+        length = int(self.headers.get("Content-Length", "0"))
+        request = json.loads(self.rfile.read(length))
+        messages = request.get("messages", [])
+        system = str(messages[0].get("content", "")) if messages else ""
+        if "exactly these six fields" in system:
+            type(self).skill_requests += 1
+            content = {
+                "name": "Repository verification",
+                "description": "Apply the repository verification workflow safely.",
+                "applicability": ["Use when applying the repository verification workflow."],
+                "procedure": [SKILL_PROCEDURE],
+                "verification": ["Require make check to exit with code zero."],
+                "failure_avoidance": ["Do not claim success when the check fails."],
+            }
+        else:
+            content = {"candidates": [], "evolution": []}
+        encoded = json.dumps(
+            {"choices": [{"message": {"role": "assistant", "content": json.dumps(content, sort_keys=True)}}]},
+            sort_keys=True,
+        ).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def log_message(self, format: str, *args: object) -> None:
+        pass
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Verify installed Pico and Myna wheel composition")
     parser.add_argument("--pico-wheel", type=Path, required=True)
@@ -85,6 +159,102 @@ def _git(repository: Path, *arguments: str) -> None:
     if git is None:
         raise VerificationError("git executable is unavailable")
     subprocess.run((git, "-C", str(repository), *arguments), check=True, capture_output=True, text=True)
+
+
+@contextmanager
+def _temporary_environment(values: dict[str, str]) -> Iterator[None]:
+    previous = {key: os.environ.get(key) for key in values}
+    os.environ.update(values)
+    try:
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+@contextmanager
+def _semantic_server(root: Path) -> Iterator[tuple[str, Path]]:
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        raise VerificationError("openssl executable is unavailable")
+    certificate = root / "semantic-cert.pem"
+    private_key = root / "semantic-key.pem"
+    openssl_config = root / "openssl.cnf"
+    openssl_config.write_text(
+        textwrap.dedent("""
+            [req]
+            distinguished_name = distinguished_name
+            x509_extensions = extensions
+            prompt = no
+
+            [distinguished_name]
+            CN = localhost
+
+            [extensions]
+            basicConstraints = critical, CA:TRUE
+            subjectAltName = DNS:localhost
+            keyUsage = digitalSignature, keyEncipherment, keyCertSign
+            extendedKeyUsage = serverAuth
+        """),
+        encoding="utf-8",
+    )
+    subprocess.run(
+        (
+            openssl,
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-sha256",
+            "-days",
+            "1",
+            "-nodes",
+            "-keyout",
+            str(private_key),
+            "-out",
+            str(certificate),
+            "-config",
+            str(openssl_config),
+        ),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    _SemanticHandler.skill_requests = 0
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _SemanticHandler)
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls.load_cert_chain(certificate, private_key)
+    server.socket = tls.wrap_socket(server.socket, server_side=True)
+    thread = threading.Thread(target=server.serve_forever, name="myna-semantic-smoke", daemon=True)
+    thread.start()
+    try:
+        yield f"https://localhost:{server.server_port}/v1", certificate
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+def _myna_cli(
+    repository: Path, environment: dict[str, str], *arguments: str, check: bool = True
+) -> subprocess.CompletedProcess[str]:
+    executable = Path(sys.executable).parent / "myna"
+    return subprocess.run(
+        (str(executable), *arguments),
+        cwd=repository,
+        env=environment,
+        check=check,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _myna_cli_json(repository: Path, environment: dict[str, str], *arguments: str) -> dict[str, Any]:
+    completed = _myna_cli(repository, environment, *arguments)
+    return json.loads(completed.stdout)
 
 
 def _registry():
@@ -145,6 +315,103 @@ async def _runtime_turn(repository: Path, state: Path, *, memory_backend: str | 
         _require(response is not None, f"Runtime Turn failed for memory backend {memory_backend!r}")
     finally:
         await runtime.close()
+
+
+async def _verified_learning_turn(repository: Path, backend: Any, *, index: int) -> None:
+    from pico.agent.loop import AgentLoop
+    from pico.spine.message import ChatType, Source
+    from pico.spine.turn import Origin, TurnRequest
+
+    agent = AgentLoop(
+        provider=_VerifyingProvider(),
+        workspace=repository,
+        model="installed-smoke",
+        max_iterations=3,
+        restrict_to_workspace=True,
+        backend=backend,
+    )
+    events: list[Any] = []
+
+    async def emit(event: Any) -> None:
+        events.append(event)
+
+    outcome = await agent.run_turn(
+        TurnRequest(
+            origin=Origin.USER,
+            source=Source(
+                channel="installed-skill",
+                chat_id=f"learning-{index}",
+                sender_id="user",
+                chat_type=ChatType.DM,
+            ),
+            text=SKILL_QUERY,
+        ),
+        emit,
+        lambda: [],
+        stream=False,
+    )
+    _require(outcome.explicit_reply, f"verified learning Turn {index} produced no reply")
+    _require(outcome.tool_calls == 1, f"verified learning Turn {index} did not execute one check")
+    _require(bool(events), f"verified learning Turn {index} was not delivered")
+
+
+async def _learn(repository: Path, *, indexes: tuple[int, ...]) -> None:
+    backend = _backend(repository)
+    _require(backend is not None, "Skill learning backend was not constructed")
+    await backend.start()
+    try:
+        for index in indexes:
+            await _verified_learning_turn(repository, backend, index=index)
+    finally:
+        await backend.stop()
+
+
+async def _skill_probe(repository: Path, state: Path, *, query: str) -> tuple[str, list[str]]:
+    from pico.cli._runtime_assembly import assemble_runtime
+    from pico.config.paths import RuntimePaths
+    from pico.config.pico import MemoryConfig, PicoConfig
+    from pico.config.schema import Config
+    from pico.spine.message import ChatType, Source
+    from pico.spine.turn import Origin, TurnRequest
+
+    provider = _RecordingProvider()
+    config = Config()
+    config.agents.defaults.workspace = str(repository)
+    config.agents.defaults.model = "installed-smoke"
+    config.agents.defaults.enable_personalization = False
+    config.routing.enabled = False
+    pico_config = PicoConfig(memory=MemoryConfig(backend=EXPECTED_BACKEND))
+    pico_config.base = config
+    pico_config.skill_forge.rewrite_enabled = False
+    pico_config.skill_forge.llm_gate_enabled = False
+    runtime = assemble_runtime(
+        config,
+        pico_config,
+        provider=provider,
+        cron_service=None,
+        interactive=False,
+        paths=RuntimePaths(workspace=repository, state=state),
+    )
+    try:
+        await runtime.start_memory_backend()
+        recalled = await runtime.backend.recall(query, agent_id="pico", top_k=5) if runtime.backend is not None else []
+        response = await runtime.agent_loop._process_message(
+            TurnRequest(
+                origin=Origin.USER,
+                source=Source(
+                    channel="installed-skill",
+                    chat_id=hashlib.sha256(query.encode()).hexdigest()[:12],
+                    sender_id="user",
+                    chat_type=ChatType.DM,
+                ),
+                text=query,
+            )
+        )
+        _require(response is not None, "Skill probe Turn produced no response")
+    finally:
+        await runtime.close()
+    prompt = "\n".join(str(message.get("content")) for message in provider.messages)
+    return prompt, [str(item.metadata.get("revision_id")) for item in recalled]
 
 
 async def _store(repository: Path) -> None:
@@ -519,6 +786,162 @@ def _assert_turn_feedback(runtime: Path) -> None:
     )
 
 
+def _draft_revision_ids(report: dict[str, Any]) -> list[str]:
+    draft_ids = {
+        str(event["revision_id"])
+        for event in report.get("lifecycle", [])
+        if event.get("from_status") is None and event.get("to_status") == "draft"
+    }
+    return sorted(
+        str(item["revision"]["revision_id"])
+        for item in report.get("revisions", [])
+        if item.get("revision", {}).get("revision_id") in draft_ids
+    )
+
+
+def _initialize_skill_repository(repository: Path, runtime: Path, environment: dict[str, str]) -> None:
+    repository.mkdir()
+    _git(repository, "init", "-q")
+    _git(repository, "config", "user.email", "installed-smoke@example.invalid")
+    _git(repository, "config", "user.name", "Installed Smoke")
+    (repository / "Makefile").write_text(".PHONY: check\ncheck:\n\t@true\n", encoding="utf-8")
+    _git(repository, "add", "Makefile")
+    _git(repository, "commit", "-qm", "test: add deterministic verifier")
+    _myna_cli(
+        repository,
+        environment,
+        "init",
+        "--root",
+        str(runtime),
+        "--repo-key",
+        "example/pico-skill-evolution-smoke",
+        "--retrieval-profile",
+        "fastembed",
+        "--semantic-profile",
+        "openai-compatible",
+    )
+
+
+def _assert_skill_evolution(root: Path) -> dict[str, Any]:
+    repository = root / "skill-repository"
+    runtime = root / "skill-runtime"
+    with _semantic_server(root) as (endpoint, certificate):
+        environment = _clean_environment(root / "skill-home")
+        semantic_environment = {
+            "MYNA_SEMANTIC_API_KEY": "installed-smoke",
+            "MYNA_SEMANTIC_ENDPOINT": endpoint,
+            "MYNA_SEMANTIC_MODEL": "installed-smoke",
+            "SSL_CERT_FILE": str(certificate),
+        }
+        environment.update(semantic_environment)
+        with _temporary_environment(semantic_environment):
+            _initialize_skill_repository(repository, runtime, environment)
+            asyncio.run(_learn(repository, indexes=(1, 2, 3)))
+
+            first_report = _myna_cli_json(repository, environment, "skill", "list")
+            first_drafts = _draft_revision_ids(first_report)
+            _require(len(first_drafts) == 1, "three verified Turns did not create exactly one draft Skill")
+            first_revision = first_drafts[0]
+            first_activation = _myna_cli_json(
+                repository,
+                environment,
+                "skill",
+                "activate",
+                first_revision,
+                "--authority",
+                "evaluation",
+                "--receipt-id",
+                "installed-skill-e2e-v1-first",
+            )
+            _require(
+                first_activation["revision_id"] == first_revision, "first Skill activation selected the wrong revision"
+            )
+
+            relevant_prompt, relevant_revisions = asyncio.run(
+                _skill_probe(repository, root / "skill-probe-first", query=SKILL_QUERY)
+            )
+            negative_prompt, negative_revisions = asyncio.run(
+                _skill_probe(
+                    repository, root / "skill-probe-negative", query="cafeteria typography satellite telemetry"
+                )
+            )
+            _require(relevant_revisions == [first_revision], "active Skill was not recalled from the installed backend")
+            _require(SKILL_PROCEDURE in relevant_prompt, "active Skill was not injected into the installed Pico prompt")
+            _require(negative_revisions == [], "agent Skill recall did not abstain on the hard negative")
+            _require(SKILL_PROCEDURE not in negative_prompt, "hard negative injected the active Skill into Pico")
+
+            asyncio.run(_learn(repository, indexes=(4,)))
+            second_report = _myna_cli_json(repository, environment, "skill", "list")
+            second_drafts = [revision for revision in _draft_revision_ids(second_report) if revision != first_revision]
+            _require(len(second_drafts) == 1, "a fourth verified Turn did not create one successor draft")
+            second_revision = second_drafts[0]
+            second_activation = _myna_cli_json(
+                repository,
+                environment,
+                "skill",
+                "activate",
+                second_revision,
+                "--authority",
+                "evaluation",
+                "--receipt-id",
+                "installed-skill-e2e-v1-second",
+            )
+            _require(
+                second_activation["revision_id"] == second_revision, "successor activation selected the wrong revision"
+            )
+            rollback = _myna_cli_json(
+                repository,
+                environment,
+                "skill",
+                "rollback",
+                first_revision,
+                "--authority",
+                "evaluation",
+                "--receipt-id",
+                "installed-skill-e2e-v1-rollback",
+            )
+            _require(rollback["revision_id"] == first_revision, "rollback did not restore the first accepted revision")
+            rejected = _myna_cli_json(
+                repository,
+                environment,
+                "skill",
+                "reject",
+                second_revision,
+                "--authority",
+                "evaluation",
+                "--receipt-id",
+                "installed-skill-e2e-v1-reject",
+            )
+            _require(rejected["to_status"] == "rejected", "superseded revision rejection was not recorded")
+
+            restarted_prompt, restarted_revisions = asyncio.run(
+                _skill_probe(repository, root / "skill-probe-restart", query=SKILL_QUERY)
+            )
+            _require(restarted_revisions == [first_revision], "rollback did not survive an installed backend restart")
+            _require(SKILL_PROCEDURE in restarted_prompt, "restarted Pico did not inject the rolled-back Skill")
+            denied = _myna_cli(
+                repository,
+                environment,
+                "skill",
+                "activate",
+                second_revision,
+                "--authority",
+                "evaluation",
+                "--receipt-id",
+                "installed-skill-e2e-v1-denied",
+                check=False,
+            )
+            _require(denied.returncode != 0, "rejected Skill revision was reactivated")
+            _require(_SemanticHandler.skill_requests == 2, "Skill extraction did not use exactly two eligible groups")
+    return {
+        "drafts_created": 2,
+        "hard_negative_abstained": True,
+        "installed_prompt_injection": True,
+        "rejected_reactivation_denied": True,
+        "rollback_survived_restart": True,
+    }
+
+
 def main() -> int:
     args = _parser().parse_args()
     if args.phase:
@@ -592,6 +1015,7 @@ def main() -> int:
         _assert_turn_feedback(runtime)
         _require(bool(recalled["source_uris"]), "fresh-process recall has no provenance")
         asyncio.run(_assert_fail_closed(repository, runtime, root))
+        skill_evolution = _assert_skill_evolution(root)
 
     print(
         json.dumps(
@@ -605,6 +1029,7 @@ def main() -> int:
                 "plugin_version": EXPECTED_PLUGIN_VERSION,
                 "runtime_memory_off": True,
                 "runtime_memory_on": True,
+                "skill_evolution": skill_evolution,
             },
             sort_keys=True,
         )
