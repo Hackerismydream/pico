@@ -36,7 +36,7 @@ hard-negative identities are globally disjoint in the checked-in corpus.
 
 The current frozen plan binds:
 
-- Pico commit `db0508ad808c4856aa965344a1fcda1bbd5e759d`;
+- Pico commit `bb86ab1b3edde43c87ecb1f0a65b97818c211db0`;
 - Pico wheel SHA-256
   `0e19c558c388cc912e779f16278866f3ede7070aea6655fcde1b4af6e2d9810e`;
 - Myna commit `1167e319f0c9e5c3654fd27c08e99d3ca95a260d`;
@@ -44,7 +44,7 @@ The current frozen plan binds:
   `6c4ceed194ebf2c5ed28230232c2c16b571024ead2e799601884ffd04bf03a5f`;
 - DeepSeek V4 Flash through the frozen Pico Provider adapter;
 - approval digest
-  `eccd38d7452b0a7801b4edc0ef51906a801465e64933480e3b95caad079e0847`;
+  `5fdea88ae813910fc005e635403032dc1c0c8cbc8893f8f1e6c17afabe656388`;
 - worst-case budget CNY 22.527590 under a CNY 25 hard cap.
 
 The six Skill-extraction calls and all evaluation-Agent calls share one durable
@@ -70,7 +70,9 @@ A positive result requires all of the following:
    Provider-call, and conservative cost records;
 9. a held-out-instance-clustered 95 percent bootstrap interval whose lower
    bound for paired pass delta is greater than zero; and
-10. offline reproduction of aggregate, verifier report, claim object, and
+10. directory-digest binding of the exact Control and Treatment candidate
+    runtime snapshots; and
+11. offline reproduction of aggregate, verifier report, claim object, and
     Provider budget state from immutable raw records.
 
 Provider, transport, budget, or infrastructure failures invalidate a Pair.
