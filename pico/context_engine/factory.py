@@ -3,11 +3,12 @@
 旧 ``legacy`` / ``curator`` / ``default`` Engine 分派已经移除。当前每轮由一套 Assembler 协调：
 Curator lane 建 manifest 并走 fast/slow/fallback History 选择，写入 ``# Curator Working State``
 且独占 ``*history``；Memory lane 调用 ``backend.recall(user_id=...)`` 形成 segment 3
-``# Memory``；Local Skill lane 用 :class:`SkillForgeRouter` 形成 segment 5 ``# Skills``；Host
+``# Memory``；Local 与 Memory agent-track Skill lane 用 :class:`SkillForgeRouter` 形成 segment 5 ``# Skills``；Host
 通过 :class:`ContextBuilder` 提供 identity、bootstrap 与 always-skills。
 
 SkillForgeRouter 包装 Builder 已有 ``LocalPool`` 与 ``SkillRegistry``，不会再扫一次磁盘。
-Memory 是否启用只影响 Memory Segment，不改变 Local Skill 可用性。Factory 的责任是接线和
+Memory 是否启用决定是否加入 user-track Memory Segment 与 agent-track Memory Skill Source，
+但不改变 Local Skill 可用性。Factory 的责任是接线和
 默认配置，不执行某一 Turn 的选择；最终总是返回同一个 :class:`ContextAssembler` 类型。
 """
 
@@ -100,6 +101,7 @@ def build_context_engine(
 
     router = _build_router(
         builder=builder,
+        backend=backend,
         skill_forge_router_config=skill_forge_router_config,
     )
     configured_inject_max = int(getattr(skill_forge_config, "inject_max", 2)) if skill_forge_config is not None else 2
@@ -141,17 +143,19 @@ def build_context_engine(
 def _build_router(
     *,
     builder: ContextBuilder,
+    backend: "MemoryBackend | None",
     skill_forge_router_config: "SkillForgeRouterConfig",
 ) -> "SkillForgeRouter":
-    """为 segment 5 组装只包含 operator-managed Local Skill 的路由器。
+    """为 segment 5 组装 Local Skill 与可选 Memory agent-track Skill 路由器。
 
     `LocalSkillSource` 直接复用 ``builder.skills.pool`` 与 ``builder.skills.registry``，并应用
     ``local_min_score``；这避免重新扫描磁盘或建立第二份 Registry。返回的 `SkillForgeRouter`
-    当前只有该 Source，top-k 与 activation 数量由上层 `SkillsSegmentBuilder` 控制，本函数不
-    执行检索。
+    Backend 存在时再加入 `MemorySkillSource`；top-k 与 activation 数量由上层
+    `SkillsSegmentBuilder` 控制，本函数不执行检索。
     """
     from pico.memory_engine.skill_forge import (
         LocalSkillSource,
+        MemorySkillSource,
         SkillForgeRouter,
     )
 
@@ -160,4 +164,7 @@ def _build_router(
         registry=builder.skills.registry,
         min_score=skill_forge_router_config.local_min_score,
     )
-    return SkillForgeRouter(sources=[local_source])
+    sources = [local_source]
+    if backend is not None:
+        sources.append(MemorySkillSource(backend))
+    return SkillForgeRouter(sources=sources)

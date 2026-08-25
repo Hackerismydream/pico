@@ -249,6 +249,7 @@ def _build_benchmark_context_engine(
     resolved_router = skill_forge_router_config or SkillForgeRouterConfig()
     router = _build_router(
         builder=builder,
+        backend=backend,
         skill_forge_router_config=resolved_router,
     )
     configured_inject_max = int(getattr(skill_forge_config, "inject_max", 2)) if skill_forge_config is not None else 2

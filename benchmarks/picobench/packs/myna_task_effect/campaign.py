@@ -225,11 +225,15 @@ def build_report(
     expected_lifecycle = (
         "start",
         "recall",
+        "recall",
         "store",
+        "feedback",
         "stop",
         "start",
         "recall",
+        "recall",
         "store",
+        "feedback",
         "stop",
     )
     for task in corpus.tasks:

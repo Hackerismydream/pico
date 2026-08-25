@@ -36,7 +36,7 @@ from pico.agent.loop.recovery import (
 from pico.agent.subagent import SubagentManager
 from pico.agent.tools.ask_user import AskUserTool
 from pico.agent.tools.base import ToolResult
-from pico.agent.tools.execution import ToolExecution, ToolExecutionContext, ToolInvocation
+from pico.agent.tools.execution import ToolEffect, ToolExecution, ToolExecutionContext, ToolInvocation
 from pico.agent.tools.file_search import FindTool, GrepTool
 from pico.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from pico.agent.tools.message import MessageTool
@@ -45,6 +45,7 @@ from pico.agent.tools.shell import ExecTool
 from pico.agent.tools.skill import SkillReadTool
 from pico.agent.tools.spawn import SpawnTool
 from pico.agent.tools.web import WebFetchTool, WebSearchTool
+from pico.agent.turn_evidence import TurnEvidenceLog
 from pico.call_efficiency.pricing import resolve_context_window
 from pico.memory_engine.base import TokenBudget
 from pico.memory_engine.consolidate.consolidator import MemoryConsolidator, MemoryStore
@@ -98,8 +99,8 @@ class TurnOutcome:
     调用方绝不能把 "ran out of budget" 当成 "done"。``error_category`` 在错误终态下携带
     稳定分类，供边界外记录或展示，而不是要求读者解析 Provider 的原始异常文本。
 
-    ``checkpoint_id`` 与 ``edited_files`` 携带本轮 shadow-git 快照标识和已编辑文件清单。
-    `_stash_recovery` 只会为可恢复的中断保存它们，下一 Turn 的 `_inject_recovery_block`
+    ``checkpoint_id`` 与 ``edited_files`` 携带本轮 shadow-git 快照标识和已编辑文件清单；正常完成
+    也保留该清单供 Turn Evidence 使用。`_stash_recovery` 只会为可恢复的中断保存它们，下一 Turn 的 `_inject_recovery_block`
     再据此构造恢复提示。它们提供的是“先检查哪些现场”的证据，不保证下一轮一定能自动
     恢复成功，也不会把模型回复本身当作文件状态的事实来源。
     """
@@ -789,6 +790,13 @@ class AgentLoop:
             sanitize_persisted_payload(messages_slice),
         )
 
+    @trace.instrument("memory.feedback")
+    async def _dispatch_backend_feedback(self, signals: dict[str, Any]) -> None:
+        """在消息已耐久化后把字段闭合的 Turn feedback 交给 Backend。"""
+        if self.backend is None:
+            return
+        await self.backend.feedback(sanitize_persisted_payload(signals))
+
     def _collect_injected_skill_ids(
         self,
         selected: list[Any] | None,
@@ -1223,6 +1231,7 @@ class AgentLoop:
         usage_sink: dict[str, Any] | None = None,
         drain: Drain | None = None,
         origin: Origin | None = None,
+        turn_evidence_log: TurnEvidenceLog | None = None,
     ) -> tuple[str | None, list[str], list[dict], TurnOutcome]:
         """执行一次有预算的模型—Tool 迭代，并返回回复、证据与明确终态。
 
@@ -1447,6 +1456,10 @@ class AgentLoop:
                         int(execution.duration_ms),
                         preview,
                     )
+                    if turn_evidence_log is not None:
+                        tool = self.tools.get(invocation.name)
+                        effect = tool.capability.effect if tool is not None else ToolEffect.UNKNOWN
+                        turn_evidence_log.observe(execution, effect=effect)
                     if on_tool_event is not None:
                         nested = invocation.context.parent_call_id is not None
                         await on_tool_event(
@@ -1612,8 +1625,7 @@ class AgentLoop:
             label = f"turn {session_key or 'anon'} [{status}]"
             cid, changed = await self._checkpoint.commit_turn(label)
             outcome.checkpoint_id = cid
-            if status == "interrupted":
-                outcome.edited_files = changed
+            outcome.edited_files = changed
 
         return final_content, tools_used, messages, outcome
 
@@ -1738,6 +1750,7 @@ class AgentLoop:
         origin: Origin | None = None,
         drain: Drain | None = None,
         context_metadata_sink: dict[str, Any] | None = None,
+        turn_feedback_sink: dict[str, Any] | None = None,
     ) -> tuple[str | None, list[str]] | None:
         """处理一个 `TurnRequest`，完成会话、上下文、迭代和事后流水线并返回回复。
 
@@ -1939,6 +1952,23 @@ class AgentLoop:
         injected_skill_ids = list(
             context_metadata.get("injected_skill_ids") or self._collect_injected_skill_ids(selected_skills)
         )
+        from pico.tracing import context as trace_context
+
+        active_trace = trace_context.current()
+        turn_id = (
+            req.message_id
+            or (active_trace.turn_span_id if active_trace else None)
+            or f"turn-{len(session.messages) + 1}"
+        )
+        trace_id = active_trace.trace_id if active_trace else f"untraced-{turn_id}"
+        turn_evidence_log = TurnEvidenceLog(
+            workspace=self.workspace,
+            session_id=key,
+            turn_id=turn_id,
+            trace_id=trace_id,
+            injected_skill_ids=injected_skill_ids,
+            referenced_skill_ids=list(context_metadata.get("referenced_skill_ids") or ()),
+        )
 
         # ── 模型路由（EcoClaw 风格）──────────────────────────────────────────
         routed_model: str | None = None
@@ -1964,6 +1994,7 @@ class AgentLoop:
             usage_sink=usage_sink,
             drain=drain,
             origin=origin,
+            turn_evidence_log=turn_evidence_log,
         )
         self._stash_recovery(key, outcome)
         if outcome.status == "error":
@@ -2007,6 +2038,17 @@ class AgentLoop:
             key,
             turn_artifact_messages,
         )
+        feedback_eligible = any(message.get("role") == "user" for message in turn_artifact_messages)
+        if feedback_eligible:
+            feedback = turn_evidence_log.feedback(
+                terminal_state=outcome.status,
+                delivery_state="unknown",
+                edited_files=outcome.edited_files,
+            )
+            if turn_feedback_sink is None:
+                await self._dispatch_backend_feedback(feedback)
+            else:
+                turn_feedback_sink["signals"] = feedback
         if not self.context_engine.owns_compaction:
             await self.memory_consolidator.maybe_consolidate_by_tokens(session)
 
@@ -2161,6 +2203,7 @@ class AgentLoop:
         tool_calls = 0
         tool_failures = 0
         context_metadata: dict[str, Any] = {}
+        turn_feedback: dict[str, Any] = {}
 
         async def on_token(text: str) -> None:
             nonlocal streamed
@@ -2270,6 +2313,7 @@ class AgentLoop:
                 origin=req.origin,
                 drain=drain,
                 context_metadata_sink=context_metadata,
+                turn_feedback_sink=turn_feedback,
             )
         except Exception:
             await self.close_executor()
@@ -2289,6 +2333,13 @@ class AgentLoop:
             if text_sink is not None and reply_content:
                 text_sink["text"] = reply_content
 
+        replied_via_tool = isinstance(message_tool, MessageTool) and message_tool.sent_in_turn
+        signals = turn_feedback.get("signals")
+        if isinstance(signals, dict):
+            await self._dispatch_backend_feedback(
+                {**signals, "delivery_state": "delivered" if out is not None or replied_via_tool else "not_delivered"}
+            )
+
         usage = Usage(
             prompt_tokens=int(usage_sink.get("prompt_tokens", 0) or 0),
             completion_tokens=int(usage_sink.get("completion_tokens", 0) or 0),
@@ -2296,7 +2347,6 @@ class AgentLoop:
         )
         # message 工具回复虽会让 _process_message 返回 None，但确实已回复，
         # 因此也计作显式回复。
-        replied_via_tool = isinstance(message_tool, MessageTool) and message_tool.sent_in_turn
         return TurnOutcome(
             usage=usage,
             explicit_reply=out is not None or replied_via_tool,

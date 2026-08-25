@@ -33,7 +33,20 @@ from pico.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
 TASK_ROOT = Path(__file__).resolve().parents[1] / "benchmarks" / "picobench" / "tasks" / "myna_task_effect"
 MEMORY_OPERATION_SCHEMA = "pico.picobench.myna-agent-task-effect.memory-operation.v2"
-AGENT_LIFECYCLE = ("start", "recall", "store", "stop", "start", "recall", "store", "stop")
+AGENT_LIFECYCLE = (
+    "start",
+    "recall",
+    "recall",
+    "store",
+    "feedback",
+    "stop",
+    "start",
+    "recall",
+    "recall",
+    "store",
+    "feedback",
+    "stop",
+)
 
 
 def test_agent_corpus_is_lightweight_balanced_and_disjoint() -> None:
@@ -446,7 +459,19 @@ def test_agent_campaign_requires_approval_persists_and_resumes(tmp_path: Path, m
                         "outcome": "succeeded",
                         "phase": "prime",
                     },
+                    {
+                        "schema": MEMORY_OPERATION_SCHEMA,
+                        "operation": "recall",
+                        "outcome": "succeeded",
+                        "phase": "prime",
+                    },
                     {"schema": MEMORY_OPERATION_SCHEMA, "operation": "store", "outcome": "succeeded", "phase": "prime"},
+                    {
+                        "schema": MEMORY_OPERATION_SCHEMA,
+                        "operation": "feedback",
+                        "outcome": "succeeded",
+                        "phase": "prime",
+                    },
                     {"schema": MEMORY_OPERATION_SCHEMA, "operation": "stop", "outcome": "succeeded", "phase": "prime"},
                     {
                         "schema": MEMORY_OPERATION_SCHEMA,
@@ -462,7 +487,19 @@ def test_agent_campaign_requires_approval_persists_and_resumes(tmp_path: Path, m
                     },
                     {
                         "schema": MEMORY_OPERATION_SCHEMA,
+                        "operation": "recall",
+                        "outcome": "succeeded",
+                        "phase": "evaluate",
+                    },
+                    {
+                        "schema": MEMORY_OPERATION_SCHEMA,
                         "operation": "store",
+                        "outcome": "succeeded",
+                        "phase": "evaluate",
+                    },
+                    {
+                        "schema": MEMORY_OPERATION_SCHEMA,
+                        "operation": "feedback",
                         "outcome": "succeeded",
                         "phase": "evaluate",
                     },
@@ -570,8 +607,8 @@ def test_agent_campaign_rebuild_preserves_provider_failure_contamination(tmp_pat
                     "phase": phase,
                 }
                 for phase, operations in (
-                    ("prime", ("start", "recall", "store", "stop")),
-                    ("evaluate", ("start", "recall", "store", "stop")),
+                    ("prime", ("start", "recall", "recall", "store", "feedback", "stop")),
+                    ("evaluate", ("start", "recall", "recall", "store", "feedback", "stop")),
                 )
                 for operation in operations
             )
@@ -1157,10 +1194,11 @@ async def test_worker_treatment_provider_failure_has_no_fake_store(tmp_path: Pat
     assert [row["operation"] for row in result["memory_operation_receipt"]] == [
         "start",
         "recall",
+        "recall",
         "stop",
     ]
     assert all(row["outcome"] == "succeeded" for row in result["memory_operation_receipt"])
-    assert result["myna_operations"] == ["start", "recall", "stop"]
+    assert result["myna_operations"] == ["start", "recall", "recall", "stop"]
 
 
 @pytest.mark.asyncio
@@ -1208,6 +1246,7 @@ async def test_worker_classifies_myna_backend_failure_as_product_failure(tmp_pat
     assert [(row["operation"], row["outcome"]) for row in result["memory_operation_receipt"]] == [
         ("start", "succeeded"),
         ("recall", "failed"),
+        ("recall", "failed"),
         ("stop", "succeeded"),
     ]
     assert result["myna_operations"] == ["start", "stop"]
@@ -1254,10 +1293,12 @@ async def test_worker_records_actual_prime_memory_lifecycle(tmp_path: Path) -> N
 
     assert result["terminal"] == "completed"
     assert result["failure_class"] is None
-    assert result["myna_operations"] == ["start", "recall", "store", "stop"]
+    assert result["myna_operations"] == ["start", "recall", "recall", "store", "feedback", "stop"]
     assert [row["operation"] for row in result["memory_operation_receipt"]] == [
         "start",
         "recall",
+        "recall",
         "store",
+        "feedback",
         "stop",
     ]

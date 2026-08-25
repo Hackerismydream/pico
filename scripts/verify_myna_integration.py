@@ -197,6 +197,11 @@ async def _recall(repository: Path) -> dict[str, Any]:
             user_id="default",
             top_k=5,
         )
+        agent_unrelated = await backend.recall(
+            "cafeteria menu typography unrelated satellite telemetry",
+            agent_id="pico",
+            top_k=5,
+        )
         provider = _RecordingProvider()
         agent = AgentLoop(
             provider=provider,
@@ -223,6 +228,7 @@ async def _recall(repository: Path) -> dict[str, Any]:
         await backend.stop()
     _require(len(hits) == 1, "relevant recall did not return exactly one compiled context")
     _require(unrelated == [], "unrelated query did not abstain")
+    _require(agent_unrelated == [], "agent Skill hard negative did not abstain")
     source_uris = hits[0].metadata["source_uris"]
     _require(
         bool(source_uris) and all(uri.startswith("myna://") for uri in source_uris),
@@ -494,6 +500,25 @@ def _assert_cli_identity(repository: Path, home: Path) -> None:
     )
 
 
+def _assert_turn_feedback(runtime: Path) -> None:
+    """确认安装态 Pico feedback 已被 Myna 绑定为内容寻址 Turn Evidence。"""
+    with sqlite3.connect(runtime / "state.sqlite3") as connection:
+        rows = connection.execute(
+            "SELECT experience_id, canonical_evidence_json FROM pico_turn_evidence ORDER BY session_id, turn_id"
+        ).fetchall()
+    _require(bool(rows), "installed Pico Turn feedback was not persisted by Myna")
+    decoded = [(experience_id, json.loads(encoded)) for experience_id, encoded in rows]
+    _require(all(item[0].startswith("mem_") for item in decoded), "Turn Evidence is not bound to Task Experience")
+    _require(
+        all(item[1].get("schema") == "pico.turn-evidence.v1" for item in decoded),
+        "installed Turn Evidence schema mismatch",
+    )
+    _require(
+        any(item[1].get("session_id") == "installed-smoke:turn-one" for item in decoded),
+        "fresh-process store has no matching Turn Evidence",
+    )
+
+
 def main() -> int:
     args = _parser().parse_args()
     if args.phase:
@@ -564,6 +589,7 @@ def main() -> int:
         )
         recalled = json.loads(recall.stdout.splitlines()[-1])
         _require(json.loads(store.stdout.splitlines()[-1]) == {"stored": True}, "store child did not complete")
+        _assert_turn_feedback(runtime)
         _require(bool(recalled["source_uris"]), "fresh-process recall has no provenance")
         asyncio.run(_assert_fail_closed(repository, runtime, root))
 
@@ -573,6 +599,7 @@ def main() -> int:
                 "backend": EXPECTED_BACKEND,
                 "factory": EXPECTED_FACTORY,
                 "fresh_process_recall": True,
+                "turn_feedback_persisted": True,
                 "myna_wheel_sha256": args.myna_sha256,
                 "plugin_id": EXPECTED_PLUGIN_ID,
                 "plugin_version": EXPECTED_PLUGIN_VERSION,

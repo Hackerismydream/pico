@@ -105,6 +105,7 @@ class ExecTool(Tool):
         timeout: int | None = None,
         **kwargs: Any,
     ) -> str:
+        observed_command = command
         cwd = working_dir or self.working_dir or os.getcwd()
 
         if not self._executor.is_sandboxed:
@@ -141,6 +142,7 @@ class ExecTool(Tool):
         return ToolResult(
             result.as_text(self._MAX_OUTPUT),
             failed=result.exit_code != 0,
+            receipt={"command": observed_command, "exit_code": result.exit_code},
         )
 
     def _guard_command(self, command: str, cwd: str) -> str | None:
