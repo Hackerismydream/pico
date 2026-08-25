@@ -82,7 +82,6 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
         )
         if not isinstance(provider, BudgetGuardedProvider):
             raise ValueError("Skill extraction Provider must be budget guarded")
-        attempts_before = provider.ledger.snapshot().request_attempts
         active: dict[str, str] = {}
         experiences: dict[str, list[str]] = {}
         facts: dict[str, list[str]] = {}
@@ -92,10 +91,9 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
         snapshot_digests: dict[str, dict[str, str]] = {}
         with _skill_proxy(self._root / "skill-proxy", provider, config=self._config) as proxy:
             for ability in corpus.abilities:
-                ability_root = self._root / "candidates" / ability.ability_id
-                result = self._candidate_call(
-                    {"root": str(ability_root), "ability": learning_projection(ability)},
-                    ability_root / "worker",
+                result = self._candidate_call_with_local_recovery(
+                    ability_id=ability.ability_id,
+                    ability=learning_projection(ability),
                     environment_overrides={
                         "MYNA_SEMANTIC_API_KEY": "budgeted-local-proxy",
                         "MYNA_SEMANTIC_ENDPOINT": proxy.endpoint,
@@ -141,7 +139,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
                 "model": self._config.model,
                 "prompt_revision": "myna-skill-extractor-v1",
                 "thinking": "disabled",
-                "provider_request_attempts": provider.ledger.snapshot().request_attempts - attempts_before,
+                "provider_request_attempts": provider.ledger.snapshot().request_attempts,
             },
         }
         receipt["held_out_admission_precheck"] = self.admission_precheck(corpus)
@@ -413,6 +411,27 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
             raise RuntimeError("candidate worker returned non-object JSON")
         return value
 
+    def _candidate_call_with_local_recovery(
+        self,
+        *,
+        ability_id: str,
+        ability: dict[str, Any],
+        environment_overrides: dict[str, str],
+    ) -> dict[str, Any]:
+        for local_attempt in range(3):
+            ability_root = self._root / "candidates" / ability_id / f"local-{local_attempt + 1}"
+            try:
+                return self._candidate_call(
+                    {"root": str(ability_root), "ability": ability},
+                    ability_root / "worker",
+                    environment_overrides=environment_overrides,
+                )
+            except RuntimeError as error:
+                retryable = "exit -6" in str(error) and "recursive_mutex lock failed" in str(error)
+                if not retryable or local_attempt == 2:
+                    raise
+        raise AssertionError("unreachable candidate recovery state")
+
 
 def _skill_provider(*, api_key: str, api_base: str | None, ledger: ProviderBudgetLedger) -> BudgetGuardedProvider:
     provider = LiteLLMProvider(
@@ -423,6 +442,25 @@ def _skill_provider(*, api_key: str, api_base: str | None, ledger: ProviderBudge
         extra_body={"thinking": {"type": "disabled"}},
     )
     return BudgetGuardedProvider(provider, ledger=ledger)
+
+
+def _cacheable_skill_content(content: str) -> bool:
+    try:
+        value = json.loads(content)
+    except json.JSONDecodeError:
+        return False
+    fields = {"name", "description", "applicability", "procedure", "verification", "failure_avoidance"}
+    return bool(
+        isinstance(value, dict)
+        and set(value) == fields
+        and all(isinstance(value[field], str) and value[field].strip() for field in ("name", "description"))
+        and all(
+            isinstance(value[field], list)
+            and (field == "failure_avoidance" or bool(value[field]))
+            and all(isinstance(item, str) and item.strip() for item in value[field])
+            for field in ("applicability", "procedure", "verification", "failure_avoidance")
+        )
+    )
 
 
 class _Proxy:
@@ -437,6 +475,8 @@ def _skill_proxy(root: Path, provider: BudgetGuardedProvider, *, config: Campaig
     certificate, key = _certificate(root)
     trust_bundle = root / "ca-bundle.pem"
     trust_bundle.write_bytes(Path(certifi.where()).read_bytes() + b"\n" + certificate.read_bytes())
+    response_cache: dict[str, str] = {}
+    response_cache_lock = threading.Lock()
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_POST(self) -> None:
@@ -449,25 +489,34 @@ def _skill_proxy(root: Path, provider: BudgetGuardedProvider, *, config: Campaig
                 usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             else:
                 ability = json.loads(messages[-1]["content"])["ability_fingerprint"]
-                with provider_call_budget_scope(
-                    trial_id=f"skill-extraction:{ability}",
-                    max_logical_calls=1,
-                    max_attempts_per_call=config.max_attempts_per_call,
-                    max_input_tokens_per_call=config.max_input_tokens_per_call,
-                    max_output_tokens_per_call=config.max_output_tokens_per_call,
-                ):
-                    response = asyncio.run(
-                        provider.chat(
-                            messages,
-                            model=config.model,
-                            max_tokens=config.max_output_tokens_per_call,
-                            temperature=0,
+                cache_key = canonical_digest(request)
+                with response_cache_lock:
+                    content = response_cache.get(cache_key)
+                if content is None:
+                    with provider_call_budget_scope(
+                        trial_id=f"skill-extraction:{ability}",
+                        max_logical_calls=1,
+                        max_attempts_per_call=config.max_attempts_per_call,
+                        max_input_tokens_per_call=config.max_input_tokens_per_call,
+                        max_output_tokens_per_call=config.max_output_tokens_per_call,
+                    ):
+                        response = asyncio.run(
+                            provider.chat(
+                                messages,
+                                model=config.model,
+                                max_tokens=config.max_output_tokens_per_call,
+                                temperature=0,
+                            )
                         )
-                    )
-                if response.finish_reason == "error" or not response.content:
-                    raise RuntimeError("Skill extraction Provider failed")
-                content = response.content
-                usage = response.usage
+                    if response.finish_reason == "error" or not response.content:
+                        raise RuntimeError("Skill extraction Provider failed")
+                    content = response.content
+                    usage = response.usage
+                    if _cacheable_skill_content(content):
+                        with response_cache_lock:
+                            response_cache[cache_key] = content
+                else:
+                    usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             encoded = json.dumps(
                 {"choices": [{"message": {"role": "assistant", "content": content}}], "usage": usage}, sort_keys=True
             ).encode()

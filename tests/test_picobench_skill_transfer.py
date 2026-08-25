@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -564,6 +565,47 @@ def test_skill_transfer_executor_uses_explicit_shared_model_cache(
 
     assert executor._model_cache == shared.resolve()
     assert shared.is_dir()
+
+
+def test_candidate_local_runtime_crash_retries_in_a_fresh_workspace(tmp_path: Path) -> None:
+    executor = object.__new__(skill_runner.InstalledSkillTransferExecutor)
+    executor._root = tmp_path
+    observed: list[tuple[dict, Path]] = []
+
+    def candidate_call(spec, root, *, environment_overrides=None):
+        observed.append((spec, root))
+        if len(observed) == 1:
+            raise RuntimeError("command failed with exit -6: recursive_mutex lock failed")
+        return {"ability_id": "config_precedence"}
+
+    executor._candidate_call = candidate_call
+
+    result = executor._candidate_call_with_local_recovery(
+        ability_id="config_precedence",
+        ability={"ability_id": "config_precedence"},
+        environment_overrides={"EXAMPLE": "value"},
+    )
+
+    assert result == {"ability_id": "config_precedence"}
+    assert len(observed) == 2
+    assert observed[0][0]["root"] != observed[1][0]["root"]
+    assert observed[0][1] != observed[1][1]
+
+
+def test_only_closed_skill_json_is_cacheable_for_local_recovery() -> None:
+    content = json.dumps(
+        {
+            "name": "Atomic JSON",
+            "description": "Replace JSON atomically.",
+            "applicability": ["Use for durable JSON writes."],
+            "procedure": ["Write and replace."],
+            "verification": ["Parse the result."],
+            "failure_avoidance": [],
+        }
+    )
+
+    assert skill_runner._cacheable_skill_content(content) is True
+    assert skill_runner._cacheable_skill_content("```json\n{}\n```") is False
 
 
 @pytest.mark.parametrize("ability_index", range(6))
