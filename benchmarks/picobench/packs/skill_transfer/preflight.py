@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import tempfile
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -14,8 +15,9 @@ from .runner import InstalledSkillTransferExecutor
 
 
 class _FixtureSkillProvider(LLMProvider):
-    def __init__(self) -> None:
+    def __init__(self, procedures: Mapping[str, Sequence[str]]) -> None:
         super().__init__(api_key="fixture")
+        self._procedures = procedures
 
     async def chat(
         self,
@@ -34,7 +36,7 @@ class _FixtureSkillProvider(LLMProvider):
             "name": ability,
             "description": ability,
             "applicability": [ability],
-            "procedure": ["Apply the procedure supported by the three verified learning Experiences."],
+            "procedure": list(self._procedures[ability]),
             "verification": ["Run the task-specific independent verifier before claiming success."],
             "failure_avoidance": ["Do not claim success when verification fails."],
         }
@@ -63,7 +65,10 @@ def run_preflight(config: CampaignConfig) -> dict[str, Any]:
             conservative_usd_to_cny_multiplier=config.conservative_usd_to_cny_multiplier,
         )
         ledger = ProviderBudgetLedger(root / "provider-budget.jsonl", budget_config)
-        provider = BudgetGuardedProvider(_FixtureSkillProvider(), ledger=ledger)
+        procedures = {
+            ability.goal.casefold(): [item.result for item in ability.learning] for ability in corpus.abilities
+        }
+        provider = BudgetGuardedProvider(_FixtureSkillProvider(procedures), ledger=ledger)
         with InstalledSkillTransferExecutor(
             config,
             provider_api_key="fixture",
