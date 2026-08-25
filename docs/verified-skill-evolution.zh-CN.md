@@ -56,7 +56,7 @@ Skill revision 不原地覆盖。每次派生得到新的 content-addressed revi
 
 正向结论必须同时满足 48/48 Pair 有效、24/24 negative 零错误注入、revision 的三条 Experience provenance 完整、独立 verifier 全部可重建、零 Treatment regression，并且按 held-out task 聚类的 95% bootstrap CI 下界大于 0。所有 raw、budget、candidate 和派生报告还会进入带 SHA-256 的 `inventory.json`。Provider 或基础设施故障会使 Pair 无效，不能被记成低分来制造差异。
 
-当前必须诚实说：机制的 exact-wheel E2E 已通过；正式 96-Trial 付费实验只冻结了协议、候选 wheel、预算和 approval digest，尚未执行。因此现在能说“闭环真实工作且安全门有效”，不能说“任务成功率已经提升 X%”。
+当前必须诚实说：机制的 exact-wheel E2E 已通过；formal runner 的无费用 preflight 也已用相同 wheels 生成并激活 6 个候选、绑定 18 条学习映射和 12 份 Control/Treatment snapshot，并在 24 个 hard negative 上保持零错误召回。正式 96-Trial 付费实验只冻结了协议、候选 wheel、预算和 approval digest，尚未执行。因此现在能说“闭环真实工作且安全门有效”，不能说“任务成功率已经提升 X%”。
 
 ## 面试官问“自进化是怎么做的”时，90 秒回答
 

@@ -36,15 +36,15 @@ hard-negative identities are globally disjoint in the checked-in corpus.
 
 The current frozen plan binds:
 
-- Pico commit `6ad559b62cc3ab651d96e517f43041cd5a04524b`;
+- Pico commit `af2038662f09bfae3008e56516538193b8fe2186`;
 - Pico wheel SHA-256
   `0e19c558c388cc912e779f16278866f3ede7070aea6655fcde1b4af6e2d9810e`;
-- Myna commit `1167e319f0c9e5c3654fd27c08e99d3ca95a260d`;
+- Myna commit `14ae4adea26b28321d1616a6b393d0c47be1a9d8`;
 - Myna wheel SHA-256
-  `6c4ceed194ebf2c5ed28230232c2c16b571024ead2e799601884ffd04bf03a5f`;
+  `d591b35378ba45d845ed9eaa987afb32a5f136efa2d641759104a74d318fb09f`;
 - DeepSeek V4 Flash through the frozen Pico Provider adapter;
 - approval digest
-  `35a7a678b478328f2a830a7ef014be0e6e2b7800795d9b92e5ef36bed0d90fd6`;
+  `ab877e9a807ba9ec2c0481514b210a0881364d5437c9a16427b36cd1884c9a08`;
 - worst-case budget CNY 22.527590 under a CNY 25 hard cap.
 
 The six Skill-extraction calls and all evaluation-Agent calls share one durable
@@ -89,6 +89,10 @@ As of 2026-08-25:
 - the exact-wheel installed mechanism gate passes draft generation, activation,
   prompt injection, hard-negative abstention, successor generation,
   Supersession, rollback, rejection, denied reactivation, and restart recovery;
+- the credential-free formal-runner preflight installs the same wheels, creates
+  and activates six Skills from learning-only projections, binds the six pairs
+  of candidate runtime snapshots, maps all 18 learning instances to their Task
+  Experiences, and records zero incorrect admissions across 24 hard negatives;
 - the full Pico check passes 4,006 Python tests and 830 TUI tests;
 - the full Myna check passes 584 Python tests, 53 Hub tests, and its integration
   checks; and
@@ -106,6 +110,12 @@ Plan without Provider calls:
 
 ```bash
 make picobench-skill-transfer-plan
+```
+
+Run the installed formal-runner preflight without external Provider calls:
+
+```bash
+make picobench-skill-transfer-preflight
 ```
 
 Run only after exact approval:
