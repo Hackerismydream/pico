@@ -24,9 +24,8 @@ from benchmarks.picobench.budget import (
     provider_call_budget_scope,
 )
 from benchmarks.picobench.canonical import canonical_digest
-from pico.cli._helpers import make_provider
-from pico.config.schema import Config
 from pico.providers.base import LLMProvider
+from pico.providers.litellm_provider import LiteLLMProvider
 
 from ..myna_task_effect.runner import InstalledTrialExecutor, _tool_metrics
 from .campaign import (
@@ -136,6 +135,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
                 "provider": self._config.provider,
                 "model": self._config.model,
                 "prompt_revision": "myna-skill-extractor-v1",
+                "thinking": "disabled",
                 "provider_request_attempts": provider.ledger.snapshot().request_attempts - attempts_before,
             },
         }
@@ -410,11 +410,14 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
 
 
 def _skill_provider(*, api_key: str, api_base: str | None, ledger: ProviderBudgetLedger) -> BudgetGuardedProvider:
-    config = Config()
-    config.agents.defaults.model = "deepseek/deepseek-v4-flash"
-    config.providers.deepseek.api_key = api_key
-    config.providers.deepseek.api_base = api_base
-    return BudgetGuardedProvider(make_provider(config), ledger=ledger)
+    provider = LiteLLMProvider(
+        api_key=api_key,
+        api_base=api_base,
+        default_model="deepseek/deepseek-v4-flash",
+        provider_name="deepseek",
+        extra_body={"thinking": {"type": "disabled"}},
+    )
+    return BudgetGuardedProvider(provider, ledger=ledger)
 
 
 class _Proxy:
