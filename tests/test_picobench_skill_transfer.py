@@ -10,6 +10,7 @@ from benchmarks.picobench.packs.skill_transfer.campaign import (
     NegativeRecord,
     TrialRecord,
     build_report,
+    directory_digest,
     load_corpus,
     plan,
     run_campaign,
@@ -221,6 +222,16 @@ def test_corpus_rejects_cross_split_identity_reuse(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="must be disjoint"):
         load_corpus(path)
+
+
+def test_candidate_runtime_directory_digest_binds_paths_and_bytes(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "state.sqlite3").write_bytes(b"first")
+    before = directory_digest(runtime)
+    (runtime / "state.sqlite3").write_bytes(b"second")
+
+    assert directory_digest(runtime) != before
 
 
 def test_paid_run_rejects_missing_exact_approval_before_installing(tmp_path: Path) -> None:

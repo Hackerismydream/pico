@@ -451,6 +451,7 @@ def verify_evidence(output_root: Path, *, corpus_path: Path) -> dict[str, Any]:
         "verifier_reproduces": _json(output / "verifier-report.json") == _verifier_report(report),
         "measurement_valid": report["claim"]["measurement_valid"],
         "budget_accounting_complete": _verify_budget(output, manifest, trials, candidate),
+        "candidate_runtime_snapshots_bound": _verify_candidate_snapshots(output, corpus, candidate),
     }
     return {"schema": OFFLINE_SCHEMA, "passed": all(gates.values()), "gates": gates, "recomputed_report": report}
 
@@ -634,6 +635,27 @@ def _verify_budget(
         return False
 
 
+def _verify_candidate_snapshots(
+    output: Path,
+    corpus: SkillTransferCorpus,
+    candidate: dict[str, Any],
+) -> bool:
+    digests = candidate.get("runtime_snapshot_digests")
+    if not isinstance(digests, dict):
+        return False
+    try:
+        return all(
+            digests.get(ability.ability_id)
+            == {
+                arm_id: directory_digest(output / "candidate-runtimes" / ability.ability_id / f"{arm_id}-runtime")
+                for arm_id in _ARMS
+            }
+            for ability in corpus.abilities
+        )
+    except OSError:
+        return False
+
+
 def _ability(value: object) -> AbilityDefinition:
     if not isinstance(value, dict) or _ID.fullmatch(str(value.get("ability_id", ""))) is None:
         raise ValueError("invalid ability definition")
@@ -770,6 +792,14 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def directory_digest(root: Path) -> str:
+    if not root.is_dir():
+        raise OSError(f"candidate runtime snapshot is missing: {root}")
+    return canonical_digest(
+        {path.relative_to(root).as_posix(): _sha256(path) for path in sorted(root.rglob("*")) if path.is_file()}
+    )
 
 
 def _parser() -> argparse.ArgumentParser:

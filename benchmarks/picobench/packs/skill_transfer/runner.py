@@ -33,6 +33,7 @@ from .campaign import (
     NegativeRecord,
     SkillTransferCorpus,
     TrialRecord,
+    directory_digest,
 )
 from .fixtures import materialize, verify
 
@@ -68,6 +69,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
         experiences: dict[str, list[str]] = {}
         facts: dict[str, list[str]] = {}
         learning: dict[str, list[str]] = {}
+        snapshot_digests: dict[str, dict[str, str]] = {}
         with _skill_proxy(self._root / "skill-proxy", provider, config=self._config) as proxy:
             for ability in corpus.abilities:
                 ability_root = self._root / "candidates" / ability.ability_id
@@ -89,6 +91,9 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
                     destination = persisted / f"{arm_id}-runtime"
                     shutil.copytree(Path(result[f"{arm_id}_runtime"]), destination)
                     result[f"{arm_id}_runtime"] = str(destination)
+                snapshot_digests[ability.ability_id] = {
+                    arm_id: directory_digest(persisted / f"{arm_id}-runtime") for arm_id in ("control", "treatment")
+                }
                 self._snapshots[ability.ability_id] = result
                 active[ability.ability_id] = str(result["active_revision_id"])
                 experiences[ability.ability_id] = [str(item) for item in result["source_experience_ids"]]
@@ -100,6 +105,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
             "source_experience_ids": experiences,
             "source_fact_ids": facts,
             "source_learning_instance_ids": learning,
+            "runtime_snapshot_digests": snapshot_digests,
             "extractor": {
                 "provider": self._config.provider,
                 "model": self._config.model,
@@ -111,12 +117,19 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
     def load_candidates(self, corpus: SkillTransferCorpus, receipt: dict[str, Any], *, snapshot_root: Path) -> None:
         active = receipt.get("active_revisions", {})
         experiences = receipt.get("source_experience_ids", {})
+        digests = receipt.get("runtime_snapshot_digests", {})
         for ability in corpus.abilities:
             snapshot = snapshot_root / ability.ability_id
             control = snapshot / "control-runtime"
             treatment = snapshot / "treatment-runtime"
             if not control.is_dir() or not treatment.is_dir():
                 raise ValueError("persisted candidate runtime snapshot is incomplete")
+            observed = {
+                "control": directory_digest(control),
+                "treatment": directory_digest(treatment),
+            }
+            if digests.get(ability.ability_id) != observed:
+                raise ValueError("persisted candidate runtime snapshot digest does not match")
             self._snapshots[ability.ability_id] = {
                 "ability_id": ability.ability_id,
                 "active_revision_id": active[ability.ability_id],
