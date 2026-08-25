@@ -52,7 +52,9 @@ Skill revision 不原地覆盖。每次派生得到新的 content-addressed revi
 
 `skill_transfer_v1` 冻结 6 个能力族，每族 3 个学习实例、4 个 held-out 和 4 个 hard negative。学习集共 18 个实例；24 个 held-out 在两臂各跑两次，得到 48 对、96 个主 Trial；另有 24 个 hard negative。学习、held-out 和 negative 的 identity 全局不重叠。
 
-正向结论必须同时满足 48/48 Pair 有效、24/24 negative 零错误注入、revision 的三条 Experience provenance 完整、独立 verifier 全部可重建、零 Treatment regression，并且按 held-out task 聚类的 95% bootstrap CI 下界大于 0。Provider 或基础设施故障会使 Pair 无效，不能被记成低分来制造差异。
+候选生成子进程只接收 learning projection，不会收到 held-out prompt、fixture 或 hard negative；三份 split 各自有冻结 digest。candidate receipt 还逐条绑定 `learning_instance_id -> experience_id`，并对 Control/Treatment runtime snapshot 做目录 digest。
+
+正向结论必须同时满足 48/48 Pair 有效、24/24 negative 零错误注入、revision 的三条 Experience provenance 完整、独立 verifier 全部可重建、零 Treatment regression，并且按 held-out task 聚类的 95% bootstrap CI 下界大于 0。所有 raw、budget、candidate 和派生报告还会进入带 SHA-256 的 `inventory.json`。Provider 或基础设施故障会使 Pair 无效，不能被记成低分来制造差异。
 
 当前必须诚实说：机制的 exact-wheel E2E 已通过；正式 96-Trial 付费实验只冻结了协议、候选 wheel、预算和 approval digest，尚未执行。因此现在能说“闭环真实工作且安全门有效”，不能说“任务成功率已经提升 X%”。
 

@@ -36,7 +36,7 @@ hard-negative identities are globally disjoint in the checked-in corpus.
 
 The current frozen plan binds:
 
-- Pico commit `bb86ab1b3edde43c87ecb1f0a65b97818c211db0`;
+- Pico commit `6ad559b62cc3ab651d96e517f43041cd5a04524b`;
 - Pico wheel SHA-256
   `0e19c558c388cc912e779f16278866f3ede7070aea6655fcde1b4af6e2d9810e`;
 - Myna commit `1167e319f0c9e5c3654fd27c08e99d3ca95a260d`;
@@ -44,7 +44,7 @@ The current frozen plan binds:
   `6c4ceed194ebf2c5ed28230232c2c16b571024ead2e799601884ffd04bf03a5f`;
 - DeepSeek V4 Flash through the frozen Pico Provider adapter;
 - approval digest
-  `5fdea88ae813910fc005e635403032dc1c0c8cbc8893f8f1e6c17afabe656388`;
+  `35a7a678b478328f2a830a7ef014be0e6e2b7800795d9b92e5ef36bed0d90fd6`;
 - worst-case budget CNY 22.527590 under a CNY 25 hard cap.
 
 The six Skill-extraction calls and all evaluation-Agent calls share one durable
@@ -58,10 +58,11 @@ A positive result requires all of the following:
 
 1. 48/48 complete, valid Pairs and 96 exact primary Trial records;
 2. no learning/held-out/hard-negative identity overlap;
+   the candidate subprocess receives only the digest-bound learning projection;
 3. Treatment injection of the exact accepted revision and no Control
    injection;
-4. three source Experience identities and the three frozen learning identities
-   for every active revision;
+4. a one-to-one learning-instance-to-Experience map, three source Experience
+   identities, and three frozen learning identities for every active revision;
 5. valid independent task-verification receipts and unchanged public smoke
    fixtures;
 6. 24/24 hard-negative records with zero recalled Skill revisions;
@@ -72,7 +73,9 @@ A positive result requires all of the following:
    bound for paired pass delta is greater than zero; and
 10. directory-digest binding of the exact Control and Treatment candidate
     runtime snapshots; and
-11. offline reproduction of aggregate, verifier report, claim object, and
+11. an `inventory.json` binding every raw, budget, candidate, and derived
+    evidence artifact by SHA-256; and
+12. offline reproduction of aggregate, verifier report, claim object, and
     Provider budget state from immutable raw records.
 
 Provider, transport, budget, or infrastructure failures invalidate a Pair.
