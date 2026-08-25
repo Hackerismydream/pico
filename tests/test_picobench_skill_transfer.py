@@ -404,6 +404,40 @@ def test_paid_run_rejects_missing_exact_approval_before_installing(tmp_path: Pat
         )
 
 
+def test_paid_run_accepts_the_exact_cost_ceiling_frozen_in_the_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pico = tmp_path / "pico.whl"
+    myna = tmp_path / "myna.whl"
+    pico.write_bytes(b"pico")
+    myna.write_bytes(b"myna")
+    config = CampaignConfig(
+        corpus_path=CORPUS,
+        output_root=tmp_path / "evidence",
+        pico_wheel=pico,
+        myna_wheel=myna,
+        pico_commit="a" * 40,
+        myna_commit="b" * 40,
+    )
+    frozen = plan(config)
+
+    class Executor:
+        def __init__(self, *args, **kwargs) -> None:
+            raise RuntimeError("entered installed execution")
+
+    monkeypatch.setattr(skill_runner, "InstalledSkillTransferExecutor", Executor)
+
+    with pytest.raises(RuntimeError, match="entered installed execution"):
+        run_campaign(
+            config,
+            approval_digest=frozen["approval_digest"],
+            approved_cny=frozen["manifest"]["budget"]["maximum_cost_cny"],
+            execute_paid=True,
+            provider_api_key="fixture-key",
+            provider_api_base=None,
+        )
+
+
 def test_prepare_only_freezes_reviewable_candidates_without_running_trials(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -521,7 +521,7 @@ def run_campaign(
     expected_digest = canonical_digest(manifest)
     if not execute_paid or approval_digest != expected_digest:
         raise ValueError("paid execution requires the exact frozen approval digest")
-    required_approval = config.maximum_candidate_cost_cny if prepare_only else config.maximum_cost_cny
+    required_approval = float(manifest["budget"]["maximum_candidate_cost_cny" if prepare_only else "maximum_cost_cny"])
     if not math.isfinite(approved_cny) or approved_cny < required_approval or approved_cny > config.hard_cap_cny:
         raise ValueError("approved CNY must cover the frozen maximum within the hard cap")
     output = config.output_root.resolve()
