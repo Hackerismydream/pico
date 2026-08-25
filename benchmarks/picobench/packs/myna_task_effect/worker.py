@@ -161,9 +161,15 @@ class MemoryOperationRecorder:
         return hits
 
     async def store(self, *args, **kwargs) -> None:
+        if self._agent_track_only:
+            self._record_suppressed("store")
+            return
         await self._record("store", self._delegate.store(*args, **kwargs))
 
     async def feedback(self, *args, **kwargs) -> None:
+        if self._agent_track_only:
+            self._record_suppressed("feedback")
+            return
         await self._record("feedback", self._delegate.feedback(*args, **kwargs))
 
     async def stop(self) -> None:
@@ -192,6 +198,16 @@ class MemoryOperationRecorder:
             }
         )
         return result
+
+    def _record_suppressed(self, operation: str) -> None:
+        self.receipt.append(
+            {
+                "schema": "pico.picobench.myna-agent-task-effect.memory-operation.v2",
+                "operation": operation,
+                "outcome": "succeeded",
+                "phase": self._stage,
+            }
+        )
 
 
 def _context_factory(recorder_sink: list[MemoryOperationRecorder], *, stage: str, agent_track_only: bool):
@@ -540,6 +556,8 @@ def _build_live_provider(spec: dict[str, Any]) -> LLMProvider:
     provider_config.api_key = os.environ.get("PICO_BENCH_PROVIDER_API_KEY", "")
     provider_config.api_base = spec.get("provider_api_base")
     delegate = make_provider(config)
+    if spec.get("disable_thinking"):
+        delegate.extra_body = {**getattr(delegate, "extra_body", {}), "thinking": {"type": "disabled"}}
     budget = spec["budget"]
     ledger_config = ProviderBudgetConfig(
         hard_cap_cny=float(budget["hard_cap_cny"]),

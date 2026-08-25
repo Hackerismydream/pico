@@ -366,6 +366,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
             "message_id": f"{task.instance_id}-{repetition}-{arm_id}",
             "timeout_seconds": 180,
             "provider_mode": "live",
+            "disable_thinking": True,
             "provider_name": self._config.provider,
             "provider_api_base": self._provider_api_base,
             "model": self._config.model,

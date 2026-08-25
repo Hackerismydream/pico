@@ -29,6 +29,7 @@ from benchmarks.picobench.packs.myna_task_effect.campaign import (
     run_campaign,
 )
 from benchmarks.picobench.packs.myna_task_effect.runner import InstalledTrialExecutor
+from benchmarks.picobench.packs.myna_task_effect import worker as task_effect_worker
 from benchmarks.picobench.packs.myna_task_effect.worker import MemoryOperationRecorder, run_turn
 from pico.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
@@ -60,15 +61,51 @@ async def test_agent_track_only_recorder_suppresses_user_memory_but_keeps_skills
             self.calls.append((query, kwargs))
             return [SimpleNamespace(metadata={"revision_id": "skill_rev_1"}, score=1.0, text="Skill")]
 
+        async def store(self, *args, **kwargs):
+            raise AssertionError("evaluation must not learn from held-out turns")
+
     backend = Backend()
     recorder = MemoryOperationRecorder(backend, stage="evaluate", agent_track_only=True)
 
     user_hits = await recorder.recall("query", user_id="user", top_k=5)
     agent_hits = await recorder.recall("query", agent_id="pico", top_k=5)
+    await recorder.store("session", [])
+    await recorder.feedback({"terminal_state": "completed"})
 
     assert user_hits == []
     assert [item.text for item in agent_hits] == ["Skill"]
     assert backend.calls == [("query", {"agent_id": "pico", "top_k": 5})]
+    assert [item["operation"] for item in recorder.receipt] == ["recall", "recall", "store", "feedback"]
+
+
+def test_live_provider_can_disable_deepseek_thinking(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    delegate = SimpleNamespace(extra_body={"existing": True})
+    monkeypatch.setattr("pico.cli._helpers.make_provider", lambda config: delegate)
+    spec = {
+        "benchmark_root": str(Path.cwd()),
+        "provider_name": "deepseek",
+        "model": "deepseek/deepseek-chat",
+        "max_input_tokens_per_call": 16_384,
+        "max_output_tokens_per_call": 1_024,
+        "provider_api_base": None,
+        "disable_thinking": True,
+        "budget": {
+            "hard_cap_cny": 25.0,
+            "maximum_provider_attempts": 100,
+            "input_cache_miss_usd_per_million": 0.28,
+            "output_usd_per_million": 0.42,
+            "conservative_usd_to_cny_multiplier": 8.0,
+            "approval_digest": "a" * 64,
+            "ledger_prefix_event_count": 0,
+            "ledger_prefix_digest": "0" * 64,
+            "ledger_prefix_charged_cny": 0.0,
+            "ledger_path": str(tmp_path / "budget.jsonl"),
+        },
+    }
+
+    task_effect_worker._build_live_provider(spec)
+
+    assert delegate.extra_body == {"existing": True, "thinking": {"type": "disabled"}}
 
 
 def test_agent_corpus_is_lightweight_balanced_and_disjoint() -> None:

@@ -215,6 +215,7 @@ class CampaignConfig:
                 "max_tool_iterations": self.max_tool_iterations,
                 "max_attempts_per_call": self.max_attempts_per_call,
                 "recall_axis": "agent_track_only",
+                "evaluation_thinking": "disabled",
                 "skill_extraction": {
                     "max_output_tokens": self.max_output_tokens_per_call,
                     "prompt_revision": "myna-skill-extractor-v1",
