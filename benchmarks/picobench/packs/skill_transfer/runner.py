@@ -34,6 +34,7 @@ from .campaign import (
     SkillTransferCorpus,
     TrialRecord,
     directory_digest,
+    learning_projection,
 )
 from .fixtures import materialize, verify
 
@@ -69,12 +70,13 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
         experiences: dict[str, list[str]] = {}
         facts: dict[str, list[str]] = {}
         learning: dict[str, list[str]] = {}
+        learning_experience_maps: dict[str, dict[str, str]] = {}
         snapshot_digests: dict[str, dict[str, str]] = {}
         with _skill_proxy(self._root / "skill-proxy", provider, config=self._config) as proxy:
             for ability in corpus.abilities:
                 ability_root = self._root / "candidates" / ability.ability_id
                 result = self._candidate_call(
-                    {"root": str(ability_root), "ability": asdict(ability)},
+                    {"root": str(ability_root), "ability": learning_projection(ability)},
                     ability_root / "worker",
                     environment_overrides={
                         "MYNA_SEMANTIC_API_KEY": "budgeted-local-proxy",
@@ -99,12 +101,17 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
                 experiences[ability.ability_id] = [str(item) for item in result["source_experience_ids"]]
                 facts[ability.ability_id] = [str(item) for item in result["source_fact_ids"]]
                 learning[ability.ability_id] = [item.instance_id for item in ability.learning]
+                learning_experience_maps[ability.ability_id] = {
+                    str(key): str(value) for key, value in result["learning_experience_map"].items()
+                }
         return {
             "schema": "pico.picobench.skill-transfer.candidate-receipt.v1",
+            "candidate_input_digest": canonical_digest([learning_projection(ability) for ability in corpus.abilities]),
             "active_revisions": active,
             "source_experience_ids": experiences,
             "source_fact_ids": facts,
             "source_learning_instance_ids": learning,
+            "learning_experience_maps": learning_experience_maps,
             "runtime_snapshot_digests": snapshot_digests,
             "extractor": {
                 "provider": self._config.provider,
@@ -186,8 +193,20 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
         latency_ms = max(0, round((time.monotonic_ns() - started) / 1_000_000))
         receipt = verify(workspace, task.fixture)
         smoke_unchanged = hashlib.sha256((workspace / "smoke.py").read_bytes()).hexdigest() == smoke_digest
+        observed_paths = {
+            path.relative_to(workspace).as_posix()
+            for path in workspace.rglob("*")
+            if path.is_file()
+            and not path.is_relative_to(workspace / ".git")
+            and "__pycache__" not in path.parts
+            and path.suffix != ".pyc"
+        }
+        unexpected_paths = sorted(observed_paths - set(paths))
         receipt["smoke_fixture_unchanged"] = smoke_unchanged
-        passed = bool(receipt["passed"] and smoke_unchanged and worker.get("terminal") == "completed")
+        receipt["unexpected_workspace_paths"] = unexpected_paths
+        passed = bool(
+            receipt["passed"] and smoke_unchanged and not unexpected_paths and worker.get("terminal") == "completed"
+        )
         failure_class = worker.get("failure_class")
         if failure_class is None and not passed:
             failure_class = "task"

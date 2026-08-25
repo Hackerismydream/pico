@@ -5,11 +5,14 @@ from pathlib import Path
 
 import pytest
 
+from benchmarks.picobench.packs.skill_transfer import campaign as skill_campaign
+from benchmarks.picobench.packs.skill_transfer import candidate_worker
 from benchmarks.picobench.packs.skill_transfer.campaign import (
     CampaignConfig,
     NegativeRecord,
     TrialRecord,
     build_report,
+    corpus_split_digests,
     directory_digest,
     load_corpus,
     plan,
@@ -21,7 +24,7 @@ CORPUS = Path("benchmarks/picobench/tasks/skill_transfer_v1.json")
 
 
 def _candidate(corpus) -> dict:
-    return {
+    candidate = {
         "active_revisions": {
             ability.ability_id: f"skill_rev_{index:064x}" for index, ability in enumerate(corpus.abilities, 1)
         },
@@ -33,6 +36,18 @@ def _candidate(corpus) -> dict:
             for ability in corpus.abilities
         },
     }
+    candidate["learning_experience_maps"] = {
+        ability.ability_id: dict(
+            zip(
+                (item.instance_id for item in ability.learning),
+                candidate["source_experience_ids"][ability.ability_id],
+                strict=True,
+            )
+        )
+        for ability in corpus.abilities
+    }
+    candidate["candidate_input_digest"] = corpus_split_digests(corpus)["learning"]
+    return candidate
 
 
 def _records(corpus, candidate, *, control_pass: bool = False):
@@ -68,6 +83,7 @@ def _records(corpus, candidate, *, control_pass: bool = False):
                                     "fixture": task.fixture,
                                     "passed": True,
                                     "smoke_fixture_unchanged": True,
+                                    "unexpected_workspace_paths": [],
                                 }
                                 if control_pass
                                 else {"passed": False}
@@ -95,6 +111,7 @@ def _records(corpus, candidate, *, control_pass: bool = False):
                                 "fixture": task.fixture,
                                 "passed": True,
                                 "smoke_fixture_unchanged": True,
+                                "unexpected_workspace_paths": [],
                             },
                         ),
                     )
@@ -143,6 +160,7 @@ def test_report_requires_all_pairs_provenance_negatives_and_positive_clustered_c
         "provenance_complete": True,
         "resource_observations_complete": True,
         "verification_receipts_valid": True,
+        "candidate_input_sealed": True,
     }
     assert report["capability"]["verified_pass_delta_pp"] == 100.0
     assert report["capability"]["task_clustered_bootstrap_95_ci"]["lower"] == 1.0
@@ -193,6 +211,35 @@ def test_forged_pass_without_independent_receipt_invalidates_measurement() -> No
     assert report["claim"]["measurement_valid"] is False
 
 
+def test_learning_to_experience_mapping_is_required_for_provenance() -> None:
+    corpus = load_corpus(CORPUS)
+    candidate = _candidate(corpus)
+    trials, negatives = _records(corpus, candidate)
+    first = corpus.abilities[0]
+    candidate["learning_experience_maps"][first.ability_id].pop(first.learning[0].instance_id)
+
+    report = build_report(
+        corpus=corpus, trials=trials, negatives=negatives, candidate_receipt=candidate, bootstrap_samples=20
+    )
+
+    assert report["measurement"]["provenance_complete"] is False
+    assert report["claim"]["measurement_valid"] is False
+
+
+def test_candidate_input_must_bind_learning_only_projection() -> None:
+    corpus = load_corpus(CORPUS)
+    candidate = _candidate(corpus)
+    trials, negatives = _records(corpus, candidate)
+    candidate["candidate_input_digest"] = corpus_split_digests(corpus)["held_out"]
+
+    report = build_report(
+        corpus=corpus, trials=trials, negatives=negatives, candidate_receipt=candidate, bootstrap_samples=20
+    )
+
+    assert report["measurement"]["candidate_input_sealed"] is False
+    assert report["claim"]["measurement_valid"] is False
+
+
 def test_plan_freezes_candidate_budget_and_requires_exact_wheels(tmp_path: Path) -> None:
     pico = tmp_path / "pico.whl"
     myna = tmp_path / "myna.whl"
@@ -211,6 +258,7 @@ def test_plan_freezes_candidate_budget_and_requires_exact_wheels(tmp_path: Path)
 
     assert frozen["manifest"]["execution"]["planned_primary_pairs"] == 48
     assert frozen["manifest"]["execution"]["planned_primary_trials"] == 96
+    assert frozen["manifest"]["sealed_inputs"]["candidate_worker_receives_learning_projection_only"] is True
     assert frozen["manifest"]["budget"]["maximum_cost_cny"] <= 25
     assert len(frozen["approval_digest"]) == 64
 
@@ -232,6 +280,58 @@ def test_candidate_runtime_directory_digest_binds_paths_and_bytes(tmp_path: Path
     (runtime / "state.sqlite3").write_bytes(b"second")
 
     assert directory_digest(runtime) != before
+
+
+def test_artifact_inventory_detects_raw_outcome_mutation(tmp_path: Path) -> None:
+    for relative in skill_campaign._ARTIFACT_PATHS:
+        (tmp_path / relative).write_text(f"{relative}\n", encoding="utf-8")
+    skill_campaign._write_json(
+        tmp_path / "inventory.json",
+        {
+            "schema": "pico.picobench.skill-transfer.inventory.v1",
+            "files": [
+                {"path": relative, "sha256": skill_campaign._sha256(tmp_path / relative)}
+                for relative in skill_campaign._ARTIFACT_PATHS
+            ],
+        },
+    )
+
+    skill_campaign._verify_inventory(tmp_path)
+    (tmp_path / "raw-outcomes.jsonl").write_text("tampered\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="digest changed"):
+        skill_campaign._verify_inventory(tmp_path)
+
+
+async def test_candidate_retry_tick_is_not_a_verified_learning_experience(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Backend:
+        def __init__(self) -> None:
+            self.stored = None
+            self.signals = None
+
+        async def start(self) -> None:
+            pass
+
+        async def stop(self) -> None:
+            pass
+
+        async def store(self, session_id, messages) -> None:
+            self.stored = (session_id, messages)
+
+        async def feedback(self, signals) -> None:
+            self.signals = signals
+
+    backend = Backend()
+    monkeypatch.setattr(candidate_worker, "_backend", lambda _repository: backend)
+
+    await candidate_worker._retry_pending(tmp_path, "config_precedence")
+
+    assert backend.stored[1][0]["content"] != "Implement explicit configuration precedence with absent-value fallback."
+    assert backend.signals["verifications"] == [
+        {"check_name": "candidate-extraction-retry-tick", "outcome": "failure", "call_id": None}
+    ]
 
 
 def test_paid_run_rejects_missing_exact_approval_before_installing(tmp_path: Path) -> None:

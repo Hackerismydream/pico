@@ -25,7 +25,7 @@ OFFLINE_SCHEMA = "pico.picobench.skill-transfer.offline-verifier.v1"
 _ID = re.compile(r"[a-z0-9][a-z0-9._-]{0,127}")
 _SHA = re.compile(r"[0-9a-f]{40}")
 _ARMS = ("control", "treatment")
-_INVENTORY = (
+_ARTIFACT_PATHS = (
     "manifest.json",
     "candidate-receipt.json",
     "raw-outcomes.jsonl",
@@ -38,6 +38,7 @@ _INVENTORY = (
     "provider-budget-approval.json",
     "provider-budget-report.json",
 )
+_INVENTORY = (*_ARTIFACT_PATHS, "inventory.json")
 
 
 @dataclass(frozen=True)
@@ -170,12 +171,19 @@ class CampaignConfig:
         return usd * self.conservative_usd_to_cny_multiplier
 
     def manifest(self, corpus: SkillTransferCorpus) -> dict[str, Any]:
+        split_digests = corpus_split_digests(corpus)
         return {
             "schema": MANIFEST_SCHEMA,
             "task_corpus_digest": corpus.digest,
             "treatment_axis": {
                 "control": "same verified experiences; derived Skill unavailable",
                 "treatment": "same verified experiences; exact accepted Skill revision active",
+            },
+            "sealed_inputs": {
+                "learning_projection_digest": split_digests["learning"],
+                "held_out_projection_digest": split_digests["held_out"],
+                "hard_negative_projection_digest": split_digests["hard_negatives"],
+                "candidate_worker_receives_learning_projection_only": True,
             },
             "candidate": {
                 "pico_commit": self.pico_commit,
@@ -260,10 +268,13 @@ def build_report(
     revisions = candidate_receipt.get("active_revisions", {})
     learning_provenance = candidate_receipt.get("source_learning_instance_ids", {})
     experience_provenance = candidate_receipt.get("source_experience_ids", {})
+    experience_maps = candidate_receipt.get("learning_experience_maps", {})
+    candidate_input_sealed = candidate_receipt.get("candidate_input_digest") == corpus_split_digests(corpus)["learning"]
     provenance_complete = (
         isinstance(revisions, dict)
         and isinstance(learning_provenance, dict)
         and isinstance(experience_provenance, dict)
+        and isinstance(experience_maps, dict)
     )
     for ability in corpus.abilities:
         expected_learning = sorted(item.instance_id for item in ability.learning)
@@ -272,6 +283,10 @@ def build_report(
             and sorted(learning_provenance.get(ability.ability_id, [])) == expected_learning
             and len(experience_provenance.get(ability.ability_id, [])) == 3
             and len(set(experience_provenance.get(ability.ability_id, []))) == 3
+            and isinstance(experience_maps.get(ability.ability_id), dict)
+            and sorted(experience_maps.get(ability.ability_id, {})) == expected_learning
+            and sorted(experience_maps.get(ability.ability_id, {}).values())
+            == sorted(experience_provenance.get(ability.ability_id, []))
         )
 
     grouped: dict[tuple[str, int], dict[str, TrialRecord]] = {}
@@ -314,6 +329,7 @@ def build_report(
                 and receipt.get("fixture") == expected[1].fixture
                 and receipt.get("passed") is True
                 and receipt.get("smoke_fixture_unchanged") is True
+                and receipt.get("unexpected_workspace_paths") == []
             )
         )
 
@@ -366,6 +382,7 @@ def build_report(
         and hard_negative_complete
         and resource_complete
         and verification_receipts_valid
+        and candidate_input_sealed
     )
     deltas_by_task: dict[str, list[float]] = {}
     for control, treatment in valid_pairs:
@@ -399,6 +416,7 @@ def build_report(
             "provenance_complete": provenance_complete,
             "resource_observations_complete": resource_complete,
             "verification_receipts_valid": verification_receipts_valid,
+            "candidate_input_sealed": candidate_input_sealed,
         },
         "capability": {
             "control_passes": control_passes,
@@ -428,6 +446,7 @@ def verify_evidence(output_root: Path, *, corpus_path: Path) -> dict[str, Any]:
     missing = [name for name in _INVENTORY if not (output / name).is_file()]
     if missing:
         raise ValueError(f"skill transfer evidence inventory is incomplete: {missing}")
+    _verify_inventory(output)
     manifest = _json(output / "manifest.json")
     candidate = _json(output / "candidate-receipt.json")
     corpus = load_corpus(corpus_path)
@@ -548,6 +567,13 @@ def run_campaign(
         _write_json(output / "aggregate.json", report)
         _write_json(output / "claim-eligibility.json", report["claim"])
         _write_json(output / "verifier-report.json", _verifier_report(report))
+        _write_json(
+            output / "inventory.json",
+            {
+                "schema": "pico.picobench.skill-transfer.inventory.v1",
+                "files": [{"path": relative, "sha256": _sha256(output / relative)} for relative in _ARTIFACT_PATHS],
+            },
+        )
         return report
 
 
@@ -654,6 +680,24 @@ def _verify_candidate_snapshots(
         )
     except OSError:
         return False
+
+
+def _verify_inventory(output: Path) -> None:
+    try:
+        inventory = _json(output / "inventory.json")
+        rows = inventory["files"]
+        observed = {row["path"]: row["sha256"] for row in rows}
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError("skill transfer inventory is invalid") from error
+    if (
+        inventory.get("schema") != "pico.picobench.skill-transfer.inventory.v1"
+        or set(observed) != set(_ARTIFACT_PATHS)
+        or len(rows) != len(_ARTIFACT_PATHS)
+    ):
+        raise ValueError("skill transfer inventory file set is invalid")
+    for relative in _ARTIFACT_PATHS:
+        if not (output / relative).is_file() or observed[relative] != _sha256(output / relative):
+            raise ValueError(f"skill transfer evidence digest changed: {relative}")
 
 
 def _ability(value: object) -> AbilityDefinition:
@@ -768,6 +812,7 @@ def _verifier_report(report: dict[str, Any]) -> dict[str, Any]:
             "hard_negatives_complete": report["safety"]["hard_negative_complete"],
             "resource_observations_complete": report["measurement"]["resource_observations_complete"],
             "verification_receipts_valid": report["measurement"]["verification_receipts_valid"],
+            "candidate_input_sealed": report["measurement"]["candidate_input_sealed"],
         },
     }
 
@@ -800,6 +845,32 @@ def directory_digest(root: Path) -> str:
     return canonical_digest(
         {path.relative_to(root).as_posix(): _sha256(path) for path in sorted(root.rglob("*")) if path.is_file()}
     )
+
+
+def learning_projection(ability: AbilityDefinition) -> dict[str, Any]:
+    return {
+        "ability_id": ability.ability_id,
+        "goal": ability.goal,
+        "learning": [asdict(item) for item in ability.learning],
+    }
+
+
+def corpus_split_digests(corpus: SkillTransferCorpus) -> dict[str, str]:
+    return {
+        "learning": canonical_digest([learning_projection(ability) for ability in corpus.abilities]),
+        "held_out": canonical_digest(
+            [
+                {"ability_id": ability.ability_id, "instances": [asdict(item) for item in ability.held_out]}
+                for ability in corpus.abilities
+            ]
+        ),
+        "hard_negatives": canonical_digest(
+            [
+                {"ability_id": ability.ability_id, "instances": [asdict(item) for item in ability.hard_negatives]}
+                for ability in corpus.abilities
+            ]
+        ),
+    }
 
 
 def _parser() -> argparse.ArgumentParser:
