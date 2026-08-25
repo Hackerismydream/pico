@@ -3,7 +3,8 @@
 `CallEfficiency`、Tracing 与 Historical TokenWise Compatibility Code 共同使用这里的结果。所有
 路径从同一处计算 Cost，可防止 Recorded Estimate 与 Reported Estimate 随时间产生 Drift。
 
-Pricing Sources 按以下顺序查找：
+Pricing Sources 按以下顺序查找；显式 ``openrouter/`` 路由先读取 OpenRouter Catalog，避免
+LiteLLM 的跨 Provider Alias 覆盖该路由自己的实时快照：
 
 1. ``litellm.cost_per_token``：覆盖多数 Public Models，先尝试 ``openrouter/<model>`` Alias，再尝试
    Bare Model ID；
@@ -254,11 +255,22 @@ def resolve_context_window(
     Path 永不为此自动联网 Refresh Catalog；只有显式 `allow_network=True` 才可访问远端。未知或字段
     非法时返回 `None`，让 Caller 保留 Configured Default，而不是用猜测值覆盖用户配置。
     """
+    network = _ALLOW_NETWORK_CATALOG if allow_network is None else allow_network
+    if model.startswith("openrouter/"):
+        entry = _lookup_openrouter_entry(model, allow_network=network)
+        if entry:
+            try:
+                length = int(entry.get("context_length") or 0)
+            except (TypeError, ValueError):
+                length = 0
+            if length:
+                return length
+        return None
+
     window = _try_litellm_context_window(model, allow_import=allow_litellm_import)
     if window:
         return window
 
-    network = _ALLOW_NETWORK_CATALOG if allow_network is None else allow_network
     entry = _lookup_openrouter_entry(model, allow_network=network)
     if entry:
         try:
@@ -301,14 +313,16 @@ def estimate_cost_usd(
         )
 
     network = _ALLOW_NETWORK_CATALOG if allow_network is None else allow_network
-    rates = _try_litellm_rates(
-        model,
-        input_tokens,
-        output_tokens,
-        allow_import=allow_litellm_import,
-    )
-    if rates is None:
-        rates = _try_openrouter_rates(model, allow_network=network)
+    rates = _try_openrouter_rates(model, allow_network=network) if model.startswith("openrouter/") else None
+    if rates is None and not model.startswith("openrouter/"):
+        rates = _try_litellm_rates(
+            model,
+            input_tokens,
+            output_tokens,
+            allow_import=allow_litellm_import,
+        )
+        if rates is None:
+            rates = _try_openrouter_rates(model, allow_network=network)
     if rates is None:
         key = model.removeprefix("openrouter/")
         if key in _FALLBACK_PRICING:
