@@ -260,14 +260,17 @@ async def run_turn(
     config.agents.defaults.enable_personalization = False
     config.routing.enabled = False
     config.tools.restrict_to_workspace = True
-    config.tools.disabled_tools = _DISABLED_TOOLS
+    config.tools.disabled_tools = list(spec.get("disabled_tools", _DISABLED_TOOLS))
     config.tools.mcp_servers = {}
     config.tools.tool_search.enabled = False
     pico_config = PicoConfig()
-    memory_enabled = spec["arm_id"] == "memory_on"
+    memory_enabled = bool(spec.get("memory_enabled", spec["arm_id"] == "memory_on"))
     pico_config.memory.backend = "myna" if memory_enabled and backend_override is None else None
-    pico_config.skill_forge.enabled = False
-    pico_config.skill_forge.router.enabled = False
+    skill_forge_enabled = bool(spec.get("skill_forge_enabled", False))
+    pico_config.skill_forge.enabled = skill_forge_enabled
+    pico_config.skill_forge.router.enabled = skill_forge_enabled
+    pico_config.skill_forge.rewrite_enabled = False
+    pico_config.skill_forge.llm_gate_enabled = False
     pico_config.runtime.checkpoint.policy = "never"
     pico_config.base = config
     pico_config.token_wise.smart_routing.enabled = False
@@ -467,6 +470,7 @@ async def run_turn(
         "memory_hits": outcome.memory_hits if outcome is not None else 0,
         "model_calls": getattr(delegate, "calls", []),
         "input_tokens": provider.input_tokens,
+        "injected_skill_ids": list(outcome.injected_skill_ids) if outcome is not None else [],
         "output_tokens": provider.output_tokens,
         "provider_calls": _provider_request_attempts(
             delegate, baseline=budget_attempts_before, fallback=provider.calls
