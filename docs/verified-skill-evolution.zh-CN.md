@@ -56,11 +56,23 @@ Skill revision 不原地覆盖。每次派生得到新的 content-addressed revi
 
 正向结论必须同时满足 48/48 Pair 有效、24/24 negative 零错误注入、revision 的三条 Experience provenance 完整、独立 verifier 全部可重建、零 Treatment regression，并且按 held-out task 聚类的 95% bootstrap CI 下界大于 0。所有 raw、budget、candidate 和派生报告还会进入带 SHA-256 的 `inventory.json`。Provider 或基础设施故障会使 Pair 无效，不能被记成低分来制造差异。
 
-当前必须诚实说：机制的 exact-wheel E2E 已通过；formal runner 的无费用 preflight 也已用相同 wheels 生成并激活 6 个候选、绑定 18 条学习映射和 12 份 Control/Treatment snapshot，确认 24 个 held-out prompt 都召回 exact revision，并在 24 个 hard negative 上保持零错误召回。正式 96-Trial 付费实验只冻结了协议、候选 wheel、预算和 approval digest，尚未执行。因此现在能说“闭环真实工作且安全门有效”，不能说“任务成功率已经提升 X%”。
+正式实验已经完成，而且结果不是“Skill 一注入就变强”。96 个主 Trial 构成 48 对有效比较，基础设施失败为 0；Control 通过 32/48，Treatment 通过 25/48，差值为 -14.58 个百分点，按 24 个 held-out task 聚类的 95% bootstrap 区间为 [-31.25, 0]。Treatment 有 3 对收益、10 对回退；24 个 hard negative 全部完成且错误注入为 0。离线 verifier 能从 raw outcomes 重建 aggregate、claim、预算账本、候选快照和 SHA-256 inventory。
+
+这证明了两件不同的事：第一，自动 Capture、verified Experience、Skill 提炼、Recall 和精确 revision 注入的链路真实可运行；第二，当前“相关就注入”的策略会产生负迁移，因此不能开放自动激活，也不能在简历里写成功率提升。实验不是给功能贴金，而是替产品挡住了一个会伤害用户的上线策略。
 
 ## 面试官问“自进化是怎么做的”时，90 秒回答
 
-> 我们没有做模型权重自训练，而是做 verified Skill evolution。用户正常完成一个 Pico Turn 后，Pico 先把轨迹写入 Myna，再上报一份系统拥有的 Turn Evidence，里面是工具调用、真实 exit code、文件变化、交付状态和实际注入的 Skill revision。Myna 只把同仓库、三个不同 Episode、并且有系统成功 Verification 的 Task Experience 放进同一能力组。LLM 只能生成六类 instruction 文本，Skill 的成员关系、身份、provenance 和生命周期全部由系统计算，生成后先是 draft。当前版本需要 operator 或 formal-evaluation receipt 才能激活；下一次相似任务，Myna 从 agent track 只召回当前 active revision，Pico 再和本地 Skill 融合后注入 Context。新经验会生成 successor，发现回退可以 reject 或追加 head 做 rollback，历史不覆盖。我们用 exact-wheel E2E 验证了 draft、激活、注入、hard negative、Supersession、rollback、reject 和重启恢复；任务效果则用 instance-disjoint A/B 单独测，Control 和 Treatment 唯一差别是 exact Skill 是否 active。正式 A/B 尚未付费执行，所以我不会提前报提升数字。
+> 我们没有让模型偷偷改权重，而是把用户任务里被真实检查验证过的成功经验，自动提炼成一份可追溯的操作指南。用户照常使用 Pico；Turn 结束后，Pico 把消息和真实工具结果写给 Myna。只有同一仓库里三个不同任务都成功、并且有系统记录的成功检查，才会生成 draft Skill。LLM 只能写操作步骤，Skill 来自哪些经验、当前哪个版本生效、谁批准、怎么回滚都由系统记录。下一次相似任务，Myna 召回当前 active revision，Pico 把它注入上下文，同时在新 Turn 里记录到底用了哪个版本。我们还做了 96 个真实 Agent Trial 的配对实验：同题、同模型、同工具，唯一差别是是否注入 Skill。链路和安全性都通过了，24 个无关任务零误注入；但任务通过率从 32/48 降到 25/48，下降 14.58 个百分点。因此我没有开放自动激活，反而用实验发现“会自动学”不等于“学了会更强”，下一步要解决的是技能选择和负迁移。这是我认为自进化系统最重要的工程边界。
+
+## 简历写法
+
+推荐写成结果完整、但不虚构正向提升的一条：
+
+> 设计并实现 Pico × Myna 的可审计 Skill 学习闭环：从普通 Agent Turn 自动沉淀经真实检查验证的经验，生成带版本、来源和回滚能力的操作指南，并在后续相似任务中按 revision 召回；构建 96-Trial 配对评测与离线证据链，验证 48/48 Pair 可比、24/24 无关查询零误注入，并发现未加选择门的技能注入使通过率由 32/48 降至 25/48，据此阻断自动激活、将负迁移纳入上线门禁。
+
+更短的一页简历版本：
+
+> 搭建可审计的 Agent 自动学习闭环与 96-Trial 配对评测，支持经验提炼、版本化 Skill 召回及回滚；实验发现直接注入导致 -14.58pp 负迁移，基于 24/24 hard negative 与离线复算证据阻断自动激活，避免未经验证的“自进化”影响用户任务。
 
 ## 常见追问
 

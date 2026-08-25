@@ -34,18 +34,20 @@ hard-negative identities are globally disjoint in the checked-in corpus.
 
 ## Candidate and budget
 
-The current frozen plan binds:
+The completed candidate binds:
 
-- Pico commit `363e7abcdf861f052b3448d0215cd0412c0428e6`;
+- Pico commit `51254981b9caaa5db5d5646efa612b2b16a58842`;
 - Pico wheel SHA-256
   `0e19c558c388cc912e779f16278866f3ede7070aea6655fcde1b4af6e2d9810e`;
-- Myna commit `14ae4adea26b28321d1616a6b393d0c47be1a9d8`;
+- Myna commit `13e605d606bffb802d1028dc45a1c15b4ca6137e`;
 - Myna wheel SHA-256
-  `d591b35378ba45d845ed9eaa987afb32a5f136efa2d641759104a74d318fb09f`;
+  `75febd8fae7a985b8b0ece27cca308abfb9070a62031168550cc1b6c6386f2a0`;
 - DeepSeek V4 Flash through the frozen Pico Provider adapter;
 - approval digest
-  `b7747b8bc3b9ffe78f08f84e77a04dbd69e4dce1bca69c51e9cd525059546084`;
-- worst-case budget CNY 22.527590 under a CNY 25 hard cap.
+  `a63b81527dd305839b34b0a2f2e7ff98f94f3cacc3fef3c623e547532beb42c9`;
+- worst-case budget CNY 21.495398 under a CNY 25 hard cap; and
+- DeepSeek thinking disabled, a 32,768-token task-input ceiling, one task
+  attempt per logical call, and two candidate-extraction attempts per call.
 
 The six Skill-extraction calls and all evaluation-Agent calls share one durable
 Provider budget ledger. The run command rejects a missing credential, missing
@@ -84,26 +86,35 @@ evidence, not task-effect evidence.
 
 ## Current evidence status
 
-As of 2026-08-25:
+As of 2026-08-25, the formal campaign is complete:
 
-- the exact-wheel installed mechanism gate passes draft generation, activation,
-  prompt injection, hard-negative abstention, successor generation,
-  Supersession, rollback, rejection, denied reactivation, and restart recovery;
-- the credential-free formal-runner preflight installs the same wheels, creates
-  and activates six Skills from learning-only projections, binds the six pairs
-  of candidate runtime snapshots, maps all 18 learning instances to their Task
-  Experiences, confirms exact-revision admission for all 24 frozen held-out
-  prompts, and records zero incorrect admissions across 24 hard negatives;
-- the full Pico check passes 4,012 Python tests and 830 TUI tests;
-- the full Myna check passes 584 Python tests, 53 Hub tests, and its integration
-  checks; and
-- the paid 96-Trial campaign has **not run**. Therefore there is no current
-  positive task-effect claim and no improvement percentage to quote.
+- 48/48 Pairs and 96/96 primary Trials are complete and valid, with no Provider,
+  transport, memory-backend, or other infrastructure failure;
+- Control passes 32/48 and Treatment passes 25/48, for a verified pass delta of
+  **-14.583333 percentage points**;
+- the held-out-task-clustered 95 percent bootstrap interval is **[-31.25, 0]**;
+- Treatment has 3 paired gains and 10 paired regressions;
+- all 24 hard negatives complete with zero incorrect Skill injections;
+- the exact Treatment revision is injected, Control remains unexposed, all 18
+  learning-instance-to-Experience mappings are bound, and the 12 runtime
+  snapshots remain digest-bound;
+- the Provider ledger records 500 request attempts and CNY 2.16426315 charged;
+  mean estimated Trial cost is CNY 0.020437 for Control and CNY 0.024379 for
+  Treatment; and
+- offline verification reproduces the aggregate, claim object, candidate
+  bindings, budget state, verifier receipts, and SHA-256 artifact inventory.
 
-The deterministic installed gate uses a local TLS fixture Provider. It proves
-the product mechanism and governance wiring, not semantic-model quality. The
-formal campaign uses the frozen live Provider and remains gated on explicit
-budget authorization.
+The measurement is valid and ship-complete, but it is not positive-claim
+eligible. The result rejects automatic activation for this candidate and
+supports the existing receipt gate: reliable generation, Recall, and injection
+do not by themselves imply task improvement.
+
+The effect is heterogeneous. Asynchronous cleanup gains one net pass (6 versus
+5), atomic JSON and configuration precedence are tied (6 versus 6 and 7 versus
+7), JSONL deduplication is beyond this model-budget configuration (0 versus 0),
+and the largest regressions occur in resolved-path containment (4 versus 8) and
+Retry-After handling (2 versus 6). This points to selection and instruction
+specificity as the next experimental axis, not broader automatic activation.
 
 ## Commands
 
@@ -117,6 +128,15 @@ Run the installed formal-runner preflight without external Provider calls:
 
 ```bash
 make picobench-skill-transfer-preflight
+```
+
+Derive and inspect the frozen candidates before primary Trials:
+
+```bash
+PICO_BENCH_EXECUTE_PAID=1 \
+PICO_SKILL_TRANSFER_APPROVAL_DIGEST=<digest> \
+PICO_SKILL_TRANSFER_APPROVED_CNY=<approved-cny> \
+make picobench-skill-transfer-prepare
 ```
 
 Run only after exact approval:
