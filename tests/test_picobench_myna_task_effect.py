@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -28,7 +29,7 @@ from benchmarks.picobench.packs.myna_task_effect.campaign import (
     run_campaign,
 )
 from benchmarks.picobench.packs.myna_task_effect.runner import InstalledTrialExecutor
-from benchmarks.picobench.packs.myna_task_effect.worker import run_turn
+from benchmarks.picobench.packs.myna_task_effect.worker import MemoryOperationRecorder, run_turn
 from pico.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
 TASK_ROOT = Path(__file__).resolve().parents[1] / "benchmarks" / "picobench" / "tasks" / "myna_task_effect"
@@ -47,6 +48,27 @@ AGENT_LIFECYCLE = (
     "feedback",
     "stop",
 )
+
+
+@pytest.mark.asyncio
+async def test_agent_track_only_recorder_suppresses_user_memory_but_keeps_skills() -> None:
+    class Backend:
+        def __init__(self) -> None:
+            self.calls = []
+
+        async def recall(self, query, **kwargs):
+            self.calls.append((query, kwargs))
+            return [SimpleNamespace(metadata={"revision_id": "skill_rev_1"}, score=1.0, text="Skill")]
+
+    backend = Backend()
+    recorder = MemoryOperationRecorder(backend, stage="evaluate", agent_track_only=True)
+
+    user_hits = await recorder.recall("query", user_id="user", top_k=5)
+    agent_hits = await recorder.recall("query", agent_id="pico", top_k=5)
+
+    assert user_hits == []
+    assert [item.text for item in agent_hits] == ["Skill"]
+    assert backend.calls == [("query", {"agent_id": "pico", "top_k": 5})]
 
 
 def test_agent_corpus_is_lightweight_balanced_and_disjoint() -> None:

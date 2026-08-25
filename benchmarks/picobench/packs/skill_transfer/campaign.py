@@ -189,8 +189,8 @@ class CampaignConfig:
             "schema": MANIFEST_SCHEMA,
             "task_corpus_digest": corpus.digest,
             "treatment_axis": {
-                "control": "same verified experiences; derived Skill unavailable",
-                "treatment": "same verified experiences; exact accepted Skill revision active",
+                "control": "same verified experiences stored; user-track recall disabled; derived Skill unavailable",
+                "treatment": "same verified experiences stored; user-track recall disabled; exact accepted Skill revision active",
             },
             "sealed_inputs": {
                 "learning_projection_digest": split_digests["learning"],
@@ -214,6 +214,7 @@ class CampaignConfig:
                 "planned_hard_negatives": 24,
                 "max_tool_iterations": self.max_tool_iterations,
                 "max_attempts_per_call": self.max_attempts_per_call,
+                "recall_axis": "agent_track_only",
                 "skill_extraction": {
                     "max_output_tokens": self.max_output_tokens_per_call,
                     "prompt_revision": "myna-skill-extractor-v1",

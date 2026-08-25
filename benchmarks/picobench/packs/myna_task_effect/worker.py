@@ -125,9 +125,10 @@ class DeterministicTaskProvider(LLMProvider):
 
 
 class MemoryOperationRecorder:
-    def __init__(self, delegate: Any, *, stage: str) -> None:
+    def __init__(self, delegate: Any, *, stage: str, agent_track_only: bool = False) -> None:
         self._delegate = delegate
         self._stage = stage
+        self._agent_track_only = agent_track_only
         self.calls = 0
         self.hits: list[dict[str, Any]] = []
         self.receipt: list[dict[str, Any]] = []
@@ -137,6 +138,17 @@ class MemoryOperationRecorder:
 
     async def recall(self, *args, **kwargs):
         self.calls += 1
+        if self._agent_track_only and kwargs.get("user_id") is not None:
+            self.hits = []
+            self.receipt.append(
+                {
+                    "schema": "pico.picobench.myna-agent-task-effect.memory-operation.v2",
+                    "operation": "recall",
+                    "outcome": "succeeded",
+                    "phase": self._stage,
+                }
+            )
+            return []
         hits = await self._record("recall", self._delegate.recall(*args, **kwargs))
         self.hits = [
             {
@@ -182,11 +194,11 @@ class MemoryOperationRecorder:
         return result
 
 
-def _context_factory(recorder_sink: list[MemoryOperationRecorder], *, stage: str):
+def _context_factory(recorder_sink: list[MemoryOperationRecorder], *, stage: str, agent_track_only: bool):
     def factory(**kwargs):
         backend = kwargs.get("backend")
         if backend is not None:
-            recorder = MemoryOperationRecorder(backend, stage=stage)
+            recorder = MemoryOperationRecorder(backend, stage=stage, agent_track_only=agent_track_only)
             recorder_sink.append(recorder)
             kwargs["backend"] = recorder
         return build_context_engine(**kwargs)
@@ -300,7 +312,11 @@ async def run_turn(
             provider=provider,
             cron_service=None,
             interactive=False,
-            context_engine_factory=_context_factory(recorders, stage=spec["stage"]),
+            context_engine_factory=_context_factory(
+                recorders,
+                stage=spec["stage"],
+                agent_track_only=bool(spec.get("agent_track_only", False)),
+            ),
             paths=RuntimePaths(workspace=workspace, state=state),
         )
 
@@ -343,7 +359,11 @@ async def run_turn(
         if original_memory_builder is not None:
             PluginRegistry.build_memory_backend = original_memory_builder
     if backend_override is not None:
-        recorder = MemoryOperationRecorder(backend_override, stage=spec["stage"])
+        recorder = MemoryOperationRecorder(
+            backend_override,
+            stage=spec["stage"],
+            agent_track_only=bool(spec.get("agent_track_only", False)),
+        )
         recorders.append(recorder)
         runtime.agent_loop.context_engine = build_context_engine(
             workspace=workspace,

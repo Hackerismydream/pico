@@ -348,6 +348,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
         return {
             "worker_mode": "turn",
             "arm_id": arm_id,
+            "agent_track_only": True,
             "memory_enabled": True,
             "skill_forge_enabled": True,
             "stage": "evaluate",

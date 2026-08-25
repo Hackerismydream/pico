@@ -297,6 +297,7 @@ def test_plan_freezes_candidate_budget_and_requires_exact_wheels(tmp_path: Path)
 
     assert frozen["manifest"]["execution"]["planned_primary_pairs"] == 48
     assert frozen["manifest"]["execution"]["planned_primary_trials"] == 96
+    assert frozen["manifest"]["execution"]["recall_axis"] == "agent_track_only"
     assert frozen["manifest"]["execution"]["skill_extraction"] == {
         "max_output_tokens": 1024,
         "prompt_revision": "myna-skill-extractor-v1",
