@@ -377,7 +377,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
             "max_attempts_per_call": self._config.max_attempts_per_call,
             "max_input_tokens_per_call": self._config.max_input_tokens_per_call,
             "max_output_tokens_per_call": self._config.max_output_tokens_per_call,
-            "context_window_tokens": 16_384,
+            "context_window_tokens": self._config.max_input_tokens_per_call,
             "disabled_tools": ["ask_user", "message", "spawn", "understand_media", "web_fetch", "web_search"],
             "budget": {
                 "ledger_path": str(self._budget_path),
@@ -498,8 +498,8 @@ def _skill_proxy(root: Path, provider: BudgetGuardedProvider, *, config: Campaig
                     with provider_call_budget_scope(
                         trial_id=f"skill-extraction:{ability}",
                         max_logical_calls=1,
-                        max_attempts_per_call=config.max_attempts_per_call,
-                        max_input_tokens_per_call=config.max_input_tokens_per_call,
+                        max_attempts_per_call=config.candidate_max_attempts_per_call,
+                        max_input_tokens_per_call=config.candidate_max_input_tokens_per_call,
                         max_output_tokens_per_call=config.max_output_tokens_per_call,
                     ):
                         response = asyncio.run(

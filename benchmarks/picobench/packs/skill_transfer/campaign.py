@@ -131,8 +131,10 @@ class CampaignConfig:
     seed: int = 20260825
     bootstrap_samples: int = 5_000
     max_tool_iterations: int = 5
-    max_attempts_per_call: int = 2
-    max_input_tokens_per_call: int = 16_384
+    max_attempts_per_call: int = 1
+    candidate_max_attempts_per_call: int = 2
+    candidate_max_input_tokens_per_call: int = 16_384
+    max_input_tokens_per_call: int = 32_768
     max_output_tokens_per_call: int = 1_024
     input_cache_miss_usd_per_million: float = 0.14
     output_usd_per_million: float = 0.28
@@ -165,12 +167,12 @@ class CampaignConfig:
 
     @property
     def maximum_candidate_attempts(self) -> int:
-        return 6 * self.max_attempts_per_call
+        return 6 * self.candidate_max_attempts_per_call
 
     @property
     def maximum_candidate_cost_cny(self) -> float:
         usd = self.maximum_candidate_attempts * (
-            self.max_input_tokens_per_call / 1_000_000 * self.input_cache_miss_usd_per_million
+            self.candidate_max_input_tokens_per_call / 1_000_000 * self.input_cache_miss_usd_per_million
             + self.max_output_tokens_per_call / 1_000_000 * self.output_usd_per_million
         )
         return usd * self.conservative_usd_to_cny_multiplier
@@ -217,6 +219,8 @@ class CampaignConfig:
                 "recall_axis": "agent_track_only",
                 "evaluation_thinking": "disabled",
                 "skill_extraction": {
+                    "max_attempts_per_call": self.candidate_max_attempts_per_call,
+                    "max_input_tokens": self.candidate_max_input_tokens_per_call,
                     "max_output_tokens": self.max_output_tokens_per_call,
                     "prompt_revision": "myna-skill-extractor-v1",
                     "thinking": "disabled",

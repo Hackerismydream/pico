@@ -299,7 +299,11 @@ def test_plan_freezes_candidate_budget_and_requires_exact_wheels(tmp_path: Path)
     assert frozen["manifest"]["execution"]["planned_primary_trials"] == 96
     assert frozen["manifest"]["execution"]["recall_axis"] == "agent_track_only"
     assert frozen["manifest"]["execution"]["evaluation_thinking"] == "disabled"
+    assert frozen["manifest"]["execution"]["max_attempts_per_call"] == 1
+    assert frozen["manifest"]["budget"]["max_input_tokens_per_call"] == 32_768
     assert frozen["manifest"]["execution"]["skill_extraction"] == {
+        "max_attempts_per_call": 2,
+        "max_input_tokens": 16_384,
         "max_output_tokens": 1024,
         "prompt_revision": "myna-skill-extractor-v1",
         "thinking": "disabled",
