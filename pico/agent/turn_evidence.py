@@ -121,6 +121,8 @@ def repository_revision(workspace: Path) -> str | None:
 
 def verification_name(command: str) -> str | None:
     """仅识别冻结的测试、构建和静态检查命令，不从输出文本猜测 Verification。"""
+    if any(operator in command for operator in ("&&", "||", ";", "|", "&", "\n", "\r")):
+        return None
     try:
         tokens = shlex.split(command)
     except ValueError:

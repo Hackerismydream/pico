@@ -108,6 +108,13 @@ def test_failed_check_and_non_check_do_not_invent_success(tmp_path: Path) -> Non
     assert verification_name("echo tests passed") is None
 
 
+def test_compound_shell_command_cannot_mask_failed_verification() -> None:
+    assert verification_name("pytest || true") is None
+    assert verification_name("pytest | tee pytest.log") is None
+    assert verification_name("make check; echo done") is None
+    assert verification_name("uv run pytest -q && echo done") is None
+
+
 def test_repository_revision_is_full_git_head_or_unknown(tmp_path: Path) -> None:
     assert repository_revision(tmp_path) is None
     subprocess.run(("git", "init", "-q", str(tmp_path)), check=True)
