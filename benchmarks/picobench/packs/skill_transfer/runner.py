@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import http.server
 import json
+import os
 import shutil
 import ssl
 import subprocess
@@ -53,6 +54,10 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
         if not provider_api_key:
             raise ValueError("skill transfer Provider credential is required")
         super().__init__(config)  # type: ignore[arg-type]
+        shared_model_cache = os.environ.get("PICO_BENCH_MODEL_CACHE")
+        if shared_model_cache:
+            self._model_cache = Path(shared_model_cache).resolve()
+            self._model_cache.mkdir(parents=True, exist_ok=True)
         self._config = config
         self._provider_api_key = provider_api_key
         self._provider_api_base = provider_api_base

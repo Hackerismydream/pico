@@ -498,6 +498,40 @@ def test_prepare_only_rejects_approval_below_its_frozen_cost_ceiling(tmp_path: P
         )
 
 
+def test_skill_transfer_executor_uses_explicit_shared_model_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pico = tmp_path / "pico.whl"
+    myna = tmp_path / "myna.whl"
+    pico.write_bytes(b"pico")
+    myna.write_bytes(b"myna")
+    config = CampaignConfig(
+        corpus_path=CORPUS,
+        output_root=tmp_path / "evidence",
+        pico_wheel=pico,
+        myna_wheel=myna,
+        pico_commit="a" * 40,
+        myna_commit="b" * 40,
+    )
+    shared = tmp_path / "shared-model-cache"
+
+    def initialize(executor, observed) -> None:
+        assert observed == config
+        executor._model_cache = tmp_path / "temporary-model-cache"
+
+    monkeypatch.setattr(skill_runner.InstalledTrialExecutor, "__init__", initialize)
+    monkeypatch.setenv("PICO_BENCH_MODEL_CACHE", str(shared))
+
+    executor = skill_runner.InstalledSkillTransferExecutor(
+        config,
+        provider_api_key="fixture-key",
+        provider_api_base=None,
+    )
+
+    assert executor._model_cache == shared.resolve()
+    assert shared.is_dir()
+
+
 @pytest.mark.parametrize("ability_index", range(6))
 def test_hidden_fixture_verifier_accepts_reference_implementation(tmp_path: Path, ability_index: int) -> None:
     corpus = load_corpus(CORPUS)
