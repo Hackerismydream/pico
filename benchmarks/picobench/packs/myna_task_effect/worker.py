@@ -233,13 +233,7 @@ class _SpecSkillBackend:
         skill = self._skill
         return [
             Memory(
-                text=(
-                    "---\n"
-                    f"name: {skill['name']}\n"
-                    f"description: {skill['description']}\n"
-                    "---\n\n"
-                    f"{skill['content']}"
-                ),
+                text=(f"---\nname: {skill['name']}\ndescription: {skill['description']}\n---\n\n{skill['content']}"),
                 score=1.0,
                 metadata={
                     "backend": "picobench-oracle",
@@ -282,9 +276,7 @@ class ProviderRecorder(LLMProvider):
         prompt = str(messages[0].get("content", "")) if messages else ""
         if self._oracle_gate_skill_id and "skill selector for an autonomous agent" in prompt:
             return LLMResponse(
-                content=json.dumps(
-                    {"plan": "oracle ability routing", "skills": [self._oracle_gate_skill_id]}
-                ),
+                content=json.dumps({"plan": "oracle ability routing", "skills": [self._oracle_gate_skill_id]}),
                 usage={},
             )
         try:
@@ -333,9 +325,7 @@ async def run_turn(
     budget_attempts_before = _provider_request_attempts(delegate)
     oracle_skill = spec.get("oracle_skill")
     oracle_gate_skill_id = (
-        str(oracle_skill.get("qualified_id"))
-        if spec.get("oracle_gate") and isinstance(oracle_skill, dict)
-        else None
+        str(oracle_skill.get("qualified_id")) if spec.get("oracle_gate") and isinstance(oracle_skill, dict) else None
     )
     provider = ProviderRecorder(delegate, oracle_gate_skill_id=oracle_gate_skill_id)
     if backend_override is None and isinstance(oracle_skill, dict):

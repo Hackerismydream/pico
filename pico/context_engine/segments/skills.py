@@ -85,9 +85,7 @@ class SkillsSegmentBuilder:
             )
         selected_required_ids = {h.qualified_id for h in selected_required}
         activated = [
-            h
-            for h in candidate_activated
-            if not h.meta.get("gate_required") or h.qualified_id in selected_required_ids
+            h for h in candidate_activated if not h.meta.get("gate_required") or h.qualified_id in selected_required_ids
         ]
         activated = self._resolve_local_refs(activated)
         references = list(resolution.references)
