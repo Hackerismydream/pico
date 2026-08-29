@@ -17,7 +17,8 @@ from benchmarks.picobench.packs.skill_transfer.campaign import (
     SkillTransferCorpus,
     load_corpus,
 )
-from benchmarks.picobench.packs.skill_transfer.fixtures import materialize, verify
+from benchmarks.picobench.packs.skill_transfer.fixtures import materialize
+from benchmarks.picobench.packs.skill_transfer.fixtures import verify as verify_fixture
 from benchmarks.picobench.packs.skill_transfer.runner import InstalledSkillTransferExecutor
 from benchmarks.picobench.statistics import clustered_bootstrap_interval
 
@@ -200,6 +201,29 @@ def build_report(
                     and long_skill.failure_class not in {"provider", "transport", "budget", "infrastructure"}
                     and anchor.failure_class not in {"provider", "transport", "budget", "infrastructure"}
                 )
+                for row in (no_skill, long_skill, anchor):
+                    receipt = row.verification_receipt
+                    valid &= (
+                        row.status in {"passed", "task_failed"}
+                        and all(
+                            value >= 0
+                            for value in (
+                                row.tool_calls,
+                                row.input_tokens,
+                                row.output_tokens,
+                                row.provider_calls,
+                                row.estimated_cost_cny,
+                            )
+                        )
+                        and (
+                            not row.passed
+                            or (
+                                receipt.get("passed") is True
+                                and receipt.get("smoke_fixture_unchanged") is True
+                                and receipt.get("unexpected_workspace_paths") == []
+                            )
+                        )
+                    )
             if anchor_deltas:
                 anchor_per_task[task.instance_id] = tuple(anchor_deltas)
                 long_per_task[task.instance_id] = tuple(long_deltas)
@@ -292,7 +316,7 @@ class StageAExecutor(InstalledSkillTransferExecutor):
             root / "worker",
             environment_overrides={"MYNA_SEMANTIC_API_KEY": "", "PICO_BENCH_PROVIDER_API_KEY": self._provider_api_key},
         )
-        receipt = verify(workspace, task.fixture)
+        receipt = verify_fixture(workspace, task.fixture)
         receipt["smoke_fixture_unchanged"] = (
             hashlib.sha256((workspace / "smoke.py").read_bytes()).hexdigest() == smoke_digest
         )
@@ -407,6 +431,73 @@ def run(config: StageAConfig, *, approval_digest: str, api_key: str, api_base: s
     )
     _write(output / "aggregate.json", report)
     _write(output / "provider-budget-report.json", asdict(ledger.snapshot()))
+    verify_artifacts(config)
+    return report
+
+
+def verify_artifacts(config: StageAConfig) -> dict[str, Any]:
+    corpus = load_corpus(config.corpus_path)
+    output = config.output_root.resolve()
+    manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+    records = _journal(output / "raw-outcomes.jsonl")
+    recomputed = build_report(
+        corpus,
+        tuple(records[key] for key in sorted(records)),
+        samples=config.bootstrap_samples,
+        seed=config.seed,
+    )
+    aggregate = json.loads((output / "aggregate.json").read_text(encoding="utf-8"))
+    approval = json.loads((output / "provider-budget-approval.json").read_text(encoding="utf-8"))
+    prefix = approval["ledger_prefix"]
+    budget_config = ProviderBudgetConfig(
+        hard_cap_cny=config.hard_cap_cny,
+        external_service_reserve_cny=0.0,
+        max_total_request_attempts=config.maximum_provider_attempts,
+        max_input_tokens_per_call=config.max_input_tokens_per_call,
+        max_output_tokens_per_call=config.max_output_tokens_per_call,
+        input_cache_miss_usd_per_million=config.input_cache_miss_usd_per_million,
+        output_usd_per_million=config.output_usd_per_million,
+        conservative_usd_to_cny_multiplier=config.conservative_usd_to_cny_multiplier,
+        approval_digest=approval["approval_digest"],
+        ledger_prefix_event_count=int(prefix["event_count"]),
+        ledger_prefix_digest=str(prefix["digest"]),
+        ledger_prefix_charged_cny=float(prefix["charged_cny"]),
+    )
+    budget = ProviderBudgetLedger(output / "provider-budget.jsonl", budget_config).snapshot()
+    recorded_budget = json.loads((output / "provider-budget-report.json").read_text(encoding="utf-8"))
+    checks = {
+        "manifest_matches_inputs": manifest == config.manifest(corpus),
+        "aggregate_recomputed": aggregate == recomputed,
+        "all_trials_present": recomputed["ship_complete"] is True,
+        "measurement_valid": recomputed["measurement_valid"] is True,
+        "budget_recomputed": recorded_budget == asdict(budget),
+        "budget_accounting_complete": budget.accounting_complete and budget.open_reservations == 0,
+        "budget_within_cap": budget.total_committed_cny <= config.hard_cap_cny,
+    }
+    report = {
+        "schema": "pico.picobench.skill-transfer-v2.stage-a.verifier.v1",
+        "passed": all(checks.values()),
+        "checks": checks,
+        "recomputed_report": recomputed,
+    }
+    _write(output / "verifier-report.json", report)
+    inventory_paths = (
+        "manifest.json",
+        "provider-budget-approval.json",
+        "provider-budget.jsonl",
+        "provider-budget.high-water.json",
+        "provider-budget-report.json",
+        "raw-outcomes.jsonl",
+        "aggregate.json",
+        "verifier-report.json",
+    )
+    _write(
+        output / "inventory.json",
+        {
+            "schema": "pico.picobench.skill-transfer-v2.stage-a.inventory.v1",
+            "files": [{"path": path, "sha256": _sha256(output / path)} for path in inventory_paths],
+        },
+    )
     return report
 
 
@@ -418,7 +509,10 @@ def _journal(path: Path) -> dict[tuple[str, int, str], StageATrial]:
         value = json.loads(line)
         value["injected_skill_ids"] = tuple(value["injected_skill_ids"])
         row = StageATrial(**value)
-        rows[(row.task_id, row.repetition, row.arm_id)] = row
+        key = (row.task_id, row.repetition, row.arm_id)
+        if key in rows:
+            raise ValueError(f"duplicate Stage A Trial: {key}")
+        rows[key] = row
     return rows
 
 
@@ -448,6 +542,7 @@ def main() -> int:
     parser.add_argument("--myna-commit", required=True)
     parser.add_argument("--approval-digest")
     parser.add_argument("--run", action="store_true")
+    parser.add_argument("--verify", action="store_true")
     args = parser.parse_args()
     config = StageAConfig(
         corpus_path=args.corpus,
@@ -460,6 +555,10 @@ def main() -> int:
     )
     corpus = load_corpus(config.corpus_path)
     digest = canonical_digest(config.manifest(corpus))
+    if args.verify:
+        report = verify_artifacts(config)
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
     if not args.run:
         print(json.dumps({"approval_digest": digest, "manifest": config.manifest(corpus)}, indent=2, sort_keys=True))
         return 0

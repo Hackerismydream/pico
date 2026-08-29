@@ -25,7 +25,11 @@ def _trial(task_id: str, ability_id: str, repetition: int, arm_id: str, *, passe
         output_tokens=2,
         provider_calls=1,
         estimated_cost_cny=0.01,
-        verification_receipt={},
+        verification_receipt={
+            "passed": passed,
+            "smoke_fixture_unchanged": True,
+            "unexpected_workspace_paths": [],
+        },
         failure_class=None if passed else "task",
     )
 
