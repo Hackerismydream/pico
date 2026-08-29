@@ -344,7 +344,7 @@ def run(config: StageAConfig, *, approval_digest: str, api_key: str, api_base: s
     output = config.output_root.resolve()
     output.mkdir(parents=True, exist_ok=True)
     _freeze(output / "manifest.json", manifest)
-    budget_config = ProviderBudgetConfig(
+    base_budget_config = ProviderBudgetConfig(
         hard_cap_cny=config.hard_cap_cny,
         external_service_reserve_cny=0.0,
         max_total_request_attempts=config.maximum_provider_attempts,
@@ -353,9 +353,41 @@ def run(config: StageAConfig, *, approval_digest: str, api_key: str, api_base: s
         input_cache_miss_usd_per_million=config.input_cache_miss_usd_per_million,
         output_usd_per_million=config.output_usd_per_million,
         conservative_usd_to_cny_multiplier=config.conservative_usd_to_cny_multiplier,
-        approval_digest=approval_digest,
     )
-    ledger = ProviderBudgetLedger(output / "provider-budget.jsonl", budget_config)
+    ledger_path = output / "provider-budget.jsonl"
+    approval_path = output / "provider-budget-approval.json"
+    if approval_path.exists():
+        approval = json.loads(approval_path.read_text(encoding="utf-8"))
+        if approval.get("approval_digest") != approval_digest:
+            raise ValueError("Stage A budget approval digest mismatch")
+        prefix = approval["ledger_prefix"]
+    else:
+        if ledger_path.exists() or ledger_path.with_suffix(".high-water.json").exists():
+            raise ValueError("Stage A budget evidence exists without approval")
+        initial = ProviderBudgetLedger(ledger_path, base_budget_config).snapshot()
+        prefix = {
+            "event_count": initial.ledger_event_count,
+            "digest": initial.ledger_digest,
+            "charged_cny": initial.provider_charged_cny,
+        }
+        _freeze(
+            approval_path,
+            {
+                "schema": "pico.picobench.skill-transfer-v2.stage-a.budget-approval.v1",
+                "approval_digest": approval_digest,
+                "ledger_prefix": prefix,
+            },
+        )
+    budget_config = ProviderBudgetConfig(
+        **{
+            **asdict(base_budget_config),
+            "approval_digest": approval_digest,
+            "ledger_prefix_event_count": int(prefix["event_count"]),
+            "ledger_prefix_digest": str(prefix["digest"]),
+            "ledger_prefix_charged_cny": float(prefix["charged_cny"]),
+        }
+    )
+    ledger = ProviderBudgetLedger(ledger_path, budget_config)
     records = _journal(output / "raw-outcomes.jsonl")
     with StageAExecutor(config, provider_api_key=api_key, provider_api_base=api_base) as executor:
         executor.configure_budget(ledger.path, budget_config)
