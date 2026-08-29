@@ -28,6 +28,10 @@ def test_turn_outcome_is_frozen_with_usage_reply_and_tool_evidence():
         explicit_reply=True,
         memory_hits=2,
         injected_skill_ids=("local/example",),
+        skill_candidate_ids=("myna/example",),
+        skill_gate_required_ids=("myna/example",),
+        skill_gate_selected_ids=(),
+        skill_gate_status="rejected",
         context_path="slow",
         context_fallback_reason=None,
         skill_source_failures=("remote",),
@@ -38,6 +42,10 @@ def test_turn_outcome_is_frozen_with_usage_reply_and_tool_evidence():
     assert o.tool_failures == 0
     assert o.memory_hits == 2
     assert o.injected_skill_ids == ("local/example",)
+    assert o.skill_candidate_ids == ("myna/example",)
+    assert o.skill_gate_required_ids == ("myna/example",)
+    assert o.skill_gate_selected_ids == ()
+    assert o.skill_gate_status == "rejected"
     assert o.context_path == "slow"
     assert o.context_fallback_reason is None
     assert o.skill_source_failures == ("remote",)
@@ -49,6 +57,11 @@ def test_turn_outcome_is_frozen_with_usage_reply_and_tool_evidence():
         "tool_failures",
         "memory_hits",
         "injected_skill_ids",
+        "skill_candidate_ids",
+        "skill_gate_required_ids",
+        "skill_gate_selected_ids",
+        "skill_gate_status",
+        "skill_gate_fallback_reason",
         "context_path",
         "context_fallback_reason",
         "skill_source_failures",

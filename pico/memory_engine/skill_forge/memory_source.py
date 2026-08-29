@@ -63,7 +63,7 @@ class MemorySkillSource:
                     name=name,
                     content=content,
                     score=score,
-                    meta={**metadata, "source": source},
+                    meta={**metadata, "source": source, "gate_required": True},
                 )
             )
         return hits

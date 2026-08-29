@@ -9,6 +9,7 @@ import pytest
 
 from benchmarks.picobench.budget import ProviderBudgetError
 from benchmarks.picobench.canonical import canonical_digest
+from benchmarks.picobench.packs.myna_task_effect import worker as task_effect_worker
 from benchmarks.picobench.packs.myna_task_effect.agent_campaign import (
     AgentCampaignConfig,
     AgentTrialRecord,
@@ -29,7 +30,6 @@ from benchmarks.picobench.packs.myna_task_effect.campaign import (
     run_campaign,
 )
 from benchmarks.picobench.packs.myna_task_effect.runner import InstalledTrialExecutor
-from benchmarks.picobench.packs.myna_task_effect import worker as task_effect_worker
 from benchmarks.picobench.packs.myna_task_effect.worker import MemoryOperationRecorder, run_turn
 from pico.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
@@ -1013,6 +1013,47 @@ async def test_installed_worker_control_uses_runtime_and_repository_evidence(
         "task_id": task.task_id,
         "value": task.expected_value,
     }
+
+
+@pytest.mark.asyncio
+async def test_worker_oracle_skill_uses_deterministic_gate(tmp_path: Path) -> None:
+    result = await run_turn(
+        {
+            "worker_mode": "turn",
+            "arm_id": "anchor_skill",
+            "stage": "prime",
+            "task_id": "anchor-task",
+            "task_class": "anchor",
+            "source_path": "solution.py",
+            "output_path": "solution.py",
+            "workspace": str(tmp_path / "workspace"),
+            "state_root": str(tmp_path / "state"),
+            "prompt": "apply the anchor procedure",
+            "session_id": "anchor-session",
+            "message_id": "anchor-message",
+            "timeout_seconds": 30,
+            "memory_enabled": True,
+            "skill_forge_enabled": True,
+            "llm_gate_enabled": True,
+            "oracle_gate": True,
+            "oracle_skill": {
+                "qualified_id": "oracle/anchor@rev_anchor",
+                "name": "anchor",
+                "description": "Apply the anchor procedure",
+                "content": "Follow the compact verified procedure.",
+                "revision_id": "rev_anchor",
+                "source_experience_ids": ["mem_1", "mem_2", "mem_3"],
+            },
+        }
+    )
+
+    assert result["terminal"] == "completed", result
+    assert result["skill_gate_fallback_reason"] is None, result
+    assert result["skill_gate_status"] == "selected", result
+    assert result["skill_candidate_ids"] == ["oracle/anchor@rev_anchor"]
+    assert result["skill_gate_required_ids"] == ["oracle/anchor@rev_anchor"]
+    assert result["skill_gate_selected_ids"] == ["oracle/anchor@rev_anchor"]
+    assert result["injected_skill_ids"] == ["oracle/anchor@rev_anchor"]
 
 
 @pytest.mark.asyncio

@@ -30,13 +30,24 @@ class _StubProvider:
         return _Resp(content=str(self._response))
 
 
-def _hit(qid: str, name: str, body: str = "", desc: str = "") -> RouterHit:
+def _hit(
+    qid: str,
+    name: str,
+    body: str = "",
+    desc: str = "",
+    *,
+    gate_required: bool = False,
+) -> RouterHit:
     return RouterHit(
         qualified_id=qid,
         name=name,
         content=body,
         score=0.5,
-        meta={"description": desc, "source": qid.split("/", 1)[0]},
+        meta={
+            "description": desc,
+            "source": qid.split("/", 1)[0],
+            "gate_required": gate_required,
+        },
     )
 
 
@@ -112,12 +123,54 @@ async def test_provider_error_falls_back_to_top_n() -> None:
     assert [h.qualified_id for h in out] == ["local/a", "local/b"]
 
 
+async def test_provider_error_abstains_from_gate_required_candidates() -> None:
+    provider = _StubProvider(RuntimeError("network blip"))
+    diagnostics: dict[str, Any] = {}
+    hits = [
+        _hit("myna/a", "a", gate_required=True),
+        _hit("local/b", "b"),
+    ]
+
+    out = await LLMGateFilter(provider, legacy_top_k=2).filter(
+        "task",
+        hits,
+        diagnostics=diagnostics,
+    )
+
+    assert [h.qualified_id for h in out] == ["local/b"]
+    assert diagnostics["fallback_reason"] == "provider_exception"
+    assert diagnostics["abstained_skill_ids"] == ["myna/a"]
+
+
 async def test_unparseable_response_falls_back_to_top_n() -> None:
     provider = _StubProvider("garbage no json here")
     gate = LLMGateFilter(provider, legacy_top_k=1)
     hits = [_hit("local/a", "a"), _hit("local/b", "b")]
     out = await gate.filter("task", hits)
     assert [h.qualified_id for h in out] == ["local/a"]
+
+
+async def test_unknown_id_invalidates_gate_required_selection() -> None:
+    provider = _StubProvider(
+        json.dumps(
+            {
+                "plan": "p",
+                "skills": ["myna/known", "ghost/missing"],
+            }
+        )
+    )
+    diagnostics: dict[str, Any] = {}
+
+    out = await LLMGateFilter(provider).filter(
+        "task",
+        [_hit("myna/known", "known", gate_required=True)],
+        diagnostics=diagnostics,
+    )
+
+    assert out == []
+    assert diagnostics["fallback_reason"] == "unknown_skill_id"
+    assert diagnostics["unknown_skill_ids"] == ["ghost/missing"]
+    assert diagnostics["abstained_skill_ids"] == ["myna/known"]
 
 
 async def test_think_block_stripped_before_parse() -> None:

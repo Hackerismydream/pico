@@ -88,6 +88,19 @@ class _StubProvider:
         raise NotImplementedError
 
 
+class _GateProvider(_StubProvider):
+    async def chat_with_retry(self, *args, **kwargs):
+        self.calls += 1
+        return type(
+            "Response",
+            (),
+            {
+                "content": '{"plan":"verify repository","skills":["myna/skill_abc@skill_rev_def"]}',
+                "finish_reason": "stop",
+            },
+        )()
+
+
 def _stub_get_defs() -> list[dict]:
     return []
 
@@ -174,7 +187,7 @@ class TestSkillForgeRouterAssembly:
         assert assembled.metadata["injected_skill_ids"] == ["local/release-helper"]
         assert "Run the local release check." in assembled.messages[0]["content"]
 
-    async def test_active_backend_skill_is_injected_and_hard_negative_abstains(self, tmp_path: Path) -> None:
+    async def test_active_backend_skill_abstains_without_gate(self, tmp_path: Path) -> None:
         engine = _build_engine(tmp_path, backend=_ActiveSkillBackend())
         budget = TokenBudget(
             context_length=32_000,
@@ -197,10 +210,38 @@ class TestSkillForgeRouterAssembly:
             turn=TurnContext(current_message="cafeteria typography satellite"),
         )
 
-        assert relevant.metadata["injected_skill_ids"] == ["myna/skill_abc@skill_rev_def"]
-        assert "Run make check." in relevant.messages[0]["content"]
+        assert relevant.metadata["injected_skill_ids"] == []
+        assert relevant.metadata["skill_gate_status"] == "disabled_abstain"
+        assert "Run make check." not in relevant.messages[0]["content"]
         assert negative.metadata["injected_skill_ids"] == []
         assert "Run make check." not in negative.messages[0]["content"]
+
+    async def test_enabled_gate_selects_active_backend_skill(self, tmp_path: Path) -> None:
+        provider = _GateProvider()
+        engine = _build_engine(
+            tmp_path,
+            backend=_ActiveSkillBackend(),
+            skill_forge_config=SkillForgeConfig(llm_gate_enabled=True),
+            provider=provider,
+        )
+
+        assembled = await engine.assemble(
+            "gated",
+            [],
+            TokenBudget(
+                context_length=32_000,
+                reserved_output=4_000,
+                reserved_tools=2_000,
+                reserved_system=2_000,
+                available_history=24_000,
+            ),
+            turn=TurnContext(current_message="apply repository verification"),
+        )
+
+        assert assembled.metadata["injected_skill_ids"] == ["myna/skill_abc@skill_rev_def"]
+        assert assembled.metadata["skill_gate_status"] == "selected"
+        assert "Run make check." in assembled.messages[0]["content"]
+        assert provider.calls == 1
 
     async def test_first_turn_skill_resolution_never_calls_provider(
         self,

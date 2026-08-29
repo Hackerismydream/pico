@@ -45,6 +45,7 @@ async def test_agent_track_memory_becomes_self_contained_router_hit() -> None:
     assert hits[0].qualified_id == "myna/skill_abc@skill_rev_def"
     assert hits[0].content == "# Procedure\n\nRun make check."
     assert hits[0].meta["source"] == "myna"
+    assert hits[0].meta["gate_required"] is True
     assert hits[0].meta["source_experience_ids"] == ["mem_1", "mem_2", "mem_3"]
 
 

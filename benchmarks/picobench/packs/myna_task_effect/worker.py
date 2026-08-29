@@ -15,6 +15,7 @@ from pico.config.paths import RuntimePaths
 from pico.config.pico import PicoConfig
 from pico.config.schema import Config
 from pico.context_engine import build_context_engine
+from pico.memory_engine.backend import Memory
 from pico.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from pico.spine import (
     ChatType,
@@ -210,6 +211,48 @@ class MemoryOperationRecorder:
         )
 
 
+class _SpecSkillBackend:
+    def __init__(self, skill: dict[str, Any]) -> None:
+        self._skill = skill
+
+    async def start(self) -> None:
+        return None
+
+    async def stop(self) -> None:
+        return None
+
+    async def store(self, session_id, messages) -> None:
+        return None
+
+    async def feedback(self, signals) -> None:
+        return None
+
+    async def recall(self, query, *, user_id=None, agent_id=None, top_k=5):
+        if agent_id is None or top_k < 1:
+            return []
+        skill = self._skill
+        return [
+            Memory(
+                text=(
+                    "---\n"
+                    f"name: {skill['name']}\n"
+                    f"description: {skill['description']}\n"
+                    "---\n\n"
+                    f"{skill['content']}"
+                ),
+                score=1.0,
+                metadata={
+                    "backend": "picobench-oracle",
+                    "name": skill["name"],
+                    "description": skill["description"],
+                    "qualified_id": skill["qualified_id"],
+                    "revision_id": skill["revision_id"],
+                    "source_experience_ids": skill.get("source_experience_ids", []),
+                },
+            )
+        ]
+
+
 def _context_factory(recorder_sink: list[MemoryOperationRecorder], *, stage: str, agent_track_only: bool):
     def factory(**kwargs):
         backend = kwargs.get("backend")
@@ -223,7 +266,7 @@ def _context_factory(recorder_sink: list[MemoryOperationRecorder], *, stage: str
 
 
 class ProviderRecorder(LLMProvider):
-    def __init__(self, delegate: LLMProvider) -> None:
+    def __init__(self, delegate: LLMProvider, *, oracle_gate_skill_id: str | None = None) -> None:
         super().__init__(api_key=delegate.api_key, api_base=delegate.api_base)
         self._delegate = delegate
         self.calls = 0
@@ -231,9 +274,19 @@ class ProviderRecorder(LLMProvider):
         self.output_tokens = 0
         self.generation = delegate.generation
         self.failures: list[dict[str, Any]] = []
+        self._oracle_gate_skill_id = oracle_gate_skill_id
 
     async def chat(self, *args, **kwargs) -> LLMResponse:
         self.calls += 1
+        messages = kwargs.get("messages") if "messages" in kwargs else args[0] if args else []
+        prompt = str(messages[0].get("content", "")) if messages else ""
+        if self._oracle_gate_skill_id and "skill selector for an autonomous agent" in prompt:
+            return LLMResponse(
+                content=json.dumps(
+                    {"plan": "oracle ability routing", "skills": [self._oracle_gate_skill_id]}
+                ),
+                usage={},
+            )
         try:
             response = await self._delegate.chat(*args, **kwargs)
         except Exception as exc:
@@ -278,7 +331,15 @@ async def run_turn(
         _build_live_provider(spec) if provider_mode == "live" else DeterministicTaskProvider(spec)
     )
     budget_attempts_before = _provider_request_attempts(delegate)
-    provider = ProviderRecorder(delegate)
+    oracle_skill = spec.get("oracle_skill")
+    oracle_gate_skill_id = (
+        str(oracle_skill.get("qualified_id"))
+        if spec.get("oracle_gate") and isinstance(oracle_skill, dict)
+        else None
+    )
+    provider = ProviderRecorder(delegate, oracle_gate_skill_id=oracle_gate_skill_id)
+    if backend_override is None and isinstance(oracle_skill, dict):
+        backend_override = _SpecSkillBackend(oracle_skill)
     config = Config()
     config.agents.defaults.workspace = str(workspace)
     config.agents.defaults.model = provider.get_default_model()
@@ -298,7 +359,7 @@ async def run_turn(
     pico_config.skill_forge.enabled = skill_forge_enabled
     pico_config.skill_forge.router.enabled = skill_forge_enabled
     pico_config.skill_forge.rewrite_enabled = False
-    pico_config.skill_forge.llm_gate_enabled = False
+    pico_config.skill_forge.llm_gate_enabled = bool(spec.get("llm_gate_enabled", False))
     pico_config.runtime.checkpoint.policy = "never"
     pico_config.base = config
     pico_config.token_wise.smart_routing.enabled = False
@@ -507,6 +568,11 @@ async def run_turn(
         "model_calls": getattr(delegate, "calls", []),
         "input_tokens": provider.input_tokens,
         "injected_skill_ids": list(outcome.injected_skill_ids) if outcome is not None else [],
+        "skill_candidate_ids": list(outcome.skill_candidate_ids) if outcome is not None else [],
+        "skill_gate_required_ids": list(outcome.skill_gate_required_ids) if outcome is not None else [],
+        "skill_gate_selected_ids": list(outcome.skill_gate_selected_ids) if outcome is not None else [],
+        "skill_gate_status": outcome.skill_gate_status if outcome is not None else None,
+        "skill_gate_fallback_reason": outcome.skill_gate_fallback_reason if outcome is not None else None,
         "output_tokens": provider.output_tokens,
         "provider_calls": _provider_request_attempts(
             delegate, baseline=budget_attempts_before, fallback=provider.calls

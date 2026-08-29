@@ -42,6 +42,11 @@ class TurnOutcome:
     tool_failures: int = 0
     memory_hits: int = 0
     injected_skill_ids: tuple[str, ...] = ()
+    skill_candidate_ids: tuple[str, ...] = ()
+    skill_gate_required_ids: tuple[str, ...] = ()
+    skill_gate_selected_ids: tuple[str, ...] = ()
+    skill_gate_status: str | None = None
+    skill_gate_fallback_reason: str | None = None
     context_path: str | None = None
     context_fallback_reason: str | None = None
     skill_source_failures: tuple[str, ...] = ()

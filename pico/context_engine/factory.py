@@ -109,6 +109,18 @@ def build_context_engine(
         skill_forge_config is not None and getattr(skill_forge_config, "injection_mode", "full_body") == "summary"
     )
     activation_max = 0 if summary_only else configured_inject_max or skill_forge_router_config.top_k
+    gate = None
+    if skill_forge_config is not None and getattr(skill_forge_config, "llm_gate_enabled", False):
+        from pico.memory_engine.skill_forge import LLMGateFilter
+
+        gate = LLMGateFilter(
+            provider,
+            max_select=int(getattr(skill_forge_config, "llm_gate_max_select", 2)),
+            legacy_top_k=skill_forge_router_config.top_k,
+            model=getattr(skill_forge_config, "llm_gate_model", None),
+            temperature=float(getattr(skill_forge_config, "llm_gate_temperature", 0.0)),
+            max_tokens=int(getattr(skill_forge_config, "llm_gate_max_tokens", 8192)),
+        )
 
     builders = [
         IdentitySegmentBuilder(workspace, builder.state),
@@ -125,6 +137,8 @@ def build_context_engine(
             router,
             skill_top_k=skill_forge_router_config.top_k,
             activation_max=activation_max,
+            gate=gate,
+            get_tool_definitions=get_tool_definitions,
         ),
         CuratorSegmentBuilder(
             workspace=builder.state,

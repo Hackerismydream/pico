@@ -4,9 +4,9 @@ Gate 位于 :class:`SkillForgeRouter` Fan-out + RRF 之后。它看到 Candidate
 Excerpt，让 LLM 先规划 Task，再对照 Agent Available Tools 排除无法执行的 Skill，最多选择
 ``max_select``。Empty Result 是合法的 ``inject nothing`` Decision，表示宁可不注入也不选错误说明。
 
-Infra Failure，包括 Parse Error、Timeout、Provider Error，会回退到
-``candidates[:legacy_top_k]`` 而不是 `[]`，使 Broken Gate 不会 Silently Empty ``# Skills`` Block。回退
-只保持旧检索可用性，不等于候选已通过 LLM Gate。
+Infra Failure，包括 Parse Error、Timeout、Provider Error，只会回退到无需 Gate 的 Legacy Candidates。
+Memory-derived Candidates 标记 ``gate_required``，未得到有效 Gate Decision 时必须 Abstain，避免把检索相关性
+误当成可安全注入的指令。
 """
 
 from __future__ import annotations
@@ -93,8 +93,8 @@ class LLMGateFilter:
             if diagnostics is not None and "fallback_reason" not in diagnostics:
                 diagnostics["fallback_reason"] = "provider_exception"
                 diagnostics["failure_type"] = type(exc).__name__
-            log.warning("LLM gate call failed (%s); falling back to top-N", exc)
-            return candidates[: self._legacy_top_k]
+            log.warning("LLM gate call failed (%s); applying safe fallback", exc)
+            return self._safe_fallback(candidates, diagnostics)
 
         try:
             plan, selected_ids = self._parse_response(content)
@@ -102,10 +102,17 @@ class LLMGateFilter:
             if diagnostics is not None:
                 diagnostics["fallback_reason"] = "invalid_response"
             log.warning(
-                "LLM gate response unparseable (%s); falling back to top-N",
+                "LLM gate response unparseable (%s); applying safe fallback",
                 exc,
             )
-            return candidates[: self._legacy_top_k]
+            return self._safe_fallback(candidates, diagnostics)
+
+        unknown_ids = [sid for sid in selected_ids if sid not in by_id]
+        if unknown_ids and any(h.meta.get("gate_required") for h in candidates):
+            if diagnostics is not None:
+                diagnostics["fallback_reason"] = "unknown_skill_id"
+                diagnostics["unknown_skill_ids"] = unknown_ids
+            return self._safe_fallback(candidates, diagnostics)
 
         out: list[RouterHit] = []
         for sid in selected_ids:
@@ -122,6 +129,17 @@ class LLMGateFilter:
         )
         self._optional_trace(task, candidates, plan, out, content)
         return out
+
+    def _safe_fallback(
+        self,
+        candidates: list[RouterHit],
+        diagnostics: dict[str, Any] | None,
+    ) -> list[RouterHit]:
+        abstained = [h.qualified_id for h in candidates if h.meta.get("gate_required")]
+        if diagnostics is not None:
+            diagnostics["abstained_skill_ids"] = abstained
+        safe = [h for h in candidates if not h.meta.get("gate_required")]
+        return safe[: self._legacy_top_k]
 
     @staticmethod
     def _build_catalog(
