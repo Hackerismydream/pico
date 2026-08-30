@@ -315,6 +315,35 @@ def test_plan_freezes_candidate_budget_and_requires_exact_wheels(tmp_path: Path)
     assert len(frozen["approval_digest"]) == 64
 
 
+def test_ability_gate_profile_freezes_gate_and_bounded_execution(tmp_path: Path) -> None:
+    pico = tmp_path / "pico.whl"
+    myna = tmp_path / "myna.whl"
+    pico.write_bytes(b"pico")
+    myna.write_bytes(b"myna")
+    config = CampaignConfig(
+        corpus_path=CORPUS,
+        output_root=tmp_path / "evidence",
+        pico_wheel=pico,
+        myna_wheel=myna,
+        pico_commit="a" * 40,
+        myna_commit="b" * 40,
+        max_tool_iterations=8,
+        hard_cap_cny=40.0,
+        execution_profile="ability_gate",
+    )
+
+    manifest = plan(config)["manifest"]
+    spec = skill_runner._apply_ability_gate_execution_contract(
+        {"prompt": "Implement the policy.", "disabled_tools": ["ask_user"]}
+    )
+
+    assert manifest["execution"]["execution_profile"] == "ability_gate"
+    assert manifest["execution"]["max_tool_iterations"] == 8
+    assert spec["llm_gate_enabled"] is True
+    assert spec["disabled_tools"] == ["ask_user", "find", "grep", "list_dir", "skill_read"]
+    assert "call edit_file" in spec["prompt"]
+
+
 def test_corpus_rejects_cross_split_identity_reuse(tmp_path: Path) -> None:
     raw = CORPUS.read_text(encoding="utf-8").replace('"eval-config-01"', '"learn-config-01"', 1)
     path = tmp_path / "overlap.json"

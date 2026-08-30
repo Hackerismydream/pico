@@ -345,7 +345,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
         if self._budget_path is None or self._budget_config is None:
             raise ValueError("skill transfer budget is not configured")
         budget = asdict(self._budget_config)
-        return {
+        spec = {
             "worker_mode": "turn",
             "arm_id": arm_id,
             "agent_track_only": True,
@@ -392,6 +392,9 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
                 "ledger_prefix_charged_cny": budget["ledger_prefix_charged_cny"],
             },
         }
+        if self._config.execution_profile == "ability_gate":
+            _apply_ability_gate_execution_contract(spec)
+        return spec
 
     def _candidate_call(
         self,
@@ -444,6 +447,22 @@ def _skill_provider(*, api_key: str, api_base: str | None, ledger: ProviderBudge
         extra_body={"thinking": {"type": "disabled"}},
     )
     return BudgetGuardedProvider(provider, ledger=ledger)
+
+
+def _apply_ability_gate_execution_contract(spec: dict[str, Any]) -> dict[str, Any]:
+    spec["prompt"] = (
+        f"{spec['prompt']}\n\n"
+        "Any selected memory Skill body is already inline under # Skills. Do not search for a Skill file. "
+        "Read solution.py and smoke.py, then immediately call edit_file to replace the stub in solution.py. "
+        "Then run smoke.py and finish. Do not explain or print a proposed implementation in chat."
+    )
+    disabled = list(spec.get("disabled_tools", ()))
+    for name in ("find", "grep", "list_dir", "skill_read"):
+        if name not in disabled:
+            disabled.append(name)
+    spec["disabled_tools"] = disabled
+    spec["llm_gate_enabled"] = True
+    return spec
 
 
 def _cacheable_skill_content(content: str) -> bool:

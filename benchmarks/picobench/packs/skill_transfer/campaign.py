@@ -140,12 +140,15 @@ class CampaignConfig:
     output_usd_per_million: float = 0.28
     conservative_usd_to_cny_multiplier: float = 7.5
     hard_cap_cny: float = 25.0
+    execution_profile: Literal["legacy", "ability_gate"] = "legacy"
 
     def __post_init__(self) -> None:
         if self.repetitions != 2:
             raise ValueError("skill transfer v1 requires exactly two repetitions")
         if self.provider != "deepseek" or self.model != "deepseek/deepseek-v4-flash":
             raise ValueError("skill transfer v1 is frozen to deepseek/deepseek-v4-flash")
+        if self.execution_profile not in {"legacy", "ability_gate"}:
+            raise ValueError("unsupported skill transfer execution profile")
         for name in ("pico_commit", "myna_commit"):
             if _SHA.fullmatch(getattr(self, name)) is None:
                 raise ValueError(f"{name} must be a lowercase full commit SHA")
@@ -187,7 +190,7 @@ class CampaignConfig:
 
     def manifest(self, corpus: SkillTransferCorpus) -> dict[str, Any]:
         split_digests = corpus_split_digests(corpus)
-        return {
+        manifest = {
             "schema": MANIFEST_SCHEMA,
             "task_corpus_digest": corpus.digest,
             "treatment_axis": {
@@ -254,6 +257,9 @@ class CampaignConfig:
                 "general_agent_claim_allowed": False,
             },
         }
+        if self.execution_profile != "legacy":
+            manifest["execution"]["execution_profile"] = self.execution_profile
+        return manifest
 
 
 def load_corpus(path: Path) -> SkillTransferCorpus:
@@ -1016,6 +1022,9 @@ def _parser() -> argparse.ArgumentParser:
         child.add_argument("--myna-wheel", type=Path, required=True)
         child.add_argument("--pico-commit", required=True)
         child.add_argument("--myna-commit", required=True)
+        child.add_argument("--max-tool-iterations", type=int, default=5)
+        child.add_argument("--hard-cap-cny", type=float, default=25.0)
+        child.add_argument("--execution-profile", choices=("legacy", "ability_gate"), default="legacy")
     for child in (prepare_parser, run_parser):
         child.add_argument("--approval-digest", required=True)
         child.add_argument("--approved-cny", type=float, required=True)
@@ -1039,6 +1048,9 @@ def main() -> int:
             myna_wheel=args.myna_wheel,
             pico_commit=args.pico_commit,
             myna_commit=args.myna_commit,
+            max_tool_iterations=args.max_tool_iterations,
+            hard_cap_cny=args.hard_cap_cny,
+            execution_profile=args.execution_profile,
         )
         result = (
             run_campaign(
