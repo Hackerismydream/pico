@@ -23,6 +23,7 @@ from benchmarks.picobench.packs.skill_transfer.runner import InstalledSkillTrans
 from benchmarks.picobench.statistics import clustered_bootstrap_interval
 
 ARMS = ("no_skill", "long_skill", "anchor_skill")
+PICO_POLICY_ARMS = ("no_skill", "long_skill")
 SCHEMA = "pico.picobench.skill-transfer-v2.stage-a.v1"
 
 
@@ -61,7 +62,15 @@ class StageAConfig:
 
     @property
     def planned_trials(self) -> int:
-        return 24 * self.repetitions * len(ARMS)
+        return 24 * self.repetitions * len(self.arms)
+
+    @property
+    def arms(self) -> tuple[str, ...]:
+        return PICO_POLICY_ARMS if self.anchor_profile == "pico_policy" else ARMS
+
+    @property
+    def primary_arm(self) -> str:
+        return "long_skill" if self.anchor_profile == "pico_policy" else "anchor_skill"
 
     @property
     def maximum_provider_attempts(self) -> int:
@@ -108,7 +117,6 @@ class StageAConfig:
             arms = {
                 "no_skill": "no Skill candidate or Gate call",
                 "long_skill": "Myna-derived Pico policy Skill with deterministic Ability routing",
-                "anchor_skill": "learning-only Pico Ability card with deterministic Ability routing",
             }
         return {
             "schema": self.manifest_schema,
@@ -128,7 +136,7 @@ class StageAConfig:
             "arms": arms,
             "execution": execution,
             "analysis": {
-                "primary_contrast": "anchor_skill - no_skill",
+                "primary_contrast": f"{self.primary_arm} - no_skill",
                 "bootstrap_unit": "held_out_instance",
                 "bootstrap_samples": self.bootstrap_samples,
                 "confidence_level": 0.95,
@@ -221,7 +229,19 @@ def build_report(
     samples: int,
     seed: int,
     schema: str = "pico.picobench.skill-transfer-v2.stage-a.report.v1",
+    arms: tuple[str, ...] = ARMS,
+    primary_arm: str = "anchor_skill",
 ) -> dict[str, Any]:
+    if arms != ARMS or primary_arm != "anchor_skill":
+        return _build_pico_policy_report(
+            corpus,
+            trials,
+            samples=samples,
+            seed=seed,
+            schema=schema,
+            arms=arms,
+            primary_arm=primary_arm,
+        )
     expected = {
         (task.instance_id, repetition, arm)
         for ability in corpus.abilities
@@ -314,6 +334,97 @@ def build_report(
         },
         "capability_floor": capability_floor,
         "continue_to_stage_b": bool(valid and len(anchor_per_task) == 24 and anchor_interval.lower > 0),
+    }
+
+
+def _build_pico_policy_report(
+    corpus: SkillTransferCorpus,
+    trials: tuple[StageATrial, ...],
+    *,
+    samples: int,
+    seed: int,
+    schema: str,
+    arms: tuple[str, ...],
+    primary_arm: str,
+) -> dict[str, Any]:
+    if arms != PICO_POLICY_ARMS or primary_arm != "long_skill":
+        raise ValueError("unsupported Pico policy Stage A contrast")
+    expected = {
+        (task.instance_id, repetition, arm)
+        for ability in corpus.abilities
+        for task in ability.held_out
+        for repetition in range(2)
+        for arm in arms
+    }
+    observed = {(row.task_id, row.repetition, row.arm_id) for row in trials}
+    valid = len(observed) == len(trials) and observed == expected
+    grouped = {(row.task_id, row.repetition, row.arm_id): row for row in trials}
+    per_task: dict[str, tuple[float, ...]] = {}
+    for ability in corpus.abilities:
+        for task in ability.held_out:
+            deltas = []
+            for repetition in range(2):
+                control = grouped.get((task.instance_id, repetition, "no_skill"))
+                treatment = grouped.get((task.instance_id, repetition, primary_arm))
+                if control is None or treatment is None:
+                    continue
+                deltas.append(float(treatment.passed) - float(control.passed))
+                valid &= (
+                    control.ability_id == ability.ability_id
+                    and treatment.ability_id == ability.ability_id
+                    and control.workspace_digest == treatment.workspace_digest
+                    and control.injected_skill_ids == ()
+                    and len(treatment.injected_skill_ids) == 1
+                    and treatment.gate_status == "selected"
+                    and control.failure_class not in {"provider", "transport", "budget", "infrastructure"}
+                    and treatment.failure_class not in {"provider", "transport", "budget", "infrastructure"}
+                )
+                for row in (control, treatment):
+                    receipt = row.verification_receipt
+                    valid &= (
+                        row.status in {"passed", "task_failed"}
+                        and all(
+                            value >= 0
+                            for value in (
+                                row.tool_calls,
+                                row.input_tokens,
+                                row.output_tokens,
+                                row.provider_calls,
+                                row.estimated_cost_cny,
+                            )
+                        )
+                        and (
+                            not row.passed
+                            or (
+                                receipt.get("passed") is True
+                                and receipt.get("smoke_fixture_unchanged") is True
+                                and receipt.get("unexpected_workspace_paths") == []
+                            )
+                        )
+                    )
+            if deltas:
+                per_task[task.instance_id] = tuple(deltas)
+    interval = clustered_bootstrap_interval(per_task, samples=samples, seed=seed)
+    passes = {arm: sum(row.passed for row in trials if row.arm_id == arm) for arm in arms}
+    capability_floor = {}
+    for ability in corpus.abilities:
+        task_ids = {item.instance_id for item in ability.held_out}
+        if not any(row.passed for row in trials if row.task_id in task_ids and row.arm_id in arms):
+            capability_floor[ability.ability_id] = True
+    return {
+        "schema": schema,
+        "ship_complete": observed == expected,
+        "measurement_valid": valid and len(per_task) == 24,
+        "trials": len(trials),
+        "passes": passes,
+        "primary_arm": primary_arm,
+        "primary_contrast": {
+            "estimate_pp": 100 * interval.estimate,
+            "ci95_pp": [100 * interval.lower, 100 * interval.upper],
+            "tasks": interval.tasks,
+        },
+        "capability_floor": capability_floor,
+        "continue_to_stage_b": bool(valid and len(per_task) == 24 and interval.lower > 0),
     }
 
 
@@ -505,7 +616,7 @@ def run(config: StageAConfig, *, approval_digest: str, api_key: str, api_base: s
         for ability in corpus.abilities:
             for task in ability.held_out:
                 for repetition in range(config.repetitions):
-                    for arm_id in ARMS:
+                    for arm_id in config.arms:
                         key = (task.instance_id, repetition, arm_id)
                         if key in records:
                             continue
@@ -519,6 +630,8 @@ def run(config: StageAConfig, *, approval_digest: str, api_key: str, api_base: s
         samples=config.bootstrap_samples,
         seed=config.seed,
         schema=config.report_schema,
+        arms=config.arms,
+        primary_arm=config.primary_arm,
     )
     _write(output / "aggregate.json", report)
     _write(output / "provider-budget-report.json", asdict(ledger.snapshot()))
@@ -537,6 +650,8 @@ def verify_artifacts(config: StageAConfig) -> dict[str, Any]:
         samples=config.bootstrap_samples,
         seed=config.seed,
         schema=config.report_schema,
+        arms=config.arms,
+        primary_arm=config.primary_arm,
     )
     aggregate = json.loads((output / "aggregate.json").read_text(encoding="utf-8"))
     approval = json.loads((output / "provider-budget-approval.json").read_text(encoding="utf-8"))

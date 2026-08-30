@@ -7,7 +7,7 @@
       "learning": [
         {
           "instance_id": "learn-receipt-01",
-          "result": "Unwrapped an optional 'uv run' prefix, then accepted pytest, mypy, tox, and nox directly; accepted ruff check and ruff format but rejected ruff --version; accepted make check, ci, lint, or test; accepted package-manager test or run build/test; accepted cargo build/check/test, go build/test/vet, and common JVM build tools.",
+          "result": "Unwrapped an optional 'uv run' prefix, then accepted pytest, mypy, tox, and nox directly; accepted ruff check and ruff format but rejected ruff --version; accepted make check, ci, lint, or test; accepted package-manager test or run build/test; accepted cargo build/check/test, go build/test/vet, and gradle, gradlew, mvn, or mvnw. Return only the executable name such as ruff, make, cargo, go, or gradlew, never the executable plus its subcommand.",
           "verification": "uv run pytest tests/test_turn_evidence.py"
         },
         {

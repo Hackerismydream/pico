@@ -46,23 +46,23 @@ activation policy from pretraining alone.
 
 ## Frozen stages
 
-### Stage A: knowledge upper bound
+### Stage A: learned-content effect
 
-Run 24 held-out tasks with two repetitions and three arms:
+Run 24 held-out tasks with two repetitions and two arms:
 
 - `no_skill`: the normal Agent without learned knowledge;
-- `automatic_skill_oracle`: the exact Myna-derived Skill for the known Ability;
-- `anchor_skill`: a maintainer-curated Ability card built only from learning
-  evidence.
+- `automatic_skill_oracle`: the exact Myna-derived Ability card for the known
+  Ability.
 
 The oracle Ability label is diagnostic and unavailable to the deployable
-method. It removes retrieval error so Stage A can answer whether the learned
-content itself is useful.
+method. It removes retrieval error so Stage A isolates whether Myna's automatic
+Skill compilation preserves useful repository policy before Recall and Gate
+quality are introduced.
 
 Continue when:
 
-- all 144 Trials are complete and measurable;
-- `anchor_skill - no_skill` has a task-clustered 95 percent interval with a
+- all 96 Trials are complete and measurable;
+- `automatic_skill_oracle - no_skill` has a task-clustered 95 percent interval with a
   lower bound above zero;
 - every Ability has at least one NoSkill failure and one Skill success; and
 - no arm modifies the smoke fixture or creates unrelated files.
@@ -95,10 +95,10 @@ Stage B hard cap: CNY 10.
 
 ## Evidence boundary
 
-The Anchor result proves only that training-side Pico knowledge can transfer.
-Only Stage B can support an automatic Pico + Myna self-evolution claim. Skill
-injection is exposure evidence; the independent verifier determines task
-success.
+Stage A proves only that the automatically compiled content can transfer when
+Ability routing is known. Only Stage B can support an automatic Pico + Myna
+self-evolution claim. Skill injection is exposure evidence; the independent
+verifier determines task success.
 
 The final campus-recruiting narrative is produced as a separate artifact. It
 contains the user problem, architecture, method, and eligible result. It does
