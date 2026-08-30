@@ -1036,6 +1036,7 @@ def _parser() -> argparse.ArgumentParser:
         child.add_argument("--pico-commit", required=True)
         child.add_argument("--myna-commit", required=True)
         child.add_argument("--max-tool-iterations", type=int, default=5)
+        child.add_argument("--max-input-tokens-per-call", type=int, default=32_768)
         child.add_argument("--hard-cap-cny", type=float, default=25.0)
         child.add_argument("--execution-profile", choices=("legacy", "ability_gate"), default="legacy")
     for child in (prepare_parser, run_parser):
@@ -1062,6 +1063,7 @@ def main() -> int:
             pico_commit=args.pico_commit,
             myna_commit=args.myna_commit,
             max_tool_iterations=args.max_tool_iterations,
+            max_input_tokens_per_call=args.max_input_tokens_per_call,
             hard_cap_cny=args.hard_cap_cny,
             execution_profile=args.execution_profile,
         )

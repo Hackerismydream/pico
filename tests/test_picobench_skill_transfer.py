@@ -359,7 +359,8 @@ def test_ability_gate_profile_freezes_gate_and_bounded_execution(tmp_path: Path)
         pico_commit="a" * 40,
         myna_commit="b" * 40,
         max_tool_iterations=8,
-        hard_cap_cny=40.0,
+        max_input_tokens_per_call=65_536,
+        hard_cap_cny=80.0,
         execution_profile="ability_gate",
     )
 
@@ -374,6 +375,7 @@ def test_ability_gate_profile_freezes_gate_and_bounded_execution(tmp_path: Path)
 
     assert manifest["execution"]["execution_profile"] == "ability_gate"
     assert manifest["execution"]["max_tool_iterations"] == 8
+    assert manifest["budget"]["max_input_tokens_per_call"] == 65_536
     assert spec["llm_gate_enabled"] is True
     assert spec["llm_gate_max_tokens"] == 512
     assert spec["max_logical_calls_per_trial"] == 10
