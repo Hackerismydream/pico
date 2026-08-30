@@ -34,10 +34,21 @@ def test_pico_policy_execution_contract_uses_inline_memory_skill_body() -> None:
     contracted = _apply_pico_policy_execution_contract(spec)
 
     assert contracted is spec
-    assert contracted["disabled_tools"] == ["ask_user", "skill_read"]
+    assert contracted["disabled_tools"] == ["ask_user", "find", "grep", "list_dir", "skill_read"]
     assert "already inline under # Skills" in contracted["prompt"]
     assert "replace the stub" in contracted["prompt"]
     assert "run smoke.py" in contracted["prompt"]
+    assert "Do not explain or print a proposed implementation" in contracted["prompt"]
+    assert "call edit_file" in contracted["prompt"]
+
+
+def test_verification_learning_evidence_names_the_supported_ruff_actions() -> None:
+    ability = load_corpus(CORPUS).abilities[0]
+
+    evidence = "\n".join(item.result for item in ability.learning)
+
+    assert "ruff check and ruff format" in evidence
+    assert "ruff --version" in evidence
 
 
 def test_verification_receipt_held_out_fixtures_accept_the_pico_policy(tmp_path: Path) -> None:

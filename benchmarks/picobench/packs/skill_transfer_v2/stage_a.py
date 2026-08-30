@@ -627,11 +627,13 @@ def _apply_pico_policy_execution_contract(spec: dict[str, Any]) -> dict[str, Any
     spec["prompt"] = (
         f"{spec['prompt']}\n\n"
         "Any selected memory Skill body is already inline under # Skills. Do not search for a Skill file. "
-        "Read solution.py and smoke.py, replace the stub in solution.py, run smoke.py, and finish."
+        "Read solution.py and smoke.py, then immediately call edit_file to replace the stub in solution.py. "
+        "Then run smoke.py and finish. Do not explain or print a proposed implementation in chat."
     )
     disabled = list(spec.get("disabled_tools", ()))
-    if "skill_read" not in disabled:
-        disabled.append("skill_read")
+    for name in ("find", "grep", "list_dir", "skill_read"):
+        if name not in disabled:
+            disabled.append(name)
     spec["disabled_tools"] = disabled
     return spec
 
