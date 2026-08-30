@@ -25,6 +25,8 @@ from benchmarks.picobench.budget import (
     provider_call_budget_scope,
 )
 from benchmarks.picobench.canonical import canonical_digest
+from pico.memory_engine.skill_forge.gate import LLMGateFilter
+from pico.memory_engine.skill_forge.types import RouterHit
 from pico.providers.base import LLMProvider
 from pico.providers.litellm_provider import LiteLLMProvider
 
@@ -150,6 +152,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
         active = receipt.get("active_revisions", {})
         experiences = receipt.get("source_experience_ids", {})
         digests = receipt.get("runtime_snapshot_digests", {})
+        skills = receipt.get("skills", {})
         for ability in corpus.abilities:
             snapshot = snapshot_root / ability.ability_id
             control = snapshot / "control-runtime"
@@ -167,6 +170,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
                 "active_revision_id": active[ability.ability_id],
                 "control_runtime": str(control),
                 "source_experience_ids": experiences[ability.ability_id],
+                "skill": skills[ability.ability_id],
                 "treatment_runtime": str(treatment),
             }
 
@@ -273,15 +277,73 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
             )
             for item in ability.hard_negatives:
                 result = results[item.instance_id]
+                selected: tuple[str, ...] = ()
+                provider_calls = 0
+                recalled = tuple(str(value) for value in result["recalled_revision_ids"])
+                if self._config.execution_profile == "ability_gate" and recalled:
+                    selected, provider_calls = self._gate_negative(
+                        snapshot,
+                        query=item.query,
+                        trial_id=f"negative:{item.instance_id}",
+                    )
                 records.append(
                     NegativeRecord(
                         instance_id=item.instance_id,
                         ability_id=ability.ability_id,
                         active_revision_id=str(snapshot["active_revision_id"]),
-                        recalled_revision_ids=tuple(str(value) for value in result["recalled_revision_ids"]),
+                        recalled_revision_ids=recalled,
+                        selected_revision_ids=selected,
+                        provider_calls=provider_calls,
                     )
                 )
         return tuple(records)
+
+    def _gate_negative(
+        self,
+        snapshot: dict[str, Any],
+        *,
+        query: str,
+        trial_id: str,
+    ) -> tuple[tuple[str, ...], int]:
+        if self._budget_path is None or self._budget_config is None:
+            raise ValueError("skill transfer budget is not configured")
+        skill = snapshot["skill"]
+        content = skill["content"]
+        revision = str(snapshot["active_revision_id"])
+        qualified_id = f"myna/{skill['skill_id']}@{revision}"
+        hit = RouterHit(
+            qualified_id=qualified_id,
+            name=str(content["name"]),
+            content=_skill_body(content),
+            score=1.0,
+            meta={
+                "description": str(content["description"]),
+                "source": "myna",
+                "gate_required": True,
+            },
+        )
+        provider = _skill_provider(
+            api_key=self._provider_api_key,
+            api_base=self._provider_api_base,
+            ledger=ProviderBudgetLedger(self._budget_path, self._budget_config),
+        )
+        before = provider.ledger.snapshot().request_attempts
+        with provider_call_budget_scope(
+            trial_id=trial_id,
+            max_logical_calls=1,
+            max_attempts_per_call=self._config.max_attempts_per_call,
+            max_input_tokens_per_call=self._config.max_input_tokens_per_call,
+            max_output_tokens_per_call=self._config.max_output_tokens_per_call,
+        ):
+            selected = asyncio.run(
+                LLMGateFilter(provider, max_select=2, max_tokens=512).filter(
+                    query,
+                    [hit],
+                    ["edit_file", "exec", "read_file", "write_file"],
+                )
+            )
+        calls = provider.ledger.snapshot().request_attempts - before
+        return tuple(revision for item in selected if item.qualified_id == qualified_id), calls
 
     def admission_precheck(self, corpus: SkillTransferCorpus) -> dict[str, list[str]]:
         results: dict[str, list[str]] = {}
@@ -465,6 +527,13 @@ def _apply_ability_gate_execution_contract(spec: dict[str, Any]) -> dict[str, An
     spec["llm_gate_max_tokens"] = 512
     spec["max_logical_calls_per_trial"] = int(spec["max_logical_calls_per_trial"]) + 1
     return spec
+
+
+def _skill_body(content: dict[str, Any]) -> str:
+    sections = [f"# {content['name']}", str(content["description"])]
+    for title, key in (("Applicability", "applicability"), ("Procedure", "procedure")):
+        sections.append(f"## {title}\n" + "\n".join(f"- {item}" for item in content[key]))
+    return "\n\n".join(sections)
 
 
 def _cacheable_skill_content(content: str) -> bool:

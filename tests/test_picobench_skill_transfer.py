@@ -216,6 +216,30 @@ def test_one_wrong_hard_negative_blocks_positive_claim() -> None:
     assert report["claim"]["positive_claim_eligible"] is False
 
 
+def test_automatic_gate_safety_distinguishes_recall_from_injection() -> None:
+    corpus = load_corpus(CORPUS)
+    candidate = _candidate(corpus)
+    trials, negatives = _records(corpus, candidate)
+    first = negatives[0]
+    negatives = (
+        replace(first, recalled_revision_ids=(first.active_revision_id,), selected_revision_ids=()),
+        *negatives[1:],
+    )
+
+    report = build_report(
+        corpus=corpus,
+        trials=trials,
+        negatives=negatives,
+        candidate_receipt=candidate,
+        bootstrap_samples=20,
+        gate_hard_negatives=True,
+    )
+
+    assert report["safety"]["recalled_skill_candidates"] == 1
+    assert report["safety"]["incorrect_skill_injections"] == 0
+    assert report["claim"]["positive_claim_eligible"] is True
+
+
 def test_forged_pass_without_independent_receipt_invalidates_measurement() -> None:
     corpus = load_corpus(CORPUS)
     candidate = _candidate(corpus)
@@ -284,10 +308,7 @@ def test_automatic_gate_profile_counts_explicit_abstention_as_valid_axis() -> No
     candidate = _candidate(corpus)
     trials, negatives = _records(corpus, candidate)
     treatment = next(item for item in trials if item.arm_id == "treatment")
-    abstained = tuple(
-        replace(item, injected_skill_ids=()) if item is treatment else item
-        for item in trials
-    )
+    abstained = tuple(replace(item, injected_skill_ids=()) if item is treatment else item for item in trials)
 
     strict = build_report(
         corpus=corpus,
@@ -381,7 +402,7 @@ def test_ability_gate_profile_freezes_gate_and_bounded_execution(tmp_path: Path)
     assert spec["max_logical_calls_per_trial"] == 10
     assert spec["disabled_tools"] == ["ask_user", "find", "grep", "list_dir", "skill_read"]
     assert "call edit_file" in spec["prompt"]
-    assert manifest["budget"]["maximum_provider_attempts"] == 924
+    assert manifest["budget"]["maximum_provider_attempts"] == 948
 
 
 def test_corpus_rejects_cross_split_identity_reuse(tmp_path: Path) -> None:

@@ -114,6 +114,8 @@ class NegativeRecord:
     ability_id: str
     active_revision_id: str
     recalled_revision_ids: tuple[str, ...]
+    selected_revision_ids: tuple[str, ...] = ()
+    provider_calls: int = 0
     schema: str = NEGATIVE_SCHEMA
 
 
@@ -166,7 +168,7 @@ class CampaignConfig:
     def maximum_provider_attempts(self) -> int:
         extraction_attempts = self.maximum_candidate_attempts
         task_attempts = self.planned_trials * (self.max_tool_iterations + 1) * self.max_attempts_per_call
-        gate_attempts = self.planned_trials // 2 if self.execution_profile == "ability_gate" else 0
+        gate_attempts = self.planned_trials // 2 + 24 if self.execution_profile == "ability_gate" else 0
         return extraction_attempts + task_attempts + gate_attempts
 
     @property
@@ -293,6 +295,7 @@ def build_report(
     bootstrap_samples: int = 5_000,
     bootstrap_seed: int = 20260825,
     require_treatment_injection: bool = True,
+    gate_hard_negatives: bool = False,
 ) -> dict[str, Any]:
     held_out = {item.instance_id: (ability, item) for ability in corpus.abilities for item in ability.held_out}
     learning_ids = {item.instance_id for ability in corpus.abilities for item in ability.learning}
@@ -408,7 +411,8 @@ def build_report(
             if observed is None or observed.ability_id != ability.ability_id or observed.active_revision_id != revision:
                 hard_negative_complete = False
                 continue
-            incorrect_injections += int(bool(observed.recalled_revision_ids))
+            selected = observed.selected_revision_ids if gate_hard_negatives else observed.recalled_revision_ids
+            incorrect_injections += int(bool(selected))
 
     expected_pairs = 24 * repetitions
     ship_complete = complete_pairs == expected_pairs and len(trials) == expected_pairs * 2
@@ -484,6 +488,8 @@ def build_report(
         report["measurement"]["treatment_injected_trials"] = sum(
             bool(treatment.injected_skill_ids) for _, treatment in valid_pairs
         )
+    if gate_hard_negatives:
+        report["safety"]["recalled_skill_candidates"] = sum(bool(item.recalled_revision_ids) for item in negatives)
     return report
 
 
@@ -508,6 +514,7 @@ def verify_evidence(output_root: Path, *, corpus_path: Path) -> dict[str, Any]:
         bootstrap_samples=int(analysis.get("bootstrap_samples", 0)),
         bootstrap_seed=int(analysis.get("bootstrap_seed", 0)),
         require_treatment_injection=manifest.get("execution", {}).get("execution_profile") != "ability_gate",
+        gate_hard_negatives=manifest.get("execution", {}).get("execution_profile") == "ability_gate",
     )
     gates = {
         "manifest_schema": manifest.get("schema") == MANIFEST_SCHEMA,
@@ -516,7 +523,7 @@ def verify_evidence(output_root: Path, *, corpus_path: Path) -> dict[str, Any]:
         "claim_reproduces": _json(output / "claim-eligibility.json") == report["claim"],
         "verifier_reproduces": _json(output / "verifier-report.json") == _verifier_report(report),
         "measurement_valid": report["claim"]["measurement_valid"],
-        "budget_accounting_complete": _verify_budget(output, manifest, trials, candidate),
+        "budget_accounting_complete": _verify_budget(output, manifest, trials, negatives, candidate),
         "candidate_runtime_snapshots_bound": _verify_candidate_snapshots(output, corpus, candidate),
     }
     return {"schema": OFFLINE_SCHEMA, "passed": all(gates.values()), "gates": gates, "recomputed_report": report}
@@ -630,10 +637,13 @@ def run_campaign(
             bootstrap_samples=config.bootstrap_samples,
             bootstrap_seed=config.seed,
             require_treatment_injection=config.execution_profile != "ability_gate",
+            gate_hard_negatives=config.execution_profile == "ability_gate",
         )
         budget = ledger.snapshot()
-        expected_attempts = sum(item.provider_calls for item in ordered) + int(
-            candidate.get("extractor", {}).get("provider_request_attempts", 0)
+        expected_attempts = (
+            sum(item.provider_calls for item in ordered)
+            + sum(item.provider_calls for item in ordered_negatives)
+            + int(candidate.get("extractor", {}).get("provider_request_attempts", 0))
         )
         if budget.request_attempts != expected_attempts or not budget.accounting_complete:
             raise ValueError("Provider budget evidence does not match Skill transfer records")
@@ -755,6 +765,7 @@ def _verify_budget(
     output: Path,
     manifest: dict[str, Any],
     trials: tuple[TrialRecord, ...],
+    negatives: tuple[NegativeRecord, ...],
     candidate: dict[str, Any],
 ) -> bool:
     try:
@@ -777,8 +788,10 @@ def _verify_budget(
         )
         snapshot = ProviderBudgetLedger(output / "provider-budget.jsonl", config).snapshot()
         report = _json(output / "provider-budget-report.json")
-        expected_attempts = sum(item.provider_calls for item in trials) + int(
-            candidate.get("extractor", {}).get("provider_request_attempts", 0)
+        expected_attempts = (
+            sum(item.provider_calls for item in trials)
+            + sum(item.provider_calls for item in negatives)
+            + int(candidate.get("extractor", {}).get("provider_request_attempts", 0))
         )
         return bool(
             approval["approval_digest"] == canonical_digest(manifest)
@@ -874,7 +887,13 @@ def _trial(value: dict[str, Any]) -> TrialRecord:
 
 
 def _negative(value: dict[str, Any]) -> NegativeRecord:
-    return NegativeRecord(**{**value, "recalled_revision_ids": tuple(value.get("recalled_revision_ids", ()))})
+    return NegativeRecord(
+        **{
+            **value,
+            "recalled_revision_ids": tuple(value.get("recalled_revision_ids", ())),
+            "selected_revision_ids": tuple(value.get("selected_revision_ids", ())),
+        }
+    )
 
 
 def _trial_journal(path: Path) -> dict[tuple[str, int, str], TrialRecord]:
