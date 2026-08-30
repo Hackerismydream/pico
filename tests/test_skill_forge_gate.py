@@ -196,3 +196,14 @@ async def test_tools_block_absent_when_tools_none() -> None:
     await LLMGateFilter(provider).filter("task", [_hit("local/a", "a")])
     prompt = provider.calls[0]["messages"][0]["content"]
     assert "# Agent Tools" not in prompt
+
+
+async def test_candidate_excerpt_preserves_bounded_ability_procedure() -> None:
+    provider = _StubProvider(json.dumps({"plan": "p", "skills": []}))
+    body = "A" * 350 + " Accept pytest and uv run pytest. " + "B" * 900
+
+    await LLMGateFilter(provider).filter("implement pytest classifier", [_hit("myna/checks", "checks", body=body)])
+
+    prompt = provider.calls[0]["messages"][0]["content"]
+    assert "Accept pytest and uv run pytest" in prompt
+    assert "B" * 700 not in prompt
