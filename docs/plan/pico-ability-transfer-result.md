@@ -58,37 +58,26 @@ task-effect measurement is valid and statistically positive, while automatic
 production activation remains disabled pending a stricter trigger Gate. This
 separates demonstrated learning value from deployment authority.
 
-## Resume wording
+## 中文简历表述
 
-Designed and implemented an evidence-driven Pico + Myna evolution loop that
-turns verified ordinary-task traces into repository-scoped, versioned Ability
-Cards and reuses them through Recall plus a fail-closed exact-ID LLM Gate. Built
-a six-Ability, 24-task paired A/B suite with independent verifiers; the
-end-to-end path improved pass rate from 31.25% (15/48) to 50.00% (24/48), a
-+18.75 percentage-point lift with a task-clustered 95% CI of [+6.25, +33.33]
-and zero paired regressions.
+设计并实现 Pico + Myna 证据驱动的自进化链路：将普通任务中通过验证的执行轨迹自动沉淀为仓库级、
+可版本化的 Ability Card，并通过 Recall 与 fail-closed 的精确 ID LLM Gate 在后续任务按需注入；
+构建覆盖 6 类真实仓库策略、24 个隔离测试任务的成对 A/B，端到端通过率由 31.25%（15/48）提升至
+50.00%（24/48），提升 18.75 个百分点，任务聚类 95% 置信区间为 [+6.25, +33.33]，且无成对回归。
 
-## Interview answer
+## 面试口述
 
-The problem was that an Agent could finish one task but would start the next
-similar repository task from scratch. I split self-evolution into two systems.
-Pico owns execution evidence and independent task verification; Myna owns
-repository memory, repeated-experience grouping, and versioned Ability Cards.
-The compiler receives the exact Source Facts behind verified tasks, so it must
-preserve decision tables, accepted and rejected inputs, and failure boundaries
-instead of writing generic advice. On the next task, Recall proposes a
-candidate and Pico's Gate can inject only an exact revision whose trigger and
-tool requirements match.
+我解决的问题是：Agent 虽然能完成一次任务，但遇到同类仓库问题时仍会从零开始。我的方案把自进化拆成
+两个职责清晰的系统：Pico 负责记录工具调用、文件修改、验证命令和最终交付结果；Myna 负责把同一仓库中
+多次成功且经过验证的经验聚合成带版本的 Ability Card。生成 Skill 时不是只读一段摘要，而是读取经验绑定
+的原始 Source Facts，因此会保留决策表、允许和拒绝的输入以及失败边界。下一次任务中，Myna 先召回候选，
+Pico 再用 fail-closed Gate 检查触发条件、可用工具和精确 revision，匹配后才注入上下文。
 
-To show this was not random prompt injection, I froze 18 learning examples and
-24 disjoint held-out tasks across six real Pico policies, then ran paired A/B
-tests with the same model, prompt, tools, limits, and independent verifier. The
-automatic end-to-end path increased verified pass rate from 15/48 to 24/48,
-with a +18.75 percentage-point lift and a 95 percent confidence interval whose
-lower bound was +6.25 points. I also tested 24 confusing negative queries. The
-remaining two false selections are why learned candidates can be generated and
-recommended automatically, but production activation still requires evidence
-and human authority.
+为了证明提升不是随机 Prompt 效果，我固定了 18 个学习样本和 24 个互不重叠的测试任务，覆盖 6 类真实
+Pico 策略；每个 A/B Pair 使用相同模型、任务、工具、调用上限和独立 verifier，唯一变量是是否启用自动
+Recall + Gate。最终 Control 通过 15/48，Treatment 通过 24/48，提升 18.75 个百分点，95% 置信区间
+下界为 +6.25 个百分点，且没有成对回归。我还加入 24 个混淆负例；其中仍有 2 次错误选择，所以系统可以
+自动生成和推荐新能力，但生产激活继续要求证据和人工授权。
 
 ## Evidence identity
 
