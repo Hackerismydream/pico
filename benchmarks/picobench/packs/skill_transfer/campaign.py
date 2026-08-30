@@ -292,6 +292,7 @@ def build_report(
     repetitions: int = 2,
     bootstrap_samples: int = 5_000,
     bootstrap_seed: int = 20260825,
+    require_treatment_injection: bool = True,
 ) -> dict[str, Any]:
     held_out = {item.instance_id: (ability, item) for ability in corpus.abilities for item in ability.held_out}
     learning_ids = {item.instance_id for ability in corpus.abilities for item in ability.learning}
@@ -384,7 +385,11 @@ def build_report(
                 and control.active_revision_id is None
                 and control.injected_skill_ids == ()
                 and treatment.active_revision_id == revision
-                and treatment.injected_skill_ids == (revision,)
+                and (
+                    treatment.injected_skill_ids == (revision,)
+                    if require_treatment_injection
+                    else treatment.injected_skill_ids in {(), (revision,)}
+                )
                 and tuple(sorted(treatment.source_experience_ids)) == expected_sources
                 and control.failure_class not in {"provider", "transport", "budget", "infrastructure"}
                 and treatment.failure_class not in {"provider", "transport", "budget", "infrastructure"}
@@ -439,7 +444,7 @@ def build_report(
         and interval is not None
         and interval["lower"] > 0
     )
-    return {
+    report = {
         "schema": REPORT_SCHEMA,
         "task_corpus_digest": corpus.digest,
         "measurement": {
@@ -475,6 +480,11 @@ def build_report(
             "eligible_scope": "skill_transfer_v1_six_ability_pack",
         },
     }
+    if not require_treatment_injection:
+        report["measurement"]["treatment_injected_trials"] = sum(
+            bool(treatment.injected_skill_ids) for _, treatment in valid_pairs
+        )
+    return report
 
 
 def verify_evidence(output_root: Path, *, corpus_path: Path) -> dict[str, Any]:
@@ -497,6 +507,7 @@ def verify_evidence(output_root: Path, *, corpus_path: Path) -> dict[str, Any]:
         repetitions=int(manifest.get("execution", {}).get("repetitions", 0)),
         bootstrap_samples=int(analysis.get("bootstrap_samples", 0)),
         bootstrap_seed=int(analysis.get("bootstrap_seed", 0)),
+        require_treatment_injection=manifest.get("execution", {}).get("execution_profile") != "ability_gate",
     )
     gates = {
         "manifest_schema": manifest.get("schema") == MANIFEST_SCHEMA,
@@ -618,6 +629,7 @@ def run_campaign(
             repetitions=config.repetitions,
             bootstrap_samples=config.bootstrap_samples,
             bootstrap_seed=config.seed,
+            require_treatment_injection=config.execution_profile != "ability_gate",
         )
         budget = ledger.snapshot()
         expected_attempts = sum(item.provider_calls for item in ordered) + int(

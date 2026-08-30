@@ -279,6 +279,37 @@ def test_candidate_admission_precheck_must_recall_exact_revision() -> None:
     assert report["claim"]["measurement_valid"] is False
 
 
+def test_automatic_gate_profile_counts_explicit_abstention_as_valid_axis() -> None:
+    corpus = load_corpus(CORPUS)
+    candidate = _candidate(corpus)
+    trials, negatives = _records(corpus, candidate)
+    treatment = next(item for item in trials if item.arm_id == "treatment")
+    abstained = tuple(
+        replace(item, injected_skill_ids=()) if item is treatment else item
+        for item in trials
+    )
+
+    strict = build_report(
+        corpus=corpus,
+        trials=abstained,
+        negatives=negatives,
+        candidate_receipt=candidate,
+        bootstrap_samples=20,
+    )
+    automatic = build_report(
+        corpus=corpus,
+        trials=abstained,
+        negatives=negatives,
+        candidate_receipt=candidate,
+        bootstrap_samples=20,
+        require_treatment_injection=False,
+    )
+
+    assert strict["claim"]["measurement_valid"] is False
+    assert automatic["claim"]["measurement_valid"] is True
+    assert automatic["measurement"]["treatment_injected_trials"] == 47
+
+
 def test_plan_freezes_candidate_budget_and_requires_exact_wheels(tmp_path: Path) -> None:
     pico = tmp_path / "pico.whl"
     myna = tmp_path / "myna.whl"
