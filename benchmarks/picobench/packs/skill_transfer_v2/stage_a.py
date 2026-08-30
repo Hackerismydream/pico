@@ -323,6 +323,28 @@ class StageAExecutor(InstalledSkillTransferExecutor):
         receipt = json.loads(config.long_skill_receipt.read_text(encoding="utf-8"))
         self._long = {row["ability_id"]: row for row in receipt["skills"]}
 
+    def _turn_spec(
+        self,
+        ability: AbilityDefinition,
+        task: HeldOutInstance,
+        *,
+        repetition: int,
+        arm_id: str,
+        workspace: Path,
+        state: Path,
+    ) -> dict[str, Any]:
+        spec = super()._turn_spec(
+            ability,
+            task,
+            repetition=repetition,
+            arm_id=arm_id,
+            workspace=workspace,
+            state=state,
+        )
+        if self._config.anchor_profile == "pico_policy":
+            _apply_pico_policy_execution_contract(spec)
+        return spec
+
     def run_stage_a_trial(
         self,
         ability: AbilityDefinition,
@@ -601,6 +623,19 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _apply_pico_policy_execution_contract(spec: dict[str, Any]) -> dict[str, Any]:
+    spec["prompt"] = (
+        f"{spec['prompt']}\n\n"
+        "Any selected memory Skill body is already inline under # Skills. Do not search for a Skill file. "
+        "Read solution.py and smoke.py, replace the stub in solution.py, run smoke.py, and finish."
+    )
+    disabled = list(spec.get("disabled_tools", ()))
+    if "skill_read" not in disabled:
+        disabled.append("skill_read")
+    spec["disabled_tools"] = disabled
+    return spec
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--corpus", type=Path, required=True)
@@ -615,6 +650,7 @@ def main() -> int:
     parser.add_argument("--verify", action="store_true")
     parser.add_argument("--anchor-profile", choices=("generic", "pico_policy"), default="generic")
     parser.add_argument("--hard-cap-cny", type=float, default=3.5)
+    parser.add_argument("--max-tool-iterations", type=int, default=5)
     args = parser.parse_args()
     config = StageAConfig(
         corpus_path=args.corpus,
@@ -626,6 +662,7 @@ def main() -> int:
         myna_commit=args.myna_commit,
         anchor_profile=args.anchor_profile,
         hard_cap_cny=args.hard_cap_cny,
+        max_tool_iterations=args.max_tool_iterations,
     )
     corpus = load_corpus(config.corpus_path)
     digest = canonical_digest(config.manifest(corpus))

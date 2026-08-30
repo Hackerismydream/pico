@@ -4,7 +4,10 @@ from pathlib import Path
 
 from benchmarks.picobench.packs.skill_transfer.campaign import load_corpus
 from benchmarks.picobench.packs.skill_transfer.fixtures import materialize, verify
-from benchmarks.picobench.packs.skill_transfer_v2.stage_a import anchor_content
+from benchmarks.picobench.packs.skill_transfer_v2.stage_a import (
+    _apply_pico_policy_execution_contract,
+    anchor_content,
+)
 
 CORPUS = Path("benchmarks/picobench/tasks/pico_ability_transfer_v1.json")
 
@@ -20,6 +23,21 @@ def test_pico_policy_anchor_uses_learning_evidence_without_held_out_content() ->
     assert "Trigger" in body
     assert "Procedure and boundaries" in body
     assert "Verification evidence" in body
+
+
+def test_pico_policy_execution_contract_uses_inline_memory_skill_body() -> None:
+    spec = {
+        "prompt": "Implement the requested policy.",
+        "disabled_tools": ["ask_user"],
+    }
+
+    contracted = _apply_pico_policy_execution_contract(spec)
+
+    assert contracted is spec
+    assert contracted["disabled_tools"] == ["ask_user", "skill_read"]
+    assert "already inline under # Skills" in contracted["prompt"]
+    assert "replace the stub" in contracted["prompt"]
+    assert "run smoke.py" in contracted["prompt"]
 
 
 def test_verification_receipt_held_out_fixtures_accept_the_pico_policy(tmp_path: Path) -> None:
