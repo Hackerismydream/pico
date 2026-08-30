@@ -166,7 +166,8 @@ class CampaignConfig:
     def maximum_provider_attempts(self) -> int:
         extraction_attempts = self.maximum_candidate_attempts
         task_attempts = self.planned_trials * (self.max_tool_iterations + 1) * self.max_attempts_per_call
-        return extraction_attempts + task_attempts
+        gate_attempts = self.planned_trials // 2 if self.execution_profile == "ability_gate" else 0
+        return extraction_attempts + task_attempts + gate_attempts
 
     @property
     def maximum_candidate_attempts(self) -> int:

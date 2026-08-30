@@ -350,6 +350,9 @@ async def run_turn(
     pico_config.skill_forge.router.enabled = skill_forge_enabled
     pico_config.skill_forge.rewrite_enabled = False
     pico_config.skill_forge.llm_gate_enabled = bool(spec.get("llm_gate_enabled", False))
+    pico_config.skill_forge.llm_gate_max_tokens = int(
+        spec.get("llm_gate_max_tokens", pico_config.skill_forge.llm_gate_max_tokens)
+    )
     pico_config.runtime.checkpoint.policy = "never"
     pico_config.base = config
     pico_config.token_wise.smart_routing.enabled = False

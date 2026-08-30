@@ -462,6 +462,8 @@ def _apply_ability_gate_execution_contract(spec: dict[str, Any]) -> dict[str, An
             disabled.append(name)
     spec["disabled_tools"] = disabled
     spec["llm_gate_enabled"] = True
+    spec["llm_gate_max_tokens"] = 512
+    spec["max_logical_calls_per_trial"] = int(spec["max_logical_calls_per_trial"]) + 1
     return spec
 
 

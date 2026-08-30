@@ -334,14 +334,21 @@ def test_ability_gate_profile_freezes_gate_and_bounded_execution(tmp_path: Path)
 
     manifest = plan(config)["manifest"]
     spec = skill_runner._apply_ability_gate_execution_contract(
-        {"prompt": "Implement the policy.", "disabled_tools": ["ask_user"]}
+        {
+            "prompt": "Implement the policy.",
+            "disabled_tools": ["ask_user"],
+            "max_logical_calls_per_trial": 9,
+        }
     )
 
     assert manifest["execution"]["execution_profile"] == "ability_gate"
     assert manifest["execution"]["max_tool_iterations"] == 8
     assert spec["llm_gate_enabled"] is True
+    assert spec["llm_gate_max_tokens"] == 512
+    assert spec["max_logical_calls_per_trial"] == 10
     assert spec["disabled_tools"] == ["ask_user", "find", "grep", "list_dir", "skill_read"]
     assert "call edit_file" in spec["prompt"]
+    assert manifest["budget"]["maximum_provider_attempts"] == 924
 
 
 def test_corpus_rejects_cross_split_identity_reuse(tmp_path: Path) -> None:
