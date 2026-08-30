@@ -48,10 +48,13 @@ class StageAConfig:
     output_usd_per_million: float = 0.28
     conservative_usd_to_cny_multiplier: float = 7.5
     hard_cap_cny: float = 3.5
+    anchor_profile: Literal["generic", "pico_policy"] = "generic"
 
     def __post_init__(self) -> None:
         if self.repetitions != 2:
             raise ValueError("Stage A requires exactly two repetitions")
+        if self.anchor_profile not in {"generic", "pico_policy"}:
+            raise ValueError("unsupported Stage A Anchor profile")
         for path in (self.corpus_path, self.long_skill_receipt, self.pico_wheel, self.myna_wheel):
             if not path.is_file():
                 raise ValueError(f"missing Stage A input: {path}")
@@ -64,33 +67,66 @@ class StageAConfig:
     def maximum_provider_attempts(self) -> int:
         return self.planned_trials * (self.max_tool_iterations + 1) * self.max_attempts_per_call
 
+    @property
+    def manifest_schema(self) -> str:
+        return (
+            "pico.picobench.pico-ability-transfer.stage-a.manifest.v1"
+            if self.anchor_profile == "pico_policy"
+            else SCHEMA
+        )
+
+    @property
+    def report_schema(self) -> str:
+        return (
+            "pico.picobench.pico-ability-transfer.stage-a.report.v1"
+            if self.anchor_profile == "pico_policy"
+            else "pico.picobench.skill-transfer-v2.stage-a.report.v1"
+        )
+
     def manifest(self, corpus: SkillTransferCorpus) -> dict[str, Any]:
+        execution = {
+            "provider": self.provider,
+            "model": self.model,
+            "repetitions": self.repetitions,
+            "planned_trials": self.planned_trials,
+            "seed": self.seed,
+            "max_tool_iterations": self.max_tool_iterations,
+            "oracle_gate_is_credential_free": True,
+            "pico_commit": self.pico_commit,
+            "myna_commit": self.myna_commit,
+            "pico_wheel_sha256": _sha256(self.pico_wheel),
+            "myna_wheel_sha256": _sha256(self.myna_wheel),
+        }
+        if self.anchor_profile != "generic":
+            execution["anchor_profile"] = self.anchor_profile
+        arms = {
+            "no_skill": "no Skill candidate or Gate call",
+            "long_skill": "v1 automatic long Skill with deterministic oracle routing",
+            "anchor_skill": "learning-only compact anchor with deterministic oracle routing",
+        }
+        if self.anchor_profile == "pico_policy":
+            arms = {
+                "no_skill": "no Skill candidate or Gate call",
+                "long_skill": "Myna-derived Pico policy Skill with deterministic Ability routing",
+                "anchor_skill": "learning-only Pico Ability card with deterministic Ability routing",
+            }
         return {
-            "schema": SCHEMA,
-            "stage": "knowledge_upper_bound",
+            "schema": self.manifest_schema,
+            "stage": (
+                "repository_private_knowledge_upper_bound"
+                if self.anchor_profile == "pico_policy"
+                else "knowledge_upper_bound"
+            ),
             "corpus_digest": corpus.digest,
             "long_skill_receipt_digest": _sha256(self.long_skill_receipt),
             "anchor_projection_digest": canonical_digest(
-                {ability.ability_id: anchor_content(ability) for ability in corpus.abilities}
+                {
+                    ability.ability_id: anchor_content(ability, profile=self.anchor_profile)
+                    for ability in corpus.abilities
+                }
             ),
-            "arms": {
-                "no_skill": "no Skill candidate or Gate call",
-                "long_skill": "v1 automatic long Skill with deterministic oracle routing",
-                "anchor_skill": "learning-only compact anchor with deterministic oracle routing",
-            },
-            "execution": {
-                "provider": self.provider,
-                "model": self.model,
-                "repetitions": self.repetitions,
-                "planned_trials": self.planned_trials,
-                "seed": self.seed,
-                "max_tool_iterations": self.max_tool_iterations,
-                "oracle_gate_is_credential_free": True,
-                "pico_commit": self.pico_commit,
-                "myna_commit": self.myna_commit,
-                "pico_wheel_sha256": _sha256(self.pico_wheel),
-                "myna_wheel_sha256": _sha256(self.myna_wheel),
-            },
+            "arms": arms,
+            "execution": execution,
             "analysis": {
                 "primary_contrast": "anchor_skill - no_skill",
                 "bootstrap_unit": "held_out_instance",
@@ -128,9 +164,27 @@ class StageATrial:
         return self.status == "passed"
 
 
-def anchor_content(ability: AbilityDefinition) -> str:
+def anchor_content(
+    ability: AbilityDefinition,
+    *,
+    profile: Literal["generic", "pico_policy"] = "generic",
+) -> str:
     evidence = "\n".join(f"- {item.result}" for item in ability.learning)
     checks = "\n".join(f"- {item.verification}" for item in ability.learning)
+    if profile == "pico_policy":
+        return (
+            f"## Trigger\n\n{ability.goal}\n\n"
+            "## Procedure and boundaries\n\n"
+            f"{evidence}\n\n"
+            "Apply these repository rules exactly when the current task implements the same Pico contract. "
+            "Do not generalize them to a merely similar topic. Preserve the supplied function interface, inspect "
+            "the local fixture, edit only solution.py, and treat the task statement and executable verifier as authority.\n\n"
+            "## Verification evidence\n\n"
+            f"{checks}\n\n"
+            "Run smoke.py before finishing. Do not modify smoke.py or create unrelated files."
+        )
+    if profile != "generic":
+        raise ValueError("unsupported Stage A Anchor profile")
     return (
         f"## Use this strategy when\n\n{ability.goal}\n\n"
         "Treat repository code and tests as the authority. Inspect the target implementation before editing, "
@@ -161,7 +215,12 @@ def long_content(skill: dict[str, Any]) -> str:
 
 
 def build_report(
-    corpus: SkillTransferCorpus, trials: tuple[StageATrial, ...], *, samples: int, seed: int
+    corpus: SkillTransferCorpus,
+    trials: tuple[StageATrial, ...],
+    *,
+    samples: int,
+    seed: int,
+    schema: str = "pico.picobench.skill-transfer-v2.stage-a.report.v1",
 ) -> dict[str, Any]:
     expected = {
         (task.instance_id, repetition, arm)
@@ -230,13 +289,15 @@ def build_report(
     anchor_interval = clustered_bootstrap_interval(anchor_per_task, samples=samples, seed=seed)
     long_interval = clustered_bootstrap_interval(long_per_task, samples=samples, seed=seed)
     passes = {arm: sum(row.passed for row in trials if row.arm_id == arm) for arm in ARMS}
-    jsonl = next(ability for ability in corpus.abilities if ability.ability_id == "jsonl_dedup")
-    jsonl_ids = {item.instance_id for item in jsonl.held_out}
-    capability_floor = not any(
-        row.passed for row in trials if row.task_id in jsonl_ids and row.arm_id in {"no_skill", "anchor_skill"}
-    )
+    capability_floor = {}
+    for ability in corpus.abilities:
+        task_ids = {item.instance_id for item in ability.held_out}
+        if not any(
+            row.passed for row in trials if row.task_id in task_ids and row.arm_id in {"no_skill", "anchor_skill"}
+        ):
+            capability_floor[ability.ability_id] = True
     return {
-        "schema": "pico.picobench.skill-transfer-v2.stage-a.report.v1",
+        "schema": schema,
         "ship_complete": observed == expected,
         "measurement_valid": valid and len(anchor_per_task) == 24,
         "trials": len(trials),
@@ -251,7 +312,7 @@ def build_report(
             "ci95_pp": [100 * long_interval.lower, 100 * long_interval.upper],
             "tasks": long_interval.tasks,
         },
-        "capability_floor": {"jsonl_dedup": capability_floor},
+        "capability_floor": capability_floor,
         "continue_to_stage_b": bool(valid and len(anchor_per_task) == 24 and anchor_interval.lower > 0),
     }
 
@@ -290,7 +351,11 @@ class StageAExecutor(InstalledSkillTransferExecutor):
         )
         expected_id = None
         if arm_id != "no_skill":
-            body = long_content(self._long[ability.ability_id]) if arm_id == "long_skill" else anchor_content(ability)
+            body = (
+                long_content(self._long[ability.ability_id])
+                if arm_id == "long_skill"
+                else anchor_content(ability, profile=self._config.anchor_profile)
+            )
             revision = hashlib.sha256(body.encode()).hexdigest()
             expected_id = f"oracle/{arm_id}/{ability.ability_id}@{revision}"
             spec.update(
@@ -427,7 +492,11 @@ def run(config: StageAConfig, *, approval_digest: str, api_key: str, api_base: s
                             handle.write(json.dumps(asdict(row), sort_keys=True) + "\n")
                         records[key] = row
     report = build_report(
-        corpus, tuple(records[key] for key in sorted(records)), samples=config.bootstrap_samples, seed=config.seed
+        corpus,
+        tuple(records[key] for key in sorted(records)),
+        samples=config.bootstrap_samples,
+        seed=config.seed,
+        schema=config.report_schema,
     )
     _write(output / "aggregate.json", report)
     _write(output / "provider-budget-report.json", asdict(ledger.snapshot()))
@@ -445,6 +514,7 @@ def verify_artifacts(config: StageAConfig) -> dict[str, Any]:
         tuple(records[key] for key in sorted(records)),
         samples=config.bootstrap_samples,
         seed=config.seed,
+        schema=config.report_schema,
     )
     aggregate = json.loads((output / "aggregate.json").read_text(encoding="utf-8"))
     approval = json.loads((output / "provider-budget-approval.json").read_text(encoding="utf-8"))
@@ -543,6 +613,7 @@ def main() -> int:
     parser.add_argument("--approval-digest")
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--verify", action="store_true")
+    parser.add_argument("--anchor-profile", choices=("generic", "pico_policy"), default="generic")
     args = parser.parse_args()
     config = StageAConfig(
         corpus_path=args.corpus,
@@ -552,6 +623,7 @@ def main() -> int:
         myna_wheel=args.myna_wheel,
         pico_commit=args.pico_commit,
         myna_commit=args.myna_commit,
+        anchor_profile=args.anchor_profile,
     )
     corpus = load_corpus(config.corpus_path)
     digest = canonical_digest(config.manifest(corpus))

@@ -1,0 +1,299 @@
+{
+  "schema": "pico.picobench.skill-transfer.tasks.v1",
+  "abilities": [
+    {
+      "ability_id": "verification_receipts",
+      "goal": "Classify only unmasked executable verification commands as Pico verification receipts.",
+      "learning": [
+        {
+          "instance_id": "learn-receipt-01",
+          "result": "Unwrapped an optional 'uv run' prefix, then accepted only pytest, mypy, tox, nox, selected ruff actions, selected make targets, package-manager test/build commands, cargo build/check/test, go build/test/vet, and common JVM build tools.",
+          "verification": "uv run pytest tests/test_turn_evidence.py"
+        },
+        {
+          "instance_id": "learn-receipt-02",
+          "result": "Rejected commands containing shell control operators including &&, ||, semicolon, pipe, ampersand, carriage return, or newline so a failing check cannot be masked.",
+          "verification": "uv run pytest tests/test_turn_evidence.py -k compound"
+        },
+        {
+          "instance_id": "learn-receipt-03",
+          "result": "Did not treat prose such as 'tests passed' or unrelated commands as verification evidence; command outcome remains a separate observed receipt.",
+          "verification": "uv run pytest tests/test_turn_evidence.py -k invent"
+        }
+      ],
+      "held_out": [
+        {
+          "instance_id": "eval-receipt-01",
+          "prompt": "Implement Pico's verification_name classifier for direct and uv-wrapped Python checks.",
+          "fixture": {"kind": "verification_receipts", "variant": "python_checks"}
+        },
+        {
+          "instance_id": "eval-receipt-02",
+          "prompt": "Implement Pico's verification_name classifier so compound shell commands cannot masquerade as successful checks.",
+          "fixture": {"kind": "verification_receipts", "variant": "masked_commands"}
+        },
+        {
+          "instance_id": "eval-receipt-03",
+          "prompt": "Implement Pico's verification_name classifier for supported package and compiled-language build commands.",
+          "fixture": {"kind": "verification_receipts", "variant": "package_commands"}
+        },
+        {
+          "instance_id": "eval-receipt-04",
+          "prompt": "Implement Pico's verification_name classifier without inventing evidence from unrelated commands or prose.",
+          "fixture": {"kind": "verification_receipts", "variant": "non_checks"}
+        }
+      ],
+      "hard_negatives": [
+        {"instance_id": "negative-receipt-01", "query": "Build a shell pipeline that archives pytest logs."},
+        {"instance_id": "negative-receipt-02", "query": "Explain how GitHub Actions displays test badges."},
+        {"instance_id": "negative-receipt-03", "query": "Write release notes saying all checks passed."},
+        {"instance_id": "negative-receipt-04", "query": "Compare package-manager lockfile formats."}
+      ]
+    },
+    {
+      "ability_id": "derived_skill_admission",
+      "goal": "Apply Pico's fail-closed admission policy to Memory-derived Skill candidates.",
+      "learning": [
+        {
+          "instance_id": "learn-admission-01",
+          "result": "Marked Memory-derived candidates as gate-required; Provider, timeout, and parse failures abstained from those candidates while preserving legacy Local candidates.",
+          "verification": "uv run pytest tests/test_skill_forge_gate.py -k gate_required"
+        },
+        {
+          "instance_id": "learn-admission-02",
+          "result": "Accepted only exact candidate IDs. An unknown ID invalidated a gate-required decision instead of silently injecting the known subset.",
+          "verification": "uv run pytest tests/test_skill_forge_gate.py -k unknown_id"
+        },
+        {
+          "instance_id": "learn-admission-03",
+          "result": "Treated an explicit empty selection as a valid rejection and limited successful admission to the configured maximum.",
+          "verification": "uv run pytest tests/test_skill_forge_gate.py -k 'empty_skills or max_select'"
+        }
+      ],
+      "held_out": [
+        {
+          "instance_id": "eval-admission-01",
+          "prompt": "Implement select_skills so a failed Gate preserves Local candidates but cannot inject learned Memory candidates.",
+          "fixture": {"kind": "derived_skill_admission", "variant": "provider_failure"}
+        },
+        {
+          "instance_id": "eval-admission-02",
+          "prompt": "Implement select_skills with Pico's exact-ID policy for an unknown Gate selection.",
+          "fixture": {"kind": "derived_skill_admission", "variant": "unknown_id"}
+        },
+        {
+          "instance_id": "eval-admission-03",
+          "prompt": "Implement select_skills so an explicit empty Gate decision injects nothing.",
+          "fixture": {"kind": "derived_skill_admission", "variant": "explicit_empty"}
+        },
+        {
+          "instance_id": "eval-admission-04",
+          "prompt": "Implement select_skills with exact ordering and Pico's two-Skill admission limit.",
+          "fixture": {"kind": "derived_skill_admission", "variant": "bounded_selection"}
+        }
+      ],
+      "hard_negatives": [
+        {"instance_id": "negative-admission-01", "query": "Rank local documentation files for a search page."},
+        {"instance_id": "negative-admission-02", "query": "Design an HTTP gateway admission controller."},
+        {"instance_id": "negative-admission-03", "query": "Select two songs for a short playlist."},
+        {"instance_id": "negative-admission-04", "query": "Explain memory allocation in CPython."}
+      ]
+    },
+    {
+      "ability_id": "checkpoint_policy",
+      "goal": "Resolve Pico's shadow-checkpoint policy from configuration and invocation mode.",
+      "learning": [
+        {
+          "instance_id": "learn-checkpoint-01",
+          "result": "Policy 'never' disables checkpoints for every invocation mode.",
+          "verification": "uv run pytest tests/test_runtime_checkpoint_bug2_deep.py -k policy_never"
+        },
+        {
+          "instance_id": "learn-checkpoint-02",
+          "result": "Policy 'always' enables checkpoints even for non-interactive one-shot runs.",
+          "verification": "uv run pytest tests/test_runtime_checkpoint_bug2_deep.py -k policy_always"
+        },
+        {
+          "instance_id": "learn-checkpoint-03",
+          "result": "Default policy 'interactive' follows the caller's interactive signal: TUI, REPL, and gateway runs enable it; one-shot message runs do not.",
+          "verification": "uv run pytest tests/test_runtime_checkpoint_bug2_deep.py -k interactive_gated"
+        }
+      ],
+      "held_out": [
+        {
+          "instance_id": "eval-checkpoint-01",
+          "prompt": "Implement checkpoint_active for Pico's never policy across interactive and one-shot calls.",
+          "fixture": {"kind": "checkpoint_policy", "variant": "never"}
+        },
+        {
+          "instance_id": "eval-checkpoint-02",
+          "prompt": "Implement checkpoint_active for Pico's always policy across invocation modes.",
+          "fixture": {"kind": "checkpoint_policy", "variant": "always"}
+        },
+        {
+          "instance_id": "eval-checkpoint-03",
+          "prompt": "Implement checkpoint_active for Pico's default interactive policy.",
+          "fixture": {"kind": "checkpoint_policy", "variant": "interactive"}
+        },
+        {
+          "instance_id": "eval-checkpoint-04",
+          "prompt": "Implement checkpoint_active with explicit validation of Pico's supported policy values.",
+          "fixture": {"kind": "checkpoint_policy", "variant": "invalid"}
+        }
+      ],
+      "hard_negatives": [
+        {"instance_id": "negative-checkpoint-01", "query": "Create a database checkpoint during compaction."},
+        {"instance_id": "negative-checkpoint-02", "query": "Explain interactive rebasing in Git."},
+        {"instance_id": "negative-checkpoint-03", "query": "Save a video-game checkpoint every minute."},
+        {"instance_id": "negative-checkpoint-04", "query": "Compare one-shot and few-shot prompting."}
+      ]
+    },
+    {
+      "ability_id": "source_failure_isolation",
+      "goal": "Isolate a failing Skill source while preserving successful source results and diagnostics.",
+      "learning": [
+        {
+          "instance_id": "learn-source-01",
+          "result": "Converted one source exception into an empty contribution and preserved hits returned by other sources.",
+          "verification": "uv run pytest tests/test_phase_a_default_engine.py -k failure_degrades"
+        },
+        {
+          "instance_id": "learn-source-02",
+          "result": "Recorded failed source names in source order and mapped each name to its exception type.",
+          "verification": "uv run pytest tests/test_skill_forge_router.py -k failure"
+        },
+        {
+          "instance_id": "learn-source-03",
+          "result": "Returned an empty result rather than raising when every source failed; failure diagnostics remained available.",
+          "verification": "uv run pytest tests/test_skill_forge_router.py -k all_sources"
+        }
+      ],
+      "held_out": [
+        {
+          "instance_id": "eval-source-01",
+          "prompt": "Implement isolate_sources so a Memory failure does not remove successful Local Skill hits.",
+          "fixture": {"kind": "source_failure_isolation", "variant": "one_failure"}
+        },
+        {
+          "instance_id": "eval-source-02",
+          "prompt": "Implement isolate_sources with ordered failure names and stable failure-type diagnostics.",
+          "fixture": {"kind": "source_failure_isolation", "variant": "ordered_diagnostics"}
+        },
+        {
+          "instance_id": "eval-source-03",
+          "prompt": "Implement isolate_sources when all configured Skill sources fail.",
+          "fixture": {"kind": "source_failure_isolation", "variant": "all_fail"}
+        },
+        {
+          "instance_id": "eval-source-04",
+          "prompt": "Implement isolate_sources without changing successful source or hit ordering.",
+          "fixture": {"kind": "source_failure_isolation", "variant": "stable_order"}
+        }
+      ],
+      "hard_negatives": [
+        {"instance_id": "negative-source-01", "query": "Merge citation lists from three successful sources."},
+        {"instance_id": "negative-source-02", "query": "Explain electrical fault isolation."},
+        {"instance_id": "negative-source-03", "query": "Sort data-source names alphabetically."},
+        {"instance_id": "negative-source-04", "query": "Retry a failed file download."}
+      ]
+    },
+    {
+      "ability_id": "delivery_accounting",
+      "goal": "Classify PicoBench delivery independently from Runner completion.",
+      "learning": [
+        {
+          "instance_id": "learn-delivery-01",
+          "result": "Classified an emitted response through the matching outlet as delivered.",
+          "verification": "uv run pytest tests/test_picobench_trial_host.py -k scheduler"
+        },
+        {
+          "instance_id": "learn-delivery-02",
+          "result": "Classified outlet rejection, Provider failure, and a completed-but-silent Turn as dropped rather than successful delivery.",
+          "verification": "uv run pytest tests/test_picobench_trial_host.py -k 'dropped or missing_delivery'"
+        },
+        {
+          "instance_id": "learn-delivery-03",
+          "result": "Classified an event with no matching outlet as no_outlet, distinct from a matching outlet that dropped it.",
+          "verification": "uv run pytest tests/test_picobench_trial_host.py -k no_outlet"
+        }
+      ],
+      "held_out": [
+        {
+          "instance_id": "eval-delivery-01",
+          "prompt": "Implement delivery_outcome for a completed Pico Turn whose response reached the matching outlet.",
+          "fixture": {"kind": "delivery_accounting", "variant": "delivered"}
+        },
+        {
+          "instance_id": "eval-delivery-02",
+          "prompt": "Implement delivery_outcome for matching outlets that reject output or receive a silent Turn.",
+          "fixture": {"kind": "delivery_accounting", "variant": "dropped"}
+        },
+        {
+          "instance_id": "eval-delivery-03",
+          "prompt": "Implement delivery_outcome when no outlet matches the Turn's channel.",
+          "fixture": {"kind": "delivery_accounting", "variant": "no_outlet"}
+        },
+        {
+          "instance_id": "eval-delivery-04",
+          "prompt": "Implement delivery_outcome so Runner state and user-visible delivery remain separate facts.",
+          "fixture": {"kind": "delivery_accounting", "variant": "runner_failure"}
+        }
+      ],
+      "hard_negatives": [
+        {"instance_id": "negative-delivery-01", "query": "Estimate parcel delivery time from Shanghai."},
+        {"instance_id": "negative-delivery-02", "query": "Implement email retry after an SMTP rejection."},
+        {"instance_id": "negative-delivery-03", "query": "Explain an electrical outlet safety rating."},
+        {"instance_id": "negative-delivery-04", "query": "Track food delivery driver location."}
+      ]
+    },
+    {
+      "ability_id": "activation_governance",
+      "goal": "Keep an Evolver candidate pending until its gates and human activation authority are satisfied.",
+      "learning": [
+        {
+          "instance_id": "learn-activation-01",
+          "result": "A promoted candidate begins in pending_human and does not move HEAD, edit the live checkout, deploy, or auto-activate.",
+          "verification": "uv run pytest tests/test_evolver_activation_artifacts.py -k pending_human"
+        },
+        {
+          "instance_id": "learn-activation-02",
+          "result": "Only runtime candidates may pass the production activation gate; prompt, policy, route, Skill, and model-profile candidates remain unsupported for automatic activation.",
+          "verification": "uv run pytest tests/test_evolver_activation_artifacts.py -k runtime"
+        },
+        {
+          "instance_id": "learn-activation-03",
+          "result": "A candidate without credited sealed evidence cannot become activation-ready even when train-side promotion succeeded.",
+          "verification": "uv run pytest tests/test_evolver_activation_artifacts.py -k sealed"
+        }
+      ],
+      "held_out": [
+        {
+          "instance_id": "eval-activation-01",
+          "prompt": "Implement activation_state for a promoted runtime candidate awaiting human authority.",
+          "fixture": {"kind": "activation_governance", "variant": "pending_human"}
+        },
+        {
+          "instance_id": "eval-activation-02",
+          "prompt": "Implement activation_state for non-runtime candidate kinds at Pico's production gate.",
+          "fixture": {"kind": "activation_governance", "variant": "unsupported_kind"}
+        },
+        {
+          "instance_id": "eval-activation-03",
+          "prompt": "Implement activation_state when sealed evidence is not credited.",
+          "fixture": {"kind": "activation_governance", "variant": "sealed_not_credited"}
+        },
+        {
+          "instance_id": "eval-activation-04",
+          "prompt": "Implement activation_state for the exact runtime candidate that passed evidence gates and received human approval.",
+          "fixture": {"kind": "activation_governance", "variant": "approved_runtime"}
+        }
+      ],
+      "hard_negatives": [
+        {"instance_id": "negative-activation-01", "query": "Activate a Python virtual environment."},
+        {"instance_id": "negative-activation-02", "query": "Explain neural-network activation functions."},
+        {"instance_id": "negative-activation-03", "query": "Promote a release candidate after CI."},
+        {"instance_id": "negative-activation-04", "query": "Change a feature flag from pending to active."}
+      ]
+    }
+  ]
+}

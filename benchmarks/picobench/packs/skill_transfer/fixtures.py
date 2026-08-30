@@ -20,6 +20,21 @@ def materialize(workspace: Path, fixture: dict[str, Any]) -> tuple[str, ...]:
             "def safe_path(workspace, candidate, *, allow_root=False):\n    raise NotImplementedError\n"
         ),
         "async_cleanup": "async def run_managed(factories, body):\n    raise NotImplementedError\n",
+        "verification_receipts": "def verification_name(command):\n    raise NotImplementedError\n",
+        "derived_skill_admission": (
+            "def select_skills(candidates, selected_ids=None, *, gate_failed=False, max_select=2, legacy_top_k=5):\n"
+            "    raise NotImplementedError\n"
+        ),
+        "checkpoint_policy": "def checkpoint_active(policy, *, interactive):\n    raise NotImplementedError\n",
+        "source_failure_isolation": "def isolate_sources(sources):\n    raise NotImplementedError\n",
+        "delivery_accounting": (
+            "def delivery_outcome(*, runner_state, outlet_matches, emitted, outlet_accepted):\n"
+            "    raise NotImplementedError\n"
+        ),
+        "activation_governance": (
+            "def activation_state(candidate_kind, *, train_promoted, sealed_credited, human_approved):\n"
+            "    raise NotImplementedError\n"
+        ),
     }.get(kind)
     if starter is None:
         raise ValueError(f"unknown skill transfer fixture: {kind}")
@@ -87,6 +102,24 @@ def _smoke(kind: str) -> str:
             "async def factory(): return R()\n"
             "async def body(resources): return len(resources)\n"
             "assert asyncio.run(run_managed([factory], body)) == 1"
+        ),
+        "verification_receipts": "assert verification_name('uv run pytest -q') == 'pytest'",
+        "derived_skill_admission": (
+            "candidates = [{'id':'local/a','gate_required':False},{'id':'myna/b','gate_required':True}]\n"
+            "assert select_skills(candidates, gate_failed=True) == ['local/a']"
+        ),
+        "checkpoint_policy": "assert checkpoint_active('interactive', interactive=True) is True",
+        "source_failure_isolation": (
+            "result = isolate_sources([{'name':'local','hits':['a']},{'name':'memory','error_type':'TimeoutError'}])\n"
+            "assert result['hits'] == ['a']"
+        ),
+        "delivery_accounting": (
+            "assert delivery_outcome(runner_state='completed', outlet_matches=True, emitted=True, "
+            "outlet_accepted=True) == 'delivered'"
+        ),
+        "activation_governance": (
+            "assert activation_state('runtime', train_promoted=True, sealed_credited=True, "
+            "human_approved=False) == 'pending_human'"
         ),
     }
     return f"from solution import *\n{examples[kind]}\n"
@@ -249,6 +282,185 @@ def _async(module: Any, variant: str) -> dict[str, bool]:
     return asyncio.run(scenario())
 
 
+def _verification_receipts(module: Any, variant: str) -> dict[str, bool]:
+    cases = {
+        "python_checks": {
+            "pytest": ("pytest -q", "pytest"),
+            "uv_pytest": ("uv run pytest tests -q", "pytest"),
+            "mypy": ("mypy src", "mypy"),
+            "ruff": ("ruff check src", "ruff"),
+            "unsupported_ruff": ("ruff analyze src", None),
+        },
+        "masked_commands": {
+            "or_mask": ("pytest || true", None),
+            "and_mask": ("make check && echo ok", None),
+            "pipe_mask": ("pytest | tee test.log", None),
+            "sequence_mask": ("cargo test; echo done", None),
+            "background_mask": ("go test ./... &", None),
+            "newline_mask": ("pytest\necho ok", None),
+        },
+        "package_commands": {
+            "npm_test": ("npm test", "npm"),
+            "npm_build": ("npm run build", "npm"),
+            "pnpm_test": ("pnpm run test", "pnpm"),
+            "cargo_check": ("cargo check", "cargo"),
+            "go_vet": ("go vet ./...", "go"),
+            "maven": ("./mvnw test", "mvnw"),
+        },
+        "non_checks": {
+            "prose": ("echo tests passed", None),
+            "python_wrapper": ("python -m pytest", None),
+            "make_deploy": ("make deploy", None),
+            "npm_lint": ("npm run lint", None),
+            "empty": ("", None),
+            "broken_quote": ("pytest '", None),
+        },
+    }[variant]
+    return {name: module.verification_name(command) == expected for name, (command, expected) in cases.items()}
+
+
+def _derived_skill_admission(module: Any, variant: str) -> dict[str, bool]:
+    local_a = {"id": "local/a", "gate_required": False}
+    local_b = {"id": "local/b", "gate_required": False}
+    myna_a = {"id": "myna/a", "gate_required": True}
+    myna_b = {"id": "myna/b", "gate_required": True}
+    myna_c = {"id": "myna/c", "gate_required": True}
+    if variant == "provider_failure":
+        return {
+            "derived_abstains": module.select_skills([myna_a, local_a, myna_b, local_b], gate_failed=True)
+            == ["local/a", "local/b"],
+            "legacy_limit": module.select_skills(
+                [local_a, local_b, {"id": "local/c", "gate_required": False}],
+                gate_failed=True,
+                legacy_top_k=2,
+            )
+            == ["local/a", "local/b"],
+        }
+    if variant == "unknown_id":
+        return {
+            "unknown_invalidates": module.select_skills([myna_a, local_a], ["myna/a", "ghost/missing"]) == ["local/a"]
+        }
+    if variant == "explicit_empty":
+        return {"empty_rejects_derived": module.select_skills([myna_a, local_a, myna_b], []) == ["local/a"]}
+    return {
+        "bounded_exact_selection": module.select_skills(
+            [myna_a, local_a, myna_b, myna_c],
+            ["myna/c", "myna/b", "myna/a"],
+            max_select=2,
+        )
+        == ["local/a", "myna/b", "myna/c"]
+    }
+
+
+def _checkpoint_policy(module: Any, variant: str) -> dict[str, bool]:
+    if variant in {"never", "always", "interactive"}:
+        expected = {
+            "never": (False, False),
+            "always": (True, True),
+            "interactive": (True, False),
+        }[variant]
+        return {
+            "interactive_call": module.checkpoint_active(variant, interactive=True) is expected[0],
+            "one_shot_call": module.checkpoint_active(variant, interactive=False) is expected[1],
+        }
+    try:
+        module.checkpoint_active("sometimes", interactive=True)
+        rejected = False
+    except ValueError:
+        rejected = True
+    return {"invalid_rejected": rejected}
+
+
+def _source_failure_isolation(module: Any, variant: str) -> dict[str, bool]:
+    local = {"name": "local", "hits": ["local/a", "local/b"]}
+    memory_failure = {"name": "memory", "error_type": "TimeoutError"}
+    hub_failure = {"name": "hub", "error_type": "ConnectionError"}
+    if variant == "one_failure":
+        result = module.isolate_sources([local, memory_failure])
+        return {
+            "healthy_hits_preserved": result["hits"] == ["local/a", "local/b"],
+            "failure_recorded": result["failed_sources"] == ["memory"],
+        }
+    if variant == "ordered_diagnostics":
+        result = module.isolate_sources([hub_failure, local, memory_failure])
+        return {
+            "failure_order": result["failed_sources"] == ["hub", "memory"],
+            "failure_types": result["failure_types"] == {"hub": "ConnectionError", "memory": "TimeoutError"},
+        }
+    if variant == "all_fail":
+        result = module.isolate_sources([memory_failure, hub_failure])
+        return {
+            "empty_hits": result["hits"] == [],
+            "all_failures_visible": result["failed_sources"] == ["memory", "hub"],
+        }
+    result = module.isolate_sources(
+        [
+            {"name": "first", "hits": ["a", "b"]},
+            {"name": "empty", "hits": []},
+            {"name": "last", "hits": ["c"]},
+        ]
+    )
+    return {
+        "hit_order": result["hits"] == ["a", "b", "c"],
+        "no_false_failures": result["failed_sources"] == [] and result["failure_types"] == {},
+    }
+
+
+def _delivery_accounting(module: Any, variant: str) -> dict[str, bool]:
+    def classify(runner_state: str, outlet_matches: bool, emitted: bool, outlet_accepted: bool) -> str:
+        return module.delivery_outcome(
+            runner_state=runner_state,
+            outlet_matches=outlet_matches,
+            emitted=emitted,
+            outlet_accepted=outlet_accepted,
+        )
+
+    if variant == "delivered":
+        return {"delivered": classify("completed", True, True, True) == "delivered"}
+    if variant == "dropped":
+        return {
+            "silent_dropped": classify("completed", True, False, True) == "dropped",
+            "rejected_dropped": classify("completed", True, True, False) == "dropped",
+        }
+    if variant == "no_outlet":
+        return {
+            "unmatched": classify("completed", False, True, True) == "no_outlet",
+            "unmatched_silent": classify("completed", False, False, False) == "no_outlet",
+        }
+    return {
+        "provider_failure_dropped": classify("provider_failed", True, False, True) == "dropped",
+        "runtime_error_dropped": classify("error", True, True, True) == "dropped",
+    }
+
+
+def _activation_governance(module: Any, variant: str) -> dict[str, bool]:
+    def state(kind: str, train: bool, sealed: bool, human: bool) -> str:
+        return module.activation_state(
+            kind,
+            train_promoted=train,
+            sealed_credited=sealed,
+            human_approved=human,
+        )
+
+    if variant == "pending_human":
+        return {"awaits_authority": state("runtime", True, True, False) == "pending_human"}
+    if variant == "unsupported_kind":
+        return {
+            "skill_ineligible": state("skill", True, True, True) == "ineligible",
+            "prompt_ineligible": state("prompt", True, True, True) == "ineligible",
+            "route_ineligible": state("route", True, True, True) == "ineligible",
+        }
+    if variant == "sealed_not_credited":
+        return {
+            "sealed_gate": state("runtime", True, False, True) == "ineligible",
+            "train_gate": state("runtime", False, True, True) == "ineligible",
+        }
+    return {
+        "human_makes_ready": state("runtime", True, True, True) == "ready",
+        "not_auto_activated": state("runtime", True, True, True) != "activated",
+    }
+
+
 _CHECKS: dict[str, Callable[[Any, str], dict[str, bool]]] = {
     "config_precedence": _config,
     "retry_after": _retry,
@@ -256,6 +468,12 @@ _CHECKS: dict[str, Callable[[Any, str], dict[str, bool]]] = {
     "jsonl_dedup": _jsonl,
     "path_containment": _path,
     "async_cleanup": _async,
+    "verification_receipts": _verification_receipts,
+    "derived_skill_admission": _derived_skill_admission,
+    "checkpoint_policy": _checkpoint_policy,
+    "source_failure_isolation": _source_failure_isolation,
+    "delivery_accounting": _delivery_accounting,
+    "activation_governance": _activation_governance,
 }
 
 
