@@ -222,7 +222,7 @@ class CampaignConfig:
                     "max_attempts_per_call": self.candidate_max_attempts_per_call,
                     "max_input_tokens": self.candidate_max_input_tokens_per_call,
                     "max_output_tokens": self.max_output_tokens_per_call,
-                    "prompt_revision": "myna-skill-extractor-v1",
+                    "prompt_revision": "myna-skill-extractor-v2",
                     "thinking": "disabled",
                 },
             },

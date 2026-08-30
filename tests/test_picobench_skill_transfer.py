@@ -305,7 +305,7 @@ def test_plan_freezes_candidate_budget_and_requires_exact_wheels(tmp_path: Path)
         "max_attempts_per_call": 2,
         "max_input_tokens": 16_384,
         "max_output_tokens": 1024,
-        "prompt_revision": "myna-skill-extractor-v1",
+        "prompt_revision": "myna-skill-extractor-v2",
         "thinking": "disabled",
     }
     assert frozen["manifest"]["sealed_inputs"]["candidate_worker_receives_learning_projection_only"] is True

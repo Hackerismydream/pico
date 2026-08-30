@@ -137,7 +137,7 @@ class InstalledSkillTransferExecutor(InstalledTrialExecutor):
             "extractor": {
                 "provider": self._config.provider,
                 "model": self._config.model,
-                "prompt_revision": "myna-skill-extractor-v1",
+                "prompt_revision": "myna-skill-extractor-v2",
                 "thinking": "disabled",
                 "provider_request_attempts": provider.ledger.snapshot().request_attempts,
             },
