@@ -71,27 +71,29 @@ Stage A hard cap: CNY 5.
 
 ### Stage B: automatic Pico + Myna path
 
-Run the same held-out tasks with three repetitions:
+Run the same held-out tasks with two repetitions:
 
-- `no_memory`;
-- `myna_shadow`, which recalls and Gates but injects nothing; and
-- `myna_gate`, which injects only an exact candidate selected by Pico.
+- `control`, which keeps the same captured Experiences but has no active
+  derived Skill; and
+- `myna_gate`, which injects only an exact active revision selected by Myna
+  Recall and Pico's Gate.
 
-The primary contrasts are `myna_gate - no_memory` and selected-task
-`myna_gate - myna_shadow`. Gate failures and invalid responses abstain.
+The primary contrast is `myna_gate - control`. Gate failures, invalid
+responses, and deliberate empty selections abstain and remain part of the
+end-to-end treatment effect.
 
 Run all 24 confusing negatives through Recall and Gate. A positive automatic
 claim requires:
 
 - complete, identity-disjoint Trials and provenance;
 - task-clustered 95 percent lower bound above zero for end-to-end task effect;
-- zero incorrect injection on obvious negatives and at most one on confusing
-  negatives;
+- zero incorrect Gate selection on confusing negatives;
 - no Ability below a -12.5 percentage-point non-inferiority floor; and
 - complete offline reconstruction of results, resources, Gate receipts,
   budgets, and inventory.
 
-Stage B hard cap: CNY 10.
+Stage B hard cap: CNY 80. The cap is a conservative reservation based on the
+maximum request shape; actual Provider charges are reported from the ledger.
 
 ## Evidence boundary
 

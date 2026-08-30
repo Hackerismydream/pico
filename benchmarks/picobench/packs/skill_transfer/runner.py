@@ -530,9 +530,15 @@ def _apply_ability_gate_execution_contract(spec: dict[str, Any]) -> dict[str, An
 
 
 def _skill_body(content: dict[str, Any]) -> str:
-    sections = [f"# {content['name']}", str(content["description"])]
-    for title, key in (("Applicability", "applicability"), ("Procedure", "procedure")):
-        sections.append(f"## {title}\n" + "\n".join(f"- {item}" for item in content[key]))
+    sections = [
+        f"# {content['name']}",
+        str(content["description"]),
+        "## Applicability\n" + "\n".join(f"- {item}" for item in content["applicability"]),
+        "## Procedure\n" + "\n".join(f"{index}. {item}" for index, item in enumerate(content["procedure"], 1)),
+        "## Verification\n" + "\n".join(f"- {item}" for item in content["verification"]),
+    ]
+    if content["failure_avoidance"]:
+        sections.append("## Failure avoidance\n" + "\n".join(f"- {item}" for item in content["failure_avoidance"]))
     return "\n\n".join(sections)
 
 

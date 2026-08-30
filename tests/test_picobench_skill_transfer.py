@@ -405,6 +405,25 @@ def test_ability_gate_profile_freezes_gate_and_bounded_execution(tmp_path: Path)
     assert manifest["budget"]["maximum_provider_attempts"] == 948
 
 
+def test_hard_negative_gate_uses_the_complete_skill_card() -> None:
+    body = skill_runner._skill_body(
+        {
+            "name": "Repository policy",
+            "description": "Apply the repository policy.",
+            "applicability": ["Use when the trigger is present."],
+            "procedure": ["Apply the decision table."],
+            "verification": ["Check the observable result."],
+            "failure_avoidance": ["Reject a missing trigger."],
+        }
+    )
+
+    assert "## Applicability" in body
+    assert "## Procedure" in body
+    assert "## Verification" in body
+    assert "## Failure avoidance" in body
+    assert "1. Apply the decision table." in body
+
+
 def test_corpus_rejects_cross_split_identity_reuse(tmp_path: Path) -> None:
     raw = CORPUS.read_text(encoding="utf-8").replace('"eval-config-01"', '"learn-config-01"', 1)
     path = tmp_path / "overlap.json"
