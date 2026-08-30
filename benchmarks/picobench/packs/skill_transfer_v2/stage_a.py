@@ -614,6 +614,7 @@ def main() -> int:
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--verify", action="store_true")
     parser.add_argument("--anchor-profile", choices=("generic", "pico_policy"), default="generic")
+    parser.add_argument("--hard-cap-cny", type=float, default=3.5)
     args = parser.parse_args()
     config = StageAConfig(
         corpus_path=args.corpus,
@@ -624,6 +625,7 @@ def main() -> int:
         pico_commit=args.pico_commit,
         myna_commit=args.myna_commit,
         anchor_profile=args.anchor_profile,
+        hard_cap_cny=args.hard_cap_cny,
     )
     corpus = load_corpus(config.corpus_path)
     digest = canonical_digest(config.manifest(corpus))
