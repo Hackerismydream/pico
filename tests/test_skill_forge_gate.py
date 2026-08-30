@@ -189,6 +189,7 @@ async def test_tools_block_present_when_tools_given() -> None:
     assert "# Agent Tools" in prompt
     assert "read_file" in prompt
     assert "exec" in prompt
+    assert "decision rule, parser or classifier contract" in prompt
 
 
 async def test_tools_block_absent_when_tools_none() -> None:

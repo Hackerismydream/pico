@@ -199,7 +199,9 @@ class LLMGateFilter:
                 "self-contained procedure that the agent can execute "
                 "with just the listed tools (e.g. query-writing "
                 "strategies, verification workflows, "
-                "search-result interpretation).\n\n"
+                "search-result interpretation). A repository decision rule, parser or classifier contract, "
+                "or implementation invariant is executable when the agent can apply it by editing the current files "
+                "and running checks; the Skill does not need to name a separate external tool.\n\n"
             )
         return (
             "You are a skill selector for an autonomous agent.\n\n"
