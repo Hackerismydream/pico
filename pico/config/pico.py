@@ -529,6 +529,20 @@ class TracingConfig(_Base):
     preview_len: int = 500
 
 
+class MaintenanceConfig(_Base):
+    """Operator-authorized Issue maintenance workflow configuration."""
+
+    enabled: bool = False
+    repository: str = ""
+    base_ref: str = "origin/main"
+    allowed_chats: list[str] = Field(default_factory=list)
+    maintainers: list[str] = Field(default_factory=list)
+    acceptance_commands: list[str] = Field(default_factory=list)
+    runner_config: str = ""
+    agent_timeout_seconds: int = Field(default=1800, ge=30, le=7200)
+    command_timeout_seconds: int = Field(default=1200, ge=1, le=7200)
+
+
 # ---------------------------------------------------------------------------
 # 根配置
 # ---------------------------------------------------------------------------
@@ -551,6 +565,7 @@ class PicoConfig(_Base):
     skill_forge: SkillForgeConfig = Field(default_factory=SkillForgeConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     tracing: TracingConfig = Field(default_factory=TracingConfig)
+    maintenance: MaintenanceConfig = Field(default_factory=MaintenanceConfig)
 
     # CFG-1：插件系统与记忆后端。
     plugins: PluginsConfig = Field(default_factory=PluginsConfig)

@@ -80,3 +80,41 @@ pico channels set feishu --allow-from ou_xxxxxxxxxxxxxxxx
 ```
 
 修改后重启 Gateway。不要把 App Secret、Encrypt Key 或 Verification Token 写入文档和 Git。
+
+## 可选：开源项目维护 MVP
+
+维护模式把普通群聊、问题收集和代码修复分开：群成员仍可 @ 机器人问答，也可以发送
+`/issue <问题描述>`，得到持久化的本地 Issue Proposal 编号；只有配置中的维护者可以发送
+`/fix <Issue 编号、Issue Proposal 编号或 GitHub Issue URL>`。Issue Proposal 不会自动发布到
+GitHub；维护者对其执行 `/fix pi_xxx` 即表示确认进入修复流水线。
+维护任务使用独立 Session 和临时 Git worktree，生成本地 PR Candidate；它不会 Push、创建 PR
+或评论 Issue。
+
+```json
+{
+  "maintenance": {
+    "enabled": true,
+    "repository": "/absolute/path/to/pico",
+    "baseRef": "origin/main",
+    "allowedChats": ["oc_xxxxxxxxxxxxxxxx"],
+    "maintainers": ["ou_xxxxxxxxxxxxxxxx"],
+    "acceptanceCommands": ["uv run pytest -q"],
+    "runnerConfig": "/absolute/path/to/maintenance-runner.json"
+  }
+}
+```
+
+Gateway 配置应禁用 `write_file`、`edit_file`、`exec` 和 `spawn`，只负责公开问答。`runnerConfig`
+是独立的受限配置：保持默认 Workspace（每个任务由 Repair Worktree 的工作目录绑定）、启用
+`restrictToWorkspace`、不启用飞书 Channel，不包含 GitHub 凭证。两份配置都应使用仅运行用户可读
+的文件权限。
+
+每个 Candidate 位于当前 Pico 实例数据目录的 `maintenance/candidates/<job-id>/`，至少包含：
+
+- `candidate.patch`：针对固定 Base Revision 的 Patch；
+- `manifest.json`：Issue、Base Revision、修改文件、命令、退出码和最终状态；
+- `agent.log` 与检查日志；
+- `CANDIDATE.md`：供 Maintainer 快速审阅的摘要。
+
+只有干净验证 worktree 中的全部命令通过时，状态才是 `candidate_ready`。Agent 无修改、命令失败、
+Patch 无法重放或 Gateway 中断分别保留为 `blocked` 或 `verification_failed`，不能写成修复成功。

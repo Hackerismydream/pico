@@ -234,6 +234,25 @@ live Channel gate against a real bot has also passed.
 _Avoid_: reading `beta` as unfinished code — it names the evidence behind the adapter,
 not its code quality
 
+**Issue Proposal**:
+A Bug or maintenance request submitted from an authorized Channel with `/issue <description>`.
+It persists the source message, Chat, submitter, and description under a stable local identifier,
+but does not become a GitHub Issue. A Maintainer confirms it by starting `/fix <proposal-id>` or
+publishes it separately under the project's GitHub policy.
+_Avoid_: "Issue" — the proposal has no GitHub URL or external lifecycle yet.
+
+**Maintenance Job**:
+A persistent, maintainer-authorized Issue repair attempt that runs outside the shared Channel
+Session. It binds the source message, Issue or Issue Proposal reference, repository Base Revision, isolated repair
+worktree, configured checks, and terminal result. Public Channel messages cannot inject into it.
+_Avoid_: "maintenance Turn" — the Agent Turn is one execution step inside the longer Job.
+
+**PR Candidate**:
+The local evidence packet produced only after a patch applies to a clean worktree at the recorded
+Base Revision and all configured verifier commands pass there. It contains the patch, changed-file
+list, commands, exit codes, logs, and verdict; it does not Push, create a PR, or authorize release.
+_Avoid_: "PR" — no external GitHub object exists.
+
 **TUI**:
 The terminal front-end (`ui-tui/`) and the only interactive local front-end; talks to
 the Runtime solely via TUI-RPC. Not a Channel.

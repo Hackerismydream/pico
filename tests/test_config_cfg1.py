@@ -11,6 +11,7 @@ import pytest
 
 from pico.config.loader import EXTENSION_KEYS
 from pico.config.pico import (
+    MaintenanceConfig,
     MemoryConfig,
     PicoConfig,
     PluginsConfig,
@@ -66,6 +67,8 @@ class TestDefaults:
 
     def test_root_default_factories_wired(self) -> None:
         c = PicoConfig()
+        assert isinstance(c.maintenance, MaintenanceConfig)
+        assert c.maintenance.enabled is False
         assert isinstance(c.plugins, PluginsConfig)
         assert isinstance(c.memory, MemoryConfig)
         assert isinstance(c.skill_forge.router, SkillForgeRouterConfig)
@@ -104,6 +107,9 @@ class TestKeyAliasing:
 
 
 class TestExtensionKeys:
+    def test_maintenance_listed(self) -> None:
+        assert "maintenance" in EXTENSION_KEYS
+
     def test_plugins_listed(self) -> None:
         assert "plugins" in EXTENSION_KEYS
 
@@ -135,6 +141,14 @@ class TestLoaderIntegration:
             tmp_path,
             {
                 "plugins": {"disabled": ["test-memory"], "config": {}},
+                "maintenance": {
+                    "enabled": True,
+                    "repository": "/srv/pico",
+                    "baseRef": "origin/main",
+                    "allowedChats": ["oc_pico"],
+                    "maintainers": ["ou_owner"],
+                    "acceptanceCommands": ["uv run pytest tests/test_maintenance.py -q"],
+                },
                 "memory": {
                     "backend": "example",
                     "userId": "alice",
@@ -147,6 +161,10 @@ class TestLoaderIntegration:
             },
         )
         cfg = load_pico_config(path)
+        assert cfg.maintenance.enabled is True
+        assert cfg.maintenance.repository == "/srv/pico"
+        assert cfg.maintenance.allowed_chats == ["oc_pico"]
+        assert cfg.maintenance.maintainers == ["ou_owner"]
         assert cfg.plugins.disabled == ["test-memory"]
         assert cfg.plugins.config == {}
         assert cfg.memory.backend == "example"
