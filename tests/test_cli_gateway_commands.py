@@ -33,6 +33,7 @@ _CLEANUP_ORDER = [
     "cron_stop",
     "question_cancel",
     "intake_quiesce",
+    "maintenance_close",
     "spine_teardown",
     "channel_stop_started",
     "channel_stop_finished",
@@ -70,6 +71,7 @@ def _gateway_cleanup_dependencies(*, failures=()):
         "cron": SimpleNamespace(stop=lambda: run_step("cron_stop")),
         "question_broker": SimpleNamespace(cancel_all=lambda: run_step("question_cancel")),
         "channels": SimpleNamespace(quiesce_intake=quiesce_intake, stop_all=stop_channels),
+        "maintenance": SimpleNamespace(close=lambda: run_step("maintenance_close")),
         "gw_teardown": teardown_spine,
         "agent": SimpleNamespace(stop=lambda: run_step("agent_stop")),
         "runtime": SimpleNamespace(close=close_runtime),
@@ -290,6 +292,7 @@ async def test_gateway_attempts_every_cleanup_and_raises_the_first_failure() -> 
         "question_cancel",
         "intake_quiesce",
         "channel_stop",
+        "maintenance_close",
         "spine_teardown",
         "agent_stop",
         "runtime_close",
@@ -419,6 +422,86 @@ async def test_gateway_cancellation_at_intake_barrier_finishes_barrier_before_sp
     assert events[-4:] == ["spine_teardown", "transport_stop", "agent_stop", "runtime_close"]
 
 
+async def test_maintenance_command_is_intercepted_before_the_shared_chat_lane() -> None:
+    from pico.cli.gateway_commands import _build_inbound_dispatch
+    from pico.spine import ChatType, Origin, Source, TurnRequest
+
+    submitted = []
+    delivered = []
+
+    async def deliver(event):
+        delivered.append(event)
+
+    class Maintenance:
+        async def handle(self, req, send):
+            assert req.text == "/fix #123"
+            await send("accepted")
+            return True
+
+        def is_maintainer(self, req):
+            return True
+
+    scheduler = SimpleNamespace(
+        submit=submitted.append,
+        has_inflight=lambda _cid: False,
+        cancel_conversation=lambda _cid: 0,
+    )
+    hub = SimpleNamespace(dispatch=deliver)
+    agent = SimpleNamespace(subagents=SimpleNamespace(cancel_by_session=lambda _cid: None))
+    broker = SimpleNamespace(pending_req=lambda _cid: None)
+    dispatch = _build_inbound_dispatch(
+        scheduler=scheduler,
+        hub=hub,
+        agent=agent,
+        question_broker=broker,
+        maintenance=Maintenance(),
+    )
+    request = TurnRequest(
+        origin=Origin.USER,
+        source=Source("feishu", "oc_pico", "ou_owner", ChatType.GROUP),
+        text="/fix #123",
+    )
+
+    await dispatch(request)
+
+    assert submitted == []
+    assert delivered[0].content == "accepted"
+
+
+async def test_maintenance_profile_blocks_public_restart_command() -> None:
+    from pico.cli.gateway_commands import _build_inbound_dispatch
+    from pico.spine import ChatType, Origin, Source, TurnRequest
+
+    delivered = []
+
+    async def deliver(event):
+        delivered.append(event)
+
+    class Maintenance:
+        async def handle(self, req, send):
+            return False
+
+        def is_maintainer(self, req):
+            return False
+
+    dispatch = _build_inbound_dispatch(
+        scheduler=SimpleNamespace(),
+        hub=SimpleNamespace(dispatch=deliver),
+        agent=SimpleNamespace(),
+        question_broker=SimpleNamespace(),
+        maintenance=Maintenance(),
+    )
+    request = TurnRequest(
+        origin=Origin.USER,
+        source=Source("feishu", "oc_pico", "ou_member", ChatType.GROUP),
+        text="/restart",
+    )
+
+    await dispatch(request)
+
+    assert delivered[0].content == "Only a configured Pico maintainer can use gateway control commands."
+
+
 def test_gateway_log_config_defaults() -> None:
     from pico.config.schema import GatewayConfig
 
@@ -480,23 +563,33 @@ def test_gateway_channels_excludes_tui_alongside_enabled_im() -> None:
     assert "qq" not in result
 
 
-def test_stop_dispatch_cancels_both_scheduler_and_subagents() -> None:
-    """The gateway ``/stop`` path must fan out to BOTH the scheduler lane cancel
-    and the subagent-session cancel, summing their counts.
+async def test_stop_dispatch_cancels_both_scheduler_and_subagents() -> None:
+    from pico.cli.gateway_commands import _build_inbound_dispatch
+    from pico.spine import ChatType, Origin, Source, TurnRequest
 
-    ``_inbound_dispatch`` is a closure nested inside the gateway serve command
-    with no import seam, so this pins the /stop branch of the command source:
-    dropping either cancel call (or the summed count) breaks this test.
-    """
-    import inspect
+    delivered = []
 
-    from pico.cli import gateway_commands
+    async def deliver(event):
+        delivered.append(event)
 
-    src = inspect.getsource(gateway_commands.register)
-    stop_branch = src.split('if cmd == "/stop":', 1)[1].split('elif cmd == "/restart":', 1)[0]
-    assert "cancel_conversation(cid)" in stop_branch
-    assert "cancel_by_session(cid)" in stop_branch
-    assert "stopped +=" in stop_branch
+    async def cancel_subagents(_cid):
+        return 3
+
+    dispatch = _build_inbound_dispatch(
+        scheduler=SimpleNamespace(cancel_conversation=lambda _cid: 2),
+        hub=SimpleNamespace(dispatch=deliver),
+        agent=SimpleNamespace(subagents=SimpleNamespace(cancel_by_session=cancel_subagents)),
+        question_broker=SimpleNamespace(),
+    )
+    request = TurnRequest(
+        origin=Origin.USER,
+        source=Source("feishu", "oc_pico", "ou_owner", ChatType.GROUP),
+        text="/stop",
+    )
+
+    await dispatch(request)
+
+    assert delivered[0].content == "Stopped 5 task(s)."
 
 
 # ---------------------------------------------------------------------------

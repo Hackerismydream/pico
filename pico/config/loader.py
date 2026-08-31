@@ -39,6 +39,7 @@ EXTENSION_KEYS = (
     "runtime",
     # 仓库内可观测性 tracing（pico.tracing）。
     "tracing",
+    "maintenance",
 )
 
 # 保存当前配置路径的全局变量，用于多实例支持。

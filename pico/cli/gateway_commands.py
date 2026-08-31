@@ -85,6 +85,48 @@ def _build_gateway_channels(config) -> set[str]:
     return {name for name in _GATEWAY_IM_CHANNELS if getattr(getattr(config.channels, name, None), "enabled", False)}
 
 
+def _build_inbound_dispatch(*, scheduler, hub, agent, question_broker, maintenance=None):
+    from dataclasses import replace
+
+    from pico.spine import Text
+    from pico.spine.turn import BusyPolicy
+
+    async def dispatch(req) -> None:
+        async def send(content: str) -> None:
+            await hub.dispatch(Text(content=content, source=req.source))
+
+        if maintenance is not None and await maintenance.handle(req, send):
+            return
+        cmd = req.text.strip().lower()
+        cid = req.conversation or f"{req.source.channel}:{req.source.chat_id}"
+        if cmd in {"/stop", "/restart"} and maintenance is not None and not maintenance.is_maintainer(req):
+            await send("Only a configured Pico maintainer can use gateway control commands.")
+        elif cmd == "/stop":
+            stopped = scheduler.cancel_conversation(cid)
+            stopped += await agent.subagents.cancel_by_session(cid)
+            content = f"Stopped {stopped} task(s)." if stopped else "No active task to stop."
+            await send(content)
+        elif cmd == "/restart":
+            await send("Restarting...")
+
+            async def restart() -> None:
+                import os
+                import sys
+
+                await asyncio.sleep(1)
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+
+            asyncio.create_task(restart())
+        elif question_broker.pending_req(cid) is not None:
+            question_broker.reply(cid, req.text)
+        elif scheduler.has_inflight(cid):
+            scheduler.submit(replace(req, busy=BusyPolicy.INJECT))
+        else:
+            scheduler.submit(req)
+
+    return dispatch
+
+
 async def _health_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
     """Answer any request with a 200 ``{"status":"ok"}`` liveness body."""
     try:
@@ -109,6 +151,7 @@ async def _cleanup_gateway(
     gw_teardown: Callable[[], object] | None,
     agent: Any,
     runtime: Any,
+    maintenance: Any | None = None,
 ) -> None:
     """Attempt every cleanup step, then raise the highest-priority failure."""
     first_error: BaseException | None = None
@@ -135,6 +178,8 @@ async def _cleanup_gateway(
     if question_broker is not None:
         await attempt("question broker", question_broker.cancel_all)
     await attempt("channel intake", channels.quiesce_intake)
+    if maintenance is not None:
+        await attempt("maintenance", maintenance.close)
     if gw_teardown is not None:
         await attempt("spine", gw_teardown)
     await attempt("channel transports", channels.stop_all)
@@ -197,6 +242,14 @@ def register(app: typer.Typer) -> None:
             raise typer.Exit(code=1)
 
         ec_config = load_pico_config()
+        from pico.config.paths import get_runtime_subdir
+        from pico.maintenance import build_maintenance_coordinator
+
+        maintenance = build_maintenance_coordinator(
+            ec_config.maintenance,
+            workspace=paths.workspace,
+            state_dir=get_runtime_subdir("maintenance"),
+        )
         print_deprecated_memory_window_notice(config)
         port = port if port is not None else config.gateway.port
 
@@ -301,43 +354,13 @@ def register(app: typer.Typer) -> None:
                 if (ask_tool := agent.tools.get("ask_user")) is not None and hasattr(ask_tool, "set_broker"):
                     ask_tool.set_broker(question_broker)
 
-                # 渠道入站通过 spine：获准消息提交为 USER 轮次。/stop 和 /restart 是控制命令
-                # （总线排空器的职责），在此拦截而不提交为轮次，否则智能体会回复命令文本。cid 与
-                # 通道键（conversation 或 channel:chat_id）一致，也是总线路径 _handle_stop 使用的会话键。
-                from dataclasses import replace
-
-                from pico.spine import Text
-                from pico.spine.turn import BusyPolicy
-
-                async def _inbound_dispatch(req) -> None:
-                    cmd = req.text.strip().lower()
-                    cid = req.conversation or f"{req.source.channel}:{req.source.chat_id}"
-                    if cmd == "/stop":
-                        stopped = gw_scheduler.cancel_conversation(cid)
-                        stopped += await agent.subagents.cancel_by_session(cid)
-                        content = f"Stopped {stopped} task(s)." if stopped else "No active task to stop."
-                        await gw_hub.dispatch(Text(content=content, source=req.source))
-                    elif cmd == "/restart":
-                        await gw_hub.dispatch(Text(content="Restarting...", source=req.source))
-
-                        async def _do_restart() -> None:
-                            import os
-                            import sys
-
-                            await asyncio.sleep(1)
-                            os.execv(sys.executable, [sys.executable] + sys.argv)
-
-                        asyncio.create_task(_do_restart())
-                    elif question_broker.pending_req(cid) is not None:
-                        # 当前会话阻塞在 ask_user 问题上；把答案路由到代理器以解决等待中的工具，
-                        # 而不是启动或注入新轮次。
-                        question_broker.reply(cid, req.text)
-                    elif gw_scheduler.has_inflight(cid):
-                        # 当前会话已有轮次在运行；以 BusyPolicy.INJECT 提交，使循环在下一次迭代合并该消息，
-                        # 而不是排队新轮次。
-                        gw_scheduler.submit(replace(req, busy=BusyPolicy.INJECT))
-                    else:
-                        gw_scheduler.submit(req)  # 发出后不等待，也不读回
+                _inbound_dispatch = _build_inbound_dispatch(
+                    scheduler=gw_scheduler,
+                    hub=gw_hub,
+                    agent=agent,
+                    question_broker=question_broker,
+                    maintenance=maintenance,
+                )
 
                 for _ch in channels.channels.values():
                     _ch.intake.set_submit(_inbound_dispatch)
@@ -372,6 +395,7 @@ def register(app: typer.Typer) -> None:
                 gw_teardown=gw_teardown,
                 agent=agent,
                 runtime=runtime,
+                maintenance=maintenance,
             )
 
         asyncio.run(run())
