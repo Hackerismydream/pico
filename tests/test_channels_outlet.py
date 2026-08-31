@@ -11,7 +11,7 @@ from pico.spine import (
     ToolEvent,
     ToolPhase,
 )
-from pico.spine.delivery import Outlet
+from pico.spine.delivery import Capabilities, Outlet
 from pico.spine.message import Media
 
 
@@ -30,6 +30,24 @@ class _FakeChannel:
         self.sent.append((chat_id, content, media))
 
 
+class _ReplyChannel(_FakeChannel):
+    capabilities = Capabilities(replies=True)
+
+    def __init__(self) -> None:
+        super().__init__("feishu")
+        self.replies: list[tuple[str, str, list[str] | None, bool]] = []
+
+    async def reply(
+        self,
+        message_id: str,
+        content: str,
+        media: list[str] | None = None,
+        *,
+        in_thread: bool = False,
+    ) -> None:
+        self.replies.append((message_id, content, media, in_thread))
+
+
 def test_adapter_satisfies_outlet_protocol():
     adapter = ChannelOutletAdapter(_FakeChannel())
     assert isinstance(adapter, Outlet)
@@ -44,6 +62,23 @@ async def test_deliver_text_calls_channel_send():
     assert len(ch.sent) == 1
     chat_id, content, media = ch.sent[0]
     assert chat_id == "c9" and content == "hi there" and media is None
+
+
+async def test_deliver_text_replies_to_inbound_message_when_channel_supports_it():
+    ch = _ReplyChannel()
+    adapter = ChannelOutletAdapter(ch)
+    source = Source(
+        channel="feishu",
+        chat_id="oc_group",
+        sender_id="ou_user",
+        chat_type=ChatType.GROUP,
+        extras={"message_id": "om_inbound"},
+    )
+
+    await adapter.deliver(Text(content="reply", source=source))
+
+    assert ch.replies == [("om_inbound", "reply", None, True)]
+    assert ch.sent == []
 
 
 async def test_deliver_media_out_sends_local_paths():

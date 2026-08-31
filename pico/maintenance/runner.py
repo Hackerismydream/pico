@@ -5,7 +5,7 @@ import json
 import os
 import re
 import shutil
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
@@ -23,6 +23,7 @@ class CommandReceipt:
 
 
 AgentCommand = Callable[[MaintenanceJob, Path], Sequence[str]]
+ProgressSink = Callable[[str], Awaitable[None]]
 
 
 class GitMaintenanceRunner:
@@ -47,7 +48,11 @@ class GitMaintenanceRunner:
         self.command_timeout_seconds = command_timeout_seconds
         self.agent_environment = dict(agent_environment or {})
 
-    async def run(self, job: MaintenanceJob) -> MaintenanceOutcome:
+    async def run(
+        self,
+        job: MaintenanceJob,
+        progress: ProgressSink | None = None,
+    ) -> MaintenanceOutcome:
         run_root = self.state_dir / "runs" / job.job_id
         repair = run_root / "repair"
         verify = run_root / "verify"
@@ -76,6 +81,7 @@ class GitMaintenanceRunner:
                 (),
                 issue_error,
             )
+        await self._emit_progress(progress, "base locked")
         job = replace(job, issue_ref=issue_ref)
         manifest: dict = {
             "schema": "pico.maintenance.candidate.v1",
@@ -97,6 +103,7 @@ class GitMaintenanceRunner:
         try:
             await self._prepare_worktree(repair, base_commit)
             repair_added = True
+            await self._emit_progress(progress, "reproducing and editing")
             agent_receipt = await self._run_exec(
                 tuple(self.agent_command(job, repair)),
                 cwd=repair,
@@ -125,6 +132,7 @@ class GitMaintenanceRunner:
                 detail = "Candidate contains temporary or runtime artifacts: " + ", ".join(rejected_files)
                 return self._finish(candidate, manifest, state, base_commit, changed_files, detail)
 
+            await self._emit_progress(progress, "repair checks")
             repair_checks = await self._run_checks(repair, candidate, phase="repair")
             manifest["repair_checks"] = [asdict(item) for item in repair_checks]
             if any(item.exit_code != 0 for item in repair_checks):
@@ -134,6 +142,7 @@ class GitMaintenanceRunner:
 
             await self._prepare_worktree(verify, base_commit)
             verify_added = True
+            await self._emit_progress(progress, "clean verification")
             apply_receipt = await self._run_exec(
                 ("git", "apply", "--binary", str(patch_path)),
                 cwd=verify,
@@ -340,6 +349,11 @@ class GitMaintenanceRunner:
     def _safe_environment() -> dict[str, str]:
         allowed = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "TMPDIR")
         return {key: value for key in allowed if (value := os.environ.get(key)) is not None}
+
+    @staticmethod
+    async def _emit_progress(progress: ProgressSink | None, stage: str) -> None:
+        if progress is not None:
+            await progress(stage)
 
     @staticmethod
     def _is_runtime_or_scratch_path(path: str) -> bool:

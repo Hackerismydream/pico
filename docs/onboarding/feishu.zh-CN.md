@@ -83,12 +83,17 @@ pico channels set feishu --allow-from ou_xxxxxxxxxxxxxxxx
 
 ## 可选：开源项目维护 MVP
 
-维护模式把普通群聊、问题收集和代码修复分开：群成员仍可 @ 机器人问答，也可以发送
-`/issue <问题描述>`，得到持久化的本地 Issue Proposal 编号；只有配置中的维护者可以发送
+维护模式把普通群聊、问题策展和代码修复分开：群成员只需正常描述问题，不直接创建 Issue。
+配置中的维护者回复一条用户消息并发送 `/issue`，Bot 会读取被回复的消息并生成持久化的本地
+Issue Proposal；维护者也可以发送 `/issue <问题描述>` 手动整理。只有维护者可以发送
 `/fix <Issue 编号、Issue Proposal 编号或 GitHub Issue URL>`。Issue Proposal 不会自动发布到
-GitHub；维护者对其执行 `/fix pi_xxx` 即表示确认进入修复流水线。
+GitHub；维护者执行 `/fix pi_xxx` 即表示确认进入修复流水线。
 维护任务使用独立 Session 和临时 Git worktree，生成本地 PR Candidate；它不会 Push、创建 PR
 或评论 Issue。
+
+Feishu 出站消息会回复触发它的原消息：在普通群中形成 Reply，在话题群中留在同一话题，不再为
+每条 Agent 输出新建独立话题。Maintenance Job 至少发送 Base 锁定、复现与修改、Repair Checks、
+Clean Verification 和终态；超过 `progressIntervalSeconds` 的阶段会发送低频心跳。
 
 ```json
 {
@@ -99,7 +104,8 @@ GitHub；维护者对其执行 `/fix pi_xxx` 即表示确认进入修复流水�
     "allowedChats": ["oc_xxxxxxxxxxxxxxxx"],
     "maintainers": ["ou_xxxxxxxxxxxxxxxx"],
     "acceptanceCommands": ["uv run pytest -q"],
-    "runnerConfig": "/absolute/path/to/maintenance-runner.json"
+    "runnerConfig": "/absolute/path/to/maintenance-runner.json",
+    "progressIntervalSeconds": 120
   }
 }
 ```
@@ -118,3 +124,7 @@ Gateway 配置应禁用 `write_file`、`edit_file`、`exec` 和 `spawn`，只负
 
 只有干净验证 worktree 中的全部命令通过时，状态才是 `candidate_ready`。Agent 无修改、命令失败、
 Patch 无法重放或 Gateway 中断分别保留为 `blocked` 或 `verification_failed`，不能写成修复成功。
+
+Candidate Packet 同时是后续自进化的维护案例证据，但一次成功修复不能直接改写 Skill。先由维护者
+提名或聚类多个相似案例，再把候选 Skill 放到未参与归纳的历史 Issue 上独立回放；只有稳定提升且
+没有扩大权限边界时，才人工发布到 Skill Registry。

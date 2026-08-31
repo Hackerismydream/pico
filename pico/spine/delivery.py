@@ -51,12 +51,14 @@ class Capabilities:
 
     ``interactive_login`` 供 CLI `channel login` 判断是否支持 QR/扫码登录；``streaming`` 是
     `SupportsStreaming` 的能力槽，只有同时满足 Protocol 与该值为真时 Hub 才发送增量。
-    当前只保留真实消费者会读取的字段。``media``/``reactions`` 仍是 adapter-internal，尚无
+    ``replies`` 让 Channel Outlet 把出站结果绑定到触发它的入站消息或话题。当前只保留真实消费者会
+    读取的字段。``media``/``reactions`` 仍是 adapter-internal，尚无
     路由决策依赖它们；未来必须与消费者一起加入，不能提前制造无效 capability。
     """
 
     interactive_login: bool = False  # QR/扫码登录；由 CLI `channel login` 读取
     streaming: bool = False  # SupportsStreaming 槽位；在 B 阶段启用
+    replies: bool = False  # 平台能把回复绑定到入站消息或话题
 
 
 @runtime_checkable
@@ -70,6 +72,18 @@ class SupportsStreaming(Protocol):
     """
 
     async def send_stream_chunk(self, chat_id: str, stream_id: str, delta: str, *, done: bool = False) -> None: ...
+
+
+@runtime_checkable
+class SupportsReplies(Protocol):
+    async def reply(
+        self,
+        message_id: str,
+        content: str,
+        media: list[str] | None = None,
+        *,
+        in_thread: bool = False,
+    ) -> None: ...
 
 
 @runtime_checkable

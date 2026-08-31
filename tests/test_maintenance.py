@@ -21,18 +21,28 @@ from pico.spine import ChatType, Origin, Source, TurnRequest
 
 
 class _Runner:
-    def __init__(self, outcome: MaintenanceOutcome | None = None) -> None:
+    def __init__(self, outcome: MaintenanceOutcome | None = None, progress: tuple[str, ...] = ()) -> None:
         self.calls = []
         self.outcome = outcome
+        self.progress = progress
 
-    async def run(self, job):
+    async def run(self, job, progress=None):
         self.calls.append(job)
+        for stage in self.progress:
+            await progress(stage)
         if self.outcome is None:
             raise AssertionError("runner should not start")
         return self.outcome
 
 
-def _request(text: str, *, sender: str = "ou_member", message_id: str = "om_1") -> TurnRequest:
+def _request(
+    text: str,
+    *,
+    sender: str = "ou_member",
+    message_id: str = "om_1",
+    extras: dict | None = None,
+) -> TurnRequest:
+    source_extras = {"message_id": message_id, **(extras or {})}
     return TurnRequest(
         origin=Origin.USER,
         source=Source(
@@ -40,7 +50,7 @@ def _request(text: str, *, sender: str = "ou_member", message_id: str = "om_1") 
             chat_id="oc_pico",
             sender_id=sender,
             chat_type=ChatType.GROUP,
-            extras={"message_id": message_id},
+            extras=source_extras,
         ),
         text=text,
     )
@@ -69,7 +79,7 @@ async def test_regular_group_message_stays_on_the_normal_gateway_path(tmp_path: 
     assert runner.calls == []
 
 
-async def test_group_member_can_submit_idempotent_issue_proposal(tmp_path: Path) -> None:
+async def test_maintainer_can_submit_idempotent_issue_proposal(tmp_path: Path) -> None:
     runner = _Runner(MaintenanceOutcome(state=MaintenanceState.BLOCKED, detail="test"))
     coordinator = MaintenanceCoordinator(
         MaintenanceConfig(
@@ -87,7 +97,7 @@ async def test_group_member_can_submit_idempotent_issue_proposal(tmp_path: Path)
 
     request = _request(
         "@_user_1 /issue grep fails when context is 1",
-        sender="ou_member",
+        sender="ou_owner",
         message_id="om_issue",
     )
     assert await coordinator.handle(request, send) is True
@@ -106,6 +116,49 @@ async def test_group_member_can_submit_idempotent_issue_proposal(tmp_path: Path)
     assert len(runner.calls) == 1
     assert runner.calls[0].issue_ref == proposal_id
     assert runner.calls[0].issue_summary == "grep fails when context is 1"
+
+
+async def test_group_member_cannot_promote_issue_proposal(tmp_path: Path) -> None:
+    coordinator = MaintenanceCoordinator(
+        MaintenanceConfig(
+            enabled=True,
+            allowed_chats=["oc_pico"],
+            maintainers=["ou_owner"],
+        ),
+        state_dir=tmp_path,
+        runner=_Runner(),
+    )
+    replies: list[str] = []
+
+    async def send(content: str) -> None:
+        replies.append(content)
+
+    assert await coordinator.handle(_request("/issue untriaged report"), send) is True
+    assert replies == ["Only a configured Pico maintainer can promote issue proposals."]
+
+
+async def test_maintainer_can_promote_replied_message_without_copying_text(tmp_path: Path) -> None:
+    coordinator = MaintenanceCoordinator(
+        MaintenanceConfig(
+            enabled=True,
+            allowed_chats=["oc_pico"],
+            maintainers=["ou_owner"],
+        ),
+        state_dir=tmp_path,
+        runner=_Runner(),
+    )
+    replies: list[str] = []
+
+    async def send(content: str) -> None:
+        replies.append(content)
+
+    request = _request(
+        "@_user_1 /issue",
+        sender="ou_owner",
+        extras={"quoted_text": "grep context fails through registry", "parent_message_id": "om_report"},
+    )
+    assert await coordinator.handle(request, send) is True
+    assert replies[0].startswith("Recorded issue proposal pi_")
 
 
 async def test_non_maintainer_cannot_start_fix_job(tmp_path: Path) -> None:
@@ -139,7 +192,8 @@ async def test_maintainer_fix_runs_once_and_reports_candidate(tmp_path: Path) ->
             base_commit="abc123",
             candidate_dir=candidate_dir,
             changed_files=("pico/example.py",),
-        )
+        ),
+        progress=("repairing", "repair checks", "clean verification"),
     )
     config = MaintenanceConfig(
         enabled=True,
@@ -159,6 +213,11 @@ async def test_maintainer_fix_runs_once_and_reports_candidate(tmp_path: Path) ->
     assert runner.calls[0].issue_ref == "#123"
     assert runner.calls[0].source_message_id == "om_same"
     assert replies[0].startswith("Accepted maintenance job pm_")
+    assert [stage for stage in replies if "Stage:" in stage] == [
+        f"Maintenance job {runner.calls[0].job_id} - Stage: repairing.",
+        f"Maintenance job {runner.calls[0].job_id} - Stage: repair checks.",
+        f"Maintenance job {runner.calls[0].job_id} - Stage: clean verification.",
+    ]
     assert "candidate_ready" in replies[-1]
     assert "pico/example.py" in replies[-1]
     assert "base: abc123" in replies[-1]
@@ -292,13 +351,18 @@ async def test_runner_replays_patch_and_writes_candidate_packet(tmp_path: Path) 
         command_timeout_seconds=30,
     )
     job = MaintenanceJob("pm_test", "om_test", "#123", "oc_pico", "ou_owner")
+    stages: list[str] = []
 
-    outcome = await runner.run(job)
+    async def progress(stage: str) -> None:
+        stages.append(stage)
+
+    outcome = await runner.run(job, progress)
 
     assert outcome.state is MaintenanceState.CANDIDATE_READY
     assert outcome.base_commit == _git(repo, "rev-parse", "main")
     assert outcome.changed_files == ("behavior.txt",)
     assert outcome.candidate_dir is not None
+    assert stages == ["base locked", "reproducing and editing", "repair checks", "clean verification"]
     assert (outcome.candidate_dir / "candidate.patch").read_text(encoding="utf-8")
     manifest = json.loads((outcome.candidate_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["state"] == "candidate_ready"

@@ -541,6 +541,7 @@ class MaintenanceConfig(_Base):
     runner_config: str = ""
     agent_timeout_seconds: int = Field(default=1800, ge=30, le=7200)
     command_timeout_seconds: int = Field(default=1200, ge=1, le=7200)
+    progress_interval_seconds: int = Field(default=120, ge=30, le=3600)
 
 
 # ---------------------------------------------------------------------------

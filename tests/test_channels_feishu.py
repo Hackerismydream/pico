@@ -213,6 +213,23 @@ def test_send_text_reaches_sdk_with_chat_id_and_content():
     assert "hello world" in body.content
 
 
+def test_reply_text_uses_message_reply_in_thread():
+    ch = _channel()
+    ch._client = MagicMock()
+    ch._client.im.v1.message.reply.return_value = SimpleNamespace(
+        success=lambda: True,
+        data=SimpleNamespace(message_id="om_reply"),
+    )
+
+    asyncio.run(ch.reply("om_parent", "hello", in_thread=True))
+
+    ch._client.im.v1.message.create.assert_not_called()
+    request = ch._client.im.v1.message.reply.call_args.args[0]
+    assert request.message_id == "om_parent"
+    assert request.request_body.reply_in_thread is True
+    assert "hello" in request.request_body.content
+
+
 def test_send_media_uploads_and_posts_file_key():
     """send(chat_id, "", media=[path]) uploads the media and posts its key;
     empty content sends no text message."""
@@ -361,8 +378,15 @@ def _capture_info_logs():
     return logger, sink_id, lines
 
 
-def _inbound_event(message_id="m1", sender="ou_user"):
-    msg = SimpleNamespace(message_id=message_id, chat_type="p2p", message_type="text", content="{}")
+def _inbound_event(message_id="m1", sender="ou_user", parent_id=None):
+    msg = SimpleNamespace(
+        message_id=message_id,
+        parent_id=parent_id,
+        root_id=None,
+        chat_type="p2p",
+        message_type="text",
+        content="{}",
+    )
     snd = SimpleNamespace(sender_type="user", sender_id=SimpleNamespace(open_id=sender))
     return SimpleNamespace(event=SimpleNamespace(message=msg, sender=snd))
 
@@ -383,6 +407,41 @@ def test_inbound_accept_emits_receipt():
     receipts = [ln for ln in lines if "Feishu inbound accepted:" in ln]
     assert receipts == ["Feishu inbound accepted: message_id=m1 chat_type=p2p msg_type=text"]
     ch.intake.publish.assert_awaited_once()
+
+
+def test_issue_reply_fetches_parent_text_into_metadata():
+    ch = _channel()
+    ch.config.allow_from = ["*"]
+    ch._react = AsyncMock()
+    ch._extract = AsyncMock(return_value=("@_user_1 /issue", []))
+    ch._fetch_message_text = AsyncMock(return_value="reported grep failure")
+    ch.intake.publish = AsyncMock()
+
+    asyncio.run(ch._on_message(_inbound_event(parent_id="om_report")))
+
+    ch._fetch_message_text.assert_awaited_once_with("om_report")
+    metadata = ch.intake.publish.await_args.kwargs["metadata"]
+    assert metadata["parent_message_id"] == "om_report"
+    assert metadata["quoted_text"] == "reported grep failure"
+
+
+def test_fetch_message_text_reads_parent_via_feishu_api():
+    ch = _channel()
+    ch._client = MagicMock()
+    item = SimpleNamespace(
+        msg_type="text",
+        body=SimpleNamespace(content='{"text":"reported failure"}'),
+    )
+    ch._client.im.v1.message.get.return_value = SimpleNamespace(
+        success=lambda: True,
+        data=SimpleNamespace(items=[item]),
+    )
+
+    result = ch._fetch_message_text_sync("om_parent")
+
+    assert result == "reported failure"
+    request = ch._client.im.v1.message.get.call_args.args[0]
+    assert request.message_id == "om_parent"
 
 
 def test_duplicate_event_emits_suppression_receipt():
