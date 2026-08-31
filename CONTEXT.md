@@ -238,8 +238,10 @@ not its code quality
 A Maintainer-curated Bug or maintenance request promoted from an authorized Channel by replying
 `/issue` to a report, or by sending `/issue <description>`. It persists the promotion message,
 Chat, Maintainer, and report text under a stable local identifier,
-but does not become a GitHub Issue. A Maintainer confirms it by starting `/fix <proposal-id>` or
-publishes it separately under the project's GitHub policy.
+but does not become a GitHub Issue. The identifier is diagnostic state rather than the user-facing
+handle: the Channel presents the report title and source link, and a Maintainer confirms it by replying
+`/fix` to that report. Explicit proposal identifiers remain accepted for recovery and automation.
+Publication stays separate under the project's GitHub policy.
 _Avoid_: "Issue" — the proposal has no GitHub URL or external lifecycle yet.
 
 **Maintenance Job**:
@@ -251,7 +253,8 @@ _Avoid_: "maintenance Turn" — the Agent Turn is one execution step inside the 
 **PR Candidate**:
 The local evidence packet produced only after a patch applies to a clean worktree at the recorded
 Base Revision and all configured verifier commands pass there. It contains the patch, changed-file
-list, commands, exit codes, logs, and verdict; it does not Push, create a PR, or authorize release.
+list, commands, exit codes, logs, and verdict. The Channel returns the readable verdict and attaches
+the review report and patch to the originating conversation; it does not Push, create a PR, or authorize release.
 _Avoid_: "PR" — no external GitHub object exists.
 
 **TUI**:

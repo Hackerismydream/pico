@@ -85,15 +85,17 @@ pico channels set feishu --allow-from ou_xxxxxxxxxxxxxxxx
 
 维护模式把普通群聊、问题策展和代码修复分开：群成员只需正常描述问题，不直接创建 Issue。
 配置中的维护者回复一条用户消息并发送 `/issue`，Bot 会读取被回复的消息并生成持久化的本地
-Issue Proposal；维护者也可以发送 `/issue <问题描述>` 手动整理。只有维护者可以发送
-`/fix <Issue 编号、Issue Proposal 编号或 GitHub Issue URL>`。Issue Proposal 不会自动发布到
-GitHub；维护者执行 `/fix pi_xxx` 即表示确认进入修复流水线。
+Issue Proposal，并用可读标题链接回原始飞书话题；维护者也可以发送 `/issue <问题描述>` 手动整理。
+内部 `pi_...` 标识只用于诊断，不作为群聊操作入口。维护者确认后，在原问题下回复 `/fix` 即可进入
+修复流水线；也可以显式发送 `/fix <GitHub Issue 编号或 URL>`。Issue Proposal 不会自动发布到 GitHub。
 维护任务使用独立 Session 和临时 Git worktree，生成本地 PR Candidate；它不会 Push、创建 PR
 或评论 Issue。
 
 Feishu 出站消息会回复触发它的原消息：在普通群中形成 Reply，在话题群中留在同一话题，不再为
 每条 Agent 输出新建独立话题。Maintenance Job 至少发送 Base 锁定、复现与修改、Repair Checks、
 Clean Verification 和终态；超过 `progressIntervalSeconds` 的阶段会发送低频心跳。
+群聊进度使用问题标题而不是内部 `pm_...` Job ID。终态为 `candidate_ready` 时，Bot 会把
+`CANDIDATE.md` 和 `candidate.patch` 作为原话题附件发送，维护者不需要进入本机目录寻找 ID。
 
 ```json
 {

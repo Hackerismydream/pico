@@ -183,6 +183,19 @@ class MaintenanceStore:
         ).fetchone()
         if row is None:
             return None
+        return self._proposal(row)
+
+    def get_proposal_by_source_message(self, source_message_id: str) -> IssueProposal | None:
+        row = self._connection.execute(
+            "SELECT * FROM issue_proposals WHERE source_message_id = ?",
+            (source_message_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._proposal(row)
+
+    @staticmethod
+    def _proposal(row: sqlite3.Row) -> IssueProposal:
         return IssueProposal(
             proposal_id=row["proposal_id"],
             source_message_id=row["source_message_id"],
