@@ -235,8 +235,9 @@ _Avoid_: reading `beta` as unfinished code — it names the evidence behind the 
 not its code quality
 
 **Issue Proposal**:
-A Bug or maintenance request submitted from an authorized Channel with `/issue <description>`.
-It persists the source message, Chat, submitter, and description under a stable local identifier,
+A Maintainer-curated Bug or maintenance request promoted from an authorized Channel by replying
+`/issue` to a report, or by sending `/issue <description>`. It persists the promotion message,
+Chat, Maintainer, and report text under a stable local identifier,
 but does not become a GitHub Issue. A Maintainer confirms it by starting `/fix <proposal-id>` or
 publishes it separately under the project's GitHub policy.
 _Avoid_: "Issue" — the proposal has no GitHub URL or external lifecycle yet.
@@ -244,7 +245,7 @@ _Avoid_: "Issue" — the proposal has no GitHub URL or external lifecycle yet.
 **Maintenance Job**:
 A persistent, maintainer-authorized Issue repair attempt that runs outside the shared Channel
 Session. It binds the source message, Issue or Issue Proposal reference, repository Base Revision, isolated repair
-worktree, configured checks, and terminal result. Public Channel messages cannot inject into it.
+worktree, configured checks, progress stages, and terminal result. Public Channel messages cannot inject into it.
 _Avoid_: "maintenance Turn" — the Agent Turn is one execution step inside the longer Job.
 
 **PR Candidate**:

@@ -14,6 +14,7 @@ from pico.channels.contract import (
     Channel,
     ChannelSpec,
     SupportsLogin,
+    SupportsReplies,
     SupportsStreaming,
 )
 from pico.channels.manager import ChannelManager
@@ -27,5 +28,6 @@ __all__ = [
     "ChannelManager",
     "ChannelSpec",
     "SupportsLogin",
+    "SupportsReplies",
     "SupportsStreaming",
 ]

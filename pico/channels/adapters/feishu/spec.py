@@ -18,6 +18,6 @@ def _make(config):
 SPEC = ChannelSpec(
     display_name="Feishu",
     factory=_make,
-    capabilities=Capabilities(),
+    capabilities=Capabilities(replies=True),
     maturity="live-gated",
 )

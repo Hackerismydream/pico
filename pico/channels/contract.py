@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 # Capabilities 和 SupportsStreaming 定义在 spine.delivery（其消费者是
 # delivery hub）；此处重新导出，让 channel 始终从同一入口导入。
-from pico.spine.delivery import Capabilities, SupportsStreaming
+from pico.spine.delivery import Capabilities, SupportsReplies, SupportsStreaming
 
 if TYPE_CHECKING:
     from pico.channels.intake import Intake
@@ -78,6 +78,7 @@ class ChannelSpec:
 _CAP_PROTOCOLS: tuple[tuple[str, type], ...] = (
     ("interactive_login", SupportsLogin),
     ("streaming", SupportsStreaming),
+    ("replies", SupportsReplies),
 )
 
 

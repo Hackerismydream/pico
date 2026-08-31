@@ -7,6 +7,7 @@ from pico.channels import (
     Channel,
     ChannelSpec,
     SupportsLogin,
+    SupportsReplies,
     SupportsStreaming,
 )
 from pico.channels.contract import capability_violations
@@ -36,9 +37,15 @@ class _WithStreaming(_Min):
     async def send_stream_chunk(self, chat_id, stream_id, delta, *, done=False) -> None: ...
 
 
+class _WithReplies(_Min):
+    capabilities = Capabilities(replies=True)
+
+    async def reply(self, message_id, content, media=None, *, in_thread=False) -> None: ...
+
+
 def test_capabilities_defaults_all_false():
     c = Capabilities()
-    assert (c.interactive_login, c.streaming) == (False, False)
+    assert (c.interactive_login, c.streaming, c.replies) == (False, False, False)
 
 
 def test_channel_spec_fields_and_factory():
@@ -63,14 +70,17 @@ def test_min_satisfies_channel_protocol():
 def test_supports_protocols_are_opt_in():
     assert not isinstance(_Min(), SupportsLogin)
     assert not isinstance(_Min(), SupportsStreaming)
+    assert not isinstance(_Min(), SupportsReplies)
     assert isinstance(_WithLogin(), SupportsLogin)
     assert isinstance(_WithStreaming(), SupportsStreaming)
+    assert isinstance(_WithReplies(), SupportsReplies)
 
 
 def test_capability_violations_consistent():
     assert capability_violations(_Min()) == []
     assert capability_violations(_WithLogin()) == []
     assert capability_violations(_WithStreaming()) == []
+    assert capability_violations(_WithReplies()) == []
 
 
 def test_capability_violations_declared_but_missing():
@@ -82,6 +92,10 @@ def test_capability_violations_declared_but_missing():
     bad_stream = _Min()
     bad_stream.capabilities = Capabilities(streaming=True)
     assert any("streaming" in m for m in capability_violations(bad_stream))
+
+    bad_replies = _Min()
+    bad_replies.capabilities = Capabilities(replies=True)
+    assert any("replies" in m for m in capability_violations(bad_replies))
 
 
 def test_capability_violations_implemented_but_undeclared():
@@ -96,3 +110,8 @@ def test_capability_violations_implemented_but_undeclared():
         async def send_stream_chunk(self, chat_id, stream_id, delta, *, done=False) -> None: ...
 
     assert any("SupportsStreaming" in m for m in capability_violations(_SneakyStream()))
+
+    class _SneakyReplies(_Min):
+        async def reply(self, message_id, content, media=None, *, in_thread=False) -> None: ...
+
+    assert any("SupportsReplies" in m for m in capability_violations(_SneakyReplies()))

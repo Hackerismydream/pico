@@ -69,6 +69,7 @@ class TestDefaults:
         c = PicoConfig()
         assert isinstance(c.maintenance, MaintenanceConfig)
         assert c.maintenance.enabled is False
+        assert c.maintenance.progress_interval_seconds == 120
         assert isinstance(c.plugins, PluginsConfig)
         assert isinstance(c.memory, MemoryConfig)
         assert isinstance(c.skill_forge.router, SkillForgeRouterConfig)

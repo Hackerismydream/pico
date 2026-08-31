@@ -19,6 +19,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 import threading
 import time
 import uuid
@@ -31,6 +32,7 @@ from loguru import logger
 
 from pico.channels.adapters.feishu import cards, content
 from pico.channels.base import ChannelBase
+from pico.channels.contract import Capabilities
 from pico.channels.errors import transient_network
 from pico.channels.media import save_media_bytes
 from pico.channels.transcribe import transcribe_audio
@@ -69,6 +71,7 @@ class FeishuChannel(ChannelBase):
 
     name = "feishu"
     display_name = "Feishu"
+    capabilities = Capabilities(replies=True)
 
     config: FeishuConfig
 
@@ -220,6 +223,29 @@ class FeishuChannel(ChannelBase):
                 raise
             raise TerminalDeliveryError(f"Feishu send failed: {e}") from e
 
+    async def reply(
+        self,
+        message_id: str,
+        content: str,
+        media: list[str] | None = None,
+        *,
+        in_thread: bool = False,
+    ) -> None:
+        if not self._client:
+            raise TerminalDeliveryError("Feishu client not initialized")
+        loop = asyncio.get_running_loop()
+        try:
+            for path in media or []:
+                await self._reply_one_media(loop, message_id, path, in_thread=in_thread)
+            if content and content.strip():
+                await self._reply_text(loop, message_id, content, in_thread=in_thread)
+        except TerminalDeliveryError:
+            raise
+        except Exception as e:
+            if transient_network(e):
+                raise
+            raise TerminalDeliveryError(f"Feishu reply failed: {e}") from e
+
     async def _send_one_media(self, loop, receive_id_type, chat_id, path) -> None:
         if not os.path.isfile(path):
             logger.warning("Media file not found: {}", path)
@@ -235,6 +261,33 @@ class FeishuChannel(ChannelBase):
                 kind = "media" if ext in _PLAYABLE_EXTS else "file"
                 await self._post(loop, receive_id_type, chat_id, kind, {"file_key": key})
 
+    async def _reply_one_media(self, loop, message_id, path, *, in_thread: bool) -> None:
+        if not os.path.isfile(path):
+            logger.warning("Media file not found: {}", path)
+            return
+        ext = os.path.splitext(path)[1].lower()
+        if ext in _IMAGE_EXTS:
+            key = await loop.run_in_executor(None, self._upload_image_sync, path)
+            if key:
+                await self._reply_raw(
+                    loop,
+                    message_id,
+                    "image",
+                    json.dumps({"image_key": key}, ensure_ascii=False),
+                    in_thread=in_thread,
+                )
+        else:
+            key = await loop.run_in_executor(None, self._upload_file_sync, path)
+            if key:
+                kind = "media" if ext in _PLAYABLE_EXTS else "file"
+                await self._reply_raw(
+                    loop,
+                    message_id,
+                    kind,
+                    json.dumps({"file_key": key}, ensure_ascii=False),
+                    in_thread=in_thread,
+                )
+
     async def _send_text(self, loop, receive_id_type, chat_id, text) -> None:
         fmt = cards.detect_format(text)
         if fmt == "text":
@@ -245,11 +298,49 @@ class FeishuChannel(ChannelBase):
             for payload in cards.card_payloads(text):
                 await self._post_raw(loop, receive_id_type, chat_id, "interactive", payload)
 
+    async def _reply_text(self, loop, message_id, text, *, in_thread: bool) -> None:
+        fmt = cards.detect_format(text)
+        if fmt == "text":
+            await self._reply_raw(
+                loop,
+                message_id,
+                "text",
+                cards.text_payload(text),
+                in_thread=in_thread,
+            )
+        elif fmt == "post":
+            await self._reply_raw(
+                loop,
+                message_id,
+                "post",
+                cards.post_payload(text),
+                in_thread=in_thread,
+            )
+        else:
+            for payload in cards.card_payloads(text):
+                await self._reply_raw(
+                    loop,
+                    message_id,
+                    "interactive",
+                    payload,
+                    in_thread=in_thread,
+                )
+
     async def _post(self, loop, receive_id_type, chat_id, msg_type, body: dict) -> None:
         await self._post_raw(loop, receive_id_type, chat_id, msg_type, json.dumps(body, ensure_ascii=False))
 
     async def _post_raw(self, loop, receive_id_type, chat_id, msg_type, content_json: str) -> None:
         await loop.run_in_executor(None, self._send_message_sync, receive_id_type, chat_id, msg_type, content_json)
+
+    async def _reply_raw(self, loop, message_id, msg_type, content_json: str, *, in_thread: bool) -> None:
+        await loop.run_in_executor(
+            None,
+            self._reply_message_sync,
+            message_id,
+            msg_type,
+            content_json,
+            in_thread,
+        )
 
     def _send_message_sync(self, receive_id_type: str, receive_id: str, msg_type: str, content_json: str) -> None:
         from lark_oapi.api.im.v1 import CreateMessageRequest, CreateMessageRequestBody
@@ -274,6 +365,36 @@ class FeishuChannel(ChannelBase):
             )
         sent_id = getattr(getattr(response, "data", None), "message_id", None)
         logger.info("Feishu message sent: msg_type={} message_id={}", msg_type, sent_id)
+
+    def _reply_message_sync(
+        self,
+        message_id: str,
+        msg_type: str,
+        content_json: str,
+        in_thread: bool,
+    ) -> None:
+        from lark_oapi.api.im.v1 import ReplyMessageRequest, ReplyMessageRequestBody
+
+        request = (
+            ReplyMessageRequest.builder()
+            .message_id(message_id)
+            .request_body(
+                ReplyMessageRequestBody.builder()
+                .msg_type(msg_type)
+                .content(content_json)
+                .reply_in_thread(in_thread)
+                .build()
+            )
+            .build()
+        )
+        response = self._client.im.v1.message.reply(request)
+        if not response.success():
+            raise TerminalDeliveryError(
+                f"Feishu {msg_type} reply rejected: code={response.code}, "
+                f"msg={response.msg}, log_id={response.get_log_id()}"
+            )
+        sent_id = getattr(getattr(response, "data", None), "message_id", None)
+        logger.info("Feishu reply sent: msg_type={} message_id={}", msg_type, sent_id)
 
     # ── 媒体上传/下载（逐适配器使用 Lark SDK）────────────────────
 
@@ -518,16 +639,64 @@ class FeishuChannel(ChannelBase):
                 chat_type,
                 msg_type,
             )
+            metadata = {"message_id": message_id, "chat_type": chat_type, "msg_type": msg_type}
+            parent_id = getattr(message, "parent_id", None) or ""
+            root_id = getattr(message, "root_id", None) or ""
+            if parent_id:
+                metadata["parent_message_id"] = parent_id
+            if root_id:
+                metadata["root_message_id"] = root_id
+            command_text = re.sub(r"^(?:@_user_\d+\s*)+", "", content_text).strip()
+            if parent_id and command_text.lower() == "/issue":
+                quoted_text = await self._fetch_message_text(parent_id)
+                if quoted_text:
+                    metadata["quoted_text"] = quoted_text
             reply_to = message.chat_id if chat_type == "group" else sender_id
             await self.intake.publish(
                 sender_id=sender_id,
                 chat_id=reply_to,
                 content=content_text,
                 media=media_paths,
-                metadata={"message_id": message_id, "chat_type": chat_type, "msg_type": msg_type},
+                metadata=metadata,
             )
         except Exception as e:
             logger.error("Error processing Feishu message: {}", e)
+
+    async def _fetch_message_text(self, message_id: str) -> str:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._fetch_message_text_sync, message_id)
+
+    def _fetch_message_text_sync(self, message_id: str) -> str:
+        from lark_oapi.api.im.v1 import GetMessageRequest
+
+        try:
+            request = GetMessageRequest.builder().message_id(message_id).user_id_type("open_id").build()
+            response = self._client.im.v1.message.get(request)
+            if not response.success():
+                logger.warning(
+                    "Failed to fetch replied Feishu message: code={}, msg={}",
+                    response.code,
+                    response.msg,
+                )
+                return ""
+            items = getattr(getattr(response, "data", None), "items", None) or []
+            if not items:
+                return ""
+            item = items[0]
+            body = getattr(getattr(item, "body", None), "content", None) or ""
+            try:
+                payload = json.loads(body) if body else {}
+            except json.JSONDecodeError:
+                return body
+            msg_type = getattr(item, "msg_type", None) or "text"
+            if msg_type == "text":
+                return str(payload.get("text") or "").strip()
+            if msg_type == "post":
+                return content.extract_post(payload)[0]
+            return content.extract_share_card(payload, msg_type)
+        except Exception as exc:
+            logger.warning("Error fetching replied Feishu message {}: {}", message_id, exc)
+            return ""
 
     async def _extract(self, msg_type: str, message: Any, message_id: str) -> tuple[str, list[str]]:
         try:
