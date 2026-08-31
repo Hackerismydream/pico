@@ -642,10 +642,16 @@ class FeishuChannel(ChannelBase):
             metadata = {"message_id": message_id, "chat_type": chat_type, "msg_type": msg_type}
             parent_id = getattr(message, "parent_id", None) or ""
             root_id = getattr(message, "root_id", None) or ""
+            thread_id = getattr(message, "thread_id", None) or ""
             if parent_id:
                 metadata["parent_message_id"] = parent_id
             if root_id:
                 metadata["root_message_id"] = root_id
+            if chat_type == "group" and thread_id.startswith("omt_"):
+                metadata["message_link"] = (
+                    "https://applink.feishu.cn/client/thread/open?"
+                    f"open_chat_id={message.chat_id}&open_thread_id={thread_id}"
+                )
             command_text = re.sub(r"^(?:@_user_\d+\s*)+", "", content_text).strip()
             if parent_id and command_text.lower() == "/issue":
                 quoted_text = await self._fetch_message_text(parent_id)

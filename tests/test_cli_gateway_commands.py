@@ -422,12 +422,16 @@ async def test_gateway_cancellation_at_intake_barrier_finishes_barrier_before_sp
     assert events[-4:] == ["spine_teardown", "transport_stop", "agent_stop", "runtime_close"]
 
 
-async def test_maintenance_command_is_intercepted_before_the_shared_chat_lane() -> None:
+async def test_maintenance_command_is_intercepted_before_the_shared_chat_lane(tmp_path: Path) -> None:
     from pico.cli.gateway_commands import _build_inbound_dispatch
-    from pico.spine import ChatType, Origin, Source, TurnRequest
+    from pico.spine import ChatType, MediaOut, Origin, Source, Text, TurnRequest
 
     submitted = []
     delivered = []
+    report = tmp_path / "CANDIDATE.md"
+    patch = tmp_path / "candidate.patch"
+    report.write_text("report", encoding="utf-8")
+    patch.write_text("patch", encoding="utf-8")
 
     async def deliver(event):
         delivered.append(event)
@@ -436,6 +440,7 @@ async def test_maintenance_command_is_intercepted_before_the_shared_chat_lane() 
         async def handle(self, req, send):
             assert req.text == "/fix #123"
             await send("accepted")
+            await send("candidate ready", (report, patch))
             return True
 
         def is_maintainer(self, req):
@@ -465,7 +470,10 @@ async def test_maintenance_command_is_intercepted_before_the_shared_chat_lane() 
     await dispatch(request)
 
     assert submitted == []
+    assert [type(event) for event in delivered] == [Text, Text, MediaOut]
     assert delivered[0].content == "accepted"
+    assert delivered[1].content == "candidate ready"
+    assert [media.path for media in delivered[2].media] == [str(report), str(patch)]
 
 
 async def test_maintenance_profile_blocks_public_restart_command() -> None:

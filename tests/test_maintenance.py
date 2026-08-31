@@ -99,23 +99,21 @@ async def test_maintainer_can_submit_idempotent_issue_proposal(tmp_path: Path) -
         "@_user_1 /issue grep fails when context is 1",
         sender="ou_owner",
         message_id="om_issue",
+        extras={
+            "message_link": "https://applink.feishu.cn/client/thread/open?open_chat_id=oc_pico&open_thread_id=omt_issue"
+        },
     )
     assert await coordinator.handle(request, send) is True
-    assert replies[0].startswith("Recorded issue proposal pi_")
-    assert "maintainer must confirm" in replies[0]
+    assert replies[0] == (
+        "Issue captured: [grep fails when context is 1]"
+        "(https://applink.feishu.cn/client/thread/open?open_chat_id=oc_pico&open_thread_id=omt_issue)\n"
+        "Reply to the original report with /fix when it is ready for repair."
+    )
+    assert "pi_" not in replies[0]
     assert runner.calls == []
-    proposal_id = replies[0].split()[3].rstrip(".")
 
     assert await coordinator.handle(request, send) is True
-    assert replies[1].startswith("Issue proposal pi_")
-    assert replies[1].endswith("already exists.")
-
-    fix_request = _request(f"/fix {proposal_id}", sender="ou_owner", message_id="om_fix_proposal")
-    assert await coordinator.handle(fix_request, send) is True
-    await coordinator.wait_idle()
-    assert len(runner.calls) == 1
-    assert runner.calls[0].issue_ref == proposal_id
-    assert runner.calls[0].issue_summary == "grep fails when context is 1"
+    assert replies[1] == replies[0]
 
 
 async def test_group_member_cannot_promote_issue_proposal(tmp_path: Path) -> None:
@@ -158,7 +156,49 @@ async def test_maintainer_can_promote_replied_message_without_copying_text(tmp_p
         extras={"quoted_text": "grep context fails through registry", "parent_message_id": "om_report"},
     )
     assert await coordinator.handle(request, send) is True
-    assert replies[0].startswith("Recorded issue proposal pi_")
+    assert replies[0].startswith("Issue captured: grep context fails through registry")
+
+
+async def test_maintainer_can_start_fix_by_replying_to_captured_issue(tmp_path: Path) -> None:
+    runner = _Runner(MaintenanceOutcome(state=MaintenanceState.BLOCKED, detail="test"))
+    coordinator = MaintenanceCoordinator(
+        MaintenanceConfig(
+            enabled=True,
+            allowed_chats=["oc_pico"],
+            maintainers=["ou_owner"],
+        ),
+        state_dir=tmp_path,
+        runner=runner,
+    )
+    replies: list[str] = []
+
+    async def send(content: str) -> None:
+        replies.append(content)
+
+    issue_request = _request(
+        "/issue",
+        sender="ou_owner",
+        message_id="om_issue_command",
+        extras={
+            "quoted_text": "grep context fails through registry",
+            "parent_message_id": "om_report",
+        },
+    )
+    assert await coordinator.handle(issue_request, send) is True
+
+    fix_request = _request(
+        "/fix",
+        sender="ou_owner",
+        message_id="om_fix_command",
+        extras={"parent_message_id": "om_report"},
+    )
+    assert await coordinator.handle(fix_request, send) is True
+    await coordinator.wait_idle()
+
+    assert len(runner.calls) == 1
+    assert runner.calls[0].issue_summary == "grep context fails through registry"
+    assert replies[1] == "Repair started: grep context fails through registry."
+    assert "pm_" not in replies[1]
 
 
 async def test_non_maintainer_cannot_start_fix_job(tmp_path: Path) -> None:
@@ -186,6 +226,11 @@ async def test_non_maintainer_cannot_start_fix_job(tmp_path: Path) -> None:
 
 async def test_maintainer_fix_runs_once_and_reports_candidate(tmp_path: Path) -> None:
     candidate_dir = tmp_path / "candidate"
+    candidate_dir.mkdir()
+    candidate_report = candidate_dir / "CANDIDATE.md"
+    candidate_patch = candidate_dir / "candidate.patch"
+    candidate_report.write_text("candidate report", encoding="utf-8")
+    candidate_patch.write_text("candidate patch", encoding="utf-8")
     runner = _Runner(
         MaintenanceOutcome(
             state=MaintenanceState.CANDIDATE_READY,
@@ -201,10 +246,10 @@ async def test_maintainer_fix_runs_once_and_reports_candidate(tmp_path: Path) ->
         maintainers=["ou_owner"],
     )
     coordinator = MaintenanceCoordinator(config, state_dir=tmp_path, runner=runner)
-    replies: list[str] = []
+    replies: list[tuple[str, tuple[Path, ...]]] = []
 
-    async def send(content: str) -> None:
-        replies.append(content)
+    async def send(content: str, media: tuple[Path, ...] = ()) -> None:
+        replies.append((content, media))
 
     request = _request("/fix #123", sender="ou_owner", message_id="om_same")
     assert await coordinator.handle(request, send) is True
@@ -212,17 +257,21 @@ async def test_maintainer_fix_runs_once_and_reports_candidate(tmp_path: Path) ->
     assert len(runner.calls) == 1
     assert runner.calls[0].issue_ref == "#123"
     assert runner.calls[0].source_message_id == "om_same"
-    assert replies[0].startswith("Accepted maintenance job pm_")
-    assert [stage for stage in replies if "Stage:" in stage] == [
-        f"Maintenance job {runner.calls[0].job_id} - Stage: repairing.",
-        f"Maintenance job {runner.calls[0].job_id} - Stage: repair checks.",
-        f"Maintenance job {runner.calls[0].job_id} - Stage: clean verification.",
+    assert replies[0][0] == "Repair started: #123."
+    assert [content for content, _media in replies if "Stage:" in content] == [
+        "#123 - Stage: repairing.",
+        "#123 - Stage: repair checks.",
+        "#123 - Stage: clean verification.",
     ]
-    assert "candidate_ready" in replies[-1]
-    assert "pico/example.py" in replies[-1]
-    assert "base: abc123" in replies[-1]
-    assert "candidate: candidate" in replies[-1]
-    assert str(tmp_path) not in replies[-1]
+    assert replies[-1][0] == (
+        "Candidate ready: #123\n"
+        "Base revision: abc123\n"
+        "Changed files: pico/example.py\n"
+        "The review report and patch are attached."
+    )
+    assert replies[-1][1] == (candidate_report, candidate_patch)
+    assert "pm_" not in replies[-1][0]
+    assert str(tmp_path) not in replies[-1][0]
 
     restarted = MaintenanceCoordinator(config, state_dir=tmp_path, runner=runner)
     duplicate_replies: list[str] = []
@@ -233,7 +282,38 @@ async def test_maintainer_fix_runs_once_and_reports_candidate(tmp_path: Path) ->
     assert await restarted.handle(request, send_duplicate) is True
     await restarted.wait_idle()
     assert len(runner.calls) == 1
-    assert duplicate_replies == [f"Maintenance job {runner.calls[0].job_id} already exists (candidate_ready)."]
+    assert duplicate_replies == ["Repair already exists for #123 (candidate_ready)."]
+
+
+async def test_failed_verification_does_not_attach_unverified_patch(tmp_path: Path) -> None:
+    candidate_dir = tmp_path / "candidate"
+    candidate_dir.mkdir()
+    (candidate_dir / "CANDIDATE.md").write_text("failed report", encoding="utf-8")
+    (candidate_dir / "candidate.patch").write_text("unverified patch", encoding="utf-8")
+    runner = _Runner(
+        MaintenanceOutcome(
+            state=MaintenanceState.VERIFICATION_FAILED,
+            base_commit="abc123",
+            candidate_dir=candidate_dir,
+            changed_files=("pico/example.py",),
+            detail="tests failed",
+        )
+    )
+    coordinator = MaintenanceCoordinator(
+        MaintenanceConfig(enabled=True, allowed_chats=["oc_pico"], maintainers=["ou_owner"]),
+        state_dir=tmp_path,
+        runner=runner,
+    )
+    replies: list[tuple[str, tuple[Path, ...]]] = []
+
+    async def send(content: str, media: tuple[Path, ...] = ()) -> None:
+        replies.append((content, media))
+
+    assert await coordinator.handle(_request("/fix #123", sender="ou_owner"), send) is True
+    await coordinator.wait_idle()
+
+    assert replies[-1][0].startswith("Verification failed: #123")
+    assert replies[-1][1] == ()
 
 
 async def test_gateway_restart_marks_orphaned_running_job_blocked(tmp_path: Path) -> None:
@@ -265,7 +345,7 @@ async def test_gateway_restart_marks_orphaned_running_job_blocked(tmp_path: Path
 
     request = _request("/fix #123", sender="ou_owner", message_id="om_orphan")
     assert await coordinator.handle(request, send) is True
-    assert replies == [f"Maintenance job {job.job_id} already exists (blocked)."]
+    assert replies == ["Repair already exists for #123 (blocked)."]
 
 
 async def test_feishu_mention_prefix_still_routes_fix_command(tmp_path: Path) -> None:

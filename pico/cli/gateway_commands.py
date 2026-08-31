@@ -88,12 +88,22 @@ def _build_gateway_channels(config) -> set[str]:
 def _build_inbound_dispatch(*, scheduler, hub, agent, question_broker, maintenance=None):
     from dataclasses import replace
 
-    from pico.spine import Text
+    from pico.spine import Media, MediaOut, Text
     from pico.spine.turn import BusyPolicy
 
     async def dispatch(req) -> None:
-        async def send(content: str) -> None:
-            await hub.dispatch(Text(content=content, source=req.source))
+        async def send(content: str, media=()) -> None:
+            if content:
+                await hub.dispatch(Text(content=content, source=req.source))
+            if media:
+                await hub.dispatch(
+                    MediaOut(
+                        media=tuple(
+                            Media(path=str(path), mime="application/octet-stream", kind="file") for path in media
+                        ),
+                        source=req.source,
+                    )
+                )
 
         if maintenance is not None and await maintenance.handle(req, send):
             return

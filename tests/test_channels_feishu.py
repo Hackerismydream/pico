@@ -378,12 +378,22 @@ def _capture_info_logs():
     return logger, sink_id, lines
 
 
-def _inbound_event(message_id="m1", sender="ou_user", parent_id=None):
+def _inbound_event(
+    message_id="m1",
+    sender="ou_user",
+    parent_id=None,
+    thread_id=None,
+    *,
+    chat_type="p2p",
+    chat_id="oc_pico",
+):
     msg = SimpleNamespace(
         message_id=message_id,
         parent_id=parent_id,
         root_id=None,
-        chat_type="p2p",
+        thread_id=thread_id,
+        chat_id=chat_id,
+        chat_type=chat_type,
         message_type="text",
         content="{}",
     )
@@ -409,7 +419,7 @@ def test_inbound_accept_emits_receipt():
     ch.intake.publish.assert_awaited_once()
 
 
-def test_issue_reply_fetches_parent_text_into_metadata():
+def test_issue_reply_fetches_parent_text_and_thread_link_into_metadata():
     ch = _channel()
     ch.config.allow_from = ["*"]
     ch._react = AsyncMock()
@@ -417,12 +427,23 @@ def test_issue_reply_fetches_parent_text_into_metadata():
     ch._fetch_message_text = AsyncMock(return_value="reported grep failure")
     ch.intake.publish = AsyncMock()
 
-    asyncio.run(ch._on_message(_inbound_event(parent_id="om_report")))
+    asyncio.run(
+        ch._on_message(
+            _inbound_event(
+                parent_id="om_report",
+                thread_id="omt_report",
+                chat_type="group",
+            )
+        )
+    )
 
     ch._fetch_message_text.assert_awaited_once_with("om_report")
     metadata = ch.intake.publish.await_args.kwargs["metadata"]
     assert metadata["parent_message_id"] == "om_report"
     assert metadata["quoted_text"] == "reported grep failure"
+    assert metadata["message_link"] == (
+        "https://applink.feishu.cn/client/thread/open?open_chat_id=oc_pico&open_thread_id=omt_report"
+    )
 
 
 def test_fetch_message_text_reads_parent_via_feishu_api():
