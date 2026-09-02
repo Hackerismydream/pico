@@ -26,7 +26,8 @@ tutorial-zh/
 └── references/
     ├── legacy-docs-review.md              旧版（面向实习版本）飞书文档 39 篇全量盘点
     ├── interview-question-bank.md         17 篇真实面经提取的题库（高频榜/攻击路径/全集/失分记录）
-    └── metrics-ledger.md                  数字口径表：全套文档引用数字的唯一出处
+    ├── metrics-ledger.md                  数字口径表：全套文档引用数字的唯一出处
+    └── picobench-course/                  PicoBench 教材 Prompt、写作 Skill 与飞书代表章节只读快照
 ```
 
 ## 章节大纲（已批准）
@@ -68,3 +69,5 @@ tutorial-zh/
 ## 与飞书旧版知识库的关系
 
 旧版知识库（mini-pico / main / v3 三层梯度）继续服务旧版本；本目录面向当前仓库的新版 Pico，是梯度的下一层。旧版内容不迁移，只按 legacy-docs-review.md 的结论选择性借鉴。
+
+`references/picobench-course/` 是例外：它保存 GPT Pro 无法直接访问飞书时所需的代表章节文本，并记录来源 URL、文档 revision 和抓取时间。该目录只用于写作校准，不是现行实现或评测数字的事实源。
