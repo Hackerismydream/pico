@@ -208,6 +208,16 @@ labels, and counts only.
 _Avoid_: treating it as a release ledger — it gates one deterministic correlation
 scenario, not a release.
 
+**Turn Feedback**:
+The closed `pico.turn-feedback.v1` payload dispatched to the configured
+Memory Backend after the same Turn's Session slice is durably stored. It
+contains Runtime-observed Tool capability/outcome/duration, exact command exit
+codes, recognized verification commands, repository-relative file changes,
+Skill exposure ids, Turn state, and delivery state. Missing observations remain
+`unknown`; model or Tool text is never parsed into success evidence.
+_Avoid_: learning event, success report — the Backend may abstain, and an
+independent Verifier still owns task success.
+
 ### Scheduling
 
 **Cron** (`proactive_engine/schedulers/cron/`):
@@ -440,8 +450,9 @@ neither reads nor deletes operator data left by that integration.
 The Myna-owned `pico.plugins` Implementation of Pico's `MemoryBackend`
 Interface. It binds the Pico Workspace to an initialized Myna repository,
 maps user-track recall to repository recall, captures Session-normalized
-after-Turn slices, and returns one compiled Recall Context as a concrete Pico
-`Memory`. The installed Adapter is Pico's current default backend.
+after-Turn slices, binds Turn Feedback to Task Experience, returns one compiled
+user-track Recall Context, and exposes active instruction-only Skills through
+agent-track Recall. The installed Adapter is Pico's current default backend.
 _Avoid_: Myna backend in Pico core - Pico owns the Interface and default
 selection; Myna owns the Adapter.
 
@@ -454,13 +465,21 @@ Pico Session JSONL and does not provide mid-Turn recovery.
 _Avoid_: Session mirror, Task journal.
 
 **SkillForge** (`memory_engine/skill_forge/`):
-A Local Skill retrieval and injection subsystem. The active Runtime resolves
-the local BM25/CJK-aware source without Provider calls: explicit matches inject
-bounded Skill bodies, ambiguous matches expose compact ``SKILL.md`` references
-for the main Agent Loop to read, and unrelated matches abstain. It does not
-retrieve remembered Skills from the Memory backend. The rewriter, LLM gate, and
-generic RRF helpers remain for historical benchmark reconstruction and
-third-party callers, outside the active first-Turn path.
+A multi-source Skill retrieval and injection subsystem. The active Runtime
+always resolves the local BM25/CJK-aware source and, when a Memory Backend is
+configured, also queries its agent track through `MemorySkillSource`. Explicit
+or non-file-backed matches inject bounded bodies, ambiguous local matches
+expose compact ``SKILL.md`` references, unrelated matches abstain, and one
+source failure does not poison the other. Retrieval and injection are exposure
+evidence, not task-effect evidence.
+
+**Memory Skill Source** (`memory_engine/skill_forge/memory_source.py`):
+The Host adapter from `MemoryBackend.recall(agent_id="pico")` to self-contained
+SkillForge Hits. It validates qualified identity, name, finite score, body, and
+provenance metadata, removes canonical frontmatter, and lets Router failure
+isolation handle Backend errors.
+_Avoid_: Myna Skill Source — Pico owns this generic adapter; Myna owns the
+current Backend implementation and its Skill lifecycle.
 
 **Episode**:
 A distilled event note the Consolidation step writes to `episodes.md`.

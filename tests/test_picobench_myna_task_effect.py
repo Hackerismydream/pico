@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from benchmarks.picobench.budget import ProviderBudgetError
 from benchmarks.picobench.canonical import canonical_digest
+from benchmarks.picobench.packs.myna_task_effect import worker as task_effect_worker
 from benchmarks.picobench.packs.myna_task_effect.agent_campaign import (
     AgentCampaignConfig,
     AgentTrialRecord,
@@ -28,12 +30,82 @@ from benchmarks.picobench.packs.myna_task_effect.campaign import (
     run_campaign,
 )
 from benchmarks.picobench.packs.myna_task_effect.runner import InstalledTrialExecutor
-from benchmarks.picobench.packs.myna_task_effect.worker import run_turn
+from benchmarks.picobench.packs.myna_task_effect.worker import MemoryOperationRecorder, run_turn
 from pico.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
 TASK_ROOT = Path(__file__).resolve().parents[1] / "benchmarks" / "picobench" / "tasks" / "myna_task_effect"
 MEMORY_OPERATION_SCHEMA = "pico.picobench.myna-agent-task-effect.memory-operation.v2"
-AGENT_LIFECYCLE = ("start", "recall", "store", "stop", "start", "recall", "store", "stop")
+AGENT_LIFECYCLE = (
+    "start",
+    "recall",
+    "recall",
+    "store",
+    "feedback",
+    "stop",
+    "start",
+    "recall",
+    "recall",
+    "store",
+    "feedback",
+    "stop",
+)
+
+
+@pytest.mark.asyncio
+async def test_agent_track_only_recorder_suppresses_user_memory_but_keeps_skills() -> None:
+    class Backend:
+        def __init__(self) -> None:
+            self.calls = []
+
+        async def recall(self, query, **kwargs):
+            self.calls.append((query, kwargs))
+            return [SimpleNamespace(metadata={"revision_id": "skill_rev_1"}, score=1.0, text="Skill")]
+
+        async def store(self, *args, **kwargs):
+            raise AssertionError("evaluation must not learn from held-out turns")
+
+    backend = Backend()
+    recorder = MemoryOperationRecorder(backend, stage="evaluate", agent_track_only=True)
+
+    user_hits = await recorder.recall("query", user_id="user", top_k=5)
+    agent_hits = await recorder.recall("query", agent_id="pico", top_k=5)
+    await recorder.store("session", [])
+    await recorder.feedback({"terminal_state": "completed"})
+
+    assert user_hits == []
+    assert [item.text for item in agent_hits] == ["Skill"]
+    assert backend.calls == [("query", {"agent_id": "pico", "top_k": 5})]
+    assert [item["operation"] for item in recorder.receipt] == ["recall", "recall", "store", "feedback"]
+
+
+def test_live_provider_can_disable_deepseek_thinking(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    delegate = SimpleNamespace(extra_body={"existing": True})
+    monkeypatch.setattr("pico.cli._helpers.make_provider", lambda config: delegate)
+    spec = {
+        "benchmark_root": str(Path.cwd()),
+        "provider_name": "deepseek",
+        "model": "deepseek/deepseek-chat",
+        "max_input_tokens_per_call": 16_384,
+        "max_output_tokens_per_call": 1_024,
+        "provider_api_base": None,
+        "disable_thinking": True,
+        "budget": {
+            "hard_cap_cny": 25.0,
+            "maximum_provider_attempts": 100,
+            "input_cache_miss_usd_per_million": 0.28,
+            "output_usd_per_million": 0.42,
+            "conservative_usd_to_cny_multiplier": 8.0,
+            "approval_digest": "a" * 64,
+            "ledger_prefix_event_count": 0,
+            "ledger_prefix_digest": "0" * 64,
+            "ledger_prefix_charged_cny": 0.0,
+            "ledger_path": str(tmp_path / "budget.jsonl"),
+        },
+    }
+
+    task_effect_worker._build_live_provider(spec)
+
+    assert delegate.extra_body == {"existing": True, "thinking": {"type": "disabled"}}
 
 
 def test_agent_corpus_is_lightweight_balanced_and_disjoint() -> None:
@@ -446,7 +518,19 @@ def test_agent_campaign_requires_approval_persists_and_resumes(tmp_path: Path, m
                         "outcome": "succeeded",
                         "phase": "prime",
                     },
+                    {
+                        "schema": MEMORY_OPERATION_SCHEMA,
+                        "operation": "recall",
+                        "outcome": "succeeded",
+                        "phase": "prime",
+                    },
                     {"schema": MEMORY_OPERATION_SCHEMA, "operation": "store", "outcome": "succeeded", "phase": "prime"},
+                    {
+                        "schema": MEMORY_OPERATION_SCHEMA,
+                        "operation": "feedback",
+                        "outcome": "succeeded",
+                        "phase": "prime",
+                    },
                     {"schema": MEMORY_OPERATION_SCHEMA, "operation": "stop", "outcome": "succeeded", "phase": "prime"},
                     {
                         "schema": MEMORY_OPERATION_SCHEMA,
@@ -462,7 +546,19 @@ def test_agent_campaign_requires_approval_persists_and_resumes(tmp_path: Path, m
                     },
                     {
                         "schema": MEMORY_OPERATION_SCHEMA,
+                        "operation": "recall",
+                        "outcome": "succeeded",
+                        "phase": "evaluate",
+                    },
+                    {
+                        "schema": MEMORY_OPERATION_SCHEMA,
                         "operation": "store",
+                        "outcome": "succeeded",
+                        "phase": "evaluate",
+                    },
+                    {
+                        "schema": MEMORY_OPERATION_SCHEMA,
+                        "operation": "feedback",
                         "outcome": "succeeded",
                         "phase": "evaluate",
                     },
@@ -570,8 +666,8 @@ def test_agent_campaign_rebuild_preserves_provider_failure_contamination(tmp_pat
                     "phase": phase,
                 }
                 for phase, operations in (
-                    ("prime", ("start", "recall", "store", "stop")),
-                    ("evaluate", ("start", "recall", "store", "stop")),
+                    ("prime", ("start", "recall", "recall", "store", "feedback", "stop")),
+                    ("evaluate", ("start", "recall", "recall", "store", "feedback", "stop")),
                 )
                 for operation in operations
             )
@@ -920,6 +1016,47 @@ async def test_installed_worker_control_uses_runtime_and_repository_evidence(
 
 
 @pytest.mark.asyncio
+async def test_worker_oracle_skill_uses_deterministic_gate(tmp_path: Path) -> None:
+    result = await run_turn(
+        {
+            "worker_mode": "turn",
+            "arm_id": "anchor_skill",
+            "stage": "prime",
+            "task_id": "anchor-task",
+            "task_class": "anchor",
+            "source_path": "solution.py",
+            "output_path": "solution.py",
+            "workspace": str(tmp_path / "workspace"),
+            "state_root": str(tmp_path / "state"),
+            "prompt": "apply the anchor procedure",
+            "session_id": "anchor-session",
+            "message_id": "anchor-message",
+            "timeout_seconds": 30,
+            "memory_enabled": True,
+            "skill_forge_enabled": True,
+            "llm_gate_enabled": True,
+            "oracle_gate": True,
+            "oracle_skill": {
+                "qualified_id": "oracle/anchor@rev_anchor",
+                "name": "anchor",
+                "description": "Apply the anchor procedure",
+                "content": "Follow the compact verified procedure.",
+                "revision_id": "rev_anchor",
+                "source_experience_ids": ["mem_1", "mem_2", "mem_3"],
+            },
+        }
+    )
+
+    assert result["terminal"] == "completed", result
+    assert result["skill_gate_fallback_reason"] is None, result
+    assert result["skill_gate_status"] == "selected", result
+    assert result["skill_candidate_ids"] == ["oracle/anchor@rev_anchor"]
+    assert result["skill_gate_required_ids"] == ["oracle/anchor@rev_anchor"]
+    assert result["skill_gate_selected_ids"] == ["oracle/anchor@rev_anchor"]
+    assert result["injected_skill_ids"] == ["oracle/anchor@rev_anchor"]
+
+
+@pytest.mark.asyncio
 async def test_worker_records_live_provider_usage_and_tools(tmp_path: Path) -> None:
     task = load_agent_task_corpus(TASK_ROOT / "agent.json").tasks[0]
     workspace = tmp_path / "workspace"
@@ -1157,10 +1294,11 @@ async def test_worker_treatment_provider_failure_has_no_fake_store(tmp_path: Pat
     assert [row["operation"] for row in result["memory_operation_receipt"]] == [
         "start",
         "recall",
+        "recall",
         "stop",
     ]
     assert all(row["outcome"] == "succeeded" for row in result["memory_operation_receipt"])
-    assert result["myna_operations"] == ["start", "recall", "stop"]
+    assert result["myna_operations"] == ["start", "recall", "recall", "stop"]
 
 
 @pytest.mark.asyncio
@@ -1208,6 +1346,7 @@ async def test_worker_classifies_myna_backend_failure_as_product_failure(tmp_pat
     assert [(row["operation"], row["outcome"]) for row in result["memory_operation_receipt"]] == [
         ("start", "succeeded"),
         ("recall", "failed"),
+        ("recall", "failed"),
         ("stop", "succeeded"),
     ]
     assert result["myna_operations"] == ["start", "stop"]
@@ -1254,10 +1393,12 @@ async def test_worker_records_actual_prime_memory_lifecycle(tmp_path: Path) -> N
 
     assert result["terminal"] == "completed"
     assert result["failure_class"] is None
-    assert result["myna_operations"] == ["start", "recall", "store", "stop"]
+    assert result["myna_operations"] == ["start", "recall", "recall", "store", "feedback", "stop"]
     assert [row["operation"] for row in result["memory_operation_receipt"]] == [
         "start",
         "recall",
+        "recall",
         "store",
+        "feedback",
         "stop",
     ]

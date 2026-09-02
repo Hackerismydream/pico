@@ -107,7 +107,13 @@ async def test_full_turn_recalls_injects_and_stores(tmp_path: Path) -> None:
             "user_id": "default",
             "agent_id": None,
             "top_k": 5,
-        }
+        },
+        {
+            "query": "how do I back up a config file safely?",
+            "user_id": None,
+            "agent_id": "pico",
+            "top_k": 10,
+        },
     ]
     assert _USER_MEMO in agent.provider.prompt_text()
     assert len(backend.store_calls) == 1
@@ -116,7 +122,12 @@ async def test_full_turn_recalls_injects_and_stores(tmp_path: Path) -> None:
     persisted = agent.sessions.peek("mock:c1")
     assert persisted is not None
     assert call["messages"] == persisted.messages
-    assert backend.feedback_calls == []
+    assert len(backend.feedback_calls) == 1
+    feedback = backend.feedback_calls[0]
+    assert feedback["schema"] == "pico.turn-feedback.v1"
+    assert feedback["terminal_state"] == "completed"
+    assert feedback["delivery_state"] == "unknown"
+    assert feedback["tool_receipts"] == []
 
 
 async def test_no_backend_turn_completes_without_memory_calls(tmp_path: Path) -> None:
@@ -144,3 +155,19 @@ async def test_store_failure_surfaces_after_session_is_saved(tmp_path: Path) -> 
     persisted = agent.sessions.peek("mock:c1")
     assert persisted is not None
     assert [message["role"] for message in persisted.messages] == ["user", "assistant"]
+
+
+async def test_spine_delivery_updates_feedback_after_emit(tmp_path: Path) -> None:
+    backend = _FakeBackend()
+    agent = _make_agent(tmp_path, backend=backend)
+    events = []
+
+    async def emit(event) -> None:
+        events.append(event)
+
+    outcome = await agent.run_turn(_msg(), emit, lambda: [], stream=False)
+
+    assert outcome.explicit_reply is True
+    assert events
+    assert len(backend.feedback_calls) == 1
+    assert backend.feedback_calls[0]["delivery_state"] == "delivered"

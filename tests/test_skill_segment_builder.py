@@ -7,7 +7,7 @@ from typing import Any
 
 from pico.context_engine.base import AssemblyContext, TokenBudget
 from pico.context_engine.segments.skills import SkillsSegmentBuilder
-from pico.memory_engine.skill_forge import SkillForgeRouter
+from pico.memory_engine.skill_forge import LLMGateFilter, SkillForgeRouter
 from pico.memory_engine.skill_forge.types import RouterHit
 
 # ----------------------------------------------------------------------
@@ -30,6 +30,16 @@ class _StubSource:
         k: int,
     ) -> list[RouterHit]:
         return list(self._hits[:k])
+
+
+class _GateProvider:
+    def __init__(self, content: str) -> None:
+        self.content = content
+        self.calls = 0
+
+    async def chat_with_retry(self, **_kwargs: Any):
+        self.calls += 1
+        return type("Response", (), {"content": self.content, "finish_reason": "stop"})()
 
 
 def _hit(qid: str, name: str, body: str = "", **meta: Any) -> RouterHit:
@@ -82,6 +92,50 @@ async def test_baseline_renders_local_hits() -> None:
     assert "# Skills" in seg.text
     assert "foo" in seg.text and "bar" in seg.text
     assert seg.meta["injected_skill_ids"] == ["local/foo", "local/bar"]
+
+
+async def test_gate_required_hit_without_gate_abstains() -> None:
+    hit = _hit(
+        "myna/release",
+        "release",
+        body="run release checks",
+        gate_required=True,
+    )
+    builder = SkillsSegmentBuilder(SkillForgeRouter([_StubSource("memory", [hit])]))
+
+    seg = await builder.build(_ctx("prepare a release"))
+
+    assert seg.text == ""
+    assert seg.meta["injected_skill_ids"] == []
+    assert seg.meta["skill_candidate_ids"] == ["myna/release"]
+    assert seg.meta["skill_gate_required_ids"] == ["myna/release"]
+    assert seg.meta["skill_gate_selected_ids"] == []
+    assert seg.meta["skill_gate_status"] == "disabled_abstain"
+
+
+async def test_gate_selects_derived_hit_and_records_decision() -> None:
+    provider = _GateProvider('{"plan":"verify release","skills":["myna/release"]}')
+    hit = _hit(
+        "myna/release",
+        "release",
+        body="run release checks",
+        gate_required=True,
+    )
+    builder = SkillsSegmentBuilder(
+        SkillForgeRouter([_StubSource("memory", [hit])]),
+        gate=LLMGateFilter(provider),  # type: ignore[arg-type]
+        get_tool_definitions=lambda: [{"function": {"name": "exec"}}],
+    )
+
+    seg = await builder.build(_ctx("prepare a release"))
+
+    assert "run release checks" in seg.text
+    assert seg.meta["injected_skill_ids"] == ["myna/release"]
+    assert seg.meta["skill_candidate_ids"] == ["myna/release"]
+    assert seg.meta["skill_gate_required_ids"] == ["myna/release"]
+    assert seg.meta["skill_gate_selected_ids"] == ["myna/release"]
+    assert seg.meta["skill_gate_status"] == "selected"
+    assert provider.calls == 1
 
 
 async def test_no_router_returns_empty_segment() -> None:

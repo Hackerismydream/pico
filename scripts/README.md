@@ -26,7 +26,7 @@ make check-large-files
 | Script | Purpose | Canonical caller |
 | --- | --- | --- |
 | `verify_distribution.py` | isolated TUI/wheel/sdist build, exact wheel manifest, isolated retained-extra installs, installed probes, sdist-to-wheel equivalence | V-P0 in `docs/dev.md` and release workflow |
-| `verify_myna_integration.py` | isolated installed-wheel discovery, compatibility, fail-closed lifecycle, and fresh-process store/recall | `make verify-myna-integration` |
+| `verify_myna_integration.py` | isolated installed-wheel discovery, compatibility, fail-closed lifecycle, fresh-process store/recall, and verified Skill draft/activate/inject/hard-negative/rollback/restart governance using a local TLS Provider | `make verify-myna-integration` |
 | `verify_channels.py` | deterministic V-C0 Channel contract and V-S0 security/isolation report | `make verify-channels` |
 | `verify_live_feishu.py` | operator-in-the-loop V-LF tracer bullet with redacted evidence | `make verify-live-feishu` |
 | `verify_turn_evidence.py` | deterministic V-TE0 Turn trace, usage, delivery, and terminal-state correlation | `make verify-turn-evidence` |

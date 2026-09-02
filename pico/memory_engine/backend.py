@@ -6,12 +6,13 @@ MB-1 引入这条 **New Seam**，连接 `AgentLoop` 与 Memory Subsystem。它�
 Plugin Authors 必须理解三个 Design Points：
 
 - ``recall`` 显式命名 Track，接收 ``user_id`` XOR ``agent_id``。Active Host 的 Memory 使用 User Track；
-  Agent Track 为 Public Plugin Protocol Compatibility 保留。
+  `MemorySkillSource` 使用 Agent Track 检索可注入 Skill。
 - ``Memory.metadata`` 是 **Escape Hatch**。``text`` 与 ``score`` 已标准化；Categories、Episode Type、
   Native ID、Source Labels 等 Backend-specific 信息全部放入 ``metadata``。Host Context Assembler **不**
   读取 Metadata，只有 Pre-rendered ``text`` 进入 Prompt；把 Memory Hit 重新发为 `ScoredSkill` 的
   Skill-source Adapter 才读取 Metadata 构造 Qualified ID。
-- ``feedback`` **允许 No-op**。它为 Public Protocol Compatibility 保留，但 Active Host 当前不 Dispatch。
+- ``feedback`` **允许 No-op**。Active Host 在普通 User Turn 的 ``store`` 后 Dispatch 字段闭合的
+  Turn Feedback；不学习的 Backend 可以显式忽略。
 
 Protocol 使用 :func:`typing.runtime_checkable`，所以 Tests 可执行 ``isinstance(x, MemoryBackend)``；代价
 是任何 Surface Matching 的 Class，包括 Duck-typed Mocks，都会通过。Contract Tests 因此无需继承 Base
@@ -76,9 +77,10 @@ class MemoryBackend(Protocol):
 
     Five Methods 按 Hot-path 排列：
 
-    1. :meth:`recall`：``ContextEngine.assemble`` 每 Turn 以 ``user_id`` 读取 User-track Memory；
+    1. :meth:`recall`：``ContextEngine.assemble`` 每 Turn 以 ``user_id`` 读取 User-track Memory，并由
+       ``MemorySkillSource`` 以 ``agent_id`` 读取 agent-track Skill；
     2. :meth:`store`：AgentLoop 每 Turn 后持久化 Conversation Slice；
-    3. :meth:`feedback`：允许 No-op 的 Compatibility Hook；
+    3. :meth:`feedback`：在 ``store`` 后消费结构化 Turn Feedback；
     4. :meth:`start` / :meth:`stop`：由 Host Await 的 Lifecycle。
 
     Backend 拥有 Transport/Storage State，Host 拥有调用时机与 Context Assembly。协议方法返回不自动证明
@@ -125,8 +127,8 @@ class MemoryBackend(Protocol):
     async def feedback(self, signals: dict[str, Any]) -> None:
         """消费 Free-form Signal Dict，例如 Injected/Used Skill IDs。
 
-        No-op Implementation 完全 Valid 且 Idiomatic，因为 Active Host 当前不 Dispatch 该 Hook。未来使用
-        时，各 Backend 必须自行验证 Signal Schema；调用不应被视为学习或演化已完成。
+        No-op Implementation 仍然 Valid。Active Host Dispatch `pico.turn-feedback.v1`，各 Backend
+        必须自行验证 Signal Schema；调用不应被视为学习、Skill 派生或任务改进已完成。
         """
         ...
 
