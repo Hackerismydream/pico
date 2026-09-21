@@ -37,12 +37,12 @@ jobs:
           from pathlib import Path
           p = Path('pico/agent/loop/main.py')
           old = '                _classification = await _personalizer.classify(content, history=_recent, allow_gate=not turn_media)\n'
-          new = '''                if self._personalization_gate is not None and not turn_media:
-                              _classification = await _personalizer.classify(content, history=_recent, allow_gate=True)
-                          else:
-                              _classification = await _personalizer.classify(content, history=_recent)
-          '''
-          new = '\n'.join(line[10:] if i else line for i, line in enumerate(new.split('\n')))
+          new = (
+              '                if self._personalization_gate is not None and not turn_media:\n'
+              '                    _classification = await _personalizer.classify(content, history=_recent, allow_gate=True)\n'
+              '                else:\n'
+              '                    _classification = await _personalizer.classify(content, history=_recent)\n'
+          )
           text = p.read_text()
           if text.count(old) != 1:
               raise RuntimeError('Unexpected classifier call site')
