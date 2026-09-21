@@ -18,56 +18,87 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          path: payload
-      - uses: actions/checkout@v7
-        with:
           ref: feat/jev_personalization_gate
-          path: subject
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: true
-          cache-dependency-glob: subject/uv.lock
+          cache-dependency-glob: uv.lock
       - name: Frozen existing test environment
-        working-directory: subject
         run: uv sync --frozen --extra dev --dev
-      - name: Apply exact scoped patch and publish feature branch
+      - name: Preserve the disabled-path call contract
         shell: bash
         run: |
           set -euo pipefail
-          python payload/.jev-review/apply.py subject payload/.jev-review
-          cd subject
-          git add pico tests docs CONTEXT.md Makefile
-          git diff --cached --name-only --diff-filter=ACMR | grep '\.py$' > /tmp/jev-changed-python.txt
-          xargs -a /tmp/jev-changed-python.txt uv run --no-sync ruff check --select I --fix
-          xargs -a /tmp/jev-changed-python.txt uv run --no-sync ruff format
-          git add pico tests docs CONTEXT.md Makefile
-          git diff --cached --check
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = 697499a36c349bd0989344fd0dcd4282d23d33a9
+          test "$(git rev-parse HEAD)" = 9fac58b5dbfbbdcced9562305e152a26d19cc372
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('pico/agent/loop/main.py')
+          old = '                _classification = await _personalizer.classify(content, history=_recent, allow_gate=not turn_media)\n'
+          new = '''                if self._personalization_gate is not None and not turn_media:
+                              _classification = await _personalizer.classify(content, history=_recent, allow_gate=True)
+                          else:
+                              _classification = await _personalizer.classify(content, history=_recent)
+          '''
+          new = '\n'.join(line[10:] if i else line for i, line in enumerate(new.split('\n')))
+          text = p.read_text()
+          if text.count(old) != 1:
+              raise RuntimeError('Unexpected classifier call site')
+          p.write_text(text.replace(old, new))
+          p = Path('tests/test_personalizer_contract.py')
+          p.write_text(p.read_text() + '''
+
+          async def test_disabled_gate_keeps_legacy_classifier_call_shape(monkeypatch, tmp_path):
+              from tests.test_agent_loop_memory_pipeline import _FakeBackend, _make_agent, _msg
+
+              calls = []
+              async def legacy_classify(self, message, history=None):
+                  calls.append(message)
+                  return {"needs_clarification": False, "domain": ""}
+
+              monkeypatch.setattr(Personalizer, "classify", legacy_classify)
+              agent = _make_agent(tmp_path, backend=_FakeBackend())
+              agent.configure_personalization(True)
+              agent._start_personalization_task = MagicMock()
+              try:
+                  await agent._process_message(_msg(), origin=Origin.USER)
+                  assert len(calls) == 1
+              finally:
+                  await agent.close()
+          ''')
+          PY
+          uv run --no-sync ruff check --select I --fix pico/agent/loop/main.py tests/test_personalizer_contract.py
+          uv run --no-sync ruff format pico/agent/loop/main.py tests/test_personalizer_contract.py
+          git diff --check
           git config user.name 'Pico review automation'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          if ! git diff --cached --quiet; then
-            git commit -m 'feat: Add opt-in Jev preference triage and contract checks'
-            git push origin HEAD:refs/heads/feat/jev_personalization_gate
-          fi
-      - name: Changed-file lint
-        working-directory: subject
+          git add pico/agent/loop/main.py tests/test_personalizer_contract.py
+          git commit -m 'fix(agent): Preserve the disabled preference classifier seam'
+          git push origin HEAD:refs/heads/feat/jev_personalization_gate
+      - name: Changed-file lint and formatting
         run: |
+          git diff --name-only origin/main HEAD -- '*.py' > /tmp/jev-changed-python.txt
           xargs -a /tmp/jev-changed-python.txt uv run --no-sync ruff check
           xargs -a /tmp/jev-changed-python.txt uv run --no-sync ruff format --check
       - name: Credential-free regression contracts
-        if: success() || failure()
-        working-directory: subject
         run: |
-          uv run --no-sync pytest tests/test_personalizer_jev.py tests/test_personalizer_contract.py tests/test_routing_fallback_chain.py tests/test_config_routing.py tests/test_knn_router.py tests/test_call_efficiency.py tests/test_cli_runtime_assembly.py tests/test_agent_loop_memory_pipeline.py tests/test_context_invariants.py tests/test_agent_loop_empty_recovery.py -q
+          set -o pipefail
+          uv run --no-sync pytest tests/test_personalizer_jev.py tests/test_personalizer_contract.py tests/test_routing_fallback_chain.py tests/test_config_routing.py tests/test_knn_router.py tests/test_call_efficiency.py tests/test_cli_runtime_assembly.py tests/test_agent_loop_memory_pipeline.py tests/test_context_invariants.py tests/test_agent_loop_empty_recovery.py -q --junitxml=/tmp/pico-review-regression.xml 2>&1 | tee /tmp/pico-review-regression.txt
+      - name: Repository focused checks
+        run: |
+          set -o pipefail
+          make lint-python 2>&1 | tee /tmp/pico-review-lint.txt
+          make test-python 2>&1 | tee /tmp/pico-review-focused.txt
       - name: Archive exact committed source
         if: always()
         run: |
-          cd subject
           git rev-parse HEAD > /tmp/pico-review-source-commit.txt
           git archive --format=zip HEAD -o /tmp/pico-review-source.zip
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: pico-review-source
-          path: /tmp/pico-review-source*
+          path: /tmp/pico-review-*
           retention-days: 2
