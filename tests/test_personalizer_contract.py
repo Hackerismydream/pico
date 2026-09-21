@@ -188,3 +188,23 @@ async def test_shared_assembly_owns_only_an_active_gate(
         assert not accounting.records
     finally:
         await runtime.close()
+
+
+async def test_disabled_gate_keeps_legacy_classifier_call_shape(monkeypatch, tmp_path):
+    from tests.test_agent_loop_memory_pipeline import _FakeBackend, _make_agent, _msg
+
+    calls = []
+
+    async def legacy_classify(self, message, history=None):
+        calls.append(message)
+        return {"needs_clarification": False, "domain": ""}
+
+    monkeypatch.setattr(Personalizer, "classify", legacy_classify)
+    agent = _make_agent(tmp_path, backend=_FakeBackend())
+    agent.configure_personalization(True)
+    agent._start_personalization_task = MagicMock()
+    try:
+        await agent._process_message(_msg(), origin=Origin.USER)
+        assert len(calls) == 1
+    finally:
+        await agent.close()

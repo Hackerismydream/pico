@@ -1895,7 +1895,10 @@ class AgentLoop:
             else:
                 # ── 步骤 1：分类请求——判断是否需要澄清 ──
                 _recent = session.get_history(max_messages=4)
-                _classification = await _personalizer.classify(content, history=_recent, allow_gate=not turn_media)
+                if self._personalization_gate is not None and not turn_media:
+                    _classification = await _personalizer.classify(content, history=_recent, allow_gate=True)
+                else:
+                    _classification = await _personalizer.classify(content, history=_recent)
 
                 if _classification.get("needs_clarification"):
                     # ── 步骤 2：行动前交互——生成并返回澄清问题 ──
