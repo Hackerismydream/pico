@@ -1,9 +1,10 @@
 """为标准化 Provider Calls 提供 Append-only Evidence Ledger。
 
-`CallLedger` 先在内存接收 `CallRecord`，再由单独 Writer Thread 按批追加到每日 JSONL，避免模型调用
-主路径等待磁盘 IO。每个 Ledger Instance 还有独立 Health Entry，记录 Accepted、Persisted 与 Lost
-Records；进程关闭时汇总到带 Schema 的健康文件，让使用者能够区分“生成了调用证据”和“证据已经
-可靠落盘”。
+`CallLedger` 默认先在内存接收 `CallRecord`，再由单独 Writer Thread 按批追加到每日 JSONL，避免普通
+模型调用主路径等待磁盘 IO。需要先有 Durable Evidence 才能改变行为的调用可请求同步 Append；它在
+返回前完成同一 Locked + Fsync 写入。每个 Ledger Instance 还有独立 Health Entry，记录 Accepted、
+Persisted 与 Lost Records；进程关闭时汇总到带 Schema 的健康文件，让使用者能够区分“生成了调用
+证据”和“证据已经可靠落盘”。
 
 Append-only 保护调用记录不被日常更新覆盖，但不等于绝对不丢数据：Queue Full、Writer Failure 或
 Shutdown Timeout 会使 Ledger 进入 Degraded，并通过 `CallLedgerError` 与 Health File 暴露证据
@@ -67,7 +68,7 @@ class CallLedger:
             )
             self._writer.start()
 
-    def append(self, record: CallRecord) -> None:
+    def append(self, record: CallRecord, *, durable: bool = False) -> None:
         line = json.dumps(asdict(record), ensure_ascii=False)
         with self._state_lock:
             if self._closed:
@@ -76,6 +77,15 @@ class CallLedger:
             self._accepted += 1
             if self._failure is not None:
                 raise CallLedgerError("CallEfficiency ledger writer failed") from self._failure
+            if durable:
+                try:
+                    path = self.telemetry_dir / f"call-efficiency-{date.today().isoformat()}.jsonl"
+                    locked_append(path, [line])
+                except BaseException as exc:
+                    self._failure = exc
+                    raise CallLedgerError("CallEfficiency durable append failed") from exc
+                self._persisted += 1
+                return
             if self._queue is not None:
                 try:
                     self._queue.put_nowait(line)

@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 from pydantic_settings import BaseSettings
 
+from pico.config.personalization import PersonalizationGateConfig
 from pico.product import DEFAULT_WORKSPACE_SPEC, get_default_workspace
 from pico.sandbox.config import SandboxConfig
 
@@ -114,6 +115,8 @@ class AgentDefaults(Base):
     memory_window: int | None = Field(default=None, exclude=True)
     reasoning_effort: str | None = None  # low / medium / high，用于启用 LLM thinking mode
     enable_personalization: bool = False  # 受 PAHF 启发的四步个性化流程：分类、询问、执行、学习
+
+    personalization_gate: PersonalizationGateConfig = Field(default_factory=PersonalizationGateConfig)
 
     @property
     def should_warn_deprecated_memory_window(self) -> bool:

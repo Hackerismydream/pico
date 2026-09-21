@@ -13,6 +13,8 @@ Turn 能否运行的单点依赖。
 
 from __future__ import annotations
 
+import math
+
 from loguru import logger
 
 from pico.routing.cache import BenchmarkCache
@@ -80,6 +82,10 @@ class ModelRouter:
             classification = await self._classifier.classify(prompt)
         except Exception as e:
             logger.warning("Classification failed: {}", e)
+            return None
+
+        if not math.isfinite(classification.similarity) or classification.similarity <= 0:
+            logger.warning("Classification supplied no evidence; retaining the configured model")
             return None
 
         try:

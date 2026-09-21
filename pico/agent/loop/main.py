@@ -64,6 +64,7 @@ from pico.utils.persisted_payload import sanitize_persisted_payload
 
 if TYPE_CHECKING:
     from pico.agent.hook import CompositeHook
+    from pico.agent.personalizer.jev import JevPreferenceGate
     from pico.agent.tools.base import Tool
     from pico.call_efficiency import CallEfficiency
     from pico.config.pico import (
@@ -426,6 +427,7 @@ class AgentLoop:
 
         self.router = router
         self.enable_personalization = False  # 通过 configure_personalization() 设置
+        self._personalization_gate: JevPreferenceGate | None = None
         self._running = False
         self._mcp_servers = mcp_servers or {}
         self._mcp_stack: AsyncExitStack | None = None
@@ -481,7 +483,7 @@ class AgentLoop:
             if self.tools.has(name):
                 self.tools.unregister(name)
 
-    def configure_personalization(self, enable: bool) -> None:
+    def configure_personalization(self, enable: bool, *, gate: JevPreferenceGate | None = None) -> None:
         """设置全局四阶段个性化流程开关，该流程受 PAHF 思路启发。
 
         开启后，一条消息先由 ``classify()`` 判断是否需要询问偏好；需要时在执行前只问一个
@@ -493,6 +495,7 @@ class AgentLoop:
         ``agents.defaults.enable_personalization: true`` 开启。方法只更新实例状态并记录日志。
         """
         self.enable_personalization = bool(enable and self.memory_enabled)
+        self._personalization_gate = gate if self.enable_personalization else None
         logger.info("Personalization flow: {}", "enabled" if self.enable_personalization else "disabled")
 
     def _start_personalization_task(self, factory: Callable[[], Awaitable[Any]]) -> None:
@@ -1826,15 +1829,15 @@ class AgentLoop:
             await self.memory_consolidator.maybe_consolidate_by_tokens(session)
 
         # ── 个性化流程（全局开关：self.enable_personalization）────────────────
-        # 子智能体结果回注时跳过：其内容是系统生成的通知而非用户输入；个性化处理会污染
-        # 用户画像，或针对通知触发澄清。此处仅 SUBAGENT 跳过（不是更宽泛的用户输入集合）：
-        # Cron 轮次目前仍会进入并保留该流程。
-        if self.enable_personalization and origin is not Origin.SUBAGENT:
+        # 只有真实用户请求参与偏好学习，系统生成的 Cron 和 Subagent 内容不能更新画像。
+        if self.enable_personalization and req.origin is Origin.USER:
             from datetime import datetime as _dt
 
             from pico.agent.personalizer import Personalizer
 
-            _personalizer = Personalizer(MemoryStore(self.state), self.provider, self.model)
+            _personalizer = Personalizer(
+                MemoryStore(self.state), self.provider, self.model, gate=self._personalization_gate
+            )
 
             # ── 步骤 2 完成阶段：用户正在回答待处理的澄清问题 ──
             if session.pending_clarification:
@@ -1892,7 +1895,10 @@ class AgentLoop:
             else:
                 # ── 步骤 1：分类请求——判断是否需要澄清 ──
                 _recent = session.get_history(max_messages=4)
-                _classification = await _personalizer.classify(content, history=_recent)
+                if self._personalization_gate is not None and not turn_media:
+                    _classification = await _personalizer.classify(content, history=_recent, allow_gate=True)
+                else:
+                    _classification = await _personalizer.classify(content, history=_recent)
 
                 if _classification.get("needs_clarification"):
                     # ── 步骤 2：行动前交互——生成并返回澄清问题 ──
@@ -2023,9 +2029,8 @@ class AgentLoop:
             await self.memory_consolidator.maybe_consolidate_by_tokens(session)
 
             # ── 步骤 4：行动后学习（后台、非阻塞）──────────────────────────────
-            # 子智能体结果回注时跳过（参见上方轮次前流程）：其内容是系统生成的通知，
-            # 不是可供学习的用户输入。
-        if self.enable_personalization and origin is not Origin.SUBAGENT:
+            # 与前置分类使用同一 Origin 边界，系统通知不参与用户偏好学习。
+        if self.enable_personalization and req.origin is Origin.USER:
             from pico.agent.personalizer import Personalizer
 
             _p4 = Personalizer(MemoryStore(self.state), self.provider, self.model)

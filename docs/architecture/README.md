@@ -228,5 +228,6 @@ Not supported:
 - [Operations and extension surfaces](operations.md)
 - [Evolver architecture](evolver.md)
 - [Canonical Runtime glossary](../../CONTEXT.md)
+- [Experimental preference fast path](../plan/jev-personalization.md)
 - [Current project status](../project-status.md)
 - [Developer Gates](../dev.md)

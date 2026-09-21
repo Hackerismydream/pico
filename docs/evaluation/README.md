@@ -370,3 +370,10 @@ claim a security boundary that direct host execution does not provide.
 | [PicoBench Ship-1 contract](picobench-ship-1.md) | Task packs, variants, metrics, statistics, artifacts, and Gates |
 | [Ship-1 delivery analysis](../plan/analysis/picobench-ship-1.md) | Module decomposition, integration enumeration, dependency graph, and task split |
 | [Delivery tasks](../plan/tasks/) | Smallest independently verifiable implementation slices |
+
+## Optional preference-triage experiment
+
+The [Jev experiment protocol](jev-personalization.md) defines a default-off,
+NOT_RUN comparison against the existing classifier, no pre-classification,
+and an ordinary small-model gate. Contract tests do not establish semantic
+quality, cost reduction, latency improvement, or positive claim eligibility.

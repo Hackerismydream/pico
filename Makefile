@@ -90,7 +90,7 @@ lint-tui:
 test: test-python test-tui
 
 test-python:
-	uv run --extra dev pytest tests/test_commit_lint.py tests/test_large_file_check.py tests/test_cli_smoke.py tests/test_litellm_setup.py tests/test_skill_watcher_lifecycle.py -q
+	uv run --extra dev pytest tests/test_commit_lint.py tests/test_large_file_check.py tests/test_cli_smoke.py tests/test_litellm_setup.py tests/test_skill_watcher_lifecycle.py tests/test_personalizer_jev.py tests/test_personalizer_contract.py tests/test_routing_fallback_chain.py -q
 
 test-retained:
 	uv run --frozen --all-extras --exact pytest tests -q --strict-markers -m 'not (real_llm or llm_judge or real_vm or real_channel or external_runtime or e2e)'
