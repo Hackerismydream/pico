@@ -133,16 +133,21 @@ class JevPreferenceGate:
         async with self._client.stream(
             "POST",
             _ENDPOINT,
-            headers={"Authorization": f"Bearer {api_key}"},
+            headers={"Authorization": f"Bearer {api_key}", "Accept-Encoding": "identity"},
             json={"state": state, "model": self.config.model, "questions": QUESTIONS},
         ) as response:
             if response.status_code != 200:
                 raise _ApiError(response.status_code)
             chunks = bytearray()
-            async for chunk in response.aiter_bytes():
-                chunks.extend(chunk)
+            if response.is_stream_consumed:
+                chunks.extend(response.content)
                 if len(chunks) > _RESPONSE_LIMIT:
                     raise DecisionContractError("response_too_large")
+            else:
+                async for chunk in response.aiter_raw():
+                    chunks.extend(chunk)
+                    if len(chunks) > _RESPONSE_LIMIT:
+                        raise DecisionContractError("response_too_large")
         payload = json.loads(chunks)
         if not isinstance(payload, dict):
             raise DecisionContractError("response_type")
@@ -174,8 +179,9 @@ class JevPreferenceGate:
                 )
                 if not _complete_usage(usage):
                     would_pass, reason = False, "usage_incomplete"
-                outcome = "success"
-                self._failures = 0
+                    outcome = "error"
+                else:
+                    outcome = "success"
         except asyncio.CancelledError:
             outcome, reason = "cancelled", "cancelled"
             raise
@@ -193,10 +199,6 @@ class JevPreferenceGate:
             # Do not log vendor bodies, credentials, preference text or exception payloads.
             reason = "client_error"
         finally:
-            if outcome == "error":
-                self._failures += 1
-                if self._failures >= self.config.failure_threshold:
-                    self._open_until = time.monotonic() + self.config.cooldown_seconds
             ctx = trace.current()
             try:
                 record = self.accounting.record_external(
@@ -224,11 +226,18 @@ class JevPreferenceGate:
                         "min_choice_probability": self.config.min_choice_probability,
                         "answers": answers,
                     },
+                    durable=self.config.mode == "enforce",
                 )
                 if "ledger_write_failed" in record.findings:
-                    would_pass, reason = False, "ledger_write_failed"
+                    would_pass, reason, outcome = False, "ledger_write_failed", "error"
             except Exception:
-                would_pass, reason = False, "accounting_error"
+                would_pass, reason, outcome = False, "accounting_error", "error"
+            if outcome == "error":
+                self._failures += 1
+                if self._failures >= self.config.failure_threshold:
+                    self._open_until = time.monotonic() + self.config.cooldown_seconds
+            elif outcome == "success":
+                self._failures = 0
         return GateDecision(
             fast_pass=would_pass and self.config.mode == "enforce",
             reason=reason,

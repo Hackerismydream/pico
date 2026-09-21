@@ -204,11 +204,13 @@ class CallEfficiency:
         trace_id: str | None,
         turn_span_id: str | None,
         details: dict[str, Any],
+        durable: bool = False,
     ) -> CallRecord:
         """记录非聊天判断的真实 attempt，不伪造 LLMResponse 或遗漏旁路费用。
 
         只为已核对版本的 Jev 估价。缺失 usage、未知模型和中途取消不被记成零费用；
-        ledger 接受记录不等于持久化成功，实验仍必须检查关闭后的 health 文件。
+        默认 ledger 接受记录不等于持久化成功，实验仍必须检查关闭后的 health 文件；调用方明确设置
+        ``durable=True`` 时，只有本条记录已完成 Locked Append 与 Fsync 才返回。
         """
         raw = raw_usage if isinstance(raw_usage, dict) else {}
         values = [raw.get(key) for key in ("input_tokens", "output_tokens")]
@@ -256,7 +258,7 @@ class CallEfficiency:
         )
         if self.mode != "off":
             try:
-                self.ledger.append(record)
+                self.ledger.append(record, durable=durable)
             except Exception:
                 logger.exception("CallEfficiency could not persist an external Call Record")
                 return replace(record, findings=(*record.findings, "ledger_write_failed"))

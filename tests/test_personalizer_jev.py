@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import gzip
 import json
 from dataclasses import asdict
 from types import SimpleNamespace
@@ -231,6 +232,28 @@ async def test_bad_contract_keeps_usage_evidence(accounting, key, mutation, reas
         await gate.aclose()
 
 
+async def test_incomplete_usage_opens_circuit_instead_of_repeating_unknown_cost(accounting, key):
+    payload = _payload()
+    del payload["usage"]
+    calls = 0
+
+    def handler(_request):
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json=payload)
+
+    gate = JevPreferenceGate(_config(failure_threshold=1), accounting, transport=httpx.MockTransport(handler))
+    try:
+        first = await gate.assess("Explain CSV", [], "")
+        second = await gate.assess("Explain JSON", [], "")
+        assert first.reason == "usage_incomplete"
+        assert second.reason == "circuit_open"
+        assert calls == 1
+        assert accounting.records[0].outcome == "error"
+    finally:
+        await gate.aclose()
+
+
 @pytest.mark.parametrize("status", [401, 403, 422, 429, 500, 529, 302])
 async def test_http_failures_do_not_retry_and_open_circuit(accounting, key, status):
     calls = []
@@ -376,6 +399,26 @@ async def test_malformed_and_oversized_response(accounting, key):
     assert len(accounting.records) == 2
 
 
+async def test_compressed_response_is_not_expanded_before_limit_check(accounting, key):
+    compressed = gzip.compress(b"x" * (16 * 1024 * 1024))
+
+    class RawCompressedStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield compressed
+
+    def handler(request):
+        assert request.headers["accept-encoding"] == "identity"
+        return httpx.Response(200, stream=RawCompressedStream(), headers={"content-encoding": "gzip"})
+
+    gate = JevPreferenceGate(_config(), accounting, transport=httpx.MockTransport(handler))
+    try:
+        result = await gate.assess("Explain CSV", [], "")
+        assert result.reason == "transport_or_json_error"
+        assert not result.fast_pass
+    finally:
+        await gate.aclose()
+
+
 class _ClassifierProvider(LLMProvider):
     def __init__(self):
         super().__init__()
@@ -414,7 +457,8 @@ async def test_only_enforce_removes_the_existing_provider_call(accounting, key, 
 
 
 async def test_ledger_failure_never_authorizes_fast_pass(accounting, key, monkeypatch):
-    def fail(record):
+    def fail(record, *, durable=False):
+        assert durable is True
         raise RuntimeError("synthetic ledger failure")
 
     monkeypatch.setattr(accounting.ledger, "append", fail)
@@ -426,6 +470,34 @@ async def test_ledger_failure_never_authorizes_fast_pass(accounting, key, monkey
         assert not result.fast_pass and result.reason == "ledger_write_failed"
     finally:
         await gate.aclose()
+
+
+async def test_durable_ledger_failure_opens_circuit_before_fast_pass(tmp_path, key, monkeypatch):
+    from pico.call_efficiency.ledger import CallLedgerError
+
+    calls = 0
+
+    def fail(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    def handler(_request):
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json=_payload())
+
+    monkeypatch.setattr("pico.call_efficiency.ledger.locked_append", fail)
+    controller = CallEfficiency(telemetry_dir=tmp_path / "durable", persist=True)
+    gate = JevPreferenceGate(_config(failure_threshold=1), controller, transport=httpx.MockTransport(handler))
+    try:
+        first = await gate.assess("Explain CSV", [], "")
+        second = await gate.assess("Explain JSON", [], "")
+        assert first.reason == "ledger_write_failed" and not first.fast_pass
+        assert second.reason == "circuit_open"
+        assert calls == 1
+    finally:
+        await gate.aclose()
+        with pytest.raises(CallLedgerError):
+            controller.close()
 
 
 async def test_transport_failure_and_session_isolation(accounting, key):

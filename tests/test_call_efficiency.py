@@ -503,6 +503,35 @@ def test_ledger_persists_on_a_background_writer(monkeypatch, tmp_path) -> None:
     assert all(thread_id != caller_thread for thread_id in writer_threads)
 
 
+def test_durable_append_is_fsynced_before_return(monkeypatch, tmp_path) -> None:
+    persisted = []
+
+    def _locked_append(path, lines, **_kwargs):
+        persisted.extend(lines)
+
+    monkeypatch.setattr("pico.call_efficiency.ledger.locked_append", _locked_append)
+    controller = CallEfficiency(mode="observe", telemetry_dir=tmp_path, persist=True)
+    record = controller.record_external(
+        call_id="decision-1",
+        requested_model="jev-1.13.0",
+        actual_model="jev-1.13.0",
+        raw_usage={"input_tokens": 10, "output_tokens": 2},
+        outcome="success",
+        error_category=None,
+        duration_ms=1.0,
+        session_key="session-1",
+        trace_id=None,
+        turn_span_id=None,
+        details={},
+        durable=True,
+    )
+
+    assert persisted
+    assert json.loads(persisted[0])["call_id"] == record.call_id
+    assert controller.ledger._persisted == controller.ledger._accepted == 1
+    controller.close()
+
+
 def test_ledger_retains_only_a_bounded_recent_window(tmp_path) -> None:
     controller = CallEfficiency(mode="observe", telemetry_dir=tmp_path, persist=False)
 
