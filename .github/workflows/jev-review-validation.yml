@@ -5,54 +5,42 @@ on:
 permissions:
   contents: read
 jobs:
-  validate:
+  validate-watcher-fix:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: bcd41b42fbbbeab7f28465839928379129ebb34c
+          ref: baead420b00fff47e5f073109a48868f986ac933
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v8.2.0
       - run: |
           uv python install 3.12
           echo 'UV_PYTHON_PREFERENCE=only-managed' >> "$GITHUB_ENV"
       - run: uv sync --frozen --extra dev --dev
-      - name: Isolate module and native import exit codes
+      - name: Record environment
+        run: |
+          git rev-parse HEAD
+          uv --version
+          uv run --no-sync python -VV
+          sha256sum uv.lock
+          uname -a
+      - name: Reproduce formerly crashing baseline modules
         env:
           PYTHONFAULTHANDLER: '1'
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          import json, subprocess, sys
-          out=Path('/tmp/pico-isolation');out.mkdir()
-          modules=['personalizer_jev','personalizer_contract','routing_fallback_chain','config_routing','knn_router','call_efficiency','cli_runtime_assembly','agent_loop_memory_pipeline','context_invariants','agent_loop_empty_recovery']
-          commands={name:['uv','run','--no-sync','pytest','tests/test_'+name+'.py','-q'] for name in modules}
-          for name, code in {
-              'import_requests':'import requests',
-              'import_numpy':'import numpy',
-              'import_loop':'import pico.agent.loop',
-              'import_regex':'import regex',
-          }.items():
-              commands[name]=['uv','run','--no-sync','python','-c',code]
-          commands['assets']=['make','check-large-files','COMMIT_RANGE=697499a36c349bd0989344fd0dcd4282d23d33a9..HEAD']
-          commands['precommit']=['uv','run','--no-sync','pre-commit','run','--from-ref','697499a36c349bd0989344fd0dcd4282d23d33a9','--to-ref','HEAD']
-          results={'commit':'bcd41b42fbbbeab7f28465839928379129ebb34c','checks':{}}
-          for name,command in commands.items():
-              with (out/(name+'.txt')).open('w') as log:
-                  try:
-                      code=subprocess.run(command,stdout=log,stderr=subprocess.STDOUT,timeout=180).returncode
-                  except subprocess.TimeoutExpired:
-                      code=124
-              results['checks'][name]={'command':command,'exit_code':code}
-              (out/'results.json').write_text(json.dumps(results,indent=2))
-              print(name,code,flush=True)
-              print((out/(name+'.txt')).read_text()[-5000:],flush=True)
-          sys.exit(int(any(item['exit_code'] for item in results['checks'].values())))
-          PY
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: pico-review-isolation
-          path: /tmp/pico-isolation/
-          retention-days: 2
+          uv run --no-sync pytest \
+            tests/test_routing_fallback_chain.py \
+            tests/test_config_routing.py \
+            tests/test_knn_router.py \
+            tests/test_call_efficiency.py \
+            tests/test_cli_runtime_assembly.py \
+            tests/test_agent_loop_memory_pipeline.py \
+            tests/test_context_invariants.py \
+            tests/test_agent_loop_empty_recovery.py \
+            tests/test_skill_watcher_lifecycle.py \
+            -q
+      - name: Run normal Python target
+        env:
+          PYTHONFAULTHANDLER: '1'
+        run: make test-python
