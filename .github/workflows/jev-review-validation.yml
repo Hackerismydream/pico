@@ -1,0 +1,69 @@
+name: Jev review validation
+
+on:
+  push:
+    branches: [chore/jev_review_validation]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jev-review-validation
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: payload
+      - uses: actions/checkout@v7
+        with:
+          ref: feat/jev_personalization_gate
+          path: subject
+          fetch-depth: 0
+      - name: Apply exact review patch when present
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f payload/.jev-review/apply.py ]; then
+            python payload/.jev-review/apply.py subject payload/.jev-review
+            cd subject
+            git diff --check
+            git config user.name 'Pico review automation'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add pico tests docs CONTEXT.md
+            if ! git diff --cached --quiet; then
+              git commit -m 'feat: Add opt-in Jev preference triage and contract checks'
+              git push origin HEAD:refs/heads/feat/jev_personalization_gate
+            fi
+          fi
+      - name: Archive exact source
+        if: always()
+        run: |
+          cd subject
+          git rev-parse HEAD > /tmp/pico-review-source-commit.txt
+          git archive --format=zip HEAD -o /tmp/pico-review-source.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pico-review-source
+          path: /tmp/pico-review-source*
+          retention-days: 2
+      - uses: astral-sh/setup-uv@v8.2.0
+        if: hashFiles('payload/.jev-review/apply.py') != ''
+        with:
+          enable-cache: true
+          cache-dependency-glob: subject/uv.lock
+      - name: Frozen test environment
+        if: hashFiles('payload/.jev-review/apply.py') != ''
+        working-directory: subject
+        run: uv sync --frozen --all-groups --extra channels --extra tools --extra sandbox
+      - name: Credential-free checks
+        if: hashFiles('payload/.jev-review/apply.py') != ''
+        working-directory: subject
+        run: |
+          uv run --no-sync ruff check pico/agent/personalizer pico/config/personalization.py tests/test_personalizer_jev.py tests/test_personalizer_contract.py
+          uv run --no-sync pytest tests/test_personalizer_jev.py tests/test_personalizer_contract.py tests/test_agent_loop_memory_pipeline.py tests/test_context_invariants.py -q
