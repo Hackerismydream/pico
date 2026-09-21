@@ -54,7 +54,7 @@ class ContextBuilder:
         now_fn: Callable[[], datetime] | None = None,
         *,
         state: Path | None = None,
-        start_watcher: bool = True,
+        start_watcher: bool = False,
     ):
         self.workspace = workspace
         self.state = state or workspace

@@ -6,7 +6,7 @@ Watcher 监控 Workspace Skill Tree；``SKILL.md`` Add/Change/Disappear 时按 S
 Invalidation Hook。Watcher Roots 通过 ``__init__`` 传入。
 
 Design Notes：使用运行 ``watchfiles.watch()`` 的 **Daemon Thread**，Rust Iterator 默认约 1.6s Debounce；
-Daemon 在 Process Exit 自动清理，显式 :meth:`stop` 用于 Tests/Clean Shutdown。Scope 刻意 Workspace-only，
+资源所有者必须在 Process Exit 前显式 :meth:`stop`。Scope 刻意 Workspace-only，
 Builtin/External 是 Read-only Mirrors，Builtin 约可达 80K Files，Recursive Watch 会超过 Linux
 ``fs.inotify.max_user_watches``。``watchfiles`` 缺失时 Defensive `ImportError` 降级 Manual Invalidation。
 Start/Stop 与 Thread 内 Error 都是 **Best-effort**，失败返回 ``False`` 或记录后不让 Runtime 崩溃。
@@ -90,17 +90,18 @@ class SkillFileWatcher:
         )
         return True
 
-    def stop(self, timeout: float = 1.0) -> None:
-        """Signal Watcher Exit，并在 ``timeout`` 内 Best-effort Join。
-
-        Never Started 或重复调用都安全。无论 Join 是否在时限内完成都会清空 `_thread` Reference；Daemon
-        Thread 最终仍可在 Process Exit 被系统回收。
-        """
+    def stop(self, timeout: float = 1.0) -> bool:
+        """通知 Watcher 退出，并返回 Native Thread 是否已完成清理。"""
         self._stop.set()
         thread = self._thread
         if thread is not None and thread.is_alive():
+            if thread is threading.current_thread():
+                return False
             thread.join(timeout=timeout)
+            if thread.is_alive():
+                return False
         self._thread = None
+        return True
 
     # ------------------------------------------------------------------
 
@@ -113,6 +114,7 @@ class SkillFileWatcher:
                 *self._roots,
                 watch_filter=_is_skill_md,
                 stop_event=self._stop,
+                rust_timeout=250,
                 # 这是大型应用内的守护线程，不让主线程中的 Ctrl+C 在此处合成 KeyboardInterrupt。
                 raise_interrupt=False,
             ):

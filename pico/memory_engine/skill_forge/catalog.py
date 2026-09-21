@@ -79,7 +79,7 @@ class LocalSkillCatalog:
         self._local_pool = LocalPool(self._registry)
 
         # 后台 SKILL.md 监视器默认自动启动，使长生命周期消费方 ContextBuilder 能自动获取
-        # 对 ``<workspace>/skills/**/SKILL.md`` 的手动编辑。监视器运行在守护线程中，进程退出时自动清理；
+        # 对 ``<workspace>/skills/**/SKILL.md`` 的手动编辑。原生守护线程必须由资源所有者显式停止；
         # 缺少 ``watchfiles`` 时退化为空操作并记录一条 INFO 日志。
         #
         # 短生命周期消费方（单个 CLI 命令、为子 Agent 执行一次的 ``build_skills_summary()``）
@@ -142,17 +142,15 @@ class LocalSkillCatalog:
         self._file_watcher = watcher
         return True
 
-    def stop_file_watcher(self) -> None:
-        """通知 Watcher Thread Exit，并 Best-effort Join。
-
-        从未启动时安全 No-op；有实例时调用其 `stop` 并清空引用，使后续 Start 可重试。返回不携带线程
-        退出证明，具体 Join 行为由 `SkillFileWatcher` 实现。
-        """
+    def stop_file_watcher(self) -> bool:
+        """停止 Watcher；未确认线程退出时保留实例，禁止重复启动。"""
         watcher = self._file_watcher
         if watcher is None:
-            return
-        watcher.stop()
+            return True
+        if not watcher.stop():
+            return False
         self._file_watcher = None
+        return True
 
     # ------------------------------------------------------------------
     # 旧版 ``SkillsLoader`` API（签名兼容的直接替代）

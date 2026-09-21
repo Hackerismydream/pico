@@ -1633,6 +1633,7 @@ class AgentLoop:
             await self._start_executor()
             await self._start_debug_server()
             await self._connect_mcp()
+            self.context.skills.start_file_watcher()
         except SandboxInitError as exc:
             logger.error("Sandbox failed to start: {}", exc)
             await self.close_executor()
@@ -1693,11 +1694,22 @@ class AgentLoop:
             if self._closed:
                 return
             self.begin_close()
-            tasks = tuple(self._personalization_tasks)
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
-            await self.close_mcp()
+            try:
+                tasks = tuple(self._personalization_tasks)
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                await self.close_mcp()
+            finally:
+                from pico.spine._barrier import finish_barrier
+
+                await finish_barrier(asyncio.create_task(self._stop_skill_watcher()))
             self._closed = True
+
+    async def _stop_skill_watcher(self) -> None:
+        """停止并确认原生 Skill Watcher Thread 已退出。"""
+        stopped = await asyncio.to_thread(self.context.skills.stop_file_watcher)
+        if not stopped:
+            raise RuntimeError("Skill file watcher did not stop within the shutdown deadline")
 
     def stop(self) -> None:
         """请求长期 `run` 保活循环在下一次检查时停止。
@@ -2259,6 +2271,7 @@ class AgentLoop:
         try:
             await self._start_executor()
             await self._connect_mcp()
+            self.context.skills.start_file_watcher()
             out = await self._process_message(
                 req,
                 session_key=cid,
