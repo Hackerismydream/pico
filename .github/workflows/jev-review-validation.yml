@@ -5,18 +5,26 @@ on:
 permissions:
   contents: read
 jobs:
-  validate-watcher-fix:
+  compare-watcher-fix:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        revision:
+          - 697499a36c349bd0989344fd0dcd4282d23d33a9
+          - baead420b00fff47e5f073109a48868f986ac933
+        python: ['3.12.13', '3.12.14']
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: baead420b00fff47e5f073109a48868f986ac933
+          ref: ${{ matrix.revision }}
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v8.2.0
       - run: |
-          uv python install 3.12
+          uv python install '${{ matrix.python }}'
           echo 'UV_PYTHON_PREFERENCE=only-managed' >> "$GITHUB_ENV"
+          echo 'UV_PYTHON=${{ matrix.python }}' >> "$GITHUB_ENV"
       - run: uv sync --frozen --extra dev --dev
       - name: Record environment
         run: |
@@ -25,22 +33,21 @@ jobs:
           uv run --no-sync python -VV
           sha256sum uv.lock
           uname -a
-      - name: Reproduce formerly crashing baseline modules
+      - name: Run formerly crashing baseline modules
         env:
           PYTHONFAULTHANDLER: '1'
         run: |
-          uv run --no-sync pytest \
-            tests/test_routing_fallback_chain.py \
-            tests/test_config_routing.py \
-            tests/test_knn_router.py \
-            tests/test_call_efficiency.py \
-            tests/test_cli_runtime_assembly.py \
-            tests/test_agent_loop_memory_pipeline.py \
-            tests/test_context_invariants.py \
-            tests/test_agent_loop_empty_recovery.py \
-            tests/test_skill_watcher_lifecycle.py \
-            -q
-      - name: Run normal Python target
-        env:
-          PYTHONFAULTHANDLER: '1'
-        run: make test-python
+          files=(
+            tests/test_routing_fallback_chain.py
+            tests/test_config_routing.py
+            tests/test_knn_router.py
+            tests/test_call_efficiency.py
+            tests/test_cli_runtime_assembly.py
+            tests/test_agent_loop_memory_pipeline.py
+            tests/test_context_invariants.py
+            tests/test_agent_loop_empty_recovery.py
+          )
+          if [ -f tests/test_skill_watcher_lifecycle.py ]; then
+            files+=(tests/test_skill_watcher_lifecycle.py)
+          fi
+          uv run --no-sync pytest "${files[@]}" -q
