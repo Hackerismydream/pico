@@ -5,7 +5,7 @@ on:
     branches: [chore/jev_review_validation]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: jev-review-validation
@@ -13,92 +13,73 @@ concurrency:
 
 jobs:
   validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        revision: [baseline, feature]
+        python: [system, managed]
+    name: '${{ matrix.revision }} / ${{ matrix.python }}'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: feat/jev_personalization_gate
+          ref: '${{ matrix.revision == ''baseline'' && ''697499a36c349bd0989344fd0dcd4282d23d33a9'' || ''bcd41b42fbbbeab7f28465839928379129ebb34c'' }}'
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
-      - name: Frozen existing test environment
-        run: uv sync --frozen --extra dev --dev
-      - name: Preserve the disabled-path call contract
-        shell: bash
+      - name: Select interpreter
         run: |
-          set -euo pipefail
-          git fetch origin main
-          test "$(git rev-parse origin/main)" = 697499a36c349bd0989344fd0dcd4282d23d33a9
-          test "$(git rev-parse HEAD)" = 9fac58b5dbfbbdcced9562305e152a26d19cc372
+          if [ '${{ matrix.python }}' = managed ]; then
+            uv python install 3.12
+            echo 'UV_PYTHON_PREFERENCE=only-managed' >> "$GITHUB_ENV"
+          else
+            echo 'UV_PYTHON=/usr/bin/python3' >> "$GITHUB_ENV"
+          fi
+      - name: Frozen existing dependencies
+        run: uv sync --frozen --extra dev --dev
+      - name: Run all diagnostic checks and retain exit codes
+        env:
+          PYTHONFAULTHANDLER: '1'
+        run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path('pico/agent/loop/main.py')
-          old = '                _classification = await _personalizer.classify(content, history=_recent, allow_gate=not turn_media)\n'
-          new = (
-              '                if self._personalization_gate is not None and not turn_media:\n'
-              '                    _classification = await _personalizer.classify(content, history=_recent, allow_gate=True)\n'
-              '                else:\n'
-              '                    _classification = await _personalizer.classify(content, history=_recent)\n'
-          )
-          text = p.read_text()
-          if text.count(old) != 1:
-              raise RuntimeError('Unexpected classifier call site')
-          p.write_text(text.replace(old, new))
-          p = Path('tests/test_personalizer_contract.py')
-          p.write_text(p.read_text() + '''
-
-          async def test_disabled_gate_keeps_legacy_classifier_call_shape(monkeypatch, tmp_path):
-              from tests.test_agent_loop_memory_pipeline import _FakeBackend, _make_agent, _msg
-
-              calls = []
-              async def legacy_classify(self, message, history=None):
-                  calls.append(message)
-                  return {"needs_clarification": False, "domain": ""}
-
-              monkeypatch.setattr(Personalizer, "classify", legacy_classify)
-              agent = _make_agent(tmp_path, backend=_FakeBackend())
-              agent.configure_personalization(True)
-              agent._start_personalization_task = MagicMock()
-              try:
-                  await agent._process_message(_msg(), origin=Origin.USER)
-                  assert len(calls) == 1
-              finally:
-                  await agent.close()
-          ''')
+          import json, os, subprocess, sys
+          out = Path('/tmp/pico-review-results')
+          out.mkdir()
+          feature = '${{ matrix.revision }}' == 'feature'
+          core = ['tests/test_routing_fallback_chain.py', 'tests/test_config_routing.py', 'tests/test_knn_router.py', 'tests/test_call_efficiency.py', 'tests/test_cli_runtime_assembly.py', 'tests/test_agent_loop_memory_pipeline.py', 'tests/test_context_invariants.py', 'tests/test_agent_loop_empty_recovery.py']
+          new = ['tests/test_personalizer_jev.py', 'tests/test_personalizer_contract.py'] if feature else []
+          commands = {
+              'interpreter': ['uv','run','--no-sync','python','-VV'],
+              'regression': ['uv','run','--no-sync','pytest', *new, *core, '-q', '--junitxml=' + str(out / 'regression.xml')],
+              'lint': ['make','lint-python'],
+              'focused': ['make','test-python'],
+          }
+          if feature:
+              changed = subprocess.check_output(['git','diff','--name-only','697499a36c349bd0989344fd0dcd4282d23d33a9','HEAD','--','*.py'],text=True).splitlines()
+              commands['changed_lint']=['uv','run','--no-sync','ruff','check', *changed]
+              commands['changed_format']=['uv','run','--no-sync','ruff','format','--check', *changed]
+              commands['assets']=['make','check-large-files','COMMIT_RANGE=--from-ref 697499a36c349bd0989344fd0dcd4282d23d33a9 --to-ref HEAD']
+          results={'commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(), 'python_kind':'${{ matrix.python }}', 'checks':{}}
+          for name, command in commands.items():
+              with (out / (name+'.txt')).open('w') as stream:
+                  try:
+                      run=subprocess.run(command,stdout=stream,stderr=subprocess.STDOUT,timeout=180)
+                      code=run.returncode
+                  except subprocess.TimeoutExpired:
+                      code=124
+              results['checks'][name]={'command':command,'exit_code':code}
+              print(name,code,flush=True)
+              print((out / (name+'.txt')).read_text()[-6000:],flush=True)
+              (out/'results.json').write_text(json.dumps(results,indent=2))
+          sys.exit(int(any(item['exit_code'] != 0 for item in results['checks'].values())))
           PY
-          uv run --no-sync ruff check --select I --fix pico/agent/loop/main.py tests/test_personalizer_contract.py
-          uv run --no-sync ruff format pico/agent/loop/main.py tests/test_personalizer_contract.py
-          git diff --check
-          git config user.name 'Pico review automation'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add pico/agent/loop/main.py tests/test_personalizer_contract.py
-          git commit -m 'fix(agent): Preserve the disabled preference classifier seam'
-          git push origin HEAD:refs/heads/feat/jev_personalization_gate
-      - name: Changed-file lint and formatting
-        run: |
-          git diff --name-only origin/main HEAD -- '*.py' > /tmp/jev-changed-python.txt
-          xargs -a /tmp/jev-changed-python.txt uv run --no-sync ruff check
-          xargs -a /tmp/jev-changed-python.txt uv run --no-sync ruff format --check
-      - name: Credential-free regression contracts
-        run: |
-          set -o pipefail
-          uv run --no-sync pytest tests/test_personalizer_jev.py tests/test_personalizer_contract.py tests/test_routing_fallback_chain.py tests/test_config_routing.py tests/test_knn_router.py tests/test_call_efficiency.py tests/test_cli_runtime_assembly.py tests/test_agent_loop_memory_pipeline.py tests/test_context_invariants.py tests/test_agent_loop_empty_recovery.py -q --junitxml=/tmp/pico-review-regression.xml 2>&1 | tee /tmp/pico-review-regression.txt
-      - name: Repository focused checks
-        run: |
-          set -o pipefail
-          make lint-python 2>&1 | tee /tmp/pico-review-lint.txt
-          make test-python 2>&1 | tee /tmp/pico-review-focused.txt
-      - name: Archive exact committed source
-        if: always()
-        run: |
-          git rev-parse HEAD > /tmp/pico-review-source-commit.txt
-          git archive --format=zip HEAD -o /tmp/pico-review-source.zip
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: pico-review-source
-          path: /tmp/pico-review-*
+          name: 'pico-review-${{ matrix.revision }}-${{ matrix.python }}'
+          path: /tmp/pico-review-results/
           retention-days: 2
