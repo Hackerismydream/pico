@@ -72,7 +72,7 @@ async def test_agent_close_stops_watcher_even_when_other_cleanup_fails(tmp_path)
 @pytest.mark.asyncio
 async def test_one_shot_turn_starts_runtime_owned_watcher(tmp_path):
     from tests.test_agent_loop_memory_pipeline import _make_agent, _msg
-    from tests.test_agent_loop_run_emit import _EmitCollector, _drain
+    from tests.test_agent_loop_run_emit import _drain, _EmitCollector
 
     agent = _make_agent(tmp_path)
     start = MagicMock(return_value=True)
