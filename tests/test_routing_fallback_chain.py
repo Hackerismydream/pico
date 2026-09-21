@@ -81,3 +81,36 @@ async def test_route_none_yields_empty_chain(monkeypatch):
     primary, fallbacks = await router.select_model_chain("hi")
     assert primary is None
     assert fallbacks == []
+
+
+@pytest.mark.parametrize("similarity", [0.0, -0.1, float("nan"), float("inf"), float("-inf")])
+async def test_classifier_without_evidence_retains_default(monkeypatch, similarity):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from pico.routing.types import ClassificationResult
+
+    router = ModelRouter(api_key="test")
+    router._data = {}
+    monkeypatch.setattr(
+        router._classifier,
+        "classify",
+        AsyncMock(return_value=ClassificationResult(category="sanity", similarity=similarity)),
+    )
+    selector = MagicMock()
+    monkeypatch.setattr("pico.routing.router.select_model", selector)
+    assert await router.select_model_chain("not a known task") == (None, [])
+    selector.assert_not_called()
+
+
+async def test_real_positive_sanity_classification_still_routes(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from pico.routing.types import ClassificationResult
+
+    router = ModelRouter(api_key="test")
+    router._data = {}
+    monkeypatch.setattr(
+        router._classifier, "classify", AsyncMock(return_value=ClassificationResult(category="sanity", similarity=0.9))
+    )
+    monkeypatch.setattr("pico.routing.router.select_model", lambda *args: _result("a/primary", []))
+    assert await router.select_model_chain("hello") == ("a/primary", [])

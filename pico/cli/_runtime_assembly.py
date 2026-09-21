@@ -13,6 +13,7 @@ from pico.spine._barrier import finish_barrier
 
 if TYPE_CHECKING:
     from pico.agent.loop import AgentLoop
+    from pico.agent.personalizer.jev import JevPreferenceGate
     from pico.call_efficiency import CallEfficiency
     from pico.config.paths import RuntimePaths
     from pico.config.pico import PicoConfig
@@ -28,6 +29,8 @@ class RuntimeAssembly:
     session_manager: SessionManager
     backend: MemoryBackend | None
     call_efficiency: CallEfficiency | None = None
+    personalization_gate: JevPreferenceGate | None = None
+    _gate_closed: bool = field(default=False, init=False)
     _backend_start_attempted: bool = field(default=False, init=False)
     _backend_started: bool = field(default=False, init=False)
     _backend_start_error: BaseException | None = field(default=None, init=False)
@@ -54,6 +57,8 @@ class RuntimeAssembly:
 
     def begin_close(self) -> None:
         self.agent_loop.begin_close()
+        if self.personalization_gate is not None:
+            self.personalization_gate.begin_close()
 
     async def close(self) -> None:
         async with self._close_lock:
@@ -74,6 +79,16 @@ class RuntimeAssembly:
                 cancellation = exc
             else:
                 self._agent_closed = True
+
+        if self.personalization_gate is not None and not self._gate_closed:
+            try:
+                await self.personalization_gate.aclose()
+            except Exception:
+                logger.exception("preference gate close failed; continuing shutdown")
+            except BaseException as exc:
+                cancellation = cancellation or exc
+            else:
+                self._gate_closed = True
 
         if self.call_efficiency is None:
             self._call_efficiency_closed = True
@@ -141,6 +156,7 @@ def assemble_runtime(
         provider=provider,
     )
     runtime_provider = CallEfficiencyProvider(provider, call_efficiency)
+    personalization_gate = None
     try:
         plugin_registry = build_plugin_registry(pico_config)
         backend = maybe_build_memory_backend(
@@ -188,9 +204,21 @@ def assemble_runtime(
             skill_forge_router_config=pico_config.skill_forge.router,
             plugin_tools=plugin_tools,
         )
-        agent_loop.configure_personalization(
-            defaults.enable_personalization,
-        )
+        gate_config = getattr(defaults, "personalization_gate", None)
+        if (
+            defaults.enable_personalization
+            and backend is not None
+            and gate_config is not None
+            and gate_config.mode != "off"
+        ):
+            from pico.agent.personalizer.jev import JevPreferenceGate
+
+            if call_efficiency.mode == "off" or not call_efficiency.ledger.persist:
+                raise ValueError("Jev requires persistent CallEfficiency usage tracking")
+            personalization_gate = JevPreferenceGate(gate_config, call_efficiency)
+            agent_loop.configure_personalization(True, gate=personalization_gate)
+        else:
+            agent_loop.configure_personalization(defaults.enable_personalization)
     except BaseException:
         try:
             call_efficiency.close()
@@ -202,6 +230,7 @@ def assemble_runtime(
         session_manager=session_manager,
         backend=backend,
         call_efficiency=call_efficiency,
+        personalization_gate=personalization_gate,
     )
 
 

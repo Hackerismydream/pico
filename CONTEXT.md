@@ -144,6 +144,16 @@ The four-step preference flow wrapped around a turn: classify whether a preferen
 question is needed, ask it, run the Agent Loop, then post-learn signals from the
 finished turn.
 
+**Preference Fast Path** (`agent/personalizer/jev.py`):
+An experimental, default-off Personalizer backend that can skip one existing
+preference-classification call for a clear new USER request. `shadow` records
+without changing the original classifier; `enforce` uses a pinned Jev model,
+validated Choice answers and operator-reviewed thresholds. Ambiguity, errors,
+media and pending clarifications retain the original path. Runtime Assembly
+owns its lifecycle and CallEfficiency records every remote attempt.
+_Avoid_: authorization gate, general Decision Engine, or calibrated correctness
+claim — none is established by typed answers or configuration.
+
 **Context Builder** (`agent/context/`):
 The bootstrap/identity renderer (`ContextBuilder`) that loads Bootstrap Files and the
 runtime-context block, feeding the Context Engine's segments.

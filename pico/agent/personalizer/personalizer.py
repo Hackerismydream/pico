@@ -16,6 +16,7 @@ from loguru import logger
 from pico.tracing import semconv, trace
 
 if TYPE_CHECKING:
+    from pico.agent.personalizer.jev import JevPreferenceGate
     from pico.memory_engine.consolidate.consolidator import MemoryStore
     from pico.providers.base import LLMProvider
 
@@ -127,13 +128,16 @@ class Personalizer:
     Fact；Memory 更新通过锁保护的 Read-modify-write 完成。
     """
 
-    def __init__(self, memory: MemoryStore, provider: LLMProvider, model: str):
+    def __init__(
+        self, memory: MemoryStore, provider: LLMProvider, model: str, *, gate: JevPreferenceGate | None = None
+    ):
         self.memory = memory
         self.provider = provider
         self.model = model
+        self._gate = gate
 
     @trace.instrument("personalize.classify", kind="memory", extract=semconv.personalize)
-    async def classify(self, message: str, history: list[dict] | None = None) -> dict:
+    async def classify(self, message: str, history: list[dict] | None = None, *, allow_gate: bool = False) -> dict:
         """判断当前 User ``message`` 是否必须先询问 Personalization Preference。
 
         可选 ``history`` 提供最近 2–4 条 Conversation Context，Long-term Memory 也进入 Classifier。
@@ -145,6 +149,14 @@ class Personalizer:
         阻塞。
         """
         current_memory = self.memory.read_long_term()
+
+        if allow_gate and self._gate is not None:
+            try:
+                decision = await self._gate.assess(message, history or [], current_memory or "")
+                if decision.fast_pass:
+                    return {"needs_clarification": False, "domain": ""}
+            except Exception:
+                logger.warning("Preference fast path unavailable; retaining the existing classifier")
 
         history_text = self._format_history(history) if history else "(no prior context)"
 
@@ -165,8 +177,15 @@ class Personalizer:
                 response.content or "",
                 fallback={"needs_clarification": False, "domain": ""},
             )
-            logger.debug("Personalizer.classify: {}", result)
-            return result
+            if response.finish_reason == "error" or not isinstance(result, dict):
+                return {"needs_clarification": False, "domain": ""}
+            needs = result.get("needs_clarification")
+            domain = result.get("domain", "")
+            if type(needs) is not bool or not isinstance(domain, str) or len(domain) > 128:
+                return {"needs_clarification": False, "domain": ""}
+            if needs and not domain.strip():
+                return {"needs_clarification": False, "domain": ""}
+            return {"needs_clarification": needs, "domain": domain.strip() if needs else ""}
         except Exception:
             logger.exception("Personalizer.classify failed, skipping clarification")
             return {"needs_clarification": False, "domain": ""}

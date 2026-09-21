@@ -55,6 +55,10 @@ class CallRecord:
     observed_at: str
     findings: tuple[str, ...] = field(default_factory=tuple)
     schema: str = CALL_RECORD_SCHEMA
+    call_id: str | None = None
+    call_kind: str = "chat"
+    duration_ms: float | None = None
+    details: dict[str, Any] = field(default_factory=dict)
 
     @property
     def cost_complete(self) -> bool:

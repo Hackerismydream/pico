@@ -11,6 +11,8 @@ Cache Plan。Ledger Failure 会记录日志但不能把已经完成的 Provider 
 
 from __future__ import annotations
 
+from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -26,7 +28,7 @@ from pico.call_efficiency.cache import (
     valid_cache_control,
 )
 from pico.call_efficiency.ledger import CallLedger
-from pico.call_efficiency.models import CallRecord, PreparedCall
+from pico.call_efficiency.models import CallRecord, CallUsage, PreparedCall
 from pico.call_efficiency.pricing import estimate_cost_usd
 from pico.call_efficiency.usage import normalize_usage
 from pico.product import get_product_home
@@ -186,6 +188,78 @@ class CallEfficiency:
             except Exception:
                 # 记账证据不得把已完成的 Provider 调用变成失败的 Turn。
                 logger.exception("CallEfficiency could not persist a Call Record")
+        return record
+
+    def record_external(
+        self,
+        *,
+        call_id: str,
+        requested_model: str,
+        actual_model: str | None,
+        raw_usage: Any,
+        outcome: str,
+        error_category: str | None,
+        duration_ms: float,
+        session_key: str | None,
+        trace_id: str | None,
+        turn_span_id: str | None,
+        details: dict[str, Any],
+    ) -> CallRecord:
+        """记录非聊天判断的真实 attempt，不伪造 LLMResponse 或遗漏旁路费用。
+
+        只为已核对版本的 Jev 估价。缺失 usage、未知模型和中途取消不被记成零费用；
+        ledger 接受记录不等于持久化成功，实验仍必须检查关闭后的 health 文件。
+        """
+        raw = raw_usage if isinstance(raw_usage, dict) else {}
+        values = [raw.get(key) for key in ("input_tokens", "output_tokens")]
+        valid = [type(value) is int and 0 <= value < 2**53 for value in values]
+        complete = all(valid)
+        input_tokens = values[0] if valid[0] else 0
+        output_tokens = values[1] if valid[1] else 0
+        usage = CallUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens if complete else None,
+            complete=complete,
+        )
+        findings: list[str] = []
+        if not complete:
+            findings.append("usage_incomplete")
+        if actual_model is None:
+            findings.append("actual_model_unknown")
+        # TypeSafe Models, checked 2026-09-21: USD 0.042/M input; output is free.
+        known_price = actual_model == "jev-1.13.0"
+        cost = input_tokens * 0.042 / 1_000_000 if complete and known_price else None
+        if not known_price:
+            findings.append("pricing_unavailable")
+        record = CallRecord(
+            requested_model=requested_model,
+            attempted_model=requested_model,
+            actual_model=actual_model or "unknown",
+            accounting_model=actual_model or requested_model,
+            usage=usage,
+            estimated_cost_usd=cost,
+            outcome=outcome,
+            finish_reason="decision" if outcome == "success" else "error",
+            error_category=error_category,
+            session_key=session_key,
+            trace_id=trace_id,
+            turn_span_id=turn_span_id,
+            mode=self.mode,
+            cache_policy="not_applicable",
+            observed_at=datetime.now(timezone.utc).isoformat(),
+            findings=tuple(findings),
+            call_id=call_id,
+            call_kind="decision",
+            duration_ms=duration_ms,
+            details={**deepcopy(details), "pricing_version": "typesafe-2026-09-21"},
+        )
+        if self.mode != "off":
+            try:
+                self.ledger.append(record)
+            except Exception:
+                logger.exception("CallEfficiency could not persist an external Call Record")
+                return replace(record, findings=(*record.findings, "ledger_write_failed"))
         return record
 
     def close(self) -> None:
