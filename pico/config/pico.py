@@ -338,22 +338,22 @@ class SkillForgeConfig(_Base):
     """每 Turn Inject 的 Maximum Always Skills（R3）。超出时按 `local_dirs` List Order + Alphabetical
     Truncate，并以 WARN 列出 Dropped Skill Names。"""
 
-    # --- 旧版 LLM 门控选择器 ---
+    # --- Memory-derived Skill 门控选择器 ---
     llm_gate_enabled: bool = False
-    """为 Config Compatibility 保留的 Legacy LLM Gate Knob。
+    """是否启用 Memory-derived Skill 的 Per-turn LLM Gate。
 
-    Active Runtime 使用 Deterministic Local Confidence，不调用 LLM Gate；Ambiguous Candidates 成为 Main
-    Agent Loop 可用 ``skill_read`` 检查的 Compact References。字段为 True 也不改变 Active Path。
+    Local Skills 继续使用 Deterministic Resolution。Memory-derived Candidates 即使该字段为 False 也不会
+    直接注入；启用后只有 Gate 明确选择的 Exact Qualified IDs 才能进入 ``# Skills``。
     """
 
     llm_gate_max_select: int = 2
-    """Legacy Gate 可 Select Skill 的 Upper Bound，与 ``inject_max`` 对齐。"""
+    """Gate 可 Select Memory-derived Skill 的 Upper Bound，与 ``inject_max`` 对齐。"""
 
     llm_gate_pool_size: int = 10
-    """RRF 后交给 Legacy Gate 的 Candidate Pool Size，与 Local+Mass Dedup 后输出规模对齐。"""
+    """为旧配置保留的 Candidate Pool Compatibility Field；当前 Router ``top_k`` 决定候选规模。"""
 
     llm_gate_model: str | None = None
-    """Legacy Gate Call 的 Optional Model Override；`None` 使用 Provider Default Chat Model，通常是 Agent
+    """Gate Call 的 Optional Model Override；`None` 使用 Provider Default Chat Model，通常是 Agent
     Main Model。"""
 
     llm_gate_temperature: float = 0.0

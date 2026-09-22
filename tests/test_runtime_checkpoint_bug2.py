@@ -233,7 +233,7 @@ async def test_completed_status_and_snapshot(workspace):
 
     assert outcome.checkpoint_id is not None
 
-    assert outcome.edited_files == []
+    assert outcome.edited_files == ["done.py"]
 
 
 async def test_error_status(workspace):

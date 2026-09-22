@@ -287,7 +287,9 @@ class InstalledTrialExecutor:
             timeout=600,
         )
         if completed.returncode != 0:
-            raise RuntimeError(f"command failed with exit {completed.returncode}: {Path(argv[0]).name}")
+            stderr_lines = completed.stderr.strip().splitlines()
+            detail = " | ".join(stderr_lines[-20:])[:4_096] if stderr_lines else "no stderr"
+            raise RuntimeError(f"command failed with exit {completed.returncode}: {Path(argv[0]).name}: {detail}")
         return completed
 
     def _validate_identity(self, identity: dict[str, Any]) -> dict[str, Any]:

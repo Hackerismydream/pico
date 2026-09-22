@@ -44,7 +44,20 @@ _AGENT_OFFLINE_SCHEMA = "pico.picobench.myna-agent-task-effect.offline-verifier.
 _AGENT_BUDGET_APPROVAL_SCHEMA = "pico.picobench.myna-agent-task-effect.budget-approval.v2"
 _AGENT_TASK_ID = re.compile(r"[a-z0-9][a-z0-9._-]{0,127}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-_EXPECTED_LIFECYCLE = ("start", "recall", "store", "stop", "start", "recall", "store", "stop")
+_EXPECTED_LIFECYCLE = (
+    "start",
+    "recall",
+    "recall",
+    "store",
+    "feedback",
+    "stop",
+    "start",
+    "recall",
+    "recall",
+    "store",
+    "feedback",
+    "stop",
+)
 _PASS_NONINFERIORITY_FLOOR = -0.05
 _MIN_CONCORDANT_COVERAGE = 0.80
 _MIN_TOOL_CALL_REDUCTION_PERCENT = 15.0

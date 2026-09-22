@@ -21,10 +21,12 @@ class ToolResult(str):
     """
 
     failed: bool
+    receipt: dict[str, Any]
 
-    def __new__(cls, value: object = "", *, failed: bool = False):
+    def __new__(cls, value: object = "", *, failed: bool = False, receipt: dict[str, Any] | None = None):
         result = super().__new__(cls, str(value))
         result.failed = failed
+        result.receipt = dict(receipt or {})
         return result
 
 

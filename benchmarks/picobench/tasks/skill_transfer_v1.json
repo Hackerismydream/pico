@@ -1,0 +1,131 @@
+{
+  "schema": "pico.picobench.skill-transfer.tasks.v1",
+  "abilities": [
+    {
+      "ability_id": "config_precedence",
+      "goal": "Implement explicit configuration precedence with absent-value fallback.",
+      "learning": [
+        {"instance_id": "learn-config-01", "result": "Checked explicit CLI value before environment and default without treating zero as absent.", "verification": "pytest tests/test_config.py"},
+        {"instance_id": "learn-config-02", "result": "Separated missing values from false and empty-string values before applying fallback order.", "verification": "pytest tests/test_settings.py"},
+        {"instance_id": "learn-config-03", "result": "Centralized option resolution and tested every precedence layer independently.", "verification": "pytest tests/test_options.py"}
+      ],
+      "held_out": [
+        {"instance_id": "eval-config-01", "prompt": "Implement resolve_timeout so CLI, environment, file, then default precedence preserves zero.", "fixture": {"kind": "config_precedence", "variant": "integer_zero"}},
+        {"instance_id": "eval-config-02", "prompt": "Implement resolve_feature so an explicit false value wins over lower-priority true values.", "fixture": {"kind": "config_precedence", "variant": "boolean_false"}},
+        {"instance_id": "eval-config-03", "prompt": "Implement resolve_label so an explicit empty label remains distinct from a missing label.", "fixture": {"kind": "config_precedence", "variant": "empty_string"}},
+        {"instance_id": "eval-config-04", "prompt": "Implement resolve_workers across argument, environment, project, and built-in layers.", "fixture": {"kind": "config_precedence", "variant": "four_layers"}}
+      ],
+      "hard_negatives": [
+        {"instance_id": "negative-config-01", "query": "Summarize orbital telemetry packet loss."},
+        {"instance_id": "negative-config-02", "query": "Choose typography for a cafeteria menu."},
+        {"instance_id": "negative-config-03", "query": "Calculate greenhouse irrigation volume."},
+        {"instance_id": "negative-config-04", "query": "Explain violin harmonics to a beginner."}
+      ]
+    },
+    {
+      "ability_id": "retry_after",
+      "goal": "Implement bounded retry scheduling from server retry hints.",
+      "learning": [
+        {"instance_id": "learn-retry-01", "result": "Parsed delta-seconds, clamped the delay, and rejected negative hints.", "verification": "pytest tests/test_retry.py"},
+        {"instance_id": "learn-retry-02", "result": "Parsed HTTP-date relative to an injected clock and applied the configured maximum.", "verification": "pytest tests/test_backoff.py"},
+        {"instance_id": "learn-retry-03", "result": "Fell back deterministically when the hint was malformed and kept retry count bounded.", "verification": "pytest tests/test_client.py"}
+      ],
+      "held_out": [
+        {"instance_id": "eval-retry-01", "prompt": "Implement retry_delay for delta-seconds with lower and upper bounds.", "fixture": {"kind": "retry_after", "variant": "delta_seconds"}},
+        {"instance_id": "eval-retry-02", "prompt": "Implement retry_delay for an HTTP-date using the supplied current time.", "fixture": {"kind": "retry_after", "variant": "http_date"}},
+        {"instance_id": "eval-retry-03", "prompt": "Implement retry_delay so malformed hints use deterministic exponential fallback.", "fixture": {"kind": "retry_after", "variant": "malformed"}},
+        {"instance_id": "eval-retry-04", "prompt": "Implement retry_delay so past dates and oversized hints remain within policy bounds.", "fixture": {"kind": "retry_after", "variant": "clamping"}}
+      ],
+      "hard_negatives": [
+        {"instance_id": "negative-retry-01", "query": "Catalog coastal bird migration routes."},
+        {"instance_id": "negative-retry-02", "query": "Compose a recipe for sourdough pancakes."},
+        {"instance_id": "negative-retry-03", "query": "Compare telescope mirror materials."},
+        {"instance_id": "negative-retry-04", "query": "Translate a museum placard into French."}
+      ]
+    },
+    {
+      "ability_id": "atomic_json",
+      "goal": "Implement crash-safe atomic JSON file replacement.",
+      "learning": [
+        {"instance_id": "learn-atomic-01", "result": "Wrote a same-directory temporary file, flushed it, then replaced the destination atomically.", "verification": "pytest tests/test_state.py"},
+        {"instance_id": "learn-atomic-02", "result": "Preserved the old destination when serialization failed and removed the temporary file.", "verification": "pytest tests/test_manifest.py"},
+        {"instance_id": "learn-atomic-03", "result": "Used deterministic JSON encoding and fsynced the containing directory after replacement.", "verification": "pytest tests/test_snapshot.py"}
+      ],
+      "held_out": [
+        {"instance_id": "eval-atomic-01", "prompt": "Implement write_state as deterministic atomic JSON replacement.", "fixture": {"kind": "atomic_json", "variant": "basic_replace"}},
+        {"instance_id": "eval-atomic-02", "prompt": "Implement write_manifest so serialization failure preserves the prior file.", "fixture": {"kind": "atomic_json", "variant": "serialization_failure"}},
+        {"instance_id": "eval-atomic-03", "prompt": "Implement save_snapshot with same-directory temporary cleanup after replacement failure.", "fixture": {"kind": "atomic_json", "variant": "replace_failure"}},
+        {"instance_id": "eval-atomic-04", "prompt": "Implement save_index with stable key ordering and durable replacement.", "fixture": {"kind": "atomic_json", "variant": "stable_encoding"}}
+      ],
+      "hard_negatives": [
+        {"instance_id": "negative-atomic-01", "query": "Plan a walking tour of botanical gardens."},
+        {"instance_id": "negative-atomic-02", "query": "Estimate the age of a granite formation."},
+        {"instance_id": "negative-atomic-03", "query": "Describe watercolor pigment mixing."},
+        {"instance_id": "negative-atomic-04", "query": "Select strings for a concert cello."}
+      ]
+    },
+    {
+      "ability_id": "jsonl_dedup",
+      "goal": "Implement deterministic JSONL aggregation with identity deduplication.",
+      "learning": [
+        {"instance_id": "learn-jsonl-01", "result": "Parsed line-by-line, rejected malformed rows, and retained the first occurrence of each identity.", "verification": "pytest tests/test_events.py"},
+        {"instance_id": "learn-jsonl-02", "result": "Separated duplicate detection from stable output ordering and counted invalid lines.", "verification": "pytest tests/test_ledger.py"},
+        {"instance_id": "learn-jsonl-03", "result": "Normalized identity fields before deduplication without silently merging conflicting payloads.", "verification": "pytest tests/test_import.py"}
+      ],
+      "held_out": [
+        {"instance_id": "eval-jsonl-01", "prompt": "Implement aggregate_events with first-seen event_id deduplication and stable ordering.", "fixture": {"kind": "jsonl_dedup", "variant": "first_seen"}},
+        {"instance_id": "eval-jsonl-02", "prompt": "Implement summarize_ledger with last-seen receipt_id replacement and malformed-row counts.", "fixture": {"kind": "jsonl_dedup", "variant": "last_seen"}},
+        {"instance_id": "eval-jsonl-03", "prompt": "Implement merge_records so duplicate identities with conflicting payloads are reported.", "fixture": {"kind": "jsonl_dedup", "variant": "conflict"}},
+        {"instance_id": "eval-jsonl-04", "prompt": "Implement read_batches with compound identity deduplication across multiple files.", "fixture": {"kind": "jsonl_dedup", "variant": "compound"}}
+      ],
+      "hard_negatives": [
+        {"instance_id": "negative-jsonl-01", "query": "Explain lunar eclipse photography."},
+        {"instance_id": "negative-jsonl-02", "query": "Design seating for a chamber orchestra."},
+        {"instance_id": "negative-jsonl-03", "query": "Compare alpine trail footwear."},
+        {"instance_id": "negative-jsonl-04", "query": "Identify spices in a curry blend."}
+      ]
+    },
+    {
+      "ability_id": "path_containment",
+      "goal": "Implement resolved-path containment for workspace file operations.",
+      "learning": [
+        {"instance_id": "learn-path-01", "result": "Resolved the workspace and candidate before checking relative containment.", "verification": "pytest tests/test_paths.py"},
+        {"instance_id": "learn-path-02", "result": "Rejected parent traversal and symlink escapes while allowing normalized in-tree paths.", "verification": "pytest tests/test_workspace.py"},
+        {"instance_id": "learn-path-03", "result": "Handled a candidate equal to the workspace root separately from descendant files.", "verification": "pytest tests/test_sandbox.py"}
+      ],
+      "held_out": [
+        {"instance_id": "eval-path-01", "prompt": "Implement safe_join to reject parent traversal outside a workspace.", "fixture": {"kind": "path_containment", "variant": "parent_traversal"}},
+        {"instance_id": "eval-path-02", "prompt": "Implement is_contained so symlink escapes are rejected after resolution.", "fixture": {"kind": "path_containment", "variant": "symlink_escape"}},
+        {"instance_id": "eval-path-03", "prompt": "Implement normalize_output_path for absolute and relative in-tree paths.", "fixture": {"kind": "path_containment", "variant": "absolute_relative"}},
+        {"instance_id": "eval-path-04", "prompt": "Implement validate_destination with explicit root-equality policy.", "fixture": {"kind": "path_containment", "variant": "root_equality"}}
+      ],
+      "hard_negatives": [
+        {"instance_id": "negative-path-01", "query": "Summarize coral reef bleaching causes."},
+        {"instance_id": "negative-path-02", "query": "Recommend clay for wheel pottery."},
+        {"instance_id": "negative-path-03", "query": "Describe baroque counterpoint."},
+        {"instance_id": "negative-path-04", "query": "Calculate ingredients for twelve muffins."}
+      ]
+    },
+    {
+      "ability_id": "async_cleanup",
+      "goal": "Implement exception-safe asynchronous resource cleanup.",
+      "learning": [
+        {"instance_id": "learn-async-01", "result": "Entered resources in order and closed them in reverse order when the body raised.", "verification": "pytest tests/test_runtime.py"},
+        {"instance_id": "learn-async-02", "result": "Used an async context manager so cancellation still awaited cleanup before propagation.", "verification": "pytest tests/test_client.py"},
+        {"instance_id": "learn-async-03", "result": "Preserved the primary exception while recording a secondary close failure.", "verification": "pytest tests/test_pool.py"}
+      ],
+      "held_out": [
+        {"instance_id": "eval-async-01", "prompt": "Implement managed_client so close is awaited after successful and failed bodies.", "fixture": {"kind": "async_cleanup", "variant": "context_manager"}},
+        {"instance_id": "eval-async-02", "prompt": "Implement run_with_pool with reverse-order cleanup for partially opened resources.", "fixture": {"kind": "async_cleanup", "variant": "partial_open"}},
+        {"instance_id": "eval-async-03", "prompt": "Implement consume_stream so cancellation closes the stream before it propagates.", "fixture": {"kind": "async_cleanup", "variant": "cancellation"}},
+        {"instance_id": "eval-async-04", "prompt": "Implement use_session while preserving a body exception when close also fails.", "fixture": {"kind": "async_cleanup", "variant": "dual_failure"}}
+      ],
+      "hard_negatives": [
+        {"instance_id": "negative-async-01", "query": "Outline the history of silk weaving."},
+        {"instance_id": "negative-async-02", "query": "Choose binoculars for birdwatching."},
+        {"instance_id": "negative-async-03", "query": "Explain how glaciers carve valleys."},
+        {"instance_id": "negative-async-04", "query": "Write a tasting note for oolong tea."}
+      ]
+    }
+  ]
+}

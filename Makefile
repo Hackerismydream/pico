@@ -1,4 +1,4 @@
-.PHONY: help install install-deps format check lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-reproduce picobench-scorecard-estimate picobench-scorecard-ship picobench-scorecard-score picobench-runtime-scheduler picobench-runtime-tools picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify picobench-call-efficiency-plan picobench-call-efficiency-preflight picobench-call-efficiency-run picobench-call-efficiency-verify picobench-tracing-plan picobench-tracing-run picobench-tracing-verify picobench-myna-task-effect-plan picobench-myna-task-effect-run picobench-myna-task-effect-verify picobench-memory-agent-plan picobench-memory-agent-run picobench-memory-agent-verify verify-myna-integration verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
+.PHONY: help install install-deps format check lint lint-python lint-tui test test-python test-retained test-tui picobench-smoke picobench picobench-reproduce picobench-scorecard-estimate picobench-scorecard-ship picobench-scorecard-score picobench-runtime-scheduler picobench-runtime-tools picobench-runtime-live-plan picobench-runtime-live-run picobench-runtime-live-verify picobench-call-efficiency-plan picobench-call-efficiency-preflight picobench-call-efficiency-run picobench-call-efficiency-verify picobench-tracing-plan picobench-tracing-run picobench-tracing-verify picobench-myna-task-effect-plan picobench-myna-task-effect-run picobench-myna-task-effect-verify picobench-memory-agent-plan picobench-memory-agent-run picobench-memory-agent-verify picobench-skill-transfer-plan picobench-skill-transfer-preflight picobench-skill-transfer-prepare picobench-skill-transfer-run picobench-skill-transfer-verify verify-myna-integration verify-runtime-hosts verify-live-provider verify-channels verify-live-feishu verify-evolver verify-turn-evidence verify-release build build-tui check-commits check-pr-title check-large-files ci clean
 
 PYTHON ?= python3
 PYTHON_LINT_TARGETS ?= scripts/check_commit_file.py scripts/check_commit_messages.py scripts/check_pr_title.py scripts/check_large_files.py scripts/commit_lint.py tests/test_commit_lint.py tests/test_large_file_check.py
@@ -9,6 +9,8 @@ PICO_MYNA_TASK_EFFECT_CORPUS := benchmarks/picobench/tasks/myna_task_effect/$(PI
 PICO_MYNA_TASK_EFFECT_OUTPUT ?= .pico/evidence/myna-task-effect/$(PICO_MYNA_TASK_EFFECT_KIND)
 PICO_MEMORY_AGENT_CORPUS := benchmarks/picobench/tasks/myna_task_effect/agent.json
 PICO_MEMORY_AGENT_OUTPUT ?= .pico/evidence/myna-task-effect/agent
+PICO_SKILL_TRANSFER_CORPUS := benchmarks/picobench/tasks/skill_transfer_v1.json
+PICO_SKILL_TRANSFER_OUTPUT ?= .pico/evidence/skill-transfer-v1
 PICO_CALL_EFFICIENCY_OUTPUT ?= .pico/evidence/call-efficiency-cost-current
 PICO_TRACING_OUTPUT ?= .pico/evidence/tracing-overhead-current
 
@@ -41,7 +43,12 @@ help:
 	@echo "  picobench-myna-task-effect-verify Reinstall candidates and rebuild A/B evidence"
 	@echo "  picobench-memory-agent-plan Freeze the lightweight real-Agent Memory A/B"
 	@echo "  picobench-memory-agent-run Run or resume the approved 48-Trial Agent A/B"
+	@echo "  picobench-skill-transfer-prepare Derive and freeze six live Skill candidates only"
 	@echo "  picobench-memory-agent-verify Rebuild Agent A/B metrics without Provider calls"
+	@echo "  picobench-skill-transfer-plan Freeze the instance-disjoint verified Skill A/B plan"
+	@echo "  picobench-skill-transfer-preflight Run credential-free installed candidate and hard-negative gates"
+	@echo "  picobench-skill-transfer-run Run the approved 96-Trial verified Skill A/B"
+	@echo "  picobench-skill-transfer-verify Rebuild verified Skill A/B evidence without Provider calls"
 	@echo "  picobench      Run the frozen PicoBench calibration and formal campaign"
 	@echo "  picobench-reproduce Run or reuse every Scorecard track and render one report"
 	@echo "  picobench-scorecard-estimate Print the current Scorecard worst-case budget"
@@ -191,6 +198,57 @@ picobench-memory-agent-verify:
 		verify \
 		--corpus "$(PICO_MEMORY_AGENT_CORPUS)" \
 		--output-root "$(PICO_MEMORY_AGENT_OUTPUT)"
+
+picobench-skill-transfer-plan:
+	@test -n "$$PICO_MYNA_PICO_WHEEL" || (echo "PICO_MYNA_PICO_WHEEL is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_WHEEL" || (echo "PICO_MYNA_WHEEL is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_PICO_COMMIT" || (echo "PICO_MYNA_PICO_COMMIT is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_COMMIT" || (echo "PICO_MYNA_COMMIT is required" >&2; exit 2)
+	uv run --frozen --all-extras --exact python -m benchmarks.picobench.packs.skill_transfer.campaign plan \
+		--corpus "$(PICO_SKILL_TRANSFER_CORPUS)" \
+		--output-root "$(PICO_SKILL_TRANSFER_OUTPUT)" \
+		--pico-wheel "$$PICO_MYNA_PICO_WHEEL" \
+		--myna-wheel "$$PICO_MYNA_WHEEL" \
+		--pico-commit "$$PICO_MYNA_PICO_COMMIT" \
+		--myna-commit "$$PICO_MYNA_COMMIT"
+
+picobench-skill-transfer-preflight:
+	@test -n "$$PICO_MYNA_PICO_WHEEL" || (echo "PICO_MYNA_PICO_WHEEL is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_WHEEL" || (echo "PICO_MYNA_WHEEL is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_PICO_COMMIT" || (echo "PICO_MYNA_PICO_COMMIT is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_COMMIT" || (echo "PICO_MYNA_COMMIT is required" >&2; exit 2)
+	uv run --frozen --all-extras --exact python -m benchmarks.picobench.packs.skill_transfer.preflight \
+		--corpus "$(PICO_SKILL_TRANSFER_CORPUS)" \
+		--output-root "$(PICO_SKILL_TRANSFER_OUTPUT)" \
+		--pico-wheel "$$PICO_MYNA_PICO_WHEEL" \
+		--myna-wheel "$$PICO_MYNA_WHEEL" \
+		--pico-commit "$$PICO_MYNA_PICO_COMMIT" \
+		--myna-commit "$$PICO_MYNA_COMMIT"
+
+picobench-skill-transfer-prepare picobench-skill-transfer-run:
+	@test "$$PICO_BENCH_EXECUTE_PAID" = "1" || (echo "PICO_BENCH_EXECUTE_PAID=1 is required" >&2; exit 2)
+	@test -n "$$PICO_SKILL_TRANSFER_APPROVAL_DIGEST" || (echo "PICO_SKILL_TRANSFER_APPROVAL_DIGEST is required" >&2; exit 2)
+	@test -n "$$PICO_SKILL_TRANSFER_APPROVED_CNY" || (echo "PICO_SKILL_TRANSFER_APPROVED_CNY is required" >&2; exit 2)
+	@test -n "$$DEEPSEEK_API_KEY" || (echo "DEEPSEEK_API_KEY is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_PICO_WHEEL" || (echo "PICO_MYNA_PICO_WHEEL is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_WHEEL" || (echo "PICO_MYNA_WHEEL is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_PICO_COMMIT" || (echo "PICO_MYNA_PICO_COMMIT is required" >&2; exit 2)
+	@test -n "$$PICO_MYNA_COMMIT" || (echo "PICO_MYNA_COMMIT is required" >&2; exit 2)
+	uv run --frozen --all-extras --exact python -m benchmarks.picobench.packs.skill_transfer.campaign $(if $(filter picobench-skill-transfer-prepare,$@),prepare,run) \
+		--corpus "$(PICO_SKILL_TRANSFER_CORPUS)" \
+		--output-root "$(PICO_SKILL_TRANSFER_OUTPUT)" \
+		--pico-wheel "$$PICO_MYNA_PICO_WHEEL" \
+		--myna-wheel "$$PICO_MYNA_WHEEL" \
+		--pico-commit "$$PICO_MYNA_PICO_COMMIT" \
+		--myna-commit "$$PICO_MYNA_COMMIT" \
+		--approval-digest "$$PICO_SKILL_TRANSFER_APPROVAL_DIGEST" \
+		--approved-cny "$$PICO_SKILL_TRANSFER_APPROVED_CNY" \
+		--execute-paid
+
+picobench-skill-transfer-verify:
+	uv run --frozen --all-extras --exact python -m benchmarks.picobench.packs.skill_transfer.campaign verify \
+		--corpus "$(PICO_SKILL_TRANSFER_CORPUS)" \
+		--output-root "$(PICO_SKILL_TRANSFER_OUTPUT)"
 
 verify-myna-integration:
 	@test -n "$$PICO_MYNA_PICO_WHEEL" || (echo "PICO_MYNA_PICO_WHEEL is required" >&2; exit 2)

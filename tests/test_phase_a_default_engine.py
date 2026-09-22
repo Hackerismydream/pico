@@ -19,7 +19,8 @@ from pico.context_engine import ContextAssembler, TurnContext
 from pico.context_engine.factory import build_context_engine
 from pico.context_engine.segments import MemorySegmentBuilder, SkillsSegmentBuilder
 from pico.memory_engine import TokenBudget
-from pico.memory_engine.skill_forge import LocalSkillSource
+from pico.memory_engine.backend import Memory
+from pico.memory_engine.skill_forge import LocalSkillSource, MemorySkillSource
 
 # ---------------------------------------------------------------------------
 
@@ -43,6 +44,32 @@ class _FakeBackend:
         return []
 
 
+class _ActiveSkillBackend(_FakeBackend):
+    async def recall(self, query, *, user_id=None, agent_id=None, top_k):
+        if agent_id is None or "repository verification" not in query:
+            return []
+        return [
+            Memory(
+                text="---\nname: Repository verification\ndescription: Run checks\n---\n\nRun make check.",
+                score=1.0,
+                metadata={
+                    "backend": "myna",
+                    "name": "Repository verification",
+                    "qualified_id": "myna/skill_abc@skill_rev_def",
+                    "revision_id": "skill_rev_def",
+                    "source_experience_ids": ["mem_1", "mem_2", "mem_3"],
+                },
+            )
+        ]
+
+
+class _FailingAgentTrackBackend(_FakeBackend):
+    async def recall(self, query, *, user_id=None, agent_id=None, top_k):
+        if agent_id is not None:
+            raise RuntimeError("agent track unavailable")
+        return []
+
+
 class _StubProvider:
     api_key = "test"
 
@@ -59,6 +86,19 @@ class _StubProvider:
     async def chat_with_retry(self, *args, **kwargs):
         self.calls += 1
         raise NotImplementedError
+
+
+class _GateProvider(_StubProvider):
+    async def chat_with_retry(self, *args, **kwargs):
+        self.calls += 1
+        return type(
+            "Response",
+            (),
+            {
+                "content": '{"plan":"verify repository","skills":["myna/skill_abc@skill_rev_def"]}',
+                "finish_reason": "stop",
+            },
+        )()
 
 
 def _stub_get_defs() -> list[dict]:
@@ -122,6 +162,87 @@ class TestFactory:
 
 
 class TestSkillForgeRouterAssembly:
+    async def test_agent_track_failure_degrades_to_local_skill(self, tmp_path: Path) -> None:
+        skill_dir = tmp_path / "skills" / "release-helper"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: release-helper\ndescription: Verify release\n---\n\nRun the local release check.\n"
+        )
+        engine = _build_engine(tmp_path, backend=_FailingAgentTrackBackend())
+
+        assembled = await engine.assemble(
+            "degraded",
+            [],
+            TokenBudget(
+                context_length=32_000,
+                reserved_output=4_000,
+                reserved_tools=2_000,
+                reserved_system=2_000,
+                available_history=24_000,
+            ),
+            turn=TurnContext(current_message="release-helper verify release"),
+        )
+
+        assert assembled.metadata["skill_source_failures"] == ["memory"]
+        assert assembled.metadata["injected_skill_ids"] == ["local/release-helper"]
+        assert "Run the local release check." in assembled.messages[0]["content"]
+
+    async def test_active_backend_skill_abstains_without_gate(self, tmp_path: Path) -> None:
+        engine = _build_engine(tmp_path, backend=_ActiveSkillBackend())
+        budget = TokenBudget(
+            context_length=32_000,
+            reserved_output=4_000,
+            reserved_tools=2_000,
+            reserved_system=2_000,
+            available_history=24_000,
+        )
+
+        relevant = await engine.assemble(
+            "relevant",
+            [],
+            budget,
+            turn=TurnContext(current_message="apply repository verification"),
+        )
+        negative = await engine.assemble(
+            "negative",
+            [],
+            budget,
+            turn=TurnContext(current_message="cafeteria typography satellite"),
+        )
+
+        assert relevant.metadata["injected_skill_ids"] == []
+        assert relevant.metadata["skill_gate_status"] == "disabled_abstain"
+        assert "Run make check." not in relevant.messages[0]["content"]
+        assert negative.metadata["injected_skill_ids"] == []
+        assert "Run make check." not in negative.messages[0]["content"]
+
+    async def test_enabled_gate_selects_active_backend_skill(self, tmp_path: Path) -> None:
+        provider = _GateProvider()
+        engine = _build_engine(
+            tmp_path,
+            backend=_ActiveSkillBackend(),
+            skill_forge_config=SkillForgeConfig(llm_gate_enabled=True),
+            provider=provider,
+        )
+
+        assembled = await engine.assemble(
+            "gated",
+            [],
+            TokenBudget(
+                context_length=32_000,
+                reserved_output=4_000,
+                reserved_tools=2_000,
+                reserved_system=2_000,
+                available_history=24_000,
+            ),
+            turn=TurnContext(current_message="apply repository verification"),
+        )
+
+        assert assembled.metadata["injected_skill_ids"] == ["myna/skill_abc@skill_rev_def"]
+        assert assembled.metadata["skill_gate_status"] == "selected"
+        assert "Run make check." in assembled.messages[0]["content"]
+        assert provider.calls == 1
+
     async def test_first_turn_skill_resolution_never_calls_provider(
         self,
         tmp_path: Path,
@@ -249,10 +370,11 @@ class TestSkillForgeRouterAssembly:
         types, _ = _router_sources(_build_engine(tmp_path, backend=_FakeBackend()))
         assert LocalSkillSource in types
 
-    def test_backend_does_not_change_local_skill_sources(self, tmp_path: Path) -> None:
+    def test_backend_adds_agent_track_skill_source_without_removing_local(self, tmp_path: Path) -> None:
         with_backend, _ = _router_sources(_build_engine(tmp_path, backend=_FakeBackend()))
         without_backend, _ = _router_sources(_build_engine(tmp_path, backend=None))
-        assert with_backend == without_backend == [LocalSkillSource]
+        assert with_backend == [LocalSkillSource, MemorySkillSource]
+        assert without_backend == [LocalSkillSource]
 
     def test_track_ids_from_memory_config(self, tmp_path: Path) -> None:
         engine = _build_engine(
